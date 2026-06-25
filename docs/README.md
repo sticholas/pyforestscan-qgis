@@ -12,3 +12,10 @@ grouped into focused subdirectories:
 - `releases/`: Release process documentation.
 - `testing/`: Testing guidance and future fixtures policy.
 
+## User Documentation
+
+- [User Guide](USER_GUIDE.md)
+
+## Examples
+
+- [Dataset Explorer Example Outputs](examples/DATASET_EXPLORER_EXAMPLE.md)

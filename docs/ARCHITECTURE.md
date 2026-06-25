@@ -41,6 +41,30 @@ flowchart TD
     G -."future outputs".-> H["Adapter-managed products"]
 ```
 
+
+## Dataset Explorer Workflow
+
+Phase 5 adds the first complete user workflow while preserving the established
+architecture. `DatasetExplorerAlgorithm` is a QGIS Processing shell that delegates
+validation and inspection to `PyForestScanAdapter`, then delegates report
+modeling and rendering to `pyforestscan_qgis/core/dataset_report.py`.
+
+The workflow deliberately stops after inspection. It writes JSON, CSV, and HTML
+planning outputs and reports product feasibility, but it does not call
+PyForestScan calculation functions or create scientific products.
+
+```mermaid
+flowchart TD
+    A["QGIS Dataset Explorer algorithm"] --> B["PyForestScanAdapter"]
+    B --> C["DatasetValidationResult"]
+    B --> D["DatasetInspection"]
+    D --> E["DatasetExplorerReport"]
+    E --> F["JSON report"]
+    E --> G["CSV table"]
+    E --> H["HTML report"]
+    E --> I["Processing feedback"]
+```
+
 ## Dependency Direction
 
 Processing algorithms may depend on plugin core services. Core services may

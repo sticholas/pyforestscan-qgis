@@ -6,7 +6,7 @@ from qgis.core import QgsProcessingProvider
 from qgis.PyQt.QtGui import QIcon
 
 from .algorithms.placeholder_algorithms import (
-    CreateCanopyHeightModelAlgorithm,
+    DatasetExplorerAlgorithm,
     EnvironmentCheckAlgorithm,
     ForestMetricsPackAlgorithm,
 )
@@ -38,6 +38,6 @@ class PyForestScanProvider(QgsProcessingProvider):
     def loadAlgorithms(self) -> None:
         """Register all Processing algorithms owned by this provider."""
         self.addAlgorithm(EnvironmentCheckAlgorithm())
-        self.addAlgorithm(CreateCanopyHeightModelAlgorithm())
+        self.addAlgorithm(DatasetExplorerAlgorithm())
         self.addAlgorithm(ForestMetricsPackAlgorithm())
 

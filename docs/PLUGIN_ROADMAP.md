@@ -181,3 +181,23 @@ Acceptance Criteria:
 - Advanced workflows remain modular and documented.
 - Outputs include provenance suitable for publication methods sections.
 
+## Phase 5A: Dataset Explorer
+
+Purpose: Provide the first complete guided inspection workflow before CHM implementation.
+
+Deliverables:
+
+- Adapter-backed dataset validation and inspection.
+- JSON, CSV, and HTML planning reports.
+- Product feasibility and warnings.
+
+Risks:
+
+- Large LAS/LAZ/COPC inspection may require future sampling controls.
+- EPT classification summaries are metadata-limited.
+
+Acceptance Criteria:
+
+- No scientific products generated.
+- Reports document dataset readiness and warnings.
+- CSV summary can be loaded as a QGIS table.

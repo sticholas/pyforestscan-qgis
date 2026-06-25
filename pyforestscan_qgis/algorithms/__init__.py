@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from .placeholder_algorithms import (
-    CreateCanopyHeightModelAlgorithm,
+    DatasetExplorerAlgorithm,
     EnvironmentCheckAlgorithm,
     ForestMetricsPackAlgorithm,
 )
 
 __all__ = [
-    "CreateCanopyHeightModelAlgorithm",
+    "DatasetExplorerAlgorithm",
     "EnvironmentCheckAlgorithm",
     "ForestMetricsPackAlgorithm",
 ]

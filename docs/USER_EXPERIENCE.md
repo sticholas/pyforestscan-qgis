@@ -31,3 +31,13 @@ Errors should:
   parameters.
 - Avoid raw tracebacks unless shown in an advanced diagnostic context.
 
+## Phase 5 Dataset Explorer Experience
+
+Dataset Explorer is the first guided workflow. The user selects a lidar dataset,
+chooses report output locations, and receives feedback plus JSON, CSV, and HTML
+reports. The algorithm explains product feasibility in plain language so users
+can plan CHM and metric workflows without understanding PDAL or PyForestScan
+internals.
+
+The workflow follows the project UX philosophy: inspect first, warn clearly, and
+never start scientific processing until the dataset is understood.

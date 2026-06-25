@@ -2,7 +2,8 @@
 
 This guide explains how to install and smoke-test the development plugin in a
 local QGIS profile. It does not install PyForestScan or any scientific
-libraries.
+libraries. Dataset Explorer requires the inspected runtime dependencies to be
+available in QGIS Python.
 
 ## Build the ZIP
 
@@ -55,17 +56,20 @@ Confirm the following in QGIS:
 3. `Processing` > `Toolbox` shows a `PyForestScan` provider.
 4. The provider contains:
    - `Environment Check`
-   - `Create Canopy Height Model`
+   - `Dataset Explorer`
    - `Forest Metrics Pack`
 5. Run `Environment Check`.
 6. Confirm the Processing log shows a readable PASS/FAIL/WARNING report.
 7. Confirm missing dependencies are reported as FAIL or WARNING instead of
    crashing QGIS.
-8. Confirm `Create Canopy Height Model` and `Forest Metrics Pack` still report
-   `Not yet implemented.` and do not create scientific outputs.
+8. Run `Dataset Explorer` on a small LAS, LAZ, COPC, or local `ept.json` dataset.
+9. Confirm JSON, CSV, and HTML reports are written.
+10. Confirm the CSV summary is added to the QGIS project as a table when possible.
+11. Confirm `Forest Metrics Pack` still reports `Not yet implemented.` and does
+   not create scientific outputs.
 
 ## Scope Boundary
 
 This workflow verifies plugin loading, provider registration, package layout,
-and environment diagnostics. It does not validate PyForestScan processing,
-CHM generation, PDAL pipelines, or scientific output correctness.
+environment diagnostics, and Dataset Explorer report generation. It does not
+validate CHM generation, raster creation, or scientific output correctness.

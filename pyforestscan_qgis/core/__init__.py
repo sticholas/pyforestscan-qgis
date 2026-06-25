@@ -4,6 +4,18 @@ from __future__ import annotations
 
 from .adapter import AdapterProgress, PyForestScanAdapter
 from .config import AdapterConfig, DatasetOpenOptions, InspectionOptions
+from .dataset_report import (
+    DatasetExplorerReport,
+    DatasetWarning,
+    ProductFeasibility,
+    build_dataset_explorer_report,
+    render_html_report,
+    render_json_report,
+    report_to_dict,
+    write_csv_summary,
+    write_html_report,
+    write_json_report,
+)
 from .dependency_check import (
     CheckStatus,
     EnvironmentCheckResult,
@@ -43,6 +55,16 @@ __all__ = [
     "Bounds3D",
     "CheckStatus",
     "ClassificationCount",
+    "DatasetExplorerReport",
+    "DatasetWarning",
+    "ProductFeasibility",
+    "build_dataset_explorer_report",
+    "render_html_report",
+    "render_json_report",
+    "report_to_dict",
+    "write_csv_summary",
+    "write_html_report",
+    "write_json_report",
     "DatasetError",
     "DatasetFormat",
     "DatasetInspection",

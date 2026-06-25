@@ -38,3 +38,15 @@ Outputs should preserve or record:
 Where technically appropriate, outputs should load with documented QGIS styles
 that help users inspect results without changing the scientific values.
 
+## Phase 5 Planning Outputs
+
+Dataset Explorer produces planning outputs rather than scientific products:
+
+- JSON report: structured dataset metadata, warnings, product feasibility, and
+  recommended next actions.
+- CSV summary: long-form table intended for quick review in QGIS.
+- HTML report: browser-readable inspection report with summary panels,
+  classification chart, warnings, supported products, and next actions.
+
+These outputs document whether future products appear feasible. They are not CHM,
+PAI, PAD, FHD, canopy cover, rumple, raster, or vector scientific outputs.

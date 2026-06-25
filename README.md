@@ -10,12 +10,14 @@ scientific computation to PyForestScan as the engine.
 
 ## Project Status
 
-Phase 2: Environment validation layer.
+Phase 5: Dataset Explorer workflow.
 
-This repository currently contains project governance, architecture direction,
-the QGIS Processing provider scaffold, and a real Environment Check
-diagnostic algorithm. Scientific PyForestScan processing, lidar analysis,
-PDAL pipelines, and custom GUI code are intentionally not implemented yet.
+This repository contains the project governance foundation, QGIS Processing
+provider scaffold, environment validation, packaging helpers, dependency
+documentation, adapter layer, and the first complete user workflow: Dataset
+Explorer. Dataset Explorer inspects lidar datasets and writes JSON, CSV, and
+HTML planning reports. Scientific PyForestScan product generation is still
+intentionally not implemented.
 
 ## Long-Term Goals
 
@@ -60,6 +62,17 @@ ambiguous.
 - [Windows QGIS Dependencies](docs/development/WINDOWS_QGIS_DEPENDENCIES.md)
 - [Testing Strategy](docs/TESTING_STRATEGY.md)
 - [User Experience](docs/USER_EXPERIENCE.md)
+- [User Guide](docs/USER_GUIDE.md)
+
+## Dataset Explorer
+
+Dataset Explorer is the first functional workflow. It validates and inspects LAS,
+LAZ, COPC, and local EPT datasets, reports warnings and product feasibility, and
+writes JSON, CSV, and HTML reports. The CSV report is automatically added to the
+active QGIS project as a table when possible.
+
+This workflow stops after inspection; it does not create CHMs or other scientific
+products.
 
 ## Local QGIS Testing
 
