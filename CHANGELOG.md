@@ -9,6 +9,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Mission Control manual QGIS validation record confirming dock, toolbar/menu, navigation, and placeholder behavior.
 - Mission Control dock framework with Home, Environment, Dataset, Planning, Processing, Results, and Settings pages.
 - Product Planner Processing workflow that reads Dataset Explorer JSON and writes JSON, CSV, and HTML product plan reports without scientific processing.
 - Dataset Explorer Processing workflow with adapter-backed inspection, JSON/CSV/HTML reports, warnings, product feasibility, and CSV table loading.

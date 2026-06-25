@@ -9,3 +9,6 @@ For now, see:
 - `docs/DEPENDENCY_STRATEGY.md`
 - `docs/TESTING_STRATEGY.md`
 
+Validation records:
+
+- `docs/development/MISSION_CONTROL_MANUAL_VALIDATION.md`
