@@ -32,5 +32,6 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Fixed
 
+- Mission Control run folders now avoid overwriting previous runs by adding numeric suffixes when a timestamped folder already exists.
 - Dataset Explorer Processing feedback now formats long CRS strings and numeric summaries more clearly after manual QGIS validation.
 - `InspectionOptions.include_dimensions` is now honored by dataset inspection.

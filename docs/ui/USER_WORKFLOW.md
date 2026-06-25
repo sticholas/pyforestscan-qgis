@@ -42,6 +42,9 @@ folder:
       temp/
 ```
 
+If a run folder with the same timestamp and dataset stem already exists, Mission
+Control appends a suffix such as `_02` to avoid overwriting earlier reports.
+
 Internal files use predictable names:
 
 ```text

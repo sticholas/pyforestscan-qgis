@@ -50,6 +50,17 @@ class RunContextTests(unittest.TestCase):
 
         self.assertEqual(context.run_folder.name, "20260625_000000_tile_set")
 
+    def test_existing_run_folder_gets_suffix(self) -> None:
+        """Run context creation avoids overwriting an existing run folder."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            timestamp = datetime(2026, 6, 25, 14, 5, 6)
+            first = create_run_context("plot.laz", temp_dir, timestamp=timestamp).ensure_directories()
+
+            second = create_run_context("plot.laz", temp_dir, timestamp=timestamp)
+
+            self.assertEqual(first.run_folder.name, "20260625_140506_plot")
+            self.assertEqual(second.run_folder.name, "20260625_140506_plot_02")
+
 
 if __name__ == "__main__":
     unittest.main()

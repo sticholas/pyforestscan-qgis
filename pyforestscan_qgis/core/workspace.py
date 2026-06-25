@@ -71,7 +71,7 @@ def create_run_context(
     root = Path(output_root)
     stamp = (timestamp or datetime.now()).strftime("%Y%m%d_%H%M%S")
     dataset_stem = _safe_stem(lidar)
-    run_folder = root / "pyforestscan_runs" / f"{stamp}_{dataset_stem}"
+    run_folder = _unique_run_folder(root / "pyforestscan_runs", f"{stamp}_{dataset_stem}")
     reports = run_folder / "reports"
     tables = run_folder / "tables"
     outputs = run_folder / "outputs"
@@ -102,3 +102,16 @@ def _safe_stem(path: Path) -> str:
         stem = path.parent.name
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", stem).strip("._")
     return safe or "dataset"
+
+
+def _unique_run_folder(parent: Path, base_name: str) -> Path:
+    """Return a run folder path that will not overwrite an existing run."""
+    candidate = parent / base_name
+    if not candidate.exists():
+        return candidate
+    index = 2
+    while True:
+        candidate = parent / f"{base_name}_{index:02d}"
+        if not candidate.exists():
+            return candidate
+        index += 1

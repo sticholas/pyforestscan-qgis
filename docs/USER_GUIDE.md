@@ -31,7 +31,9 @@ a run folder like this:
 ```
 
 Inside that folder, Mission Control stores reports, tables, logs, temporary
-files, and a reserved `outputs/` folder for future products. The Results page
+files, and a reserved `outputs/` folder for future products. If a run with the
+same timestamp and dataset stem already exists, Mission Control adds a numeric
+suffix to avoid overwriting it. The Results page
 shows friendly links for Dataset Report, Product Plan, Job Summary, Output
 Folder, and Future Products. Advanced details still expose JSON and CSV paths for
 troubleshooting and reproducibility.
