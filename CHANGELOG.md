@@ -9,6 +9,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Verified READY Windows/QGIS dependency baseline for PyForestScan API discovery.
 - QGIS/OSGeo4W install-path mismatch troubleshooting for Windows dependency checks.
 - Windows QGIS 3.44 dependency installation investigation and troubleshooting guide.
 - Local QGIS plugin packaging and ZIP validation scripts.

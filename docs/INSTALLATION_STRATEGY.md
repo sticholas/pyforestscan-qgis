@@ -45,6 +45,15 @@ verification must use the same QGIS install path shown by the plugin
 `Environment Check`; each QGIS install has its own OSGeo4W Python
 environment and package database.
 
+## Verified Windows Development Baseline
+
+A Windows QGIS environment has been verified READY for development with QGIS
+`3.44.11-Solothurn`, Python `3.12.13`, PyForestScan `0.4.0`, PDAL Python
+bindings `3.5.3`, GDAL `3.13.1`, rasterio `1.5.0`, and numpy `2.4.6`. This
+baseline is suitable for PyForestScan API discovery and future integration
+planning. It does not imply that scientific processing has been implemented in
+the plugin.
+
 ## Future Documentation Requirements
 
 Installation documentation should include:

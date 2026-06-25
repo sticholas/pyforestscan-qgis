@@ -66,6 +66,14 @@ Install and verify that binding in the same QGIS root reported by the
 plugin Environment Check, because side-by-side QGIS installs do not
 share Python package directories.
 
+## Verified Development Baseline
+
+The current verified Windows/QGIS development baseline is QGIS
+`3.44.11-Solothurn` with Python `3.12.13`, PyForestScan `0.4.0`, PDAL Python
+bindings `3.5.3`, GDAL `3.13.1`, rasterio `1.5.0`, and numpy `2.4.6`. Use this
+as the initial environment for PyForestScan API discovery. Future releases must
+still define explicit supported version ranges through testing.
+
 ## Packaging Position
 
 The QGIS Plugin Repository package should remain lightweight. Scientific Python

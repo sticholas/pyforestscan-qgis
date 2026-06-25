@@ -53,6 +53,24 @@ report supplied for this task reported `rasterio 1.5.0`. This discrepancy means
 users must always verify the exact QGIS executable/profile they are launching,
 especially when multiple QGIS versions are installed side by side.
 
+## Verified READY Environment
+
+The plugin Environment Check later reported a verified READY environment on
+Windows with:
+
+- QGIS version: `3.44.11-Solothurn`
+- Python version: `3.12.13`
+- PyForestScan version: `0.4.0`
+- PDAL Python binding version: `3.5.3`
+- GDAL version: `3.13.1`
+- rasterio version: `1.5.0`
+- numpy version: `2.4.6`
+
+This is the current known-good Windows/QGIS dependency baseline for moving into
+PyForestScan API discovery. Treat it as a verified development environment, not
+as a final compatibility promise for all Windows installations. Re-run
+`Environment Check` after QGIS, OSGeo4W, Python package, or plugin updates.
+
 ## Matching the Plugin's QGIS Install
 
 Command-line verification must use the same QGIS install path reported by the
