@@ -65,6 +65,7 @@ class JobManager:
             mode=JobMode.DRY_RUN,
             product_plan_path=Path(request.product_plan_path),
             output_folder=Path(request.output_folder),
+            summary_path=Path(request.summary_path) if request.summary_path else None,
             created_at=created_at,
             updated_at=created_at,
             requested_products=tuple(requested_products),
@@ -76,12 +77,14 @@ class JobManager:
         product_plan_path: Path | str,
         output_folder: Path | str,
         title: str = "PyForestScan Dry-Run Job",
+        summary_path: Path | str | None = None,
     ) -> JobRecord:
         """Run a cancellable dry-run job and write a JSON summary."""
         request = JobRequest(
             product_plan_path=Path(product_plan_path),
             output_folder=Path(output_folder),
             title=title,
+            summary_path=Path(summary_path) if summary_path else None,
         )
         job = self.create_dry_run_job(request)
         try:
@@ -172,7 +175,7 @@ class JobManager:
         return self._write_summary(job)
 
     def _write_summary(self, job: JobRecord) -> JobRecord:
-        summary_path = job.output_folder / f"{job.job_id}_job_summary.json"
+        summary_path = job.summary_path or (job.output_folder / f"{job.job_id}_job_summary.json")
         result = JobResultRecord(
             path=summary_path,
             result_type="job_summary_json",

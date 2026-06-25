@@ -50,6 +50,7 @@ from .product_plan import (
     write_plan_json,
 )
 from .runner import AlgorithmRunRequest
+from .workspace import RunContext, create_run_context
 from .types import (
     AdapterParameter,
     Bounds3D,
@@ -137,6 +138,8 @@ __all__ = [
     "PyForestScanAdapter",
     "PyForestScanProject",
     "ReadinessStatus",
+    "RunContext",
+    "create_run_context",
     "collect_environment_report",
     "format_count_for_display",
     "format_crs_for_display",

@@ -11,9 +11,10 @@ and the adapter boundary.
 flowchart TD
     A["Mission Control dock"] --> B["UI pages"]
     B --> C["PyForestScanAdapter"]
-    B --> D["Dataset report core"]
-    B --> E["Product planner core"]
-    B --> H["Job manager dry-run core"]
+    B --> W["RunContext"]
+    W --> D["Dataset report core"]
+    W --> E["Product planner core"]
+    W --> H["Job manager dry-run core"]
     C --> F["Dependency checks and dataset inspection"]
     H -."future".-> C
     F -."future".-> G["PyForestScan public API"]
@@ -25,15 +26,15 @@ flowchart TD
   latest project, recent activity, quick start, and documentation access.
 - Environment: adapter-backed runtime checks for QGIS, Python, PyForestScan,
   PDAL, GDAL, rasterio, and numpy.
-- Dataset: choose LAS, LAZ, COPC, or EPT and run in-memory Dataset Explorer
-  inspection. No report files or scientific outputs are generated from this page.
-- Planning: in-memory Product Planner using the latest Dataset Explorer report.
-  No product execution is performed.
-- Processing: start a dry-run job from Product Planner JSON, view progress, and
-  write a job summary JSON without scientific processing.
-- Results: view dry-run job history and open JSON, CSV, or HTML reports.
-- Settings: placeholder for default output folder, logging, and future
-  preferences.
+- Dataset: choose LAS, LAZ, COPC, or EPT plus an output folder, create the active
+  run folder, and write Dataset Explorer reports into it.
+- Planning: Product Planner uses the active Dataset Explorer report and writes
+  plan reports into the run folder. No product execution is performed.
+- Processing: start a dry-run job from the active Product Planner report, view
+  progress, and write `logs/job_summary.json` without scientific processing.
+- Results: view friendly Dataset Report, Product Plan, Job Summary, Output
+  Folder, and Future Products links, with raw paths under Advanced details.
+- Settings: default output folder, logging placeholder, and future preferences.
 
 ## UI Architecture
 
@@ -42,6 +43,7 @@ flowchart TD
 - `pyforestscan_qgis/ui/mission_control.py`: dock controller and signal wiring.
 - `pyforestscan_qgis/ui/pages.py`: modular page widgets.
 - `pyforestscan_qgis/ui/state.py`: plain-Python immutable Mission Control state.
+- `pyforestscan_qgis/core/workspace.py`: run-folder path model shared by Mission Control pages.
 
 ## Signal And Slot Architecture
 
@@ -49,8 +51,8 @@ flowchart TD
 flowchart LR
     A["Navigation list"] --> B["Stacked page index"]
     C["Environment refresh"] --> D["environmentChanged"]
-    E["Dataset explored"] --> F["datasetExplored"]
-    F --> G["Planning page receives report"]
+    E["Dataset explored"] --> F["datasetExplored with RunContext"]
+    F --> G["Planning and Processing receive active run"]
     H["Plan built"] --> I["planningChanged"]
     K["Dry-run job update"] --> L["jobUpdated"]
     D --> J["Status bar and Home"]
@@ -62,7 +64,8 @@ flowchart LR
 
 ## Scope Boundary
 
-Mission Control coordinates current workflows only. The Processing page is a
-dry-run execution shell that validates Product Planner JSON and writes job
-summaries. It does not implement CHM, PAI, PAD, FHD, canopy cover, rumple,
-raster generation, or PyForestScan scientific calculations.
+Mission Control coordinates current workflows only. The run folder is not a
+required `.pfs` project file. The Processing page is a dry-run execution shell
+that validates the active Product Planner JSON and writes job summaries. It does
+not implement CHM, PAI, PAD, FHD, canopy cover, rumple, raster generation, or
+PyForestScan scientific calculations.

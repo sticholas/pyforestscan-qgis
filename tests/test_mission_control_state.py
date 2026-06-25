@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import unittest
 
+from pyforestscan_qgis.core.workspace import create_run_context
 from pyforestscan_qgis.ui.state import MissionControlState
 
 
@@ -38,6 +39,19 @@ class MissionControlStateTests(unittest.TestCase):
         state = state.with_report_path(path).with_report_path(path)
 
         self.assertEqual(state.latest_report_paths, (path,))
+
+    def test_active_run_and_default_output_folder_are_immutable(self) -> None:
+        state = MissionControlState()
+        context = create_run_context("plot.laz", "outputs")
+
+        next_state = state.with_default_output_folder(Path("outputs")).with_active_run(context)
+
+        self.assertIsNone(state.default_output_folder)
+        self.assertIsNone(state.active_run)
+        self.assertEqual(next_state.default_output_folder, Path("outputs"))
+        self.assertEqual(next_state.active_run, context)
+        self.assertEqual(next_state.latest_dataset, "plot.laz")
+        self.assertEqual(next_state.latest_project, str(context.run_folder))
 
 
 if __name__ == "__main__":

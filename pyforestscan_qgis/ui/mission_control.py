@@ -13,6 +13,7 @@ from qgis.PyQt.QtWidgets import QDockWidget, QWidget
 
 from ..core.adapter import PyForestScanAdapter
 from ..core.jobs import JobRecord
+from ..core.workspace import RunContext
 from ..resources import plugin_root
 from .pages import (
     DatasetPage,
@@ -95,6 +96,7 @@ class MissionControlDock(QDockWidget):
         self.dataset_page.datasetExplored.connect(self._set_dataset_report)
         self.planning_page.planningChanged.connect(self._set_planning_status)
         self.processing_page.jobUpdated.connect(self._set_job_status)
+        self.settings_page.defaultOutputFolderChanged.connect(self._set_default_output_folder)
 
     def _configure_style(self) -> None:
         self.root_widget.setStyleSheet(
@@ -117,14 +119,31 @@ class MissionControlDock(QDockWidget):
         self._refresh_home()
         self._update_status_bar()
 
-    def _set_dataset_report(self, report: object, dataset_path: str) -> None:
-        self.planning_page.set_dataset_report(report)  # type: ignore[arg-type]
-        self.state = self.state.with_dataset(dataset_path).with_activity("Dataset explored", Path(dataset_path).name)
+    def _set_dataset_report(self, report: object, dataset_path: str, context: RunContext) -> None:
+        self.planning_page.set_dataset_report(report, context)  # type: ignore[arg-type]
+        self.processing_page.set_run_context(context)
+        self.results_page.set_run_context(context)
+        state = self.state.with_active_run(context).with_report_path(context.dataset_report_html)
+        state = state.with_report_path(context.dataset_summary_csv).with_activity("Dataset explored", Path(dataset_path).name)
+        self.state = state
         self._refresh_home()
         self._update_status_bar()
 
-    def _set_planning_status(self, status: str) -> None:
-        self.state = self.state.with_planning(status).with_activity("Planning updated", status)
+    def _set_planning_status(self, status: str, plan: object | None = None) -> None:
+        state = self.state.with_planning(status).with_activity("Planning updated", status)
+        if self.state.active_run is not None and plan is not None:
+            self.processing_page.set_run_context(self.state.active_run)
+            self.results_page.set_run_context(self.state.active_run)
+            state = state.with_report_path(self.state.active_run.product_plan_html)
+            state = state.with_report_path(self.state.active_run.product_plan_csv)
+        self.state = state
+        self._refresh_home()
+        self._update_status_bar()
+
+    def _set_default_output_folder(self, folder: object) -> None:
+        path = folder if isinstance(folder, Path) else None
+        self.state = self.state.with_default_output_folder(path).with_activity("Default output folder", str(path) if path else "Cleared")
+        self.dataset_page.set_default_output_folder(path)
         self._refresh_home()
         self._update_status_bar()
 
@@ -134,6 +153,8 @@ class MissionControlDock(QDockWidget):
         state = self.state.with_activity("Dry-run job", f"{job.title}: {job.status.value}")
         for result in job.results:
             state = state.with_report_path(result.path)
+        if self.state.active_run is not None:
+            self.results_page.set_run_context(self.state.active_run)
         self.state = state
         self._refresh_home()
         self._update_status_bar()
@@ -146,6 +167,7 @@ class MissionControlDock(QDockWidget):
             self.state.latest_project,
         )
         self.home_page.set_activities(tuple((item.label, item.detail) for item in self.state.activities))
+        self.results_page.set_run_context(self.state.active_run)
         self.results_page.set_report_paths(self.state.latest_report_paths)
         self.results_page.set_jobs(self.job_history)
 

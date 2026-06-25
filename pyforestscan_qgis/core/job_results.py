@@ -18,6 +18,7 @@ def job_to_dict(job: JobRecord) -> dict[str, Any]:
         "mode": job.mode.value,
         "product_plan_path": str(job.product_plan_path),
         "output_folder": str(job.output_folder),
+        "summary_path": str(job.summary_path) if job.summary_path else None,
         "created_at": job.created_at,
         "updated_at": job.updated_at,
         "progress": {

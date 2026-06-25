@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..core.workspace import RunContext
+
 
 @dataclass(frozen=True)
 class MissionActivity:
@@ -23,6 +25,8 @@ class MissionControlState:
     latest_project: str | None = None
     latest_report_paths: tuple[Path, ...] = ()
     planning_status: str = "Not started"
+    default_output_folder: Path | None = None
+    active_run: RunContext | None = None
     activities: tuple[MissionActivity, ...] = field(default_factory=tuple)
 
     def with_activity(self, label: str, detail: str = "", limit: int = 8) -> "MissionControlState":
@@ -34,6 +38,8 @@ class MissionControlState:
             latest_project=self.latest_project,
             latest_report_paths=self.latest_report_paths,
             planning_status=self.planning_status,
+            default_output_folder=self.default_output_folder,
+            active_run=self.active_run,
             activities=next_activities[:limit],
         )
 
@@ -45,6 +51,8 @@ class MissionControlState:
             latest_project=self.latest_project,
             latest_report_paths=self.latest_report_paths,
             planning_status=self.planning_status,
+            default_output_folder=self.default_output_folder,
+            active_run=self.active_run,
             activities=self.activities,
         )
 
@@ -56,6 +64,8 @@ class MissionControlState:
             latest_project=self.latest_project,
             latest_report_paths=self.latest_report_paths,
             planning_status=self.planning_status,
+            default_output_folder=self.default_output_folder,
+            active_run=self.active_run,
             activities=self.activities,
         )
 
@@ -67,6 +77,8 @@ class MissionControlState:
             latest_project=self.latest_project,
             latest_report_paths=self.latest_report_paths,
             planning_status=status,
+            default_output_folder=self.default_output_folder,
+            active_run=self.active_run,
             activities=self.activities,
         )
 
@@ -79,5 +91,33 @@ class MissionControlState:
             latest_project=self.latest_project,
             latest_report_paths=paths[:10],
             planning_status=self.planning_status,
+            default_output_folder=self.default_output_folder,
+            active_run=self.active_run,
+            activities=self.activities,
+        )
+
+    def with_default_output_folder(self, folder: Path | None) -> "MissionControlState":
+        """Return a new state with the default output folder changed."""
+        return MissionControlState(
+            environment_status=self.environment_status,
+            latest_dataset=self.latest_dataset,
+            latest_project=self.latest_project,
+            latest_report_paths=self.latest_report_paths,
+            planning_status=self.planning_status,
+            default_output_folder=folder,
+            active_run=self.active_run,
+            activities=self.activities,
+        )
+
+    def with_active_run(self, context: RunContext) -> "MissionControlState":
+        """Return a new state with the active run context changed."""
+        return MissionControlState(
+            environment_status=self.environment_status,
+            latest_dataset=str(context.lidar_path),
+            latest_project=str(context.run_folder),
+            latest_report_paths=self.latest_report_paths,
+            planning_status=self.planning_status,
+            default_output_folder=self.default_output_folder,
+            active_run=context,
             activities=self.activities,
         )

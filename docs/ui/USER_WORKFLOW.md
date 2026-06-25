@@ -1,28 +1,68 @@
 # Mission Control User Workflow
 
-Mission Control guides users through the same sequence the Processing algorithms
-support, but in a dockable interface.
+Mission Control uses a run-folder workflow so users do not need to manually pass
+JSON files between Dataset Explorer, Product Planner, and dry-run execution.
 
-## Recommended Workflow
+## User-Facing Flow
 
 ```mermaid
 flowchart TD
-    A["Open Mission Control"] --> B["Environment"]
-    B --> C["Dataset"]
-    C --> D["Planning"]
-    D --> E["Processing placeholder"]
-    E --> F["Results"]
+    A["Select lidar dataset"] --> B["Select output folder"]
+    B --> C["Mission Control creates run folder"]
+    C --> D["Dataset Explorer writes reports"]
+    D --> E["Product Planner uses current dataset report"]
+    E --> F["Dry-run job uses current product plan"]
+    F --> G["Results page shows friendly links"]
 ```
 
-## Steps
+The primary workflow is:
 
-1. Open Mission Control from the PyForestScan toolbar or plugin menu.
-2. Use Environment to refresh dependency status.
-3. Use Dataset to choose and inspect a LAS, LAZ, COPC, or EPT dataset.
-4. Use Planning to select desired future products, resolution, and output folder.
-5. Review the Processing placeholder; scientific execution begins in a later
-   phase.
-6. Use Results to open existing JSON, CSV, and HTML reports.
+1. Open Mission Control.
+2. Select a LAS, LAZ, COPC, or EPT dataset on the Dataset page.
+3. Select an output folder.
+4. Run Dataset Explorer.
+5. Open Planning and build a product plan.
+6. Open Processing and start a dry-run job.
+7. Open Results for Dataset Report, Product Plan, Job Summary, Output Folder,
+   and Future Products links.
 
-Processing Toolbox algorithms remain available for repeatable report-producing
-workflows. Mission Control is the guided operating environment.
+## Run Folder Layout
+
+Mission Control creates a timestamped run folder below the selected output
+folder:
+
+```text
+<chosen_output_folder>/
+  pyforestscan_runs/
+    <YYYYMMDD_HHMMSS_datasetstem>/
+      reports/
+      tables/
+      outputs/
+      logs/
+      temp/
+```
+
+Internal files use predictable names:
+
+```text
+reports/dataset_report.json
+reports/dataset_report.html
+tables/dataset_summary.csv
+reports/product_plan.json
+reports/product_plan.html
+tables/product_plan.csv
+logs/job_summary.json
+```
+
+The JSON and CSV files remain available in Advanced details, but the normal UI
+surfaces friendly links instead of asking users to browse for internal files.
+
+## Scope Boundary
+
+The run folder is not a project file. Phase 8C intentionally does not require a
+`.pfs` project file or persistent project database. It is a simple execution
+workspace for one Mission Control run.
+
+Mission Control still does not create CHM, PAI, PAD, FHD, canopy cover, rumple,
+raster, vector, or point-cloud outputs. The `outputs/` folder is reserved for
+future scientific products.

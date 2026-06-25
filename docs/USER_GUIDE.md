@@ -6,17 +6,35 @@ current workflows:
 
 - Home: versions, status, quick start, and recent activity.
 - Environment: refresh dependency checks.
-- Dataset: inspect a lidar dataset without writing outputs.
-- Planning: build an in-memory product plan from the latest dataset inspection.
-- Processing: run a dry-run job from a Product Planner JSON report and write a
-  job summary JSON.
-- Results: review dry-run job history and open existing JSON, CSV, or HTML reports.
-- Settings: placeholder for future preferences.
+- Dataset: select a lidar dataset and output folder, then inspect the dataset.
+- Planning: build a product plan from the active Dataset Explorer result.
+- Processing: run a dry-run job from the active Product Planner result.
+- Results: open friendly Dataset Report, Product Plan, Job Summary, Output Folder,
+  and Future Products links.
+- Settings: choose a default output folder for Mission Control runs.
 
-Mission Control coordinates workflows only. Processing Toolbox algorithms remain
-the report-producing path for Dataset Explorer and Product Planner.
+Mission Control creates a timestamped run folder and manages internal JSON/CSV
+files automatically. Processing Toolbox algorithms remain available for advanced
+users who want explicit file paths.
 
 # User Guide
+
+
+## Mission Control Run Folders
+
+Mission Control hides internal JSON handoff files during the normal workflow.
+Choose a lidar dataset and output folder on the Dataset page; the plugin creates
+a run folder like this:
+
+```text
+<chosen_output_folder>/pyforestscan_runs/<YYYYMMDD_HHMMSS_datasetstem>/
+```
+
+Inside that folder, Mission Control stores reports, tables, logs, temporary
+files, and a reserved `outputs/` folder for future products. The Results page
+shows friendly links for Dataset Report, Product Plan, Job Summary, Output
+Folder, and Future Products. Advanced details still expose JSON and CSV paths for
+troubleshooting and reproducibility.
 
 This guide describes current user-facing PyForestScan QGIS workflows. Phase 5
 implements the first complete workflow: Dataset Explorer.
@@ -159,9 +177,10 @@ Product Planner writes these files inside the selected output folder:
 
 ## Dry-Run Job Execution
 
-The Mission Control Processing page can start a dry-run job from a Product
-Planner JSON report. This validates the plan, simulates progress, and writes a
-job summary JSON file to the selected output folder.
+The Mission Control Processing page starts a dry-run job from the active Product
+Planner report. Users do not need to browse for `product_plan.json`; Mission
+Control uses the current run folder automatically. The job validates the plan,
+simulates progress, and writes `logs/job_summary.json`.
 
 Dry-run jobs do not call PyForestScan scientific processing and do not create
 CHM, PAI, PAD, FHD, canopy cover, rumple, raster, vector, or point-cloud outputs.
@@ -181,10 +200,9 @@ flowchart TD
 
 1. Open Mission Control.
 2. Go to Processing.
-3. Choose a Product Planner JSON report.
-4. Choose an output folder for the job summary.
-5. Select Start Dry Run.
-6. Open Results to review the job history and summary path.
+3. Confirm the current product plan is shown.
+4. Select Start Dry Run.
+5. Open Results to review the job history and friendly result links.
 
 The generated summary includes `processing_executed: false` and
 `scientific_outputs_created: false` so dry-run artifacts are auditable.

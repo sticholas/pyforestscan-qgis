@@ -38,6 +38,9 @@ from ..core.dataset_report import (
     format_crs_for_display,
     format_density_for_display,
     report_to_dict,
+    write_csv_summary,
+    write_html_report,
+    write_json_report,
 )
 from ..core.dependency_check import CheckStatus, EnvironmentReport
 from ..core.exceptions import AdapterError
@@ -49,8 +52,12 @@ from ..core.product_plan import (
     ProductPlannerReport,
     ProductPlannerRequest,
     build_product_plan,
+    write_plan_csv,
+    write_plan_html,
+    write_plan_json,
 )
 from ..core.types import ProductType
+from ..core.workspace import RunContext, create_run_context
 
 ActivityCallback = Callable[[str, str], None]
 
@@ -163,14 +170,15 @@ class EnvironmentPage(MissionPage):
 
 
 class DatasetPage(MissionPage):
-    """Dataset inspection page."""
+    """Dataset inspection page with automatic run-folder creation."""
 
-    datasetExplored = pyqtSignal(object, str)
+    datasetExplored = pyqtSignal(object, str, object)
 
     def __init__(self, adapter: PyForestScanAdapter, parent: QWidget | None = None) -> None:
         """Create the dataset page."""
         super().__init__("Dataset", parent)
         self.adapter = adapter
+        self.active_run: RunContext | None = None
         picker = self.add_section("Dataset")
         row = QHBoxLayout()
         self.dataset_path_edit = QLineEdit()
@@ -180,6 +188,16 @@ class DatasetPage(MissionPage):
         row.addWidget(self.dataset_path_edit)
         row.addWidget(browse)
         picker.addLayout(row)
+
+        output_row = QHBoxLayout()
+        self.output_folder_edit = QLineEdit()
+        self.output_folder_edit.setPlaceholderText("Choose output folder")
+        output_browse = QPushButton("Browse")
+        output_browse.clicked.connect(self.browse_output_folder)
+        output_row.addWidget(self.output_folder_edit)
+        output_row.addWidget(output_browse)
+        picker.addLayout(output_row)
+
         run = QPushButton("Run Dataset Explorer")
         run.clicked.connect(self.run_explorer)
         picker.addWidget(run)
@@ -188,6 +206,11 @@ class DatasetPage(MissionPage):
         self.summary_text = QTextEdit()
         self.summary_text.setReadOnly(True)
         summary.addWidget(self.summary_text)
+
+    def set_default_output_folder(self, folder: Path | None) -> None:
+        """Use the configured output folder when the page has no explicit folder."""
+        if folder is not None and not self.output_folder_edit.text().strip():
+            self.output_folder_edit.setText(str(folder))
 
     def browse_dataset(self) -> None:
         """Open a file picker for supported point-cloud datasets."""
@@ -200,31 +223,51 @@ class DatasetPage(MissionPage):
         if path:
             self.dataset_path_edit.setText(path)
 
+    def browse_output_folder(self) -> None:
+        """Choose the root output folder for Mission Control runs."""
+        path = QFileDialog.getExistingDirectory(self, "Choose output folder")
+        if path:
+            self.output_folder_edit.setText(path)
+
     def run_explorer(self) -> None:
-        """Run adapter-backed dataset inspection without writing outputs."""
+        """Run adapter-backed dataset inspection and write internal reports."""
         path = self.dataset_path_edit.text().strip()
+        output_root = self.output_folder_edit.text().strip()
         if not path:
             self.summary_text.setPlainText("Choose a dataset before running Dataset Explorer.")
             return
+        if not output_root:
+            self.summary_text.setPlainText("Choose an output folder before running Dataset Explorer.")
+            return
+        context = create_run_context(path, output_root).ensure_directories()
         try:
             inspection = self.adapter.inspect_dataset(path)
             report = build_dataset_explorer_report(inspection)
+            write_json_report(report, context.dataset_report_json)
+            write_html_report(report, context.dataset_report_html)
+            write_csv_summary(report, context.dataset_summary_csv)
         except AdapterError as exc:
             self.summary_text.setPlainText(f"Dataset inspection failed: {exc}")
             return
-        self.set_report(report)
-        self.datasetExplored.emit(report, path)
+        except OSError as exc:
+            self.summary_text.setPlainText(f"Dataset reports could not be written: {exc}")
+            return
+        self.active_run = context
+        self.set_report(report, context)
+        self.datasetExplored.emit(report, path, context)
 
-    def set_report(self, report: DatasetExplorerReport) -> None:
+    def set_report(self, report: DatasetExplorerReport, context: RunContext | None = None) -> None:
         """Display a Dataset Explorer report summary."""
         products = "\n".join(f"- {item.label}: {item.status}" for item in report.products)
         warnings = "\n".join(f"- {warning.code}: {warning.message}" for warning in report.warnings) or "None"
+        run_folder = f"\nRun folder: {context.run_folder}\nDataset Report: {context.dataset_report_html}" if context else ""
         text = (
             f"Point count: {format_count_for_display(report.point_count)}\n"
             f"CRS: {format_crs_for_display(report.crs)}\n"
             f"Density: {format_density_for_display(report.estimated_density)}\n"
             f"Bounds: {_format_bounds(report)}\n"
-            f"Dimensions: {', '.join(report.dimensions) or 'None reported'}\n\n"
+            f"Dimensions: {', '.join(report.dimensions) or 'None reported'}\n"
+            f"{run_folder}\n\n"
             f"Warnings:\n{warnings}\n\n"
             f"Available products:\n{products}"
         )
@@ -232,14 +275,16 @@ class DatasetPage(MissionPage):
 
 
 class PlanningPage(MissionPage):
-    """Product planning page."""
+    """Product planning page using the active run context."""
 
-    planningChanged = pyqtSignal(str)
+    planningChanged = pyqtSignal(str, object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create the planning page."""
         super().__init__("Planning", parent)
         self.dataset_report: DatasetExplorerReport | None = None
+        self.run_context: RunContext | None = None
+        self.latest_plan: ProductPlannerReport | None = None
         controls = self.add_section("Product Planner")
         self.product_checks: dict[ProductType, QCheckBox] = {}
         for product, label in PRODUCT_LABELS.items():
@@ -277,9 +322,12 @@ class PlanningPage(MissionPage):
         self.plan_text.setReadOnly(True)
         summary.addWidget(self.plan_text)
 
-    def set_dataset_report(self, report: DatasetExplorerReport) -> None:
-        """Store latest Dataset Explorer report for planning."""
+    def set_dataset_report(self, report: DatasetExplorerReport, context: RunContext | None = None) -> None:
+        """Store latest Dataset Explorer report and run context for planning."""
         self.dataset_report = report
+        self.run_context = context
+        if context is not None:
+            self.output_folder_edit.setText(str(context.outputs_dir))
         self.plan_text.setPlainText("Dataset report loaded. Choose products and build a plan.")
 
     def browse_folder(self) -> None:
@@ -294,10 +342,10 @@ class PlanningPage(MissionPage):
             self.plan_text.setPlainText("Run Dataset Explorer before building a product plan.")
             return
         selected = tuple(product for product, check in self.product_checks.items() if check.isChecked())
-        output_folder = Path(self.output_folder_edit.text().strip() or "planned_outputs")
+        output_folder = self.run_context.outputs_dir if self.run_context is not None else Path(self.output_folder_edit.text().strip() or "planned_outputs")
         height_bin_size = self.height_bin_spin.value() if self.height_bin_spin.value() > 0 else None
         request = ProductPlannerRequest(
-            explorer_report_path=Path("mission_control_dataset_report.json"),
+            explorer_report_path=self.run_context.dataset_report_json if self.run_context is not None else Path("mission_control_dataset_report.json"),
             requested_products=selected,
             output_folder=output_folder,
             grid_resolution=self.resolution_spin.value(),
@@ -308,11 +356,22 @@ class PlanningPage(MissionPage):
             plan = build_product_plan(report_to_dict(self.dataset_report), request)
         except ProductPlanError as exc:
             self.plan_text.setPlainText(f"Product plan failed: {exc}")
-            self.planningChanged.emit("Needs review")
+            self.planningChanged.emit("Needs review", None)
             return
+        try:
+            if self.run_context is not None:
+                write_plan_json(plan, self.run_context.product_plan_json)
+                write_plan_csv(plan, self.run_context.product_plan_csv)
+                write_plan_html(plan, self.run_context.product_plan_html)
+        except OSError as exc:
+            self.plan_text.setPlainText(f"Product plan reports could not be written: {exc}")
+            self.planningChanged.emit("Needs review", None)
+            return
+        self.latest_plan = plan
         ready = sum(1 for product in plan.products if product.plan_status == "Ready")
         review = sum(1 for product in plan.products if product.plan_status == "Needs review")
         blocked = sum(1 for product in plan.products if product.plan_status == "Blocked")
+        plan_path = f"Product Plan: {self.run_context.product_plan_html}" if self.run_context is not None else "Product Plan: in memory"
         lines = [
             f"Ready: {ready}",
             f"Needs review: {review}",
@@ -320,15 +379,16 @@ class PlanningPage(MissionPage):
             f"Estimated cells: {plan.estimated_cells if plan.estimated_cells is not None else 'Unknown'}",
             "Estimated runtime: Not available until scientific processing is implemented.",
             "Estimated storage: Not available until product writers are implemented.",
+            plan_path,
             "",
         ]
         lines.extend(f"- {item.label}: {item.plan_status}" for item in plan.products)
         self.plan_text.setPlainText("\n".join(lines))
-        self.planningChanged.emit("Ready" if blocked == 0 else "Needs review")
+        self.planningChanged.emit("Ready" if blocked == 0 else "Needs review", plan)
 
 
 class ProcessingPage(MissionPage):
-    """Dry-run job execution page."""
+    """Dry-run job execution page using the active product plan."""
 
     jobUpdated = pyqtSignal(object)
 
@@ -337,25 +397,13 @@ class ProcessingPage(MissionPage):
         super().__init__("Processing", parent)
         self.job_manager = JobManager(event_sink=self._on_job_update)
         self.current_job_id: str | None = None
+        self.run_context: RunContext | None = None
 
         controls = self.add_section("Dry-Run Job")
-        plan_row = QHBoxLayout()
-        self.product_plan_edit = QLineEdit()
-        self.product_plan_edit.setPlaceholderText("Choose Product Planner JSON")
-        plan_browse = QPushButton("Browse")
-        plan_browse.clicked.connect(self.browse_product_plan)
-        plan_row.addWidget(self.product_plan_edit)
-        plan_row.addWidget(plan_browse)
-        controls.addLayout(plan_row)
-
-        output_row = QHBoxLayout()
-        self.job_output_folder_edit = QLineEdit()
-        self.job_output_folder_edit.setPlaceholderText("Choose folder for job summary JSON")
-        output_browse = QPushButton("Browse")
-        output_browse.clicked.connect(self.browse_output_folder)
-        output_row.addWidget(self.job_output_folder_edit)
-        output_row.addWidget(output_browse)
-        controls.addLayout(output_row)
+        self.current_plan_label = QLabel("Current product plan: none")
+        self.current_output_label = QLabel("Run folder: none")
+        controls.addWidget(self.current_plan_label)
+        controls.addWidget(self.current_output_label)
 
         self.job_title_edit = QLineEdit("Mission Control Dry-Run Job")
         controls.addWidget(self.job_title_edit)
@@ -370,6 +418,32 @@ class ProcessingPage(MissionPage):
         button_row.addWidget(self.cancel_button)
         controls.addLayout(button_row)
 
+        advanced = QGroupBox("Advanced details")
+        advanced.setCheckable(True)
+        advanced.setChecked(False)
+        advanced_layout = QVBoxLayout(advanced)
+        plan_row = QHBoxLayout()
+        self.product_plan_edit = QLineEdit()
+        self.product_plan_edit.setPlaceholderText("Optional Product Planner JSON override")
+        plan_browse = QPushButton("Browse")
+        plan_browse.clicked.connect(self.browse_product_plan)
+        plan_row.addWidget(self.product_plan_edit)
+        plan_row.addWidget(plan_browse)
+        advanced_layout.addLayout(plan_row)
+        output_row = QHBoxLayout()
+        self.job_output_folder_edit = QLineEdit()
+        self.job_output_folder_edit.setPlaceholderText("Optional job log folder override")
+        output_browse = QPushButton("Browse")
+        output_browse.clicked.connect(self.browse_output_folder)
+        output_row.addWidget(self.job_output_folder_edit)
+        output_row.addWidget(output_browse)
+        advanced_layout.addLayout(output_row)
+        advanced_widgets = (self.product_plan_edit, plan_browse, self.job_output_folder_edit, output_browse)
+        for widget in advanced_widgets:
+            widget.setVisible(False)
+        advanced.toggled.connect(lambda checked: [widget.setVisible(checked) for widget in advanced_widgets])
+        controls.addWidget(advanced)
+
         status = self.add_section("Progress")
         self.status_label = QLabel("Status: Not started")
         self.progress_bar = QProgressBar()
@@ -382,24 +456,40 @@ class ProcessingPage(MissionPage):
         status.addWidget(self.log_text)
         status.addWidget(QLabel("Dry-run mode validates the plan and writes a job summary only. It does not create rasters or run PyForestScan calculations."))
 
+    def set_run_context(self, context: RunContext | None) -> None:
+        """Use the active Mission Control run context."""
+        self.run_context = context
+        if context is None:
+            self.current_plan_label.setText("Current product plan: none")
+            self.current_output_label.setText("Run folder: none")
+            return
+        self.product_plan_edit.setText(str(context.product_plan_json))
+        self.job_output_folder_edit.setText(str(context.logs_dir))
+        self.current_plan_label.setText(f"Current product plan: {context.product_plan_html}")
+        self.current_output_label.setText(f"Run folder: {context.run_folder}")
+
     def browse_product_plan(self) -> None:
-        """Choose a Product Planner JSON report."""
+        """Choose a Product Planner JSON report for advanced troubleshooting."""
         path, _ = QFileDialog.getOpenFileName(self, "Choose Product Planner JSON", "", "JSON reports (*.json);;All files (*.*)")
         if path:
             self.product_plan_edit.setText(path)
 
     def browse_output_folder(self) -> None:
-        """Choose a job summary output folder."""
+        """Choose a job summary output folder for advanced troubleshooting."""
         path = QFileDialog.getExistingDirectory(self, "Choose job output folder")
         if path:
             self.job_output_folder_edit.setText(path)
 
     def start_dry_run(self) -> None:
-        """Start a safe dry-run job from a Product Planner JSON report."""
+        """Start a safe dry-run job from the active Product Planner report."""
         plan_path = self.product_plan_edit.text().strip()
         output_folder = self.job_output_folder_edit.text().strip()
+        summary_path = self.run_context.job_summary_json if self.run_context is not None else None
         if not plan_path:
-            self.log_text.setPlainText("Choose a Product Planner JSON report before starting a dry-run job.")
+            self.log_text.setPlainText("Build a product plan before starting a dry-run job.")
+            return
+        if not Path(plan_path).exists():
+            self.log_text.setPlainText("Build a product plan before starting a dry-run job.")
             return
         if not output_folder:
             self.log_text.setPlainText("Choose an output folder for the job summary JSON.")
@@ -412,6 +502,7 @@ class ProcessingPage(MissionPage):
                 Path(plan_path),
                 Path(output_folder),
                 self.job_title_edit.text().strip() or "Mission Control Dry-Run Job",
+                summary_path=summary_path,
             )
         except JobExecutionError as exc:
             self.log_text.setPlainText(f"Dry-run job could not start: {exc}")
@@ -442,17 +533,30 @@ class ProcessingPage(MissionPage):
 
 
 class ResultsPage(MissionPage):
-    """Report opener and job history page."""
+    """Friendly report links and job history page."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create the results page."""
         super().__init__("Results", parent)
+        self._friendly_paths: list[Path] = []
+        self._advanced_paths: list[Path] = []
+
+        links = self.add_section("Results")
+        self.friendly_links = QListWidget()
+        links.addWidget(self.friendly_links)
+        open_link = QPushButton("Open Selected")
+        open_link.clicked.connect(self.open_selected_link)
+        links.addWidget(open_link)
+
         jobs = self.add_section("Job History")
         self.job_history = QListWidget()
         jobs.addWidget(self.job_history)
         jobs.addWidget(QLabel("Dry-run job summaries are listed here. Scientific products are not generated in this phase."))
 
-        reports = self.add_section("Reports")
+        advanced = QGroupBox("Advanced details")
+        advanced.setCheckable(True)
+        advanced.setChecked(False)
+        advanced_layout = QVBoxLayout(advanced)
         row = QHBoxLayout()
         self.report_path_edit = QLineEdit()
         self.report_path_edit.setPlaceholderText("Choose JSON, CSV, or HTML report")
@@ -463,10 +567,29 @@ class ResultsPage(MissionPage):
         row.addWidget(self.report_path_edit)
         row.addWidget(browse)
         row.addWidget(open_button)
-        reports.addLayout(row)
+        advanced_layout.addLayout(row)
         self.previous_reports = QListWidget()
-        reports.addWidget(self.previous_reports)
-        reports.addWidget(QLabel("Previous reports can be opened here. Full result management is a future phase."))
+        advanced_layout.addWidget(self.previous_reports)
+        advanced_widgets = (self.report_path_edit, browse, open_button, self.previous_reports)
+        for widget in advanced_widgets:
+            widget.setVisible(False)
+        advanced.toggled.connect(lambda checked: [widget.setVisible(checked) for widget in advanced_widgets])
+        self.content_layout.addWidget(advanced)
+
+    def set_run_context(self, context: RunContext | None) -> None:
+        """Display friendly run links for the active context."""
+        self.friendly_links.clear()
+        self.previous_reports.clear()
+        self._friendly_paths = []
+        self._advanced_paths = []
+        if context is None:
+            return
+        for label, path in context.friendly_links:
+            self._friendly_paths.append(path)
+            self.friendly_links.addItem(f"{label}: {path}")
+        for label, path in context.advanced_paths:
+            self._advanced_paths.append(path)
+            self.previous_reports.addItem(f"{label}: {path}")
 
     def browse_report(self) -> None:
         """Choose a report file."""
@@ -474,12 +597,15 @@ class ResultsPage(MissionPage):
         if path:
             self.report_path_edit.setText(path)
             self.previous_reports.addItem(path)
+            self._advanced_paths.append(Path(path))
 
     def set_report_paths(self, paths: tuple[Path, ...]) -> None:
-        """Display recently recorded report paths."""
-        self.previous_reports.clear()
+        """Display recently recorded report paths in advanced details."""
         for path in paths:
-            self.previous_reports.addItem(str(path))
+            text = str(path)
+            if not any(self.previous_reports.item(index).text().endswith(text) for index in range(self.previous_reports.count())):
+                self.previous_reports.addItem(text)
+                self._advanced_paths.append(path)
 
     def set_jobs(self, jobs: tuple[JobRecord, ...]) -> None:
         """Display dry-run job history."""
@@ -490,17 +616,26 @@ class ResultsPage(MissionPage):
                 detail = f"{detail} - {job.results[-1].path}"
             self.job_history.addItem(detail)
 
+    def open_selected_link(self) -> None:
+        """Open the selected friendly result link."""
+        row = self.friendly_links.currentRow()
+        if 0 <= row < len(self._friendly_paths):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._friendly_paths[row])))
+
     def open_report(self) -> None:
-        """Open the selected report with the desktop handler."""
+        """Open the selected advanced report with the desktop handler."""
         path = self.report_path_edit.text().strip()
         if not path and self.previous_reports.currentItem() is not None:
-            path = self.previous_reports.currentItem().text()
+            text = self.previous_reports.currentItem().text()
+            path = text.split(": ", 1)[-1]
         if path:
             QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
 
 class SettingsPage(MissionPage):
-    """Plugin settings placeholder page."""
+    """Plugin settings page."""
+
+    defaultOutputFolderChanged = pyqtSignal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create the settings page."""
@@ -508,11 +643,30 @@ class SettingsPage(MissionPage):
         defaults = self.add_section("Defaults")
         form = QFormLayout()
         self.default_output_folder = QLineEdit()
+        folder_row = QHBoxLayout()
+        folder_row.addWidget(self.default_output_folder)
+        browse = QPushButton("Browse")
+        browse.clicked.connect(self.browse_default_output_folder)
+        folder_row.addWidget(browse)
         self.logging_enabled = QCheckBox("Enable workflow logging when implemented")
-        form.addRow("Default output folder", self.default_output_folder)
+        form.addRow("Default output folder", folder_row)
         form.addRow("Logging", self.logging_enabled)
         defaults.addLayout(form)
-        defaults.addWidget(QLabel("Settings are placeholders for future persistent preferences."))
+        apply_button = QPushButton("Use This Folder")
+        apply_button.clicked.connect(self.emit_default_output_folder)
+        defaults.addWidget(apply_button)
+
+    def browse_default_output_folder(self) -> None:
+        """Choose the default output folder for Mission Control runs."""
+        path = QFileDialog.getExistingDirectory(self, "Choose default output folder")
+        if path:
+            self.default_output_folder.setText(path)
+            self.emit_default_output_folder()
+
+    def emit_default_output_folder(self) -> None:
+        """Emit the configured default output folder."""
+        value = self.default_output_folder.text().strip()
+        self.defaultOutputFolderChanged.emit(Path(value) if value else None)
 
 
 def _status_icon(status: str) -> str:

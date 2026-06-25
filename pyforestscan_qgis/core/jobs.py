@@ -65,6 +65,7 @@ class JobRequest:
     output_folder: Path
     title: str = "PyForestScan Dry-Run Job"
     mode: JobMode = JobMode.DRY_RUN
+    summary_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,7 @@ class JobRecord:
     mode: JobMode
     product_plan_path: Path
     output_folder: Path
+    summary_path: Path | None
     created_at: str
     updated_at: str
     progress: JobProgress = field(default_factory=JobProgress)

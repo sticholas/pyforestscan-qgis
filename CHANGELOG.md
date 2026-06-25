@@ -9,6 +9,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Mission Control run-folder workflow that automatically manages Dataset Explorer, Product Planner, and dry-run job files behind friendly result links.
 - Dry-run job execution framework with typed job records, cancellable lifecycle, Mission Control Processing integration, Results job history, and JSON summaries.
 - Mission Control manual QGIS validation record confirming dock, toolbar/menu, navigation, and placeholder behavior.
 - Mission Control dock framework with Home, Environment, Dataset, Planning, Processing, Results, and Settings pages.
