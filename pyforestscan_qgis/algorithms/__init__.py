@@ -6,11 +6,13 @@ from .placeholder_algorithms import (
     DatasetExplorerAlgorithm,
     EnvironmentCheckAlgorithm,
     ForestMetricsPackAlgorithm,
+    ProductPlannerAlgorithm,
 )
 
 __all__ = [
     "DatasetExplorerAlgorithm",
     "EnvironmentCheckAlgorithm",
     "ForestMetricsPackAlgorithm",
+    "ProductPlannerAlgorithm",
 ]
 

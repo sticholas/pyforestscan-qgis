@@ -201,3 +201,27 @@ Acceptance Criteria:
 - No scientific products generated.
 - Reports document dataset readiness and warnings.
 - CSV summary can be loaded as a QGIS table.
+
+## Phase 6: Product Planner
+
+Purpose: Help users choose future PyForestScan products from a Dataset Explorer
+report before any scientific processing is implemented.
+
+Deliverables:
+
+- Product Planner Processing algorithm.
+- JSON, CSV, and HTML product plan reports.
+- Requested product validation against Dataset Explorer feasibility.
+- Estimated future output paths, grid size, and height-bin count.
+
+Risks:
+
+- Planned output names may need refinement when real product writers are added.
+- Feasibility depends on Dataset Explorer metadata and may need stronger checks
+  once CHM processing begins.
+
+Acceptance Criteria:
+
+- No PyForestScan calculations are run.
+- No rasters or scientific products are created.
+- Product plan reports document readiness, warnings, and next actions.

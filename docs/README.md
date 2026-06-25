@@ -19,3 +19,4 @@ grouped into focused subdirectories:
 ## Examples
 
 - [Dataset Explorer Example Outputs](examples/DATASET_EXPLORER_EXAMPLE.md)
+- [Product Planner Example Outputs](examples/PRODUCT_PLANNER_EXAMPLE.md)

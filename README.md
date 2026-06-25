@@ -15,9 +15,10 @@ Phase 5: Dataset Explorer workflow.
 This repository contains the project governance foundation, QGIS Processing
 provider scaffold, environment validation, packaging helpers, dependency
 documentation, adapter layer, and the first complete user workflow: Dataset
-Explorer. Dataset Explorer inspects lidar datasets and writes JSON, CSV, and
-HTML planning reports. Scientific PyForestScan product generation is still
-intentionally not implemented.
+Explorer and Product Planner. Dataset Explorer inspects lidar datasets and
+writes JSON, CSV, and HTML inspection reports. Product Planner turns those
+inspection reports into product generation plans. Scientific PyForestScan
+product generation is still intentionally not implemented.
 
 ## Long-Term Goals
 
@@ -73,6 +74,12 @@ active QGIS project as a table when possible.
 
 This workflow stops after inspection; it does not create CHMs or other scientific
 products.
+
+## Product Planner
+
+Product Planner reads a Dataset Explorer JSON report, validates selected future
+products, estimates output names, and writes product plan JSON, CSV, and HTML
+reports. It does not create rasters or run PyForestScan calculations.
 
 ## Local QGIS Testing
 

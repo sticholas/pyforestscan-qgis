@@ -9,6 +9,7 @@ from .algorithms.placeholder_algorithms import (
     DatasetExplorerAlgorithm,
     EnvironmentCheckAlgorithm,
     ForestMetricsPackAlgorithm,
+    ProductPlannerAlgorithm,
 )
 from .resources import plugin_icon
 
@@ -39,5 +40,6 @@ class PyForestScanProvider(QgsProcessingProvider):
         """Register all Processing algorithms owned by this provider."""
         self.addAlgorithm(EnvironmentCheckAlgorithm())
         self.addAlgorithm(DatasetExplorerAlgorithm())
+        self.addAlgorithm(ProductPlannerAlgorithm())
         self.addAlgorithm(ForestMetricsPackAlgorithm())
 

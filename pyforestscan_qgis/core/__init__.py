@@ -30,6 +30,22 @@ from .dependency_check import (
 from .exceptions import AdapterError, DatasetError, EnvironmentError, ProcessingError
 from .output_loader import OutputLoadRequest
 from .project import PyForestScanProject
+from .product_plan import (
+    PlannedOutput,
+    PlannerWarning,
+    ProductPlanError,
+    ProductPlanItem,
+    ProductPlannerReport,
+    ProductPlannerRequest,
+    build_product_plan,
+    load_dataset_explorer_json,
+    plan_to_dict,
+    render_plan_html,
+    render_plan_json,
+    write_plan_csv,
+    write_plan_html,
+    write_plan_json,
+)
 from .runner import AlgorithmRunRequest
 from .types import (
     AdapterParameter,
@@ -83,6 +99,20 @@ __all__ = [
     "LogRecord",
     "OutputLoadRequest",
     "ProcessingError",
+    "PlannedOutput",
+    "PlannerWarning",
+    "ProductPlanError",
+    "ProductPlanItem",
+    "ProductPlannerReport",
+    "ProductPlannerRequest",
+    "build_product_plan",
+    "load_dataset_explorer_json",
+    "plan_to_dict",
+    "render_plan_html",
+    "render_plan_json",
+    "write_plan_csv",
+    "write_plan_html",
+    "write_plan_json",
     "ProductRequest",
     "ProductResult",
     "ProductType",

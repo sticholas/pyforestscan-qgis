@@ -90,3 +90,51 @@ Screenshots will be captured during QGIS release testing and stored under
 - Processing feedback report.
 - CSV summary loaded as a QGIS table.
 - HTML report opened in a browser.
+
+## Product Planner
+
+Product Planner is a planning workflow that reads a Dataset Explorer JSON report
+and helps users decide which products should be generated in a future processing
+phase. It validates selected products against Dataset Explorer feasibility
+results, estimates planned output names, records grid and height-bin settings,
+and writes JSON, CSV, and HTML plan reports.
+
+It does not run PyForestScan calculations and does not create rasters.
+
+### Inputs
+
+- Dataset Explorer JSON report.
+- Desired products: CHM, PAI, PAD, FHD, Canopy Cover, and Rumple.
+- Output folder for the plan and future products.
+- Grid resolution.
+- Optional height bin size.
+- Optional plan title and notes.
+
+### Workflow
+
+```mermaid
+flowchart TD
+    A["Dataset Explorer JSON"] --> B["Product Planner Processing algorithm"]
+    B --> C["Validate requested products"]
+    C --> D["Estimate future outputs"]
+    D --> E["ProductPlannerReport"]
+    E --> F["Product plan JSON"]
+    E --> G["Product plan CSV"]
+    E --> H["Product plan HTML"]
+```
+
+### Outputs
+
+Product Planner writes these files inside the selected output folder:
+
+| Output | Description |
+| --- | --- |
+| `product_plan.json` | Structured plan with requested products, readiness status, warnings, estimates, planned output paths, and `processing_executed: false`. |
+| `product_plan.csv` | Long-form table for review, audit, and future automation. |
+| `product_plan.html` | Browser-readable planning report with requested products, warnings, estimated outputs, and next actions. |
+
+### Product Statuses
+
+- `Ready`: Dataset Explorer marked the product available.
+- `Needs review`: Dataset Explorer marked the product as feasible with warnings.
+- `Blocked`: Dataset Explorer marked the product unavailable or did not report it.

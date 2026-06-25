@@ -57,6 +57,7 @@ Confirm the following in QGIS:
 4. The provider contains:
    - `Environment Check`
    - `Dataset Explorer`
+   - `Product Planner`
    - `Forest Metrics Pack`
 5. Run `Environment Check`.
 6. Confirm the Processing log shows a readable PASS/FAIL/WARNING report.
@@ -65,7 +66,14 @@ Confirm the following in QGIS:
 8. Run `Dataset Explorer` on a small LAS, LAZ, COPC, or local `ept.json` dataset.
 9. Confirm JSON, CSV, and HTML reports are written.
 10. Confirm the CSV summary is added to the QGIS project as a table when possible.
-11. Confirm `Forest Metrics Pack` still reports `Not yet implemented.` and does
+11. Run `Product Planner` with the Dataset Explorer JSON report.
+12. Select one or more desired products, an output folder, grid resolution, and
+   optional height bin size.
+13. Confirm `product_plan.json`, `product_plan.csv`, and `product_plan.html` are
+   written in the selected output folder.
+14. Confirm the plan reports include product readiness, warnings, and estimated
+   output paths, but no rasters are created.
+15. Confirm `Forest Metrics Pack` still reports `Not yet implemented.` and does
    not create scientific outputs.
 
 ## Scope Boundary

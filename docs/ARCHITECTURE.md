@@ -65,6 +65,28 @@ flowchart TD
     E --> I["Processing feedback"]
 ```
 
+
+## Product Planner Workflow
+
+Phase 6 adds `ProductPlannerAlgorithm` as a second guided workflow. The algorithm
+reads the JSON produced by Dataset Explorer and delegates validation, estimates,
+and report rendering to `pyforestscan_qgis/core/product_plan.py`.
+
+Product Planner is still non-scientific. It estimates future output names and
+planning metadata only; it does not call PyForestScan calculations, create
+rasters, or mutate point-cloud data.
+
+```mermaid
+flowchart TD
+    A["Dataset Explorer JSON"] --> B["ProductPlannerAlgorithm"]
+    B --> C["load_dataset_explorer_json"]
+    C --> D["build_product_plan"]
+    D --> E["ProductPlannerReport"]
+    E --> F["product_plan.json"]
+    E --> G["product_plan.csv"]
+    E --> H["product_plan.html"]
+```
+
 ## Dependency Direction
 
 Processing algorithms may depend on plugin core services. Core services may

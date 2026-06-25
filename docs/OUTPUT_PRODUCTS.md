@@ -50,3 +50,15 @@ Dataset Explorer produces planning outputs rather than scientific products:
 
 These outputs document whether future products appear feasible. They are not CHM,
 PAI, PAD, FHD, canopy cover, rumple, raster, or vector scientific outputs.
+
+## Phase 6 Product Plan Outputs
+
+Product Planner produces planning reports, not scientific products:
+
+- `product_plan.json`: structured processing plan and planned future outputs.
+- `product_plan.csv`: tabular version of the plan.
+- `product_plan.html`: browser-readable planning report.
+
+The planned product paths in these reports are estimates for future CHM and
+metric phases. The planner does not create GeoTIFFs, CSV metric outputs, or
+metadata files for scientific products.
