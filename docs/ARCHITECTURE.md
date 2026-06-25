@@ -13,6 +13,34 @@ PyForestScan.
   output naming, metadata writing, and adapter interfaces.
 - PyForestScan Engine: external scientific computation library.
 
+
+## Adapter Boundary
+
+Phase 4 establishes `pyforestscan_qgis/core/adapter.py` as the only supported
+route from future QGIS Processing algorithms into PyForestScan, PDAL, and related
+scientific dependencies. The adapter owns environment checks, dataset validation,
+metadata inspection, progress snapshots, structured logging, and plugin-owned
+exceptions.
+
+Processing algorithms should depend on immutable value objects from
+`pyforestscan_qgis/core/types.py` and configuration objects from
+`pyforestscan_qgis/core/config.py`. They should not import PyForestScan, PDAL,
+rasterio, GDAL, or numpy directly unless an ADR explicitly changes this rule.
+
+Current Phase 4 adapter capabilities are limited to validation and inspection.
+Scientific product creation remains intentionally unimplemented.
+
+```mermaid
+flowchart TD
+    A["QGIS Processing algorithms"] --> B["PyForestScanAdapter"]
+    B --> C["Plugin-owned config, types, exceptions"]
+    B --> D["Environment validation"]
+    B --> E["Dataset validation and inspection"]
+    E --> F["EPT metadata or PDAL reader inspection"]
+    B -."future phases".-> G["PyForestScan public API"]
+    G -."future outputs".-> H["Adapter-managed products"]
+```
+
 ## Dependency Direction
 
 Processing algorithms may depend on plugin core services. Core services may

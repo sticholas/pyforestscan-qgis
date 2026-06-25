@@ -48,3 +48,15 @@ CI should eventually include:
 - QGIS integration tests where infrastructure allows.
 - Release packaging validation.
 
+## Adapter Development Rules
+
+- Keep Processing algorithms thin; put PyForestScan and PDAL integration behind
+  `PyForestScanAdapter`.
+- Do not return public dictionaries from core adapter APIs; add typed dataclasses
+  or enums in `pyforestscan_qgis/core/types.py`.
+- Use immutable dataclasses for configuration and request objects.
+- Raise plugin-owned exceptions from `pyforestscan_qgis/core/exceptions.py` at
+  the adapter boundary.
+- Use structured log records and progress snapshots instead of `print()`.
+- Add plain-Python unit tests for core behavior before adding QGIS integration
+  tests.
