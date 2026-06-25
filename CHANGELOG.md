@@ -9,6 +9,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Mission Control dock framework with Home, Environment, Dataset, Planning, Processing, Results, and Settings pages.
 - Product Planner Processing workflow that reads Dataset Explorer JSON and writes JSON, CSV, and HTML product plan reports without scientific processing.
 - Dataset Explorer Processing workflow with adapter-backed inspection, JSON/CSV/HTML reports, warnings, product feasibility, and CSV table loading.
 - Adapter architecture audit documenting API alignment, non-QGIS core boundaries, and Phase 5 risks.

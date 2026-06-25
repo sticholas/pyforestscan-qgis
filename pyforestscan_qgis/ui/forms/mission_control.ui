@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MissionControlRoot</class>
+ <widget class="QWidget" name="MissionControlRoot">
+  <property name="minimumSize">
+   <size>
+    <width>420</width>
+    <height>520</height>
+   </size>
+  </property>
+  <layout class="QVBoxLayout" name="rootLayout">
+   <property name="spacing"><number>0</number></property>
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>0</number></property>
+   <property name="bottomMargin"><number>0</number></property>
+   <item>
+    <widget class="QFrame" name="headerFrame">
+     <property name="frameShape"><enum>QFrame::NoFrame</enum></property>
+     <layout class="QVBoxLayout" name="headerLayout">
+      <item><widget class="QLabel" name="titleLabel"><property name="text"><string>PyForestScan</string></property></widget></item>
+      <item><widget class="QLabel" name="subtitleLabel"><property name="text"><string>Official LiDAR Processing Environment</string></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="bodyLayout">
+     <property name="spacing"><number>0</number></property>
+     <item>
+      <widget class="QListWidget" name="navigationList">
+       <property name="minimumWidth"><number>132</number></property>
+       <property name="maximumWidth"><number>170</number></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QStackedWidget" name="pageStack"/>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QFrame" name="statusFrame">
+     <layout class="QHBoxLayout" name="statusLayout">
+      <item><widget class="QLabel" name="environmentStatusLabel"><property name="text"><string>Environment: Unknown</string></property></widget></item>
+      <item><widget class="QLabel" name="datasetStatusLabel"><property name="text"><string>Dataset: None</string></property></widget></item>
+      <item><widget class="QLabel" name="planningStatusLabel"><property name="text"><string>Planning: Not started</string></property></widget></item>
+      <item><widget class="QLabel" name="readyStatusLabel"><property name="text"><string>Ready</string></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

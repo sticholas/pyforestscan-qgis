@@ -20,3 +20,9 @@ grouped into focused subdirectories:
 
 - [Dataset Explorer Example Outputs](examples/DATASET_EXPLORER_EXAMPLE.md)
 - [Product Planner Example Outputs](examples/PRODUCT_PLANNER_EXAMPLE.md)
+
+## UI Documentation
+
+- [Mission Control](ui/MISSION_CONTROL.md)
+- [Mission Control User Workflow](ui/USER_WORKFLOW.md)
+- [Mission Control Screen Flow](ui/SCREEN_FLOW.md)

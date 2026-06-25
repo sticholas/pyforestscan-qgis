@@ -15,10 +15,11 @@ Phase 5: Dataset Explorer workflow.
 This repository contains the project governance foundation, QGIS Processing
 provider scaffold, environment validation, packaging helpers, dependency
 documentation, adapter layer, and the first complete user workflow: Dataset
-Explorer and Product Planner. Dataset Explorer inspects lidar datasets and
-writes JSON, CSV, and HTML inspection reports. Product Planner turns those
-inspection reports into product generation plans. Scientific PyForestScan
-product generation is still intentionally not implemented.
+Explorer, Product Planner, and Mission Control. Dataset Explorer inspects lidar
+datasets and writes JSON, CSV, and HTML inspection reports. Product Planner turns
+those inspection reports into product generation plans. Mission Control provides
+a dockable guided operating environment for these workflows. Scientific
+PyForestScan product generation is still intentionally not implemented.
 
 ## Long-Term Goals
 
@@ -64,6 +65,14 @@ ambiguous.
 - [Testing Strategy](docs/TESTING_STRATEGY.md)
 - [User Experience](docs/USER_EXPERIENCE.md)
 - [User Guide](docs/USER_GUIDE.md)
+- [Mission Control](docs/ui/MISSION_CONTROL.md)
+
+## Mission Control
+
+Mission Control is the dockable graphical operating environment for PyForestScan
+QGIS. It coordinates Environment, Dataset, Planning, Processing, Results, and
+Settings pages while Processing Toolbox algorithms remain available for advanced
+users.
 
 ## Dataset Explorer
 

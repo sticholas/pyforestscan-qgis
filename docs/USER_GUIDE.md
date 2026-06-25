@@ -1,3 +1,20 @@
+
+## Mission Control
+
+Mission Control opens as a dockable QGIS panel and provides guided pages for the
+current workflows:
+
+- Home: versions, status, quick start, and recent activity.
+- Environment: refresh dependency checks.
+- Dataset: inspect a lidar dataset without writing outputs.
+- Planning: build an in-memory product plan from the latest dataset inspection.
+- Processing: placeholder for future scientific processing.
+- Results: open existing JSON, CSV, or HTML reports.
+- Settings: placeholder for future preferences.
+
+Mission Control coordinates workflows only. Processing Toolbox algorithms remain
+the report-producing path for Dataset Explorer and Product Planner.
+
 # User Guide
 
 This guide describes current user-facing PyForestScan QGIS workflows. Phase 5

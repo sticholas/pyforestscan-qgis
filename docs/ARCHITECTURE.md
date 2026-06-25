@@ -87,6 +87,24 @@ flowchart TD
     E --> H["product_plan.html"]
 ```
 
+
+## Mission Control UI
+
+Phase 7A introduces Mission Control as a dockable QGIS interface. Mission Control
+coordinates current workflows through the adapter and core report/planner
+modules. It does not directly import or call PyForestScan.
+
+```mermaid
+flowchart TD
+    A["Mission Control dock"] --> B["Environment page"]
+    A --> C["Dataset page"]
+    A --> D["Planning page"]
+    B --> E["PyForestScanAdapter.check_environment"]
+    C --> F["PyForestScanAdapter.inspect_dataset"]
+    F --> G["DatasetExplorerReport"]
+    D --> H["ProductPlannerReport"]
+```
+
 ## Dependency Direction
 
 Processing algorithms may depend on plugin core services. Core services may

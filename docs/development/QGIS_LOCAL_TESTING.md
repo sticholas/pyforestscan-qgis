@@ -53,27 +53,34 @@ Confirm the following in QGIS:
 
 1. `Plugins` > `Manage and Install Plugins...` lists `PyForestScan`.
 2. The plugin can be enabled without Python console errors.
-3. `Processing` > `Toolbox` shows a `PyForestScan` provider.
-4. The provider contains:
+3. Mission Control opens as a dockable panel, or can be opened from the PyForestScan toolbar/menu action.
+4. Mission Control navigation switches between Home, Environment, Dataset, Planning, Processing, Results, and Settings.
+5. The Environment page Refresh button displays dependency status rows.
+6. The Dataset page can choose a small LAS/LAZ/COPC/EPT dataset and display an in-memory summary without writing outputs.
+7. The Planning page can build an in-memory plan from the latest Dataset summary.
+8. The Processing page shows the Phase 7 placeholder.
+9. The Results page can choose and open an existing JSON, CSV, or HTML report.
+10. `Processing` > `Toolbox` shows a `PyForestScan` provider.
+11. The provider contains:
    - `Environment Check`
    - `Dataset Explorer`
    - `Product Planner`
    - `Forest Metrics Pack`
-5. Run `Environment Check`.
-6. Confirm the Processing log shows a readable PASS/FAIL/WARNING report.
-7. Confirm missing dependencies are reported as FAIL or WARNING instead of
+12. Run `Environment Check`.
+13. Confirm the Processing log shows a readable PASS/FAIL/WARNING report.
+14. Confirm missing dependencies are reported as FAIL or WARNING instead of
    crashing QGIS.
-8. Run `Dataset Explorer` on a small LAS, LAZ, COPC, or local `ept.json` dataset.
-9. Confirm JSON, CSV, and HTML reports are written.
-10. Confirm the CSV summary is added to the QGIS project as a table when possible.
-11. Run `Product Planner` with the Dataset Explorer JSON report.
-12. Select one or more desired products, an output folder, grid resolution, and
+15. Run `Dataset Explorer` on a small LAS, LAZ, COPC, or local `ept.json` dataset.
+16. Confirm JSON, CSV, and HTML reports are written.
+17. Confirm the CSV summary is added to the QGIS project as a table when possible.
+18. Run `Product Planner` with the Dataset Explorer JSON report.
+19. Select one or more desired products, an output folder, grid resolution, and
    optional height bin size.
-13. Confirm `product_plan.json`, `product_plan.csv`, and `product_plan.html` are
+20. Confirm `product_plan.json`, `product_plan.csv`, and `product_plan.html` are
    written in the selected output folder.
-14. Confirm the plan reports include product readiness, warnings, and estimated
+21. Confirm the plan reports include product readiness, warnings, and estimated
    output paths, but no rasters are created.
-15. Confirm `Forest Metrics Pack` still reports `Not yet implemented.` and does
+22. Confirm `Forest Metrics Pack` still reports `Not yet implemented.` and does
    not create scientific outputs.
 
 ## Scope Boundary

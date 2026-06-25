@@ -225,3 +225,27 @@ Acceptance Criteria:
 - No PyForestScan calculations are run.
 - No rasters or scientific products are created.
 - Product plan reports document readiness, warnings, and next actions.
+
+## Phase 7A: Mission Control Framework
+
+Purpose: Establish the official dockable operating environment for current
+PyForestScan QGIS workflows.
+
+Deliverables:
+
+- Mission Control dock and toolbar/menu action.
+- Modular Home, Environment, Dataset, Planning, Processing, Results, and Settings
+  pages.
+- In-memory orchestration of Environment Check, Dataset Explorer, and Product
+  Planner summaries.
+
+Risks:
+
+- QGIS UI behavior requires manual desktop validation.
+- Future scientific processing will need stronger async/progress handling.
+
+Acceptance Criteria:
+
+- Dock opens and navigation works.
+- Current workflows remain available from Processing Toolbox.
+- No scientific processing is implemented.
