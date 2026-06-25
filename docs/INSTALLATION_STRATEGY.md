@@ -1,0 +1,29 @@
+# Installation Strategy
+
+The installation strategy must respect the complexity of QGIS Python
+environments and geospatial scientific dependencies.
+
+## Planned Installation Paths
+
+- QGIS Plugin Repository for the plugin package.
+- Documented PyForestScan installation instructions for the active QGIS Python
+  environment.
+- Platform-specific notes for Windows, macOS, and Linux.
+
+## Non-Goals
+
+- Automatically modifying a user's Python environment without consent.
+- Bundling large binary dependencies into the plugin package.
+- Assuming that system Python and QGIS Python are the same environment.
+
+## Future Documentation Requirements
+
+Installation documentation should include:
+
+- Supported QGIS versions.
+- Supported operating systems.
+- How to identify the QGIS Python executable.
+- How to install PyForestScan into that environment.
+- How to run the plugin environment validator.
+- Common failure modes and fixes.
+

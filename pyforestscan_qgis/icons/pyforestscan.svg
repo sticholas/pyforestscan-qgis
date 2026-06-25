@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="PyForestScan">
+  <rect width="64" height="64" rx="8" fill="#f7f7f2"/>
+  <path d="M10 48h44" stroke="#2f3a3f" stroke-width="4" stroke-linecap="round"/>
+  <path d="M20 44 32 12l12 32H20Z" fill="#2f7d4f"/>
+  <path d="M26 44 32 26l6 18H26Z" fill="#6aa84f"/>
+  <path d="M32 44v8" stroke="#6b4f2a" stroke-width="4" stroke-linecap="round"/>
+  <path d="M12 20h40M16 28h32M20 36h24" stroke="#3c78d8" stroke-width="2" stroke-linecap="round" opacity=".8"/>
+</svg>
