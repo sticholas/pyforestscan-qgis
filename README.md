@@ -60,6 +60,17 @@ ambiguous.
 - [Testing Strategy](docs/TESTING_STRATEGY.md)
 - [User Experience](docs/USER_EXPERIENCE.md)
 
+## Local QGIS Testing
+
+Build and validate a local QGIS plugin ZIP with:
+
+```bash
+python3 scripts/package_plugin.py
+python3 scripts/validate_plugin_package.py
+```
+
+Install `dist/pyforestscan_qgis.zip` through QGIS Plugin Manager using `Install from ZIP`. See [QGIS Local Testing](docs/development/QGIS_LOCAL_TESTING.md).
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE).
