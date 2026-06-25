@@ -62,6 +62,9 @@ compiled packages.
 For QGIS 3.44.x on this machine, OSGeo4W provides `python3-pdal`; QGIS
 already includes the PDAL command-line runtime, but the Python `pdal`
 binding must be installed separately.
+Install and verify that binding in the same QGIS root reported by the
+plugin Environment Check, because side-by-side QGIS installs do not
+share Python package directories.
 
 ## Packaging Position
 

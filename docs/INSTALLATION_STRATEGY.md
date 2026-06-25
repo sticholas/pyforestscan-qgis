@@ -39,7 +39,11 @@ install `python3-pdal` through the OSGeo4W/QGIS setup tool, verify
 `python3 -m pip install --no-deps pyforestscan` only after dependencies
 are satisfied.
 
-See [Windows QGIS Dependencies](development/WINDOWS_QGIS_DEPENDENCIES.md) for exact inspection commands, risks, and troubleshooting.
+See [Windows QGIS Dependencies](development/WINDOWS_QGIS_DEPENDENCIES.md)
+for exact inspection commands, risks, and troubleshooting. Command-line
+verification must use the same QGIS install path shown by the plugin
+`Environment Check`; each QGIS install has its own OSGeo4W Python
+environment and package database.
 
 ## Future Documentation Requirements
 

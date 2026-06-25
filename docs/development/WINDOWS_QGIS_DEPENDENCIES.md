@@ -21,6 +21,10 @@ The live QGIS Environment Check reported:
 - `pyforestscan` import: missing
 - `pdal` Python import: missing
 
+A later verification showed the plugin was being run from QGIS 3.44.10, not
+3.44.9. That mismatch is important: command-line installation and verification
+must always use the same QGIS root shown by the plugin Environment Check.
+
 Local read-only command probing found the matching QGIS 3.44.9 install at:
 
 ```text
@@ -48,6 +52,52 @@ A local import probe of QGIS 3.44.9 found `rasterio 1.4.3`, while the live QGIS
 report supplied for this task reported `rasterio 1.5.0`. This discrepancy means
 users must always verify the exact QGIS executable/profile they are launching,
 especially when multiple QGIS versions are installed side by side.
+
+## Matching the Plugin's QGIS Install
+
+Command-line verification must use the same QGIS install path reported by the
+plugin `Environment Check` algorithm. This matters when multiple QGIS versions
+are installed side by side. Installing `python3-pdal` into QGIS 3.44.9 does not
+make it available to QGIS 3.44.10, and the reverse is also true.
+
+In the observed mismatch, manual commands were first run against:
+
+```text
+C:\Program Files\QGIS 3.44.9
+```
+
+But the plugin was later found to run from:
+
+```text
+C:\Program Files\QGIS 3.44.10
+```
+
+For command-line checks, copy the exact QGIS root from the Environment Check
+report and initialize that root's OSGeo4W environment. For QGIS 3.44.10 this is:
+
+```cmd
+call "C:\Program Files\QGIS 3.44.10\OSGeo4W.bat"
+where python3
+python3 -c "import sys; print(sys.executable); print('\n'.join(sys.path))"
+python3 -c "import pdal; print(pdal.__file__); print(getattr(pdal, '__version__', 'UNKNOWN'))"
+```
+
+If those commands are run through WSL or another shell that struggles with spaces
+in Windows paths, first inspect short names with:
+
+```cmd
+dir /x "C:\Program Files"
+```
+
+Then use the matching short path for the same QGIS version, for example:
+
+```cmd
+call C:\PROGRA~1\QGIS34~1.10\OSGeo4W.bat
+```
+
+Do not assume that `QGIS34~1.9` and `QGIS34~1.10` are interchangeable. They are
+different install roots with different Python `site-packages` directories and
+different OSGeo4W package databases.
 
 ## Python Environment Boundaries
 
@@ -207,6 +257,36 @@ Python with:
 ```cmd
 python3 -m pip install --no-deps pyforestscan
 ```
+
+### QGIS install mismatch
+
+Symptom:
+
+```text
+python3-pdal is installed in one QGIS root, but the plugin still reports pdal missing.
+```
+
+Check the QGIS install path from the plugin Environment Check report. Then run
+all command-line verification from that same root:
+
+```cmd
+call "C:\Program Files\QGIS 3.44.10\OSGeo4W.bat"
+where python3
+python3 -c "import sys; print(sys.executable); print('\n'.join(sys.path))"
+python3 -c "import pdal; print(pdal.__file__); print(getattr(pdal, '__version__', 'UNKNOWN'))"
+```
+
+Confirm that `sys.executable`, `sys.path`, and `pdal.__file__` all point under
+the same QGIS root. Also check the OSGeo4W package database for that root:
+
+```cmd
+findstr /I python3-pdal "C:\Program Files\QGIS 3.44.10\etc\setup\installed.db"
+```
+
+If `python3-pdal` appears under QGIS 3.44.9 but the plugin runs under QGIS
+3.44.10, install `python3-pdal` into QGIS 3.44.10 as well. After QGIS or OSGeo4W
+updates, rerun the plugin Environment Check because GDAL, numpy, rasterio, and
+PDAL package versions may change.
 
 ### pdal Python bindings missing
 
