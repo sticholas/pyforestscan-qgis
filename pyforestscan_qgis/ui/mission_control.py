@@ -12,6 +12,7 @@ from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import QDockWidget, QWidget
 
 from ..core.adapter import PyForestScanAdapter
+from ..core.jobs import JobRecord
 from ..resources import plugin_root
 from .pages import (
     DatasetPage,
@@ -46,6 +47,7 @@ class MissionControlDock(QDockWidget):
         self.iface = iface
         self.adapter = PyForestScanAdapter()
         self.state = MissionControlState()
+        self.job_history: tuple[JobRecord, ...] = ()
         self.root_widget = QWidget(self)
         self.ui = FORM_CLASS()
         self.ui.setupUi(self.root_widget)
@@ -92,6 +94,7 @@ class MissionControlDock(QDockWidget):
         self.environment_page.environmentChanged.connect(self._set_environment_status)
         self.dataset_page.datasetExplored.connect(self._set_dataset_report)
         self.planning_page.planningChanged.connect(self._set_planning_status)
+        self.processing_page.jobUpdated.connect(self._set_job_status)
 
     def _configure_style(self) -> None:
         self.root_widget.setStyleSheet(
@@ -125,6 +128,16 @@ class MissionControlDock(QDockWidget):
         self._refresh_home()
         self._update_status_bar()
 
+    def _set_job_status(self, job: JobRecord) -> None:
+        existing = tuple(item for item in self.job_history if item.job_id != job.job_id)
+        self.job_history = (job,) + existing
+        state = self.state.with_activity("Dry-run job", f"{job.title}: {job.status.value}")
+        for result in job.results:
+            state = state.with_report_path(result.path)
+        self.state = state
+        self._refresh_home()
+        self._update_status_bar()
+
     def _refresh_home(self) -> None:
         self.home_page.set_versions(self._pyforestscan_version())
         self.home_page.set_summary(
@@ -134,6 +147,7 @@ class MissionControlDock(QDockWidget):
         )
         self.home_page.set_activities(tuple((item.label, item.detail) for item in self.state.activities))
         self.results_page.set_report_paths(self.state.latest_report_paths)
+        self.results_page.set_jobs(self.job_history)
 
     def _update_status_bar(self) -> None:
         self.ui.environmentStatusLabel.setText(f"Environment: {self.state.environment_status}")

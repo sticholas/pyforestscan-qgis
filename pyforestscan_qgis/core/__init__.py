@@ -28,6 +28,9 @@ from .dependency_check import (
     format_environment_report,
 )
 from .exceptions import AdapterError, DatasetError, EnvironmentError, ProcessingError
+from .job_manager import JobEventSink, JobExecutionError, JobManager
+from .job_results import job_to_dict, render_job_summary_json, write_job_summary_json
+from .jobs import JobLogRecord, JobMode, JobProgress, JobRecord, JobRequest, JobResultRecord, JobStatus
 from .output_loader import OutputLoadRequest
 from .project import PyForestScanProject
 from .product_plan import (
@@ -94,6 +97,19 @@ __all__ = [
     "EnvironmentError",
     "EnvironmentReport",
     "InspectionOptions",
+    "JobEventSink",
+    "JobExecutionError",
+    "JobLogRecord",
+    "JobManager",
+    "JobMode",
+    "JobProgress",
+    "JobRecord",
+    "JobRequest",
+    "JobResultRecord",
+    "JobStatus",
+    "job_to_dict",
+    "render_job_summary_json",
+    "write_job_summary_json",
     "LogContextItem",
     "LogLevel",
     "LogRecord",

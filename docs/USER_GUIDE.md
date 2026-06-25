@@ -8,8 +8,9 @@ current workflows:
 - Environment: refresh dependency checks.
 - Dataset: inspect a lidar dataset without writing outputs.
 - Planning: build an in-memory product plan from the latest dataset inspection.
-- Processing: placeholder for future scientific processing.
-- Results: open existing JSON, CSV, or HTML reports.
+- Processing: run a dry-run job from a Product Planner JSON report and write a
+  job summary JSON.
+- Results: review dry-run job history and open existing JSON, CSV, or HTML reports.
 - Settings: placeholder for future preferences.
 
 Mission Control coordinates workflows only. Processing Toolbox algorithms remain
@@ -155,3 +156,35 @@ Product Planner writes these files inside the selected output folder:
 - `Ready`: Dataset Explorer marked the product available.
 - `Needs review`: Dataset Explorer marked the product as feasible with warnings.
 - `Blocked`: Dataset Explorer marked the product unavailable or did not report it.
+
+## Dry-Run Job Execution
+
+The Mission Control Processing page can start a dry-run job from a Product
+Planner JSON report. This validates the plan, simulates progress, and writes a
+job summary JSON file to the selected output folder.
+
+Dry-run jobs do not call PyForestScan scientific processing and do not create
+CHM, PAI, PAD, FHD, canopy cover, rumple, raster, vector, or point-cloud outputs.
+
+### Workflow
+
+```mermaid
+flowchart TD
+    A["Product Planner JSON"] --> B["Mission Control Processing page"]
+    B --> C["JobManager dry-run validation"]
+    C --> D["Progress and logs"]
+    D --> E["Job summary JSON"]
+    E --> F["Mission Control Results history"]
+```
+
+### Steps
+
+1. Open Mission Control.
+2. Go to Processing.
+3. Choose a Product Planner JSON report.
+4. Choose an output folder for the job summary.
+5. Select Start Dry Run.
+6. Open Results to review the job history and summary path.
+
+The generated summary includes `processing_executed: false` and
+`scientific_outputs_created: false` so dry-run artifacts are auditable.

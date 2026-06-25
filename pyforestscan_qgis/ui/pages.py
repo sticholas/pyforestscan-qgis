@@ -20,6 +20,7 @@ from qgis.PyQt.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -40,6 +41,8 @@ from ..core.dataset_report import (
 )
 from ..core.dependency_check import CheckStatus, EnvironmentReport
 from ..core.exceptions import AdapterError
+from ..core.job_manager import JobExecutionError, JobManager
+from ..core.jobs import JobRecord, JobStatus
 from ..core.product_plan import (
     PRODUCT_LABELS,
     ProductPlanError,
@@ -325,21 +328,130 @@ class PlanningPage(MissionPage):
 
 
 class ProcessingPage(MissionPage):
-    """Future scientific processing placeholder page."""
+    """Dry-run job execution page."""
+
+    jobUpdated = pyqtSignal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        """Create the processing placeholder page."""
+        """Create the dry-run processing page."""
         super().__init__("Processing", parent)
-        section = self.add_section("Phase 7")
-        section.addWidget(QLabel("Scientific processing will appear here in Phase 7."))
+        self.job_manager = JobManager(event_sink=self._on_job_update)
+        self.current_job_id: str | None = None
+
+        controls = self.add_section("Dry-Run Job")
+        plan_row = QHBoxLayout()
+        self.product_plan_edit = QLineEdit()
+        self.product_plan_edit.setPlaceholderText("Choose Product Planner JSON")
+        plan_browse = QPushButton("Browse")
+        plan_browse.clicked.connect(self.browse_product_plan)
+        plan_row.addWidget(self.product_plan_edit)
+        plan_row.addWidget(plan_browse)
+        controls.addLayout(plan_row)
+
+        output_row = QHBoxLayout()
+        self.job_output_folder_edit = QLineEdit()
+        self.job_output_folder_edit.setPlaceholderText("Choose folder for job summary JSON")
+        output_browse = QPushButton("Browse")
+        output_browse.clicked.connect(self.browse_output_folder)
+        output_row.addWidget(self.job_output_folder_edit)
+        output_row.addWidget(output_browse)
+        controls.addLayout(output_row)
+
+        self.job_title_edit = QLineEdit("Mission Control Dry-Run Job")
+        controls.addWidget(self.job_title_edit)
+
+        button_row = QHBoxLayout()
+        self.start_button = QPushButton("Start Dry Run")
+        self.start_button.clicked.connect(self.start_dry_run)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.cancel_current_job)
+        self.cancel_button.setEnabled(False)
+        button_row.addWidget(self.start_button)
+        button_row.addWidget(self.cancel_button)
+        controls.addLayout(button_row)
+
+        status = self.add_section("Progress")
+        self.status_label = QLabel("Status: Not started")
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        status.addWidget(self.status_label)
+        status.addWidget(self.progress_bar)
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        status.addWidget(self.log_text)
+        status.addWidget(QLabel("Dry-run mode validates the plan and writes a job summary only. It does not create rasters or run PyForestScan calculations."))
+
+    def browse_product_plan(self) -> None:
+        """Choose a Product Planner JSON report."""
+        path, _ = QFileDialog.getOpenFileName(self, "Choose Product Planner JSON", "", "JSON reports (*.json);;All files (*.*)")
+        if path:
+            self.product_plan_edit.setText(path)
+
+    def browse_output_folder(self) -> None:
+        """Choose a job summary output folder."""
+        path = QFileDialog.getExistingDirectory(self, "Choose job output folder")
+        if path:
+            self.job_output_folder_edit.setText(path)
+
+    def start_dry_run(self) -> None:
+        """Start a safe dry-run job from a Product Planner JSON report."""
+        plan_path = self.product_plan_edit.text().strip()
+        output_folder = self.job_output_folder_edit.text().strip()
+        if not plan_path:
+            self.log_text.setPlainText("Choose a Product Planner JSON report before starting a dry-run job.")
+            return
+        if not output_folder:
+            self.log_text.setPlainText("Choose an output folder for the job summary JSON.")
+            return
+        self.start_button.setEnabled(False)
+        self.cancel_button.setEnabled(True)
+        self.log_text.clear()
+        try:
+            job = self.job_manager.run_dry_run(
+                Path(plan_path),
+                Path(output_folder),
+                self.job_title_edit.text().strip() or "Mission Control Dry-Run Job",
+            )
+        except JobExecutionError as exc:
+            self.log_text.setPlainText(f"Dry-run job could not start: {exc}")
+            self.start_button.setEnabled(True)
+            self.cancel_button.setEnabled(False)
+            return
+        self.current_job_id = job.job_id
+        self._on_job_update(job)
+        self.start_button.setEnabled(True)
+        self.cancel_button.setEnabled(job.status in {JobStatus.PENDING, JobStatus.VALIDATING, JobStatus.RUNNING, JobStatus.CANCELLING})
+
+    def cancel_current_job(self) -> None:
+        """Request cancellation for the current job when it is still active."""
+        if self.current_job_id is None:
+            return
+        job = self.job_manager.request_cancel(self.current_job_id)
+        if job is not None:
+            self._on_job_update(job)
+
+    def _on_job_update(self, job: JobRecord) -> None:
+        """Bridge core job progress into Qt widgets."""
+        self.current_job_id = job.job_id
+        self.status_label.setText(f"Status: {job.status.value}")
+        self.progress_bar.setValue(int(job.progress.percent))
+        self.log_text.setPlainText("\n".join(f"{entry.level}: {entry.message}" for entry in job.logs))
+        self.cancel_button.setEnabled(job.status in {JobStatus.PENDING, JobStatus.VALIDATING, JobStatus.RUNNING, JobStatus.CANCELLING})
+        self.jobUpdated.emit(job)
 
 
 class ResultsPage(MissionPage):
-    """Results placeholder and report opener page."""
+    """Report opener and job history page."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create the results page."""
         super().__init__("Results", parent)
+        jobs = self.add_section("Job History")
+        self.job_history = QListWidget()
+        jobs.addWidget(self.job_history)
+        jobs.addWidget(QLabel("Dry-run job summaries are listed here. Scientific products are not generated in this phase."))
+
         reports = self.add_section("Reports")
         row = QHBoxLayout()
         self.report_path_edit = QLineEdit()
@@ -368,6 +480,15 @@ class ResultsPage(MissionPage):
         self.previous_reports.clear()
         for path in paths:
             self.previous_reports.addItem(str(path))
+
+    def set_jobs(self, jobs: tuple[JobRecord, ...]) -> None:
+        """Display dry-run job history."""
+        self.job_history.clear()
+        for job in jobs:
+            detail = f"{job.title} - {job.status.value} - {job.progress.percent:.0f}%"
+            if job.results:
+                detail = f"{detail} - {job.results[-1].path}"
+            self.job_history.addItem(detail)
 
     def open_report(self) -> None:
         """Open the selected report with the desktop handler."""

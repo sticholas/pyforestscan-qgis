@@ -13,7 +13,9 @@ flowchart TD
     B --> C["PyForestScanAdapter"]
     B --> D["Dataset report core"]
     B --> E["Product planner core"]
+    B --> H["Job manager dry-run core"]
     C --> F["Dependency checks and dataset inspection"]
+    H -."future".-> C
     F -."future".-> G["PyForestScan public API"]
 ```
 
@@ -27,8 +29,9 @@ flowchart TD
   inspection. No report files or scientific outputs are generated from this page.
 - Planning: in-memory Product Planner using the latest Dataset Explorer report.
   No product execution is performed.
-- Processing: placeholder for future scientific processing.
-- Results: placeholder that can open JSON, CSV, or HTML reports.
+- Processing: start a dry-run job from Product Planner JSON, view progress, and
+  write a job summary JSON without scientific processing.
+- Results: view dry-run job history and open JSON, CSV, or HTML reports.
 - Settings: placeholder for default output folder, logging, and future
   preferences.
 
@@ -49,13 +52,17 @@ flowchart LR
     E["Dataset explored"] --> F["datasetExplored"]
     F --> G["Planning page receives report"]
     H["Plan built"] --> I["planningChanged"]
+    K["Dry-run job update"] --> L["jobUpdated"]
     D --> J["Status bar and Home"]
     F --> J
     I --> J
+    L --> J
+    L --> M["Results job history"]
 ```
 
 ## Scope Boundary
 
-Mission Control coordinates current workflows only. It does not implement CHM,
-PAI, PAD, FHD, canopy cover, rumple, raster generation, or PyForestScan
-scientific calculations.
+Mission Control coordinates current workflows only. The Processing page is a
+dry-run execution shell that validates Product Planner JSON and writes job
+summaries. It does not implement CHM, PAI, PAD, FHD, canopy cover, rumple,
+raster generation, or PyForestScan scientific calculations.
