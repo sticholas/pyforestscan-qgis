@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
-from .dependency_check import DependencyCheckResult, DependencyStatus
+from .dependency_check import (
+    CheckStatus,
+    EnvironmentCheckResult,
+    EnvironmentReport,
+    ReadinessStatus,
+    collect_environment_report,
+    format_environment_report,
+)
 from .output_loader import OutputLoadRequest
 from .runner import AlgorithmRunRequest
 
 __all__ = [
     "AlgorithmRunRequest",
-    "DependencyCheckResult",
-    "DependencyStatus",
+    "CheckStatus",
+    "EnvironmentCheckResult",
+    "EnvironmentReport",
     "OutputLoadRequest",
+    "ReadinessStatus",
+    "collect_environment_report",
+    "format_environment_report",
 ]
-

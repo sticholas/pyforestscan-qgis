@@ -30,13 +30,24 @@ performance. Optional dependencies must not prevent basic plugin loading.
 
 ## Environment Validation
 
-The plugin should include a diagnostic workflow that reports:
+The plugin includes an Environment Check Processing algorithm that reports:
 
-- QGIS version.
+- QGIS Python executable path.
 - Python version used by QGIS.
-- PyForestScan availability and version.
-- Required geospatial dependency availability.
-- Known compatibility warnings.
+- Platform and operating system.
+- QGIS version when available.
+- Plugin path.
+- PyForestScan availability and version when available.
+- PDAL Python binding availability and version when available.
+- GDAL Python binding availability and version when available.
+- rasterio availability and version when available.
+- numpy availability and version when available.
+- Final readiness: READY, PARTIALLY READY, or NOT READY.
+
+Missing scientific dependencies are reported as FAIL with guidance and must
+not crash plugin execution. Uncertain metadata, such as an importable package
+with an unknown version, is reported as WARNING. The validator never installs
+packages or modifies the user environment.
 
 ## Packaging Position
 

@@ -16,6 +16,19 @@ environments and geospatial scientific dependencies.
 - Bundling large binary dependencies into the plugin package.
 - Assuming that system Python and QGIS Python are the same environment.
 
+## Environment Check Workflow
+
+Before running future PyForestScan-backed algorithms, users should run the
+`Environment Check` algorithm from the PyForestScan Processing provider. The
+report identifies the active QGIS Python executable, operating system, plugin
+path, QGIS version when available, and import status for PyForestScan, PDAL,
+GDAL, rasterio, and numpy.
+
+The plugin only reports diagnostics. It does not install packages, invoke package
+managers, or modify the QGIS Python environment. Missing dependencies should be
+installed by the user or administrator using the installation method appropriate
+for the active QGIS distribution.
+
 ## Future Documentation Requirements
 
 Installation documentation should include:

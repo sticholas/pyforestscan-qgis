@@ -10,12 +10,12 @@ scientific computation to PyForestScan as the engine.
 
 ## Project Status
 
-Phase 0: Foundation.
+Phase 2: Environment validation layer.
 
 This repository currently contains project governance, architecture direction,
-documentation strategy, and the planned directory structure. Processing
-algorithms, PyForestScan API calls, and GUI code are intentionally not
-implemented yet.
+the QGIS Processing provider scaffold, and a real Environment Check
+diagnostic algorithm. Scientific PyForestScan processing, lidar analysis,
+PDAL pipelines, and custom GUI code are intentionally not implemented yet.
 
 ## Long-Term Goals
 
@@ -56,6 +56,7 @@ ambiguous.
 - [Architecture](docs/ARCHITECTURE.md)
 - [Roadmap](docs/PLUGIN_ROADMAP.md)
 - [Dependency Strategy](docs/DEPENDENCY_STRATEGY.md)
+- [Installation Strategy](docs/INSTALLATION_STRATEGY.md)
 - [Testing Strategy](docs/TESTING_STRATEGY.md)
 - [User Experience](docs/USER_EXPERIENCE.md)
 

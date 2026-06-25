@@ -1,11 +1,12 @@
-"""Phase 1 placeholder Processing algorithms.
+"""Processing algorithms for the PyForestScan provider.
 
-These classes define stable Processing surfaces for future PyForestScan-backed
-workflows. They intentionally do not perform scientific computation.
+Phase 2 implements the Environment Check algorithm. Scientific algorithms remain
+safe placeholders until later phases introduce PyForestScan-backed runners.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from qgis.core import (
@@ -27,14 +28,19 @@ from qgis.core import (
 from qgis.PyQt.QtCore import QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 
-from ..resources import plugin_icon
+from ..core.dependency_check import (
+    CheckStatus,
+    collect_environment_report,
+    format_environment_report,
+)
+from ..resources import plugin_icon, plugin_root
 
 
 NOT_IMPLEMENTED_MESSAGE = "Not yet implemented."
 
 
-class PlaceholderAlgorithm(QgsProcessingAlgorithm):
-    """Base class for Phase 1 algorithms that declare future workflows."""
+class PyForestScanAlgorithm(QgsProcessingAlgorithm):
+    """Base class for PyForestScan Processing algorithms."""
 
     OUTPUT_MESSAGE = "OUTPUT_MESSAGE"
 
@@ -54,12 +60,16 @@ class PlaceholderAlgorithm(QgsProcessingAlgorithm):
         """Return the algorithm icon."""
         return plugin_icon()
 
+
+class PlaceholderAlgorithm(PyForestScanAlgorithm):
+    """Base class for future scientific algorithms that are not implemented yet."""
+
     def shortHelpString(self) -> str:
-        """Return Processing help text for Phase 1 placeholders."""
+        """Return Processing help text for Phase 1/2 placeholders."""
         return self.tr(
-            "This Phase 1 algorithm validates the QGIS Processing plugin "
-            "surface only. It reports 'Not yet implemented.' and performs no "
-            "PyForestScan, lidar, or PDAL computation."
+            "This algorithm is reserved for a future PyForestScan workflow. "
+            "It reports 'Not yet implemented.' and performs no PyForestScan, "
+            "lidar, or PDAL computation."
         )
 
     def createInstance(self) -> "PlaceholderAlgorithm":
@@ -81,8 +91,8 @@ class PlaceholderAlgorithm(QgsProcessingAlgorithm):
         return {self.OUTPUT_MESSAGE: NOT_IMPLEMENTED_MESSAGE}
 
 
-class EnvironmentCheckAlgorithm(PlaceholderAlgorithm):
-    """Placeholder for future QGIS/PyForestScan environment diagnostics."""
+class EnvironmentCheckAlgorithm(PyForestScanAlgorithm):
+    """Validate the active QGIS Python environment for PyForestScan QGIS."""
 
     CHECK_PYFORESTSCAN = "CHECK_PYFORESTSCAN"
     CHECK_QGIS = "CHECK_QGIS"
@@ -95,6 +105,18 @@ class EnvironmentCheckAlgorithm(PlaceholderAlgorithm):
     def displayName(self) -> str:
         """Return the Processing display name."""
         return self.tr("Environment Check")
+
+    def shortHelpString(self) -> str:
+        """Return Processing help text for environment diagnostics."""
+        return self.tr(
+            "Checks the active QGIS Python runtime and required scientific "
+            "dependencies. This algorithm reports diagnostics only and does not "
+            "install packages or run PyForestScan processing."
+        )
+
+    def createInstance(self) -> "EnvironmentCheckAlgorithm":
+        """Create a new instance for the QGIS Processing registry."""
+        return EnvironmentCheckAlgorithm()
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         """Declare Processing parameters and outputs."""
@@ -123,9 +145,54 @@ class EnvironmentCheckAlgorithm(PlaceholderAlgorithm):
         self.addOutput(
             QgsProcessingOutputString(
                 self.OUTPUT_MESSAGE,
-                self.tr("Status message"),
+                self.tr("Diagnostic report"),
             )
         )
+
+    def processAlgorithm(
+        self,
+        parameters: dict[str, Any],
+        context: QgsProcessingContext,
+        feedback: QgsProcessingFeedback,
+    ) -> dict[str, str]:
+        """Run environment diagnostics and return the rendered report."""
+        if feedback.isCanceled():
+            raise QgsProcessingException(self.tr("Processing was canceled."))
+
+        report = collect_environment_report(plugin_path=plugin_root())
+        rendered_report = format_environment_report(report)
+        self._push_report_to_feedback(rendered_report, feedback)
+
+        report_file = self.parameterAsFileOutput(parameters, self.REPORT_FILE, context)
+        if report_file:
+            Path(report_file).write_text(rendered_report + "\n", encoding="utf-8")
+            feedback.pushInfo(self.tr(f"Diagnostic report written to: {report_file}"))
+
+        feedback.setProgress(100)
+        return {self.OUTPUT_MESSAGE: rendered_report}
+
+    def _push_report_to_feedback(
+        self,
+        rendered_report: str,
+        feedback: QgsProcessingFeedback,
+    ) -> None:
+        """Render diagnostics through QGIS Processing feedback channels."""
+        push_warning = getattr(feedback, "pushWarning", None)
+        report_error = getattr(feedback, "reportError", None)
+
+        for line in rendered_report.splitlines():
+            if line.startswith(f"[{CheckStatus.WARNING.value}]"):
+                if callable(push_warning):
+                    push_warning(line)
+                else:
+                    feedback.pushInfo(line)
+            elif line.startswith(f"[{CheckStatus.FAIL.value}]"):
+                if callable(report_error):
+                    report_error(line, fatalError=False)
+                else:
+                    feedback.pushInfo(line)
+            else:
+                feedback.pushInfo(line)
 
 
 class CreateCanopyHeightModelAlgorithm(PlaceholderAlgorithm):
@@ -281,4 +348,3 @@ class ForestMetricsPackAlgorithm(PlaceholderAlgorithm):
                 self.tr("Status message"),
             )
         )
-
