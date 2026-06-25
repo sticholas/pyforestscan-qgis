@@ -49,6 +49,20 @@ not crash plugin execution. Uncertain metadata, such as an importable package
 with an unknown version, is reported as WARNING. The validator never installs
 packages or modifies the user environment.
 
+## Windows Dependency Policy
+
+On Windows QGIS, the plugin must treat QGIS Python as separate from
+system Python and WSL Python. Do not automatically install packages. Prefer
+OSGeo4W-managed packages for compiled dependencies such as PDAL, GDAL,
+rasterio, numpy, pyproj, shapely, pandas, scipy, and related geospatial
+libraries. Use pip only for packages that are not available through
+OSGeo4W, and avoid allowing pip to upgrade or replace OSGeo4W-managed
+compiled packages.
+
+For QGIS 3.44.x on this machine, OSGeo4W provides `python3-pdal`; QGIS
+already includes the PDAL command-line runtime, but the Python `pdal`
+binding must be installed separately.
+
 ## Packaging Position
 
 The QGIS Plugin Repository package should remain lightweight. Scientific Python

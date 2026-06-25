@@ -57,6 +57,7 @@ ambiguous.
 - [Roadmap](docs/PLUGIN_ROADMAP.md)
 - [Dependency Strategy](docs/DEPENDENCY_STRATEGY.md)
 - [Installation Strategy](docs/INSTALLATION_STRATEGY.md)
+- [Windows QGIS Dependencies](docs/development/WINDOWS_QGIS_DEPENDENCIES.md)
 - [Testing Strategy](docs/TESTING_STRATEGY.md)
 - [User Experience](docs/USER_EXPERIENCE.md)
 

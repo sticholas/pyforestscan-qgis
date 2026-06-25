@@ -29,6 +29,18 @@ managers, or modify the QGIS Python environment. Missing dependencies should be
 installed by the user or administrator using the installation method appropriate
 for the active QGIS distribution.
 
+## Windows QGIS 3.44 Dependency Strategy
+
+For Windows QGIS 3.44.x, use the QGIS/OSGeo4W Python environment, not
+system Python or WSL Python. Compiled geospatial dependencies should come
+from OSGeo4W whenever available. The documented recommended route is to
+install `python3-pdal` through the OSGeo4W/QGIS setup tool, verify
+`import pdal`, and then install `pyforestscan` into QGIS Python with
+`python3 -m pip install --no-deps pyforestscan` only after dependencies
+are satisfied.
+
+See [Windows QGIS Dependencies](development/WINDOWS_QGIS_DEPENDENCIES.md) for exact inspection commands, risks, and troubleshooting.
+
 ## Future Documentation Requirements
 
 Installation documentation should include:

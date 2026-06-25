@@ -9,6 +9,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Windows QGIS 3.44 dependency installation investigation and troubleshooting guide.
 - Local QGIS plugin packaging and ZIP validation scripts.
 - Manual QGIS local testing and packaging documentation.
 - Environment Check Processing algorithm now produces a real PASS/FAIL/WARNING diagnostic report.
