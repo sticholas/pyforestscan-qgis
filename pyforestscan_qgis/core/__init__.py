@@ -9,6 +9,9 @@ from .dataset_report import (
     DatasetWarning,
     ProductFeasibility,
     build_dataset_explorer_report,
+    format_count_for_display,
+    format_crs_for_display,
+    format_density_for_display,
     render_html_report,
     render_json_report,
     report_to_dict,
@@ -89,5 +92,8 @@ __all__ = [
     "PyForestScanProject",
     "ReadinessStatus",
     "collect_environment_report",
+    "format_count_for_display",
+    "format_crs_for_display",
+    "format_density_for_display",
     "format_environment_report",
 ]

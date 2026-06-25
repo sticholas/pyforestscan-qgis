@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from html import escape
@@ -66,6 +67,28 @@ class DatasetExplorerReport:
     warnings: tuple[DatasetWarning, ...]
     products: tuple[ProductFeasibility, ...]
     recommended_actions: tuple[str, ...] = field(default_factory=tuple)
+
+
+def format_count_for_display(value: int | None) -> str:
+    """Format point counts for concise user-facing display."""
+    return "Unknown" if value is None else f"{value:,}"
+
+
+def format_density_for_display(value: float | None) -> str:
+    """Format estimated point density for concise user-facing display."""
+    return "Unknown" if value is None else f"{value:.3f}"
+
+
+def format_crs_for_display(crs: str | None) -> str:
+    """Return a compact CRS label without losing full CRS in reports."""
+    if not crs:
+        return "Unknown"
+    epsg_codes = re.findall(r'AUTHORITY\["EPSG","(\d+)"\]', crs)
+    if epsg_codes:
+        return f"EPSG:{epsg_codes[-1]}"
+    if len(crs) > 120:
+        return crs[:117] + "..."
+    return crs
 
 
 def build_dataset_explorer_report(

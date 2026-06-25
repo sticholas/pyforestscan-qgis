@@ -27,4 +27,5 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Fixed
 
+- Dataset Explorer Processing feedback now formats long CRS strings and numeric summaries more clearly after manual QGIS validation.
 - `InspectionOptions.include_dimensions` is now honored by dataset inspection.

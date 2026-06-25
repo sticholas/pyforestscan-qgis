@@ -33,6 +33,9 @@ from ..core.adapter import PyForestScanAdapter
 from ..core.dataset_report import (
     DatasetExplorerReport,
     build_dataset_explorer_report,
+    format_count_for_display,
+    format_crs_for_display,
+    format_density_for_display,
     render_json_report,
     write_csv_summary,
     write_html_report,
@@ -376,9 +379,9 @@ class DatasetExplorerAlgorithm(PyForestScanAlgorithm):
         feedback.pushInfo(self.tr("Dataset Summary"))
         feedback.pushInfo(self.tr(f"Source: {report.source_path}"))
         feedback.pushInfo(self.tr(f"Format: {report.source_format.upper()}"))
-        feedback.pushInfo(self.tr(f"Point count: {report.point_count or 'Unknown'}"))
-        feedback.pushInfo(self.tr(f"CRS: {report.crs or 'Unknown'}"))
-        feedback.pushInfo(self.tr(f"Estimated density: {report.estimated_density or 'Unknown'}"))
+        feedback.pushInfo(self.tr(f"Point count: {format_count_for_display(report.point_count)}"))
+        feedback.pushInfo(self.tr(f"CRS: {format_crs_for_display(report.crs)}"))
+        feedback.pushInfo(self.tr(f"Estimated density: {format_density_for_display(report.estimated_density)}"))
         feedback.pushInfo(self.tr(f"Dimensions: {', '.join(report.dimensions) or 'None reported'}"))
 
         push_warning = getattr(feedback, "pushWarning", None)

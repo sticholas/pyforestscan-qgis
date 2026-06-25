@@ -9,6 +9,9 @@ from pathlib import Path
 
 from pyforestscan_qgis.core.dataset_report import (
     build_dataset_explorer_report,
+    format_count_for_display,
+    format_crs_for_display,
+    format_density_for_display,
     render_html_report,
     render_json_report,
     write_csv_summary,
@@ -89,6 +92,17 @@ class DatasetReportTests(unittest.TestCase):
         self.assertIn("LOW_POINT_DENSITY", warning_codes)
         self.assertIn("UNSUPPORTED_POINT_FORMAT", warning_codes)
         self.assertTrue(all(product.status == "Unavailable" for product in report.products))
+
+
+    def test_display_formatters_keep_feedback_compact(self) -> None:
+        crs = (
+            'PROJCS["Example",GEOGCS["Datum",AUTHORITY["EPSG","7019"]],'
+            'AUTHORITY["EPSG","6635"]]'
+        )
+
+        self.assertEqual(format_crs_for_display(crs), "EPSG:6635")
+        self.assertEqual(format_count_for_display(23067), "23,067")
+        self.assertEqual(format_density_for_display(2.7591954761628013), "2.759")
 
     def test_report_renderers_create_json_csv_and_html(self) -> None:
         report = build_dataset_explorer_report(make_inspection())
