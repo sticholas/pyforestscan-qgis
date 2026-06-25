@@ -270,7 +270,7 @@ class PyForestScanAdapter:
         crs = _crs_from_ept_metadata(metadata) or source.crs
         point_count = _point_count_from_ept_metadata(metadata)
         density = _estimate_density(point_count, bounds)
-        dimensions = _dimensions_from_ept_metadata(metadata)
+        dimensions = _dimensions_from_ept_metadata(metadata) if options.include_dimensions else ()
 
         return DatasetInspection(
             source=source,
@@ -298,13 +298,14 @@ class PyForestScanAdapter:
         first = arrays[0]
         point_count = int(sum(int(getattr(array, "size", len(array))) for array in arrays))
         bounds = _bounds_from_arrays(arrays)
-        dimensions = tuple(str(name) for name in (getattr(first.dtype, "names", None) or ()))
+        raw_dimensions = tuple(str(name) for name in (getattr(first.dtype, "names", None) or ()))
+        dimensions = raw_dimensions if options.include_dimensions else ()
         crs = _crs_from_pdal_metadata(getattr(pipeline, "metadata", None)) or source.crs
         point_format = _point_format_from_pdal_metadata(getattr(pipeline, "metadata", None))
         warnings: list[str] = []
 
         classification_summary: tuple[ClassificationCount, ...] = ()
-        if options.include_classification_summary and "Classification" in dimensions:
+        if options.include_classification_summary and "Classification" in raw_dimensions:
             if (
                 options.max_points_for_classification_summary is not None
                 and point_count > options.max_points_for_classification_summary

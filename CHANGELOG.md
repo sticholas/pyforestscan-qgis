@@ -9,6 +9,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Adapter architecture audit documenting API alignment, non-QGIS core boundaries, and Phase 5 risks.
 - PyForestScan adapter architecture with typed configuration, dataset validation, dataset inspection, structured logging, progress snapshots, and plugin-owned exceptions.
 - Verified READY Windows/QGIS dependency baseline for PyForestScan API discovery.
 - QGIS/OSGeo4W install-path mismatch troubleshooting for Windows dependency checks.
@@ -23,3 +24,6 @@ first public release, changes are tracked under `Unreleased`.
 - Architecture decision records for provider architecture, dependencies,
   repository structure, releases, testing, and user interface philosophy.
 
+### Fixed
+
+- `InspectionOptions.include_dimensions` is now honored by dataset inspection.

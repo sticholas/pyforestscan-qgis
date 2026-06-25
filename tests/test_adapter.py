@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from pyforestscan_qgis.core.adapter import PyForestScanAdapter
-from pyforestscan_qgis.core.config import AdapterConfig
+from pyforestscan_qgis.core.config import AdapterConfig, InspectionOptions
 from pyforestscan_qgis.core.exceptions import DatasetError
 from pyforestscan_qgis.core.types import (
     DatasetFormat,
@@ -98,6 +98,25 @@ class TestPyForestScanAdapterInspection(unittest.TestCase):
         self.assertAlmostEqual(inspection.estimated_density, 1.0)
         self.assertIn(ProductType.CHM, inspection.supported_products)
         self.assertEqual(adapter.get_progress().state, ProgressState.COMPLETE)
+
+
+    def test_ept_inspection_can_omit_dimensions(self) -> None:
+        metadata = {
+            "bounds": [0, 0, 0, 10, 10, 10],
+            "points": 100,
+            "schema": [{"name": "X"}, {"name": "Y"}, {"name": "Z"}],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            ept = Path(directory) / "ept.json"
+            ept.write_text(json.dumps(metadata), encoding="utf-8")
+            adapter = PyForestScanAdapter()
+
+            inspection = adapter.inspect_dataset(
+                ept,
+                InspectionOptions(include_dimensions=False),
+            )
+
+        self.assertEqual(inspection.dimensions, ())
 
     def test_pdal_inspection_uses_fake_pipeline(self) -> None:
         try:
