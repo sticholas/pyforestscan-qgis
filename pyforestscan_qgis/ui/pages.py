@@ -451,6 +451,8 @@ class ProcessingPage(MissionPage):
         self.progress_bar.setValue(0)
         status.addWidget(self.status_label)
         status.addWidget(self.progress_bar)
+        self.pipeline_list = QListWidget()
+        status.addWidget(self.pipeline_list)
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         status.addWidget(self.log_text)
@@ -529,7 +531,16 @@ class ProcessingPage(MissionPage):
         self.progress_bar.setValue(int(job.progress.percent))
         self.log_text.setPlainText("\n".join(f"{entry.level}: {entry.message}" for entry in job.logs))
         self.cancel_button.setEnabled(job.status in {JobStatus.PENDING, JobStatus.VALIDATING, JobStatus.RUNNING, JobStatus.CANCELLING})
+        self._set_pipeline_results(job)
         self.jobUpdated.emit(job)
+
+    def _set_pipeline_results(self, job: JobRecord) -> None:
+        """Display pipeline stages for the current dry-run job."""
+        self.pipeline_list.clear()
+        for pipeline in job.pipeline_results:
+            self.pipeline_list.addItem(f"{pipeline.label}")
+            for step in pipeline.steps:
+                self.pipeline_list.addItem(f"  {_pipeline_status_icon(step.status.value)} {step.label}: {step.message}")
 
 
 class ResultsPage(MissionPage):
@@ -686,3 +697,17 @@ def _format_bounds(report: DatasetExplorerReport) -> str:
         f"Z {report.bounds.min_z if report.bounds.min_z is not None else 'Unknown'} "
         f"to {report.bounds.max_z if report.bounds.max_z is not None else 'Unknown'}"
     )
+
+
+def _pipeline_status_icon(status: str) -> str:
+    if status == "passed":
+        return "PASS"
+    if status == "warning":
+        return "WARN"
+    if status == "failed":
+        return "FAIL"
+    if status == "skipped":
+        return "TODO"
+    if status == "not_implemented":
+        return "TODO"
+    return "WAIT"

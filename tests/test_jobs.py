@@ -34,6 +34,8 @@ class JobManagerTests(unittest.TestCase):
             self.assertFalse(payload["scientific_outputs_created"])
             self.assertEqual("completed", payload["status"])
             self.assertEqual(["chm", "pai"], payload["requested_products"])
+            self.assertEqual(2, len(payload["pipelines"]))
+            self.assertEqual("chm", payload["pipelines"][0]["product"])
             self.assertFalse((root / "jobs" / "chm.tif").exists())
 
     def test_invalid_plan_raises_before_job_creation(self) -> None:
@@ -141,6 +143,8 @@ def _write_plan(path: Path, status: str = "Ready") -> Path:
     ]
     payload = {
         "title": "Test Product Plan",
+        "source_dataset": "plot.laz",
+        "source_report": str(path.parent / "dataset_report.json"),
         "processing_executed": False,
         "products": products,
     }

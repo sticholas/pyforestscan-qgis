@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
+from .pipeline_results import PipelineResult
+
 
 class JobStatus(str, Enum):
     """Lifecycle states for a PyForestScan job."""
@@ -85,6 +87,7 @@ class JobRecord:
     requested_products: tuple[str, ...] = ()
     logs: tuple[JobLogRecord, ...] = ()
     results: tuple[JobResultRecord, ...] = ()
+    pipeline_results: tuple[PipelineResult, ...] = ()
     error_message: str | None = None
 
     def with_status(self, status: JobStatus, message: str | None = None) -> "JobRecord":
@@ -111,6 +114,10 @@ class JobRecord:
     def with_result(self, result: JobResultRecord) -> "JobRecord":
         """Return a copy with a result artifact appended."""
         return replace(self, results=self.results + (result,), updated_at=utc_now())
+
+    def with_pipeline_results(self, results: tuple[PipelineResult, ...]) -> "JobRecord":
+        """Return a copy with pipeline results replaced."""
+        return replace(self, pipeline_results=results, updated_at=utc_now())
 
     def with_error(self, message: str) -> "JobRecord":
         """Return a failed copy with an error message and log entry."""

@@ -112,3 +112,14 @@ Mission Control stores all internal handoff files in a timestamped run folder:
 The Processing page uses `RunContext.product_plan_json` automatically. Users can
 still inspect or override paths in Advanced details, but explicit JSON browsing
 is no longer the primary workflow.
+
+
+## Pipeline Execution
+
+Phase 9A routes dry-run jobs through the processing pipeline framework. The job
+manager loads one pipeline context per requested Product Planner item, executes
+validation stages from the registered product pipeline, stores `PipelineResult`
+objects on the job record, and writes them into `job_summary.json`.
+
+Scientific and export stages are shown as future stages but are not executed by
+dry-run jobs.

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .jobs import JobRecord
+from .pipeline_results import pipeline_result_to_dict
 
 
 def job_to_dict(job: JobRecord) -> dict[str, Any]:
@@ -26,6 +27,7 @@ def job_to_dict(job: JobRecord) -> dict[str, Any]:
             "message": job.progress.message,
         },
         "requested_products": list(job.requested_products),
+        "pipelines": [pipeline_result_to_dict(result) for result in job.pipeline_results],
         "logs": [
             {"timestamp": entry.timestamp, "level": entry.level, "message": entry.message}
             for entry in job.logs

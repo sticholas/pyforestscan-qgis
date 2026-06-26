@@ -129,3 +129,24 @@ PyForestScan must not depend on the plugin.
 - Use QGIS feedback and cancellation APIs for long-running tasks.
 - Treat output metadata as part of the product, not an afterthought.
 
+
+
+## Processing Pipeline Framework
+
+Phase 9A adds a core pipeline orchestration layer between `JobManager` and future
+adapter-backed scientific processing. `PipelineRegistry` maps planned products
+to validation-first `Pipeline` definitions. `JobManager` executes these pipelines
+in dry-run mode and records `PipelineResult` objects in the job summary.
+
+Only validation stages execute. Normalize Heights, Clip, Generate Product, and
+Export are registered as future steps and raise `NotImplementedError` if called
+directly.
+
+```mermaid
+flowchart TD
+    A["Mission Control / future Processing algorithms"] --> B["JobManager"]
+    B --> C["PipelineRegistry"]
+    C --> D["Validation pipeline steps"]
+    D -."future".-> E["Adapter scientific methods"]
+    E -."future".-> F["PyForestScan public API"]
+```

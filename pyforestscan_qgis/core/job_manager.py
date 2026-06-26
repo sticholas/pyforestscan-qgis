@@ -14,6 +14,8 @@ from typing import Any, Callable, Mapping
 
 from .job_results import write_job_summary_json
 from .jobs import JobMode, JobRecord, JobRequest, JobResultRecord, JobStatus, utc_now
+from .pipeline import PipelineRegistry, build_default_pipeline_registry
+from .pipeline_context import PipelineContextError, load_pipeline_contexts
 
 JobEventSink = Callable[[JobRecord], None]
 
@@ -25,9 +27,10 @@ class JobExecutionError(ValueError):
 class JobManager:
     """Create, validate, run, cancel, and retain dry-run job records."""
 
-    def __init__(self, event_sink: JobEventSink | None = None) -> None:
-        """Create a manager with an optional event sink for progress bridges."""
+    def __init__(self, event_sink: JobEventSink | None = None, pipeline_registry: PipelineRegistry | None = None) -> None:
+        """Create a manager with optional event and pipeline registry hooks."""
         self._event_sink = event_sink
+        self._pipeline_registry = pipeline_registry or build_default_pipeline_registry()
         self._jobs: dict[str, JobRecord] = {}
         self._cancel_requested: set[str] = set()
 
@@ -91,26 +94,31 @@ class JobManager:
             plan = self._load_product_plan(request.product_plan_path)
             self._validate_plan_for_execution(plan)
             job = self._transition(job, JobStatus.VALIDATING, "Product plan validated for dry-run execution.")
-            job = self._progress(job, 10, "Validation complete.")
+            contexts = load_pipeline_contexts(request.product_plan_path, request.output_folder)
+            job = self._progress(job, 10, "Pipeline contexts loaded.")
             if self._is_cancelled(job):
                 return self._finalize_cancelled(job)
 
-            job = self._transition(job, JobStatus.RUNNING, "Dry-run simulation started.")
-            for percent, message in (
-                (25, "Checking requested products."),
-                (45, "Estimating future outputs."),
-                (65, "Verifying no scientific processing will run."),
-                (85, "Preparing dry-run summary."),
-            ):
-                job = self._progress(job, percent, message)
+            job = self._transition(job, JobStatus.RUNNING, "Pipeline dry-run validation started.")
+            pipeline_results = []
+            total = max(1, len(contexts))
+            for index, pipeline_context in enumerate(contexts, start=1):
+                pipeline = self._pipeline_registry.get(pipeline_context.product)
+                pipeline_result = pipeline.run_validation(pipeline_context)
+                pipeline_results.append(pipeline_result)
+                job = self._store(job.with_pipeline_results(tuple(pipeline_results)))
+                percent = 10 + (index / total) * 80
+                job = self._progress(job, percent, f"Validated pipeline: {pipeline.label}.")
                 if self._is_cancelled(job):
                     return self._finalize_cancelled(job)
+            if any(not result.passed for result in pipeline_results):
+                raise JobExecutionError("One or more pipeline validation stages failed.")
 
-            job = self._progress(job, 100, "Dry-run completed.")
-            job = self._transition(job, JobStatus.COMPLETED, "Dry-run job completed without scientific processing.")
+            job = self._progress(job, 100, "Pipeline dry-run completed.")
+            job = self._transition(job, JobStatus.COMPLETED, "Dry-run pipeline completed without scientific processing.")
             return self._write_summary(job)
         except Exception as exc:
-            if isinstance(exc, JobExecutionError):
+            if isinstance(exc, (JobExecutionError, PipelineContextError, KeyError)):
                 message = str(exc)
             else:
                 message = f"Unexpected dry-run job failure: {exc}"

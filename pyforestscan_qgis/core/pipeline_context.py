@@ -1,0 +1,89 @@
+"""Pipeline execution context."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Mapping
+
+
+class PipelineContextError(ValueError):
+    """Raised when a pipeline context cannot be created."""
+
+
+@dataclass(frozen=True)
+class PipelineContext:
+    """Immutable context shared by pipeline steps."""
+
+    product: str
+    product_label: str
+    product_plan_path: Path
+    output_folder: Path
+    product_plan: Mapping[str, Any]
+    product_entry: Mapping[str, Any]
+    dataset_report: Mapping[str, Any] | None = None
+
+    @property
+    def source_dataset(self) -> str | None:
+        """Return the source dataset recorded by Product Planner."""
+        value = self.product_plan.get("source_dataset")
+        return str(value) if value else None
+
+    @property
+    def source_report_path(self) -> Path | None:
+        """Return the Dataset Explorer JSON path recorded by Product Planner."""
+        value = self.product_plan.get("source_report")
+        return Path(str(value)) if value else None
+
+
+def load_pipeline_contexts(product_plan_path: Path | str, output_folder: Path | str) -> tuple[PipelineContext, ...]:
+    """Load one pipeline context per requested product from Product Planner JSON."""
+    plan_path = Path(product_plan_path)
+    try:
+        payload = json.loads(plan_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise PipelineContextError(f"Could not read Product Planner JSON: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise PipelineContextError(f"Product Planner JSON is not valid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise PipelineContextError("Product Planner JSON must contain an object at the top level.")
+    dataset_report = _load_dataset_report(payload)
+    products = payload.get("products")
+    if not isinstance(products, list) or not products:
+        raise PipelineContextError("Product plan must contain requested products.")
+    contexts = []
+    for entry in products:
+        if not isinstance(entry, dict) or entry.get("requested") is not True:
+            continue
+        product = entry.get("product")
+        if not isinstance(product, str) or not product:
+            raise PipelineContextError("Each requested product must include a product identifier.")
+        contexts.append(
+            PipelineContext(
+                product=product,
+                product_label=str(entry.get("label") or product),
+                product_plan_path=plan_path,
+                output_folder=Path(output_folder),
+                product_plan=payload,
+                product_entry=entry,
+                dataset_report=dataset_report,
+            )
+        )
+    if not contexts:
+        raise PipelineContextError("Product plan does not contain any requested products.")
+    return tuple(contexts)
+
+
+def _load_dataset_report(product_plan: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    value = product_plan.get("source_report")
+    if not value:
+        return None
+    path = Path(str(value))
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None

@@ -15,6 +15,7 @@ flowchart TD
     W --> D["Dataset report core"]
     W --> E["Product planner core"]
     W --> H["Job manager dry-run core"]
+    H --> P["Pipeline registry"]
     C --> F["Dependency checks and dataset inspection"]
     H -."future".-> C
     F -."future".-> G["PyForestScan public API"]
@@ -31,7 +32,8 @@ flowchart TD
 - Planning: Product Planner uses the active Dataset Explorer report and writes
   plan reports into the run folder. No product execution is performed.
 - Processing: start a dry-run job from the active Product Planner report, view
-  progress, and write `logs/job_summary.json` without scientific processing.
+  progress, inspect validation pipeline stages, and write `logs/job_summary.json`
+  without scientific processing.
 - Results: view friendly Dataset Report, Product Plan, Job Summary, Output
   Folder, and Future Products links, with raw paths under Advanced details.
 - Settings: default output folder, logging placeholder, and future preferences.

@@ -31,6 +31,11 @@ from .exceptions import AdapterError, DatasetError, EnvironmentError, Processing
 from .job_manager import JobEventSink, JobExecutionError, JobManager
 from .job_results import job_to_dict, render_job_summary_json, write_job_summary_json
 from .jobs import JobLogRecord, JobMode, JobProgress, JobRecord, JobRequest, JobResultRecord, JobStatus
+from .pipeline import Pipeline, PipelineRegistry, build_default_pipeline_registry, registered_product_ids
+from .pipeline_context import PipelineContext, PipelineContextError, load_pipeline_contexts
+from .pipeline_events import PipelineEvent, PipelineEventLevel
+from .pipeline_results import PipelineResult, PipelineStepResult, PipelineStepStatus, pipeline_result_to_dict
+from .pipeline_steps import PipelineStage, PipelineStep, PipelineStepKind
 from .output_loader import OutputLoadRequest
 from .project import PyForestScanProject
 from .product_plan import (
@@ -114,6 +119,22 @@ __all__ = [
     "LogContextItem",
     "LogLevel",
     "LogRecord",
+    "Pipeline",
+    "PipelineContext",
+    "PipelineContextError",
+    "PipelineEvent",
+    "PipelineEventLevel",
+    "PipelineRegistry",
+    "PipelineResult",
+    "PipelineStage",
+    "PipelineStep",
+    "PipelineStepKind",
+    "PipelineStepResult",
+    "PipelineStepStatus",
+    "build_default_pipeline_registry",
+    "load_pipeline_contexts",
+    "pipeline_result_to_dict",
+    "registered_product_ids",
     "OutputLoadRequest",
     "ProcessingError",
     "PlannedOutput",
