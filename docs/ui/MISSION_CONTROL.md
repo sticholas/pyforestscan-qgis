@@ -68,6 +68,5 @@ flowchart LR
 
 Mission Control coordinates current workflows only. The run folder is not a
 required `.pfs` project file. The Processing page runs the active Product
-Planner JSON through JobManager and the pipeline registry. CHM is implemented
-through the adapter; PAI, PAD, FHD, canopy cover, and rumple remain future
-products.
+Planner JSON through JobManager and the pipeline registry. CHM and Canopy Cover are implemented
+through the adapter; PAI, PAD, FHD, and rumple remain future products.

@@ -11,7 +11,7 @@ from .pipeline_events import PipelineEvent, PipelineEventLevel, pipeline_utc_now
 from .pipeline_results import PipelineResult, PipelineStepResult, PipelineStepStatus
 from .pipeline_steps import PipelineStage, PipelineStep, default_product_steps
 from .product_plan import PRODUCT_LABELS
-from .types import ChmRequest
+from .types import CanopyCoverRequest, ChmRequest
 
 
 @dataclass(frozen=True)
@@ -46,8 +46,13 @@ class Pipeline:
                 generated_outputs = result.artifacts
                 results.append(result)
                 continue
-            if self.product == "chm" and step.stage is PipelineStage.EXPORT and generated_outputs:
-                results.append(_step_result(step, PipelineStepStatus.PASSED, "CHM GeoTIFF export is available.", generated_outputs))
+            if self.product == "canopy_cover" and step.stage is PipelineStage.GENERATE_PRODUCT:
+                result = _execute_canopy_cover_step(context, step, adapter)
+                generated_outputs = result.artifacts
+                results.append(result)
+                continue
+            if self.product in {"chm", "canopy_cover"} and step.stage is PipelineStage.EXPORT and generated_outputs:
+                results.append(_step_result(step, PipelineStepStatus.PASSED, f"{self.label} GeoTIFF export is available.", generated_outputs))
                 continue
             results.append(step.skipped_result())
         return PipelineResult(self.pipeline_id, self.product, self.label, tuple(results))
@@ -115,6 +120,40 @@ def _execute_chm_step(context: PipelineContext, step: PipelineStep, adapter: Any
     if not result.output_path.exists():
         return _step_result(step, PipelineStepStatus.FAILED, f"CHM generation did not produce a GeoTIFF: {result.output_path}")
     return _step_result(step, PipelineStepStatus.PASSED, f"CHM GeoTIFF created: {result.output_path}", (result.output_path,))
+
+
+def _execute_canopy_cover_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:
+    if adapter is None:
+        return _step_result(step, PipelineStepStatus.FAILED, "Canopy cover execution requires an adapter.")
+    if not context.source_dataset:
+        return _step_result(step, PipelineStepStatus.FAILED, "Canopy cover execution requires a source dataset.")
+    if not context.crs:
+        return _step_result(step, PipelineStepStatus.FAILED, "Canopy cover execution requires dataset CRS metadata.")
+    try:
+        output_path = _canopy_cover_output_path(context)
+        result = adapter.create_canopy_cover(
+            CanopyCoverRequest(
+                input_path=context.source_dataset,
+                output_path=output_path,
+                grid_resolution=context.grid_resolution,
+                canopy_height_threshold=context.canopy_cover_height_threshold,
+                crs=context.crs,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
+        return _step_result(step, PipelineStepStatus.FAILED, f"Canopy cover generation failed: {exc}")
+    if not result.output_path.exists():
+        return _step_result(step, PipelineStepStatus.FAILED, f"Canopy cover generation did not produce a GeoTIFF: {result.output_path}")
+    return _step_result(step, PipelineStepStatus.PASSED, f"Canopy cover GeoTIFF created: {result.output_path}", (result.output_path,))
+
+
+def _canopy_cover_output_path(context: PipelineContext) -> Path:
+    """Return the validated canopy cover output path for a pipeline context."""
+    name = context.canopy_cover_output_filename
+    candidate = Path(name)
+    if candidate.name != name or candidate.suffix.lower() not in {".tif", ".tiff"}:
+        raise ValueError("Canopy cover output filename must be a simple .tif or .tiff filename.")
+    return context.output_folder / candidate.name
 
 
 def _chm_output_path(context: PipelineContext) -> Path:

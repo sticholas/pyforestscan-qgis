@@ -8,7 +8,7 @@ current workflows:
 - Environment: refresh dependency checks.
 - Dataset: select a lidar dataset and output folder, then inspect the dataset.
 - Planning: build a product plan from the active Dataset Explorer result.
-- Processing: run a CHM job from the active Product Planner result.
+- Processing: run implemented product jobs from the active Product Planner result.
 - Results: open friendly Dataset Report, Product Plan, Job Summary, Output Folder,
   and Products links.
 - Settings: choose a default output folder for Mission Control runs.
@@ -39,7 +39,8 @@ Folder, and Products. Advanced details still expose JSON and CSV paths for
 troubleshooting and reproducibility.
 
 This guide describes current user-facing PyForestScan QGIS workflows: Dataset
-Explorer, Product Planner, Mission Control run folders, and CHM-only processing.
+Explorer, Product Planner, Mission Control run folders, CHM processing, and
+Canopy Cover processing.
 
 ## Dataset Explorer
 
@@ -181,15 +182,16 @@ Product Planner writes these files inside the selected output folder:
 - `Needs review`: Dataset Explorer marked the product as feasible with warnings.
 - `Blocked`: Dataset Explorer marked the product unavailable or did not report it.
 
-## CHM Job Execution
+## Product Job Execution
 
-The Mission Control Processing page starts a CHM job from the active Product
-Planner report. Users do not need to browse for `product_plan.json`; Mission
-Control uses the current run folder automatically. The job validates the plan,
-runs the CHM pipeline through the adapter, writes the selected CHM GeoTIFF in
-`outputs/`, and writes `logs/job_summary.json`.
+The Mission Control Processing page starts an implemented product job from the
+active Product Planner report. Users do not need to browse for
+`product_plan.json`; Mission Control uses the current run folder automatically.
+The job validates the plan, runs implemented product pipelines through the
+adapter, writes selected GeoTIFF outputs in `outputs/`, and writes
+`logs/job_summary.json`.
 
-Only CHM is implemented. PAI, PAD, FHD, canopy cover, and rumple remain future
+CHM and Canopy Cover are implemented. PAI, PAD, FHD, and rumple remain future
 products and do not create rasters.
 
 ### Workflow
@@ -198,8 +200,8 @@ products and do not create rasters.
 flowchart TD
     A["Product Planner JSON"] --> B["Mission Control Processing page"]
     B --> C["JobManager pipeline execution"]
-    C --> D["PyForestScanAdapter.create_chm"]
-    D --> E["outputs/<chosen_chm_filename>.tif"]
+    C --> D["PyForestScanAdapter"]
+    D --> E["outputs/<chosen_product_filename>.tif"]
     C --> F["logs/job_summary.json"]
     F --> G["Mission Control Results history"]
 ```
@@ -209,7 +211,7 @@ flowchart TD
 1. Open Mission Control.
 2. Go to Processing.
 3. Confirm the current product plan is shown.
-4. Select Start CHM Job.
+4. Select Start Processing Job.
 5. Open Results to review the job history and friendly result links.
 
 ### CHM Parameters
@@ -220,13 +222,27 @@ flowchart TD
   `pyforestscan.calculate_chm`.
 - Output filename must be a simple `.tif` or `.tiff` name.
 
+### Canopy Cover Parameters
+
+- Grid resolution must be greater than zero.
+- Canopy height threshold must be zero or greater and is passed to
+  `pyforestscan.calculate_canopy_cover` as `min_height`.
+- Output filename must be a simple `.tif` or `.tiff` name.
+- Vertical voxel height is fixed at `1.0` meter in this spike.
+
+### Canopy Cover QA
+
+After a successful run, confirm the canopy cover raster opens in QGIS, values are
+in the expected `0` to `1` range, CRS and extent align with the source dataset,
+and a higher height threshold does not unexpectedly increase canopy cover.
+
 ### CHM QA
 
 After a successful run, confirm the CHM opens in QGIS, the CRS and extent align
 with the source dataset, values look reasonable, and edge artifacts are
 acceptable for the selected interpolation options.
 
-A successful CHM summary includes `processing_executed: true`,
-`scientific_outputs_created: true`, selected CHM `parameters`, and a
-`chm_geotiff` result path. Failed jobs still write `logs/job_summary.json` with
-a clear error message.
+A successful summary includes `processing_executed: true`,
+`scientific_outputs_created: true`, selected product `parameters`, and GeoTIFF
+result paths such as `chm_geotiff` or `canopy_cover_geotiff`. Failed jobs still
+write `logs/job_summary.json` with a clear error message.

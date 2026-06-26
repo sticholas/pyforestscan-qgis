@@ -2,12 +2,11 @@
 
 Phase 8A introduced the execution framework that scientific processing uses.
 Phase 8C connected that framework to Mission Control run folders so users do not
-manually manage Product Planner JSON files. Phase 10A adds the first implemented
-processing path: CHM only. Dry-run validation remains available for tests and
+manually manage Product Planner JSON files. Phase 10A added CHM processing. Phase 11A adds Canopy Cover processing. Dry-run validation remains available for tests and
 advanced callers.
 
-Processing mode calls PyForestScan only through the adapter boundary. CHM can
-create `outputs/chm.tif`; PAI, PAD, FHD, canopy cover, rumple, vectors, and
+Processing mode calls PyForestScan only through the adapter boundary. CHM and Canopy Cover can
+create GeoTIFF outputs in `outputs/`; PAI, PAD, FHD, rumple, vectors, and
 point-cloud outputs remain unimplemented.
 
 ## Architecture
@@ -71,11 +70,12 @@ Dry-run execution writes only a job summary JSON. CHM processing writes both the
 CHM GeoTIFF and the summary. Mission Control passes the active run context so
 paths are written to:
 
-- `outputs/chm.tif` for CHM jobs
+- `outputs/<chm filename>.tif` for CHM jobs
+- `outputs/<canopy cover filename>.tif` for Canopy Cover jobs
 - `logs/job_summary.json` for all jobs
 
 The summary includes job status, progress, logs, requested products, pipeline
-results, result artifacts, and explicit flags. CHM success records
+results, result artifacts, and explicit flags. Successful product processing records
 `processing_executed: true` and `scientific_outputs_created: true`.
 
 ## Error Handling
@@ -121,5 +121,5 @@ validation stages from the registered product pipeline, stores `PipelineResult`
 objects on the job record, and writes them into `job_summary.json`.
 
 Dry-run jobs still skip scientific and export stages. Processing jobs execute
-only implemented stages. In Phase 10A, that means the CHM Generate Product and
-Export stages can produce `outputs/chm.tif`; all non-CHM products remain skipped.
+only implemented stages. CHM and Canopy Cover Generate Product and Export stages can produce GeoTIFFs in
+`outputs/`; PAI, PAD, FHD, and rumple remain skipped.

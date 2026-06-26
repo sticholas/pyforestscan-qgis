@@ -68,6 +68,18 @@ class PipelineContext:
         value = str(self._parameter("chm_output_filename", "chm.tif"))
         return value or "chm.tif"
 
+
+    @property
+    def canopy_cover_height_threshold(self) -> float:
+        """Return the planned canopy cover height threshold."""
+        return float(self._parameter("canopy_cover_height_threshold", 2.0))
+
+    @property
+    def canopy_cover_output_filename(self) -> str:
+        """Return the planned canopy cover output filename."""
+        value = str(self._parameter("canopy_cover_output_filename", "canopy_cover.tif"))
+        return value or "canopy_cover.tif"
+
     @property
     def parameters(self) -> dict[str, object]:
         """Return user-selected execution parameters for summary output."""

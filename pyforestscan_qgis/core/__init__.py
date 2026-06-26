@@ -59,6 +59,8 @@ from .workspace import RunContext, create_run_context
 from .types import (
     AdapterParameter,
     Bounds3D,
+    CanopyCoverRequest,
+    CanopyCoverResult,
     ChmRequest,
     ChmResult,
     ClassificationCount,
@@ -83,6 +85,8 @@ __all__ = [
     "AdapterProgress",
     "AlgorithmRunRequest",
     "Bounds3D",
+    "CanopyCoverRequest",
+    "CanopyCoverResult",
     "CheckStatus",
     "ChmRequest",
     "ChmResult",

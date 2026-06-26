@@ -1,8 +1,8 @@
 """Architecture-only adapter boundary around PyForestScan and PDAL.
 
 This module validates and inspects datasets, exposes typed results, and
-centralizes PyForestScan imports behind a plugin-owned API. CHM is implemented;
-PAI, PAD, FHD, canopy cover, and rumple remain unimplemented.
+centralizes PyForestScan imports behind a plugin-owned API. CHM and canopy cover
+are implemented; PAI, PAD, FHD, and rumple remain unimplemented.
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ from .dependency_check import EnvironmentReport, collect_environment_report
 from .exceptions import AdapterError, DatasetError, EnvironmentError, ProcessingError
 from .types import (
     Bounds3D,
+    CanopyCoverRequest,
+    CanopyCoverResult,
     ChmRequest,
     ChmResult,
     ClassificationCount,
@@ -277,6 +279,72 @@ class PyForestScanAdapter:
         except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
             self._progress.fail("CHM generation failed")
             raise ProcessingError(f"CHM generation failed: {exc}") from exc
+
+
+    def create_canopy_cover(self, request: CanopyCoverRequest) -> CanopyCoverResult:
+        """Generate a canopy cover GeoTIFF through PyForestScan.
+
+        PAD is computed only as an internal prerequisite. The adapter does not
+        expose PAD as a product in this phase.
+        """
+        if request.grid_resolution <= 0:
+            raise ProcessingError("Canopy cover grid resolution must be greater than zero.")
+        if request.voxel_height <= 0:
+            raise ProcessingError("Canopy cover voxel height must be greater than zero.")
+        if request.canopy_height_threshold < 0:
+            raise ProcessingError("Canopy cover height threshold must be zero or greater.")
+        if request.extinction_coefficient < 0:
+            raise ProcessingError("Canopy cover extinction coefficient must be zero or greater.")
+        if not request.crs:
+            raise ProcessingError("Canopy cover generation requires a dataset CRS.")
+        output_path = Path(request.output_path)
+        _validate_output_path(output_path)
+        self._progress.start("Reading lidar for canopy cover")
+        self._log(LogLevel.INFO, "Starting canopy cover generation", input=str(request.input_path), output=str(output_path))
+        try:
+            pyforestscan = _import_required("pyforestscan", ProcessingError)
+            handlers = _import_required("pyforestscan.handlers", ProcessingError)
+            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, hag=True)
+            if point_cloud is None:
+                raise ProcessingError("PyForestScan returned no point data for canopy cover generation.")
+            self._progress.update(25, "Point cloud loaded")
+            point_array = _merge_point_cloud_arrays(point_cloud)
+            names = getattr(point_array.dtype, "names", ()) or ()
+            required = {"X", "Y", "HeightAboveGround"}
+            missing = sorted(required.difference(names))
+            if missing:
+                raise ProcessingError(f"Canopy cover input is missing required dimensions: {', '.join(missing)}")
+            voxel_returns, extent = pyforestscan.assign_voxels(
+                point_array,
+                (request.grid_resolution, request.grid_resolution, request.voxel_height),
+            )
+            self._progress.update(45, "Voxel returns calculated")
+            pad = pyforestscan.calculate_pad(voxel_returns, voxel_height=request.voxel_height)
+            self._progress.update(65, "Internal PAD prerequisite calculated")
+            canopy_cover = pyforestscan.calculate_canopy_cover(
+                pad,
+                request.voxel_height,
+                min_height=request.canopy_height_threshold,
+                k=request.extinction_coefficient,
+            )
+            self._progress.update(80, "Canopy cover array calculated")
+            handlers.create_geotiff(canopy_cover, str(output_path), request.crs, extent)
+            _validate_created_output(output_path)
+            self._progress.complete("Canopy cover GeoTIFF created")
+            self._log(LogLevel.INFO, "Canopy cover generation complete", output=str(output_path))
+            return CanopyCoverResult(
+                output_path=output_path,
+                spatial_extent=tuple(float(value) for value in extent),
+                grid_resolution=request.grid_resolution,
+                canopy_height_threshold=request.canopy_height_threshold,
+                crs=request.crs,
+            )
+        except ProcessingError:
+            self._progress.fail("Canopy cover generation failed")
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            self._progress.fail("Canopy cover generation failed")
+            raise ProcessingError(f"Canopy cover generation failed: {exc}") from exc
 
     def clip_dataset(self, *args: object, **kwargs: object) -> None:
         """Placeholder for future adapter-managed clipping."""

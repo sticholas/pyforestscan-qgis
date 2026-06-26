@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pyforestscan_qgis.core.job_manager import JobExecutionError, JobManager
 from pyforestscan_qgis.core.job_results import job_to_dict, render_job_summary_json
-from pyforestscan_qgis.core.types import ChmResult
+from pyforestscan_qgis.core.types import CanopyCoverResult, ChmResult
 from pyforestscan_qgis.core.jobs import JobStatus
 
 
@@ -111,6 +111,26 @@ class JobManagerTests(unittest.TestCase):
             self.assertTrue(payload["parameters"]["chm_interpolate_valid_region"])
             self.assertTrue(payload["parameters"]["chm_clean_edges"])
 
+
+    def test_processing_job_creates_canopy_cover_result_record(self) -> None:
+        """A canopy cover processing job records the GeoTIFF output artifact."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            dataset_report = root / "dataset_report.json"
+            dataset_report.write_text(json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8")
+            plan_path = _write_plan(root / "product_plan.json", include_pai=False, product="canopy_cover", filename="job_cover.tif")
+            manager = JobManager(adapter=_FakeAdapter())
+
+            job = manager.run_pipeline(plan_path, root / "logs", title="Canopy Cover Processing Test", summary_path=root / "logs" / "job_summary.json")
+
+            self.assertEqual(JobStatus.COMPLETED, job.status)
+            cover_results = [result for result in job.results if result.result_type == "canopy_cover_geotiff"]
+            self.assertEqual(1, len(cover_results))
+            self.assertEqual(root / "outputs" / "job_cover.tif", cover_results[0].path)
+            payload = json.loads((root / "logs" / "job_summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(2.0, payload["parameters"]["canopy_cover_height_threshold"])
+            self.assertEqual(str(root / "outputs" / "job_cover.tif"), payload["results"][0]["path"])
+
     def test_job_summary_renderer_marks_no_scientific_outputs(self) -> None:
         """Serialized summaries explicitly state that processing did not run."""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -132,11 +152,11 @@ def _job_request(plan_path: Path, output_folder: Path):  # type: ignore[no-untyp
     return JobRequest(product_plan_path=plan_path, output_folder=output_folder)
 
 
-def _write_plan(path: Path, status: str = "Ready", include_pai: bool = True) -> Path:
+def _write_plan(path: Path, status: str = "Ready", include_pai: bool = True, product: str = "chm", filename: str = "job_chm.tif") -> Path:
     products = [
         {
-            "product": "chm",
-            "label": "Canopy Height Model (CHM)",
+            "product": product,
+            "label": "Canopy Cover" if product == "canopy_cover" else "Canopy Height Model (CHM)",
             "requested": True,
             "feasibility_status": "Available",
             "plan_status": status,
@@ -176,7 +196,7 @@ def _write_plan(path: Path, status: str = "Ready", include_pai: bool = True) -> 
         "source_report": str(path.parent / "dataset_report.json"),
         "processing_executed": False,
         "output_folder": str(path.parent / "outputs"),
-        "parameters": {"grid_resolution": 1.0, "chm_interpolation": "nearest", "chm_interpolate_valid_region": True, "chm_clean_edges": True, "chm_output_filename": "job_chm.tif"},
+        "parameters": {"grid_resolution": 1.0, "chm_interpolation": "nearest", "chm_interpolate_valid_region": True, "chm_clean_edges": True, "chm_output_filename": filename, "canopy_cover_height_threshold": 2.0, "canopy_cover_output_filename": filename},
         "products": products,
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -191,6 +211,18 @@ class _FakeAdapter:
             output_path=request.output_path,
             spatial_extent=(0.0, 1.0, 0.0, 1.0),
             grid_resolution=request.grid_resolution,
+            crs=request.crs,
+        )
+
+
+    def create_canopy_cover(self, request):  # type: ignore[no-untyped-def]
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        request.output_path.write_text("fake canopy cover", encoding="utf-8")
+        return CanopyCoverResult(
+            output_path=request.output_path,
+            spatial_extent=(0.0, 1.0, 0.0, 1.0),
+            grid_resolution=request.grid_resolution,
+            canopy_height_threshold=request.canopy_height_threshold,
             crs=request.crs,
         )
 

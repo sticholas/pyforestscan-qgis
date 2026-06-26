@@ -61,6 +61,7 @@ def explorer_payload() -> dict[str, object]:
             {"product": "chm", "label": "Canopy Height Model (CHM)", "status": "Available", "reason": "Ready."},
             {"product": "pai", "label": "Plant Area Index (PAI)", "status": "Warning", "reason": "Review bins."},
             {"product": "pad", "label": "Plant Area Density (PAD)", "status": "Unavailable", "reason": "Missing prerequisite."},
+            {"product": "canopy_cover", "label": "Canopy Cover", "status": "Available", "reason": "Ready."},
         ],
         "recommended_actions": [],
     }
@@ -127,6 +128,38 @@ class ProductPlannerTests(unittest.TestCase):
             self.assertTrue(payload["parameters"]["chm_clean_edges"])
             self.assertEqual("plot_chm.tif", payload["parameters"]["chm_output_filename"])
             self.assertEqual(root / "products" / "plot_chm.tif", report.products[0].outputs[0].path)
+
+
+    def test_canopy_cover_parameters_are_serialized_and_drive_output_name(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = ProductPlannerRequest(
+                explorer_report_path=root / "dataset_explorer.json",
+                requested_products=(ProductType.CANOPY_COVER,),
+                output_folder=root / "products",
+                grid_resolution=1.0,
+                canopy_cover_height_threshold=4.5,
+                canopy_cover_output_filename="plot_cover.tif",
+            )
+
+            report = build_product_plan(explorer_payload(), request)
+            payload = json.loads(render_plan_json(report))
+
+            self.assertEqual(4.5, payload["parameters"]["canopy_cover_height_threshold"])
+            self.assertEqual("plot_cover.tif", payload["parameters"]["canopy_cover_output_filename"])
+            self.assertEqual(root / "products" / "plot_cover.tif", report.products[0].outputs[0].path)
+
+    def test_canopy_cover_output_filename_must_be_simple_geotiff_name(self) -> None:
+        request = ProductPlannerRequest(
+            explorer_report_path=Path("report.json"),
+            requested_products=(ProductType.CANOPY_COVER,),
+            output_folder=Path("out"),
+            grid_resolution=1.0,
+            canopy_cover_output_filename="nested/cover.tif",
+        )
+
+        with self.assertRaises(ProductPlanError):
+            build_product_plan(explorer_payload(), request)
 
     def test_chm_output_filename_must_be_simple_geotiff_name(self) -> None:
         request = ProductPlannerRequest(

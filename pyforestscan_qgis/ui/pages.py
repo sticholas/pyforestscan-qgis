@@ -310,6 +310,11 @@ class PlanningPage(MissionPage):
         self.chm_valid_region_check = QCheckBox("Interpolate valid region")
         self.chm_clean_edges_check = QCheckBox("Clean edges")
         self.chm_output_filename_edit = QLineEdit("chm.tif")
+        self.canopy_cover_threshold_spin = QDoubleSpinBox()
+        self.canopy_cover_threshold_spin.setDecimals(3)
+        self.canopy_cover_threshold_spin.setMinimum(0.0)
+        self.canopy_cover_threshold_spin.setValue(2.0)
+        self.canopy_cover_output_filename_edit = QLineEdit("canopy_cover.tif")
         self.output_folder_edit = QLineEdit()
         folder_button = QPushButton("Browse")
         folder_button.clicked.connect(self.browse_folder)
@@ -322,6 +327,8 @@ class PlanningPage(MissionPage):
         form.addRow("CHM valid region", self.chm_valid_region_check)
         form.addRow("CHM clean edges", self.chm_clean_edges_check)
         form.addRow("CHM output filename", self.chm_output_filename_edit)
+        form.addRow("Canopy cover threshold", self.canopy_cover_threshold_spin)
+        form.addRow("Canopy cover output", self.canopy_cover_output_filename_edit)
         form.addRow("Output folder", folder_row)
         controls.addLayout(form)
         build = QPushButton("Build Plan")
@@ -365,6 +372,8 @@ class PlanningPage(MissionPage):
             chm_interpolate_valid_region=self.chm_valid_region_check.isChecked(),
             chm_clean_edges=self.chm_clean_edges_check.isChecked(),
             chm_output_filename=self.chm_output_filename_edit.text().strip() or "chm.tif",
+            canopy_cover_height_threshold=self.canopy_cover_threshold_spin.value(),
+            canopy_cover_output_filename=self.canopy_cover_output_filename_edit.text().strip() or "canopy_cover.tif",
             title="Mission Control Product Plan",
         )
         try:
@@ -396,6 +405,8 @@ class PlanningPage(MissionPage):
             f"CHM valid region interpolation: {plan.chm_interpolate_valid_region}",
             f"CHM clean edges: {plan.chm_clean_edges}",
             f"CHM output: {plan.output_folder / plan.chm_output_filename}",
+            f"Canopy cover threshold: {plan.canopy_cover_height_threshold}",
+            f"Canopy cover output: {plan.output_folder / plan.canopy_cover_output_filename}",
             plan_path,
             "",
         ]
@@ -416,17 +427,17 @@ class ProcessingPage(MissionPage):
         self.current_job_id: str | None = None
         self.run_context: RunContext | None = None
 
-        controls = self.add_section("CHM Job")
+        controls = self.add_section("Product Job")
         self.current_plan_label = QLabel("Current product plan: none")
         self.current_output_label = QLabel("Run folder: none")
         controls.addWidget(self.current_plan_label)
         controls.addWidget(self.current_output_label)
 
-        self.job_title_edit = QLineEdit("Mission Control CHM Job")
+        self.job_title_edit = QLineEdit("Mission Control Product Job")
         controls.addWidget(self.job_title_edit)
 
         button_row = QHBoxLayout()
-        self.start_button = QPushButton("Start CHM Job")
+        self.start_button = QPushButton("Start Processing Job")
         self.start_button.clicked.connect(self.start_job)
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.clicked.connect(self.cancel_current_job)
@@ -473,7 +484,7 @@ class ProcessingPage(MissionPage):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         status.addWidget(self.log_text)
-        status.addWidget(QLabel("CHM processing is enabled for this spike. Other products remain future pipeline stages."))
+        status.addWidget(QLabel("CHM and Canopy Cover processing are enabled. PAI, PAD, FHD, and Rumple remain future stages."))
 
     def set_run_context(self, context: RunContext | None) -> None:
         """Use the active Mission Control run context."""
@@ -500,15 +511,15 @@ class ProcessingPage(MissionPage):
             self.job_output_folder_edit.setText(path)
 
     def start_job(self) -> None:
-        """Start a CHM processing job from the active Product Planner report."""
+        """Start a processing job from the active Product Planner report."""
         plan_path = self.product_plan_edit.text().strip()
         output_folder = self.job_output_folder_edit.text().strip()
         summary_path = self.run_context.job_summary_json if self.run_context is not None else None
         if not plan_path:
-            self.log_text.setPlainText("Build a product plan before starting a CHM job.")
+            self.log_text.setPlainText("Build a product plan before starting a processing job.")
             return
         if not Path(plan_path).exists():
-            self.log_text.setPlainText("Build a product plan before starting a CHM job.")
+            self.log_text.setPlainText("Build a product plan before starting a processing job.")
             return
         if not output_folder:
             self.log_text.setPlainText("Choose an output folder for the job summary JSON.")
@@ -520,7 +531,7 @@ class ProcessingPage(MissionPage):
             job = self.job_manager.run_pipeline(
                 Path(plan_path),
                 Path(output_folder),
-                self.job_title_edit.text().strip() or "Mission Control CHM Job",
+                self.job_title_edit.text().strip() or "Mission Control Product Job",
                 summary_path=summary_path,
             )
         except JobExecutionError as exc:
@@ -633,7 +644,8 @@ class ResultsPage(MissionPage):
             text = str(path)
             if path.suffix.lower() in {".tif", ".tiff"} and path not in self._friendly_paths:
                 self._friendly_paths.append(path)
-                self.friendly_links.addItem(f"CHM Output: {path}")
+                label = "Canopy Cover Output" if "canopy_cover" in path.stem else "CHM Output"
+                self.friendly_links.addItem(f"{label}: {path}")
             if not any(self.previous_reports.item(index).text().endswith(text) for index in range(self.previous_reports.count())):
                 self.previous_reports.addItem(text)
                 self._advanced_paths.append(path)

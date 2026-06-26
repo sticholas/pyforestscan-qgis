@@ -9,6 +9,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Canopy Cover processing spike with adapter-backed PyForestScan canopy cover generation, planning controls, pipeline execution, QGIS result loading, tests, and manual QA guide.
 - CHM production workflow stabilization with Mission Control parameters, stronger validation, job summary parameters, friendly CHM result links, best-effort QGIS raster polish, and QA documentation.
 - CHM processing spike: adapter-backed PyForestScan CHM generation, CHM pipeline execution, Mission Control job launch, CHM result recording, and manual QGIS testing guide.
 - Processing pipeline framework with validation-only registered product pipelines and Mission Control stage visualization.

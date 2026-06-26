@@ -159,6 +159,30 @@ class ChmResult:
 
 
 @dataclass(frozen=True)
+class CanopyCoverRequest:
+    """Adapter request for canopy cover generation."""
+
+    input_path: Path | str
+    output_path: Path
+    grid_resolution: float
+    canopy_height_threshold: float
+    crs: str
+    voxel_height: float = 1.0
+    extinction_coefficient: float = 0.5
+
+
+@dataclass(frozen=True)
+class CanopyCoverResult:
+    """Adapter result for a generated canopy cover GeoTIFF."""
+
+    output_path: Path
+    spatial_extent: tuple[float, float, float, float]
+    grid_resolution: float
+    canopy_height_threshold: float
+    crs: str
+
+
+@dataclass(frozen=True)
 class ProductRequest:
     """Future product request placeholder for adapter architecture."""
 

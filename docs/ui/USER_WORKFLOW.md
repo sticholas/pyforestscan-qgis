@@ -67,5 +67,5 @@ The run folder is not a project file. Phase 8C intentionally does not require a
 `.pfs` project file or persistent project database. It is a simple execution
 workspace for one Mission Control run.
 
-Mission Control can create `outputs/chm.tif` for CHM-only jobs. PAI, PAD, FHD,
-canopy cover, rumple, vector, and point-cloud outputs remain future products.
+Mission Control can create CHM and Canopy Cover GeoTIFFs in `outputs/`. PAI,
+PAD, FHD, rumple, vector, and point-cloud outputs remain future products.

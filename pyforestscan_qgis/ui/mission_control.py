@@ -165,27 +165,28 @@ class MissionControlDock(QDockWidget):
     def _load_job_outputs(self, job: JobRecord) -> None:
         """Best-effort load of generated raster outputs into QGIS."""
         for result in job.results:
-            if result.result_type != "chm_geotiff" or result.path in self.loaded_result_paths:
+            if result.result_type not in {"chm_geotiff", "canopy_cover_geotiff"} or result.path in self.loaded_result_paths:
                 continue
             if not result.path.exists():
                 continue
-            layer_name = self._layer_name(result.path)
+            layer_name = self._layer_name(result.path, result.result_type)
             try:
                 layer = self.iface.addRasterLayer(str(result.path), layer_name)
             except Exception:  # noqa: BLE001 - UI layer loading must not break job completion.
                 layer = None
             if layer is not None:
-                self._polish_chm_layer(layer)
+                self._polish_raster_layer(layer, result.result_type)
                 self.loaded_result_paths.add(result.path)
 
-    def _layer_name(self, path: Path) -> str:
-        """Return a friendly layer name for generated CHM rasters."""
+    def _layer_name(self, path: Path, result_type: str) -> str:
+        """Return a friendly layer name for generated rasters."""
+        product = "Canopy Cover" if result_type == "canopy_cover_geotiff" else "CHM"
         if self.state.active_run is not None:
-            return f"CHM - {self.state.active_run.lidar_path.stem} - {self.state.active_run.run_folder.name}"
-        return f"CHM - {path.stem}"
+            return f"{product} - {self.state.active_run.lidar_path.stem} - {self.state.active_run.run_folder.name}"
+        return f"{product} - {path.stem}"
 
-    def _polish_chm_layer(self, layer: object) -> None:
-        """Best-effort CHM statistics and raster styling."""
+    def _polish_raster_layer(self, layer: object, result_type: str) -> None:
+        """Best-effort generated raster statistics and styling."""
         try:
             provider = layer.dataProvider()
             provider.bandStatistics(1)
@@ -200,9 +201,7 @@ class MissionControlDock(QDockWidget):
             ramp.setColorRampType(QgsColorRampShader.Interpolated)
             ramp.setColorRampItemList(
                 [
-                    QgsColorRampShader.ColorRampItem(0.0, QColor("#f7fcf0"), "Low"),
-                    QgsColorRampShader.ColorRampItem(10.0, QColor("#74c476"), "Medium"),
-                    QgsColorRampShader.ColorRampItem(30.0, QColor("#00441b"), "High"),
+                    *self._raster_ramp_items(result_type, QColor, QgsColorRampShader),
                 ]
             )
             shader.setRasterShaderFunction(ramp)
@@ -211,6 +210,21 @@ class MissionControlDock(QDockWidget):
             layer.triggerRepaint()
         except Exception:  # noqa: BLE001 - styling should never break layer loading.
             return
+
+
+    def _raster_ramp_items(self, result_type: str, qcolor: object, shader_class: object) -> list[object]:
+        """Return simple color ramp items for generated raster products."""
+        if result_type == "canopy_cover_geotiff":
+            return [
+                shader_class.ColorRampItem(0.0, qcolor("#f7fbff"), "Low"),
+                shader_class.ColorRampItem(0.5, qcolor("#6baed6"), "Medium"),
+                shader_class.ColorRampItem(1.0, qcolor("#08306b"), "High"),
+            ]
+        return [
+            shader_class.ColorRampItem(0.0, qcolor("#f7fcf0"), "Low"),
+            shader_class.ColorRampItem(10.0, qcolor("#74c476"), "Medium"),
+            shader_class.ColorRampItem(30.0, qcolor("#00441b"), "High"),
+        ]
 
     def _refresh_home(self) -> None:
         self.home_page.set_versions(self._pyforestscan_version())
