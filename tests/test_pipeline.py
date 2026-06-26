@@ -10,7 +10,7 @@ from pathlib import Path
 from pyforestscan_qgis.core.pipeline import build_default_pipeline_registry, registered_product_ids
 from pyforestscan_qgis.core.pipeline_context import load_pipeline_contexts
 from pyforestscan_qgis.core.pipeline_results import PipelineStepStatus
-from pyforestscan_qgis.core.types import CanopyCoverResult
+from pyforestscan_qgis.core.types import CanopyCoverResult, PadResult, PaiResult
 from pyforestscan_qgis.core.pipeline_steps import PipelineStepKind
 
 
@@ -132,13 +132,51 @@ class PipelineFrameworkTests(unittest.TestCase):
             self.assertEqual((root / "outputs" / "custom_cover.tif",), result.output_paths)
             self.assertEqual(4.0, adapter.request.canopy_height_threshold)
 
-    def test_non_chm_pipeline_execution_remains_placeholder(self) -> None:
-        """Non-CHM product pipelines do not execute scientific stages."""
+    def test_pad_pipeline_executes_with_adapter(self) -> None:
+        """The PAD pipeline writes the configured multi-band GeoTIFF artifact."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            product_plan = _write_product_plan(root / "product_plan.json", root / "missing.json", product="pai", label="Plant Area Index (PAI)")
+            dataset_report = root / "dataset_report.json"
+            dataset_report.write_text(json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8")
+            product_plan = _write_product_plan(root / "product_plan.json", dataset_report, product="pad", label="Plant Area Density (PAD)")
+            payload = json.loads(product_plan.read_text(encoding="utf-8"))
+            payload["parameters"].update({"height_bin_size": 2.5, "pad_output_filename": "custom_pad.tif"})
+            product_plan.write_text(json.dumps(payload), encoding="utf-8")
             context = load_pipeline_contexts(product_plan, root / "logs")[0]
-            pipeline = build_default_pipeline_registry().get("pai")
+            adapter = _FakePadPaiAdapter()
+
+            result = build_default_pipeline_registry().get("pad").run(context, adapter=adapter, execute_products=True)
+
+            self.assertTrue(result.passed)
+            self.assertEqual((root / "outputs" / "custom_pad.tif",), result.output_paths)
+            self.assertEqual(2.5, adapter.pad_request.voxel_height)
+
+    def test_pai_pipeline_executes_with_adapter(self) -> None:
+        """The PAI pipeline writes the configured GeoTIFF artifact."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            dataset_report = root / "dataset_report.json"
+            dataset_report.write_text(json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8")
+            product_plan = _write_product_plan(root / "product_plan.json", dataset_report, product="pai", label="Plant Area Index (PAI)")
+            payload = json.loads(product_plan.read_text(encoding="utf-8"))
+            payload["parameters"].update({"height_bin_size": 3.0, "pai_output_filename": "custom_pai.tif"})
+            product_plan.write_text(json.dumps(payload), encoding="utf-8")
+            context = load_pipeline_contexts(product_plan, root / "logs")[0]
+            adapter = _FakePadPaiAdapter()
+
+            result = build_default_pipeline_registry().get("pai").run(context, adapter=adapter, execute_products=True)
+
+            self.assertTrue(result.passed)
+            self.assertEqual((root / "outputs" / "custom_pai.tif",), result.output_paths)
+            self.assertEqual(3.0, adapter.pai_request.voxel_height)
+
+    def test_fhd_pipeline_execution_remains_placeholder(self) -> None:
+        """Products outside the implemented set still skip scientific stages."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            product_plan = _write_product_plan(root / "product_plan.json", root / "missing.json", product="fhd", label="Foliage Height Diversity (FHD)")
+            context = load_pipeline_contexts(product_plan, root / "logs")[0]
+            pipeline = build_default_pipeline_registry().get("fhd")
 
             result = pipeline.run(context, adapter=_FakeChmAdapter(), execute_products=True)
 
@@ -154,7 +192,7 @@ def _write_product_plan(path: Path, dataset_report: Path, product: str = "chm", 
         "source_report": str(dataset_report),
         "processing_executed": False,
         "output_folder": str(path.parent / "outputs"),
-        "parameters": {"grid_resolution": 1.5, "chm_interpolation": "linear", "chm_interpolate_valid_region": False, "chm_clean_edges": False, "chm_output_filename": "chm.tif", "canopy_cover_height_threshold": 2.0, "canopy_cover_output_filename": "canopy_cover.tif"},
+        "parameters": {"grid_resolution": 1.5, "height_bin_size": 1.0, "chm_interpolation": "linear", "chm_interpolate_valid_region": False, "chm_clean_edges": False, "chm_output_filename": "chm.tif", "pad_output_filename": "pad.tif", "pai_output_filename": "pai.tif", "canopy_cover_height_threshold": 2.0, "canopy_cover_output_filename": "canopy_cover.tif"},
         "products": [
             {
                 "product": product,
@@ -201,6 +239,36 @@ class _FakeCanopyCoverAdapter:
             spatial_extent=(0.0, 1.0, 0.0, 1.0),
             grid_resolution=request.grid_resolution,
             canopy_height_threshold=request.canopy_height_threshold,
+            crs=request.crs,
+        )
+
+
+class _FakePadPaiAdapter:
+    pad_request = None
+    pai_request = None
+
+    def create_pad(self, request):  # type: ignore[no-untyped-def]
+        self.pad_request = request
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        request.output_path.write_text("fake pad", encoding="utf-8")
+        return PadResult(
+            output_path=request.output_path,
+            spatial_extent=(0.0, 1.0, 0.0, 1.0),
+            grid_resolution=request.grid_resolution,
+            voxel_height=request.voxel_height,
+            band_count=4,
+            crs=request.crs,
+        )
+
+    def create_pai(self, request):  # type: ignore[no-untyped-def]
+        self.pai_request = request
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        request.output_path.write_text("fake pai", encoding="utf-8")
+        return PaiResult(
+            output_path=request.output_path,
+            spatial_extent=(0.0, 1.0, 0.0, 1.0),
+            grid_resolution=request.grid_resolution,
+            voxel_height=request.voxel_height,
             crs=request.crs,
         )
 

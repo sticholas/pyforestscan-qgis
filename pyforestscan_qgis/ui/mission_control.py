@@ -165,7 +165,7 @@ class MissionControlDock(QDockWidget):
     def _load_job_outputs(self, job: JobRecord) -> None:
         """Best-effort load of generated raster outputs into QGIS."""
         for result in job.results:
-            if result.result_type not in {"chm_geotiff", "canopy_cover_geotiff"} or result.path in self.loaded_result_paths:
+            if result.result_type not in {"chm_geotiff", "canopy_cover_geotiff", "pad_geotiff", "pai_geotiff"} or result.path in self.loaded_result_paths:
                 continue
             if not result.path.exists():
                 continue
@@ -180,7 +180,11 @@ class MissionControlDock(QDockWidget):
 
     def _layer_name(self, path: Path, result_type: str) -> str:
         """Return a friendly layer name for generated rasters."""
-        product = "Canopy Cover" if result_type == "canopy_cover_geotiff" else "CHM"
+        product = {
+            "canopy_cover_geotiff": "Canopy Cover",
+            "pad_geotiff": "PAD",
+            "pai_geotiff": "PAI",
+        }.get(result_type, "CHM")
         if self.state.active_run is not None:
             return f"{product} - {self.state.active_run.lidar_path.stem} - {self.state.active_run.run_folder.name}"
         return f"{product} - {path.stem}"
@@ -219,6 +223,18 @@ class MissionControlDock(QDockWidget):
                 shader_class.ColorRampItem(0.0, qcolor("#f7fbff"), "Low"),
                 shader_class.ColorRampItem(0.5, qcolor("#6baed6"), "Medium"),
                 shader_class.ColorRampItem(1.0, qcolor("#08306b"), "High"),
+            ]
+        if result_type == "pai_geotiff":
+            return [
+                shader_class.ColorRampItem(0.0, qcolor("#fef3c7"), "Low"),
+                shader_class.ColorRampItem(2.0, qcolor("#65a30d"), "Medium"),
+                shader_class.ColorRampItem(6.0, qcolor("#14532d"), "High"),
+            ]
+        if result_type == "pad_geotiff":
+            return [
+                shader_class.ColorRampItem(0.0, qcolor("#f8fafc"), "Low"),
+                shader_class.ColorRampItem(0.5, qcolor("#22c55e"), "Medium"),
+                shader_class.ColorRampItem(2.0, qcolor("#166534"), "High"),
             ]
         return [
             shader_class.ColorRampItem(0.0, qcolor("#f7fcf0"), "Low"),

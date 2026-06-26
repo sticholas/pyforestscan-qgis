@@ -72,4 +72,4 @@ flowchart LR
 Mission Control coordinates current workflows only. Dataset footprint preview uses
 QGIS APIs only in the UI layer; core adapter and report code remain QGIS-free.
 The run folder is not a required `.pfs` project file. The Processing page runs the active Product
-Planner JSON through JobManager and the pipeline registry. CHM and Canopy Cover are implemented through the adapter; PAI, PAD, FHD, and rumple remain future products.
+Planner JSON through JobManager and the pipeline registry. CHM, Canopy Cover, PAD, and PAI are implemented through the adapter; FHD and rumple remain future products.

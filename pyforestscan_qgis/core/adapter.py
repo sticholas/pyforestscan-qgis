@@ -1,8 +1,8 @@
 """Architecture-only adapter boundary around PyForestScan and PDAL.
 
 This module validates and inspects datasets, exposes typed results, and
-centralizes PyForestScan imports behind a plugin-owned API. CHM and canopy cover
-are implemented; PAI, PAD, FHD, and rumple remain unimplemented.
+centralizes PyForestScan imports behind a plugin-owned API. CHM, canopy cover,
+PAD, and PAI are implemented; FHD and rumple remain unimplemented.
 """
 
 from __future__ import annotations
@@ -31,6 +31,10 @@ from .types import (
     LogContextItem,
     LogLevel,
     LogRecord,
+    PadRequest,
+    PadResult,
+    PaiRequest,
+    PaiResult,
     ProductRequest,
     ProductResult,
     ProductType,
@@ -281,6 +285,107 @@ class PyForestScanAdapter:
             raise ProcessingError(f"CHM generation failed: {exc}") from exc
 
 
+
+    def create_pad(self, request: PadRequest) -> PadResult:
+        """Generate PAD as a height-binned multi-band GeoTIFF."""
+        if request.grid_resolution <= 0:
+            raise ProcessingError("PAD grid resolution must be greater than zero.")
+        if request.voxel_height <= 0:
+            raise ProcessingError("PAD voxel height must be greater than zero.")
+        if request.beer_lambert_constant <= 0:
+            raise ProcessingError("PAD Beer-Lambert constant must be greater than zero.")
+        if not request.crs:
+            raise ProcessingError("PAD generation requires a dataset CRS.")
+        output_path = Path(request.output_path)
+        _validate_output_path(output_path)
+        self._progress.start("Reading lidar for PAD")
+        self._log(LogLevel.INFO, "Starting PAD generation", input=str(request.input_path), output=str(output_path))
+        try:
+            pyforestscan = _import_required("pyforestscan", ProcessingError)
+            point_array = self._read_hag_point_array(request.input_path, request.crs, "PAD")
+            voxel_returns, extent = pyforestscan.assign_voxels(
+                point_array,
+                (request.grid_resolution, request.grid_resolution, request.voxel_height),
+            )
+            self._progress.update(50, "Voxel returns calculated")
+            pad = pyforestscan.calculate_pad(
+                voxel_returns,
+                voxel_height=request.voxel_height,
+                beer_lambert_constant=request.beer_lambert_constant,
+                drop_ground=request.drop_ground,
+            )
+            self._progress.update(75, "PAD array calculated")
+            _write_multiband_geotiff(pad, output_path, request.crs, extent)
+            _validate_created_output(output_path)
+            self._progress.complete("PAD GeoTIFF created")
+            self._log(LogLevel.INFO, "PAD generation complete", output=str(output_path), bands=pad.shape[2])
+            return PadResult(
+                output_path=output_path,
+                spatial_extent=tuple(float(value) for value in extent),
+                grid_resolution=request.grid_resolution,
+                voxel_height=request.voxel_height,
+                band_count=int(pad.shape[2]),
+                crs=request.crs,
+            )
+        except ProcessingError:
+            self._progress.fail("PAD generation failed")
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            self._progress.fail("PAD generation failed")
+            raise ProcessingError(f"PAD generation failed: {exc}") from exc
+
+    def create_pai(self, request: PaiRequest) -> PaiResult:
+        """Generate a PAI GeoTIFF through PyForestScan."""
+        if request.grid_resolution <= 0:
+            raise ProcessingError("PAI grid resolution must be greater than zero.")
+        if request.voxel_height <= 0:
+            raise ProcessingError("PAI voxel height must be greater than zero.")
+        if request.min_height < 0:
+            raise ProcessingError("PAI minimum height must be zero or greater.")
+        if request.max_height is not None and request.max_height <= request.min_height:
+            raise ProcessingError("PAI maximum height must be greater than minimum height.")
+        if not request.crs:
+            raise ProcessingError("PAI generation requires a dataset CRS.")
+        output_path = Path(request.output_path)
+        _validate_output_path(output_path)
+        self._progress.start("Reading lidar for PAI")
+        self._log(LogLevel.INFO, "Starting PAI generation", input=str(request.input_path), output=str(output_path))
+        try:
+            pyforestscan = _import_required("pyforestscan", ProcessingError)
+            handlers = _import_required("pyforestscan.handlers", ProcessingError)
+            point_array = self._read_hag_point_array(request.input_path, request.crs, "PAI")
+            voxel_returns, extent = pyforestscan.assign_voxels(
+                point_array,
+                (request.grid_resolution, request.grid_resolution, request.voxel_height),
+            )
+            self._progress.update(45, "Voxel returns calculated")
+            pad = pyforestscan.calculate_pad(voxel_returns, voxel_height=request.voxel_height)
+            self._progress.update(65, "Internal PAD prerequisite calculated")
+            pai = pyforestscan.calculate_pai(
+                pad,
+                request.voxel_height,
+                min_height=request.min_height,
+                max_height=request.max_height,
+            )
+            self._progress.update(80, "PAI array calculated")
+            handlers.create_geotiff(pai, str(output_path), request.crs, extent)
+            _validate_created_output(output_path)
+            self._progress.complete("PAI GeoTIFF created")
+            self._log(LogLevel.INFO, "PAI generation complete", output=str(output_path))
+            return PaiResult(
+                output_path=output_path,
+                spatial_extent=tuple(float(value) for value in extent),
+                grid_resolution=request.grid_resolution,
+                voxel_height=request.voxel_height,
+                crs=request.crs,
+            )
+        except ProcessingError:
+            self._progress.fail("PAI generation failed")
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            self._progress.fail("PAI generation failed")
+            raise ProcessingError(f"PAI generation failed: {exc}") from exc
+
     def create_canopy_cover(self, request: CanopyCoverRequest) -> CanopyCoverResult:
         """Generate a canopy cover GeoTIFF through PyForestScan.
 
@@ -304,16 +409,7 @@ class PyForestScanAdapter:
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, hag=True)
-            if point_cloud is None:
-                raise ProcessingError("PyForestScan returned no point data for canopy cover generation.")
-            self._progress.update(25, "Point cloud loaded")
-            point_array = _merge_point_cloud_arrays(point_cloud)
-            names = getattr(point_array.dtype, "names", ()) or ()
-            required = {"X", "Y", "HeightAboveGround"}
-            missing = sorted(required.difference(names))
-            if missing:
-                raise ProcessingError(f"Canopy cover input is missing required dimensions: {', '.join(missing)}")
+            point_array = self._read_hag_point_array(request.input_path, request.crs, "canopy cover")
             voxel_returns, extent = pyforestscan.assign_voxels(
                 point_array,
                 (request.grid_resolution, request.grid_resolution, request.voxel_height),
@@ -345,6 +441,22 @@ class PyForestScanAdapter:
         except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
             self._progress.fail("Canopy cover generation failed")
             raise ProcessingError(f"Canopy cover generation failed: {exc}") from exc
+
+
+    def _read_hag_point_array(self, input_path: Path | str, crs: str, product_label: str) -> object:
+        """Read lidar with HeightAboveGround and return one structured point array."""
+        handlers = _import_required("pyforestscan.handlers", ProcessingError)
+        point_cloud = handlers.read_lidar(str(input_path), crs, hag=True)
+        if point_cloud is None:
+            raise ProcessingError(f"PyForestScan returned no point data for {product_label} generation.")
+        self._progress.update(25, "Point cloud loaded")
+        point_array = _merge_point_cloud_arrays(point_cloud)
+        names = getattr(point_array.dtype, "names", ()) or ()
+        required = {"X", "Y", "HeightAboveGround"}
+        missing = sorted(required.difference(names))
+        if missing:
+            raise ProcessingError(f"{product_label} input is missing required dimensions: {', '.join(missing)}")
+        return point_array
 
     def clip_dataset(self, *args: object, **kwargs: object) -> None:
         """Placeholder for future adapter-managed clipping."""
@@ -460,18 +572,52 @@ class PyForestScanAdapter:
             self._log_sink(LogRecord(level=level, message=message, context=typed_context))
 
 
+def _write_multiband_geotiff(layer: object, output_path: Path, crs: str, spatial_extent: object, nodata: float = -9999.0) -> None:
+    """Write a 3D X/Y/Z PAD array as a multi-band GeoTIFF."""
+    rasterio = _import_required("rasterio", ProcessingError)
+    numpy = _import_required("numpy", ProcessingError)
+    from rasterio.transform import from_bounds
+
+    if not hasattr(layer, "shape") or len(layer.shape) != 3:
+        raise ProcessingError(f"PAD output must be a 3D array; got shape {getattr(layer, 'shape', None)}")
+    if layer.shape[0] <= 0 or layer.shape[1] <= 0 or layer.shape[2] <= 0:
+        raise ProcessingError(f"PAD output has invalid dimensions: {layer.shape}")
+    x_min, x_max, y_min, y_max = spatial_extent
+    if x_max <= x_min or y_max <= y_min:
+        raise ProcessingError(f"PAD output has invalid spatial extent: {spatial_extent}")
+    data = numpy.nan_to_num(layer, nan=nodata)
+    height = int(data.shape[1])
+    width = int(data.shape[0])
+    bands = int(data.shape[2])
+    transform = from_bounds(x_min, y_min, x_max, y_max, width, height)
+    with rasterio.open(
+        output_path,
+        "w",
+        driver="GTiff",
+        height=height,
+        width=width,
+        count=bands,
+        dtype=data.dtype.name,
+        crs=crs,
+        transform=transform,
+        nodata=nodata,
+    ) as dataset:
+        for band_index in range(bands):
+            dataset.write(data[:, :, band_index].T, band_index + 1)
+
+
 def _validate_output_path(output_path: Path) -> None:
-    """Validate that a CHM output path can be written."""
+    """Validate that a GeoTIFF output path can be written."""
     if output_path.suffix.lower() not in {".tif", ".tiff"}:
-        raise ProcessingError("CHM output filename must end with .tif or .tiff.")
+        raise ProcessingError("Output filename must end with .tif or .tiff.")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if not output_path.parent.is_dir():
-        raise ProcessingError(f"CHM output folder is not available: {output_path.parent}")
+        raise ProcessingError(f"Output folder is not available: {output_path.parent}")
     probe = output_path.parent / f".{output_path.name}.write-test"
     try:
         probe.write_text("", encoding="utf-8")
     except OSError as exc:
-        raise ProcessingError(f"CHM output folder is not writable: {output_path.parent}") from exc
+        raise ProcessingError(f"Output folder is not writable: {output_path.parent}") from exc
     finally:
         try:
             probe.unlink()
@@ -482,12 +628,12 @@ def _validate_output_path(output_path: Path) -> None:
 def _validate_created_output(output_path: Path) -> None:
     """Require the PyForestScan GeoTIFF writer to create a usable file."""
     if not output_path.exists():
-        raise ProcessingError(f"CHM GeoTIFF was not created: {output_path}")
+        raise ProcessingError(f"GeoTIFF was not created: {output_path}")
     try:
         if output_path.stat().st_size <= 0:
-            raise ProcessingError(f"CHM GeoTIFF is empty: {output_path}")
+            raise ProcessingError(f"GeoTIFF is empty: {output_path}")
     except OSError as exc:
-        raise ProcessingError(f"CHM GeoTIFF could not be inspected: {output_path}") from exc
+        raise ProcessingError(f"GeoTIFF could not be inspected: {output_path}") from exc
 
 
 def _merge_point_cloud_arrays(point_cloud: object) -> object:

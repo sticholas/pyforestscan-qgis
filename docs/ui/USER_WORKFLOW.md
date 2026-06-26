@@ -56,6 +56,9 @@ reports/product_plan.html
 tables/product_plan.csv
 logs/job_summary.json
 outputs/chm.tif
+outputs/canopy_cover.tif
+outputs/pad.tif
+outputs/pai.tif
 ```
 
 The JSON and CSV files remain available in Advanced details, but the normal UI
@@ -67,5 +70,5 @@ The run folder is not a project file. Phase 8C intentionally does not require a
 `.pfs` project file or persistent project database. It is a simple execution
 workspace for one Mission Control run.
 
-Mission Control can create CHM and Canopy Cover GeoTIFFs in `outputs/`. PAI,
-PAD, FHD, rumple, vector, and point-cloud outputs remain future products.
+Mission Control can create CHM, Canopy Cover, PAD, and PAI GeoTIFFs in
+`outputs/`. FHD, rumple, vector, and point-cloud outputs remain future products.

@@ -205,7 +205,7 @@ The job validates the plan, runs implemented product pipelines through the
 adapter, writes selected GeoTIFF outputs in `outputs/`, and writes
 `logs/job_summary.json`.
 
-CHM and Canopy Cover are implemented. PAI, PAD, FHD, and rumple remain future
+CHM, Canopy Cover, PAD, and PAI are implemented. FHD and rumple remain future
 products and do not create rasters.
 
 ### Workflow
@@ -244,11 +244,27 @@ flowchart TD
 - Output filename must be a simple `.tif` or `.tiff` name.
 - Vertical voxel height is fixed at `1.0` meter in this spike.
 
+### PAD and PAI Parameters
+
+- Grid resolution must be greater than zero.
+- Height bin size must be greater than zero and controls the vertical voxel
+  height used by PyForestScan.
+- PAD output filename must be a simple `.tif` or `.tiff` name. PAD is written as
+  a multi-band GeoTIFF, with one band per height bin.
+- PAI output filename must be a simple `.tif` or `.tiff` name. PAI is written as
+  a single-band GeoTIFF.
+
 ### Canopy Cover QA
 
 After a successful run, confirm the canopy cover raster opens in QGIS, values are
 in the expected `0` to `1` range, CRS and extent align with the source dataset,
 and a higher height threshold does not unexpectedly increase canopy cover.
+
+### PAD and PAI QA
+
+After a successful run, confirm PAI opens as a single-band raster, PAD opens as a
+multi-band raster, CRS and extent align with the source dataset, values are
+non-negative, and changing height bin size changes PAD banding as expected.
 
 ### CHM QA
 
@@ -258,5 +274,6 @@ acceptable for the selected interpolation options.
 
 A successful summary includes `processing_executed: true`,
 `scientific_outputs_created: true`, selected product `parameters`, and GeoTIFF
-result paths such as `chm_geotiff` or `canopy_cover_geotiff`. Failed jobs still
+result paths such as `chm_geotiff`, `canopy_cover_geotiff`, `pad_geotiff`, or
+`pai_geotiff`. Failed jobs still
 write `logs/job_summary.json` with a clear error message.

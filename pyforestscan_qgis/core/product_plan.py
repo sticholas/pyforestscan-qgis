@@ -29,8 +29,8 @@ PRODUCT_LABELS = {
 
 PRODUCT_OUTPUTS = {
     ProductType.CHM: ("chm.tif", "GeoTIFF raster", "Canopy height raster."),
-    ProductType.PAI: ("pai.tif", "GeoTIFF raster", "Future plant area index raster."),
-    ProductType.PAD: ("pad_height_bins.tif", "GeoTIFF raster stack", "Future height-binned PAD stack."),
+    ProductType.PAI: ("pai.tif", "GeoTIFF raster", "Plant area index raster."),
+    ProductType.PAD: ("pad.tif", "Multi-band GeoTIFF raster", "Height-binned plant area density stack; one band per height bin."),
     ProductType.FHD: ("fhd.tif", "GeoTIFF raster", "Future foliage height diversity raster."),
     ProductType.CANOPY_COVER: ("canopy_cover.tif", "GeoTIFF raster", "Canopy cover raster."),
     ProductType.RUMPLE: ("rumple_summary.csv", "CSV table", "Future scalar rumple summary table."),
@@ -84,6 +84,8 @@ class ProductPlannerRequest:
     chm_interpolate_valid_region: bool = False
     chm_clean_edges: bool = False
     chm_output_filename: str = "chm.tif"
+    pad_output_filename: str = "pad.tif"
+    pai_output_filename: str = "pai.tif"
     canopy_cover_height_threshold: float = 2.0
     canopy_cover_output_filename: str = "canopy_cover.tif"
     title: str = "PyForestScan Product Planner"
@@ -105,6 +107,8 @@ class ProductPlannerReport:
     chm_interpolate_valid_region: bool
     chm_clean_edges: bool
     chm_output_filename: str
+    pad_output_filename: str
+    pai_output_filename: str
     canopy_cover_height_threshold: float
     canopy_cover_output_filename: str
     notes: str
@@ -149,6 +153,7 @@ def build_product_plan(
         raise ProductPlanError("Height bin size must be greater than zero when provided.")
     _validate_chm_parameters(request)
     _validate_canopy_cover_parameters(request)
+    _validate_pad_pai_parameters(request)
 
     feasibility = _feasibility_by_product(explorer_report)
     dataset_warnings = _dataset_warnings(explorer_report)
@@ -175,7 +180,7 @@ def build_product_plan(
         )
 
     products = tuple(
-        _build_plan_item(product, feasibility, request.output_folder, request.chm_output_filename, request.canopy_cover_output_filename)
+        _build_plan_item(product, feasibility, request.output_folder, request.chm_output_filename, request.canopy_cover_output_filename, request.pad_output_filename, request.pai_output_filename)
         for product in request.requested_products
     )
     next_actions = _next_actions(products, tuple(global_warnings))
@@ -192,6 +197,8 @@ def build_product_plan(
         chm_interpolate_valid_region=request.chm_interpolate_valid_region,
         chm_clean_edges=request.chm_clean_edges,
         chm_output_filename=request.chm_output_filename,
+        pad_output_filename=request.pad_output_filename,
+        pai_output_filename=request.pai_output_filename,
         canopy_cover_height_threshold=request.canopy_cover_height_threshold,
         canopy_cover_output_filename=request.canopy_cover_output_filename,
         notes=request.notes,
@@ -220,6 +227,8 @@ def plan_to_dict(report: ProductPlannerReport) -> dict[str, Any]:
             "chm_interpolate_valid_region": report.chm_interpolate_valid_region,
             "chm_clean_edges": report.chm_clean_edges,
             "chm_output_filename": report.chm_output_filename,
+            "pad_output_filename": report.pad_output_filename,
+            "pai_output_filename": report.pai_output_filename,
             "canopy_cover_height_threshold": report.canopy_cover_height_threshold,
             "canopy_cover_output_filename": report.canopy_cover_output_filename,
         },
@@ -290,6 +299,8 @@ def write_plan_csv(report: ProductPlannerReport, output_path: Path | str) -> Pat
         writer.writerow(("parameters", "", "chm_interpolate_valid_region", report.chm_interpolate_valid_region, "", ""))
         writer.writerow(("parameters", "", "chm_clean_edges", report.chm_clean_edges, "", ""))
         writer.writerow(("parameters", "", "chm_output_filename", report.chm_output_filename, "", ""))
+        writer.writerow(("parameters", "", "pad_output_filename", report.pad_output_filename, "", ""))
+        writer.writerow(("parameters", "", "pai_output_filename", report.pai_output_filename, "", ""))
         writer.writerow(("parameters", "", "canopy_cover_height_threshold", report.canopy_cover_height_threshold, "", ""))
         writer.writerow(("parameters", "", "canopy_cover_output_filename", report.canopy_cover_output_filename, "", ""))
         writer.writerow(("estimate", "", "columns", report.estimated_columns or "", "", ""))
@@ -354,6 +365,8 @@ def render_plan_html(report: ProductPlannerReport) -> str:
         <tr><th>CHM interpolate valid region</th><td>{str(report.chm_interpolate_valid_region)}</td></tr>
         <tr><th>CHM clean edges</th><td>{str(report.chm_clean_edges)}</td></tr>
         <tr><th>CHM output filename</th><td>{escape(report.chm_output_filename)}</td></tr>
+        <tr><th>PAD output filename</th><td>{escape(report.pad_output_filename)}</td></tr>
+        <tr><th>PAI output filename</th><td>{escape(report.pai_output_filename)}</td></tr>
         <tr><th>Canopy cover height threshold</th><td>{report.canopy_cover_height_threshold:g}</td></tr>
         <tr><th>Canopy cover output filename</th><td>{escape(report.canopy_cover_output_filename)}</td></tr>
         <tr><th>Estimated grid</th><td>{_format_grid(report)}</td></tr>
@@ -400,6 +413,18 @@ def _validate_chm_parameters(request: ProductPlannerRequest) -> None:
     output_name = Path(request.chm_output_filename)
     if output_name.name != request.chm_output_filename or output_name.suffix.lower() not in {".tif", ".tiff"}:
         raise ProductPlanError("CHM output filename must be a simple .tif or .tiff filename.")
+
+
+def _validate_pad_pai_parameters(request: ProductPlannerRequest) -> None:
+    """Validate PAD and PAI planning parameters."""
+    if ProductType.PAD in request.requested_products and request.height_bin_size is None:
+        raise ProductPlanError("PAD requires a voxel height / height bin size greater than zero.")
+    if ProductType.PAI in request.requested_products and request.height_bin_size is None:
+        raise ProductPlanError("PAI requires a voxel height / height bin size greater than zero.")
+    for label, filename in (("PAD", request.pad_output_filename), ("PAI", request.pai_output_filename)):
+        output_name = Path(filename)
+        if output_name.name != filename or output_name.suffix.lower() not in {".tif", ".tiff"}:
+            raise ProductPlanError(f"{label} output filename must be a simple .tif or .tiff filename.")
 
 
 def _validate_canopy_cover_parameters(request: ProductPlannerRequest) -> None:
@@ -543,6 +568,8 @@ def _build_plan_item(
     output_folder: Path,
     chm_output_filename: str = "chm.tif",
     canopy_cover_output_filename: str = "canopy_cover.tif",
+    pad_output_filename: str = "pad.tif",
+    pai_output_filename: str = "pai.tif",
 ) -> ProductPlanItem:
     label = PRODUCT_LABELS[product]
     raw = feasibility.get(product.value)
@@ -560,7 +587,7 @@ def _build_plan_item(
             warnings.append(PlannerWarning("PRODUCT_UNAVAILABLE", "ERROR", reason))
         elif status == "Warning":
             warnings.append(PlannerWarning("PRODUCT_NEEDS_REVIEW", "WARNING", reason))
-    outputs = _planned_outputs(product, output_folder, chm_output_filename, canopy_cover_output_filename) if plan_status != "Blocked" else ()
+    outputs = _planned_outputs(product, output_folder, chm_output_filename, canopy_cover_output_filename, pad_output_filename, pai_output_filename) if plan_status != "Blocked" else ()
     return ProductPlanItem(
         product=product,
         label=label,
@@ -582,12 +609,16 @@ def _plan_status_from_feasibility(status: str) -> str:
     return "Blocked"
 
 
-def _planned_outputs(product: ProductType, output_folder: Path, chm_output_filename: str = "chm.tif", canopy_cover_output_filename: str = "canopy_cover.tif") -> tuple[PlannedOutput, ...]:
+def _planned_outputs(product: ProductType, output_folder: Path, chm_output_filename: str = "chm.tif", canopy_cover_output_filename: str = "canopy_cover.tif", pad_output_filename: str = "pad.tif", pai_output_filename: str = "pai.tif") -> tuple[PlannedOutput, ...]:
     filename, output_type, description = PRODUCT_OUTPUTS[product]
     if product is ProductType.CHM:
         filename = chm_output_filename
     elif product is ProductType.CANOPY_COVER:
         filename = canopy_cover_output_filename
+    elif product is ProductType.PAD:
+        filename = pad_output_filename
+    elif product is ProductType.PAI:
+        filename = pai_output_filename
     output = PlannedOutput(
         product=product,
         label=PRODUCT_LABELS[product],

@@ -59,6 +59,7 @@ Product Planner produces planning reports, not scientific products:
 - `product_plan.csv`: tabular version of the plan.
 - `product_plan.html`: browser-readable planning report.
 
-The planned product paths in these reports are estimates for future CHM and
-metric phases. The planner does not create GeoTIFFs, CSV metric outputs, or
-metadata files for scientific products.
+The planned product paths in these reports are estimates consumed by Mission
+Control processing. The planner itself does not create GeoTIFFs, CSV metric
+outputs, or metadata files for scientific products. Implemented processing
+products currently include CHM, Canopy Cover, PAD, and PAI.

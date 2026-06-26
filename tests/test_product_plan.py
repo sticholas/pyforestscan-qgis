@@ -149,6 +149,58 @@ class ProductPlannerTests(unittest.TestCase):
             self.assertEqual("plot_cover.tif", payload["parameters"]["canopy_cover_output_filename"])
             self.assertEqual(root / "products" / "plot_cover.tif", report.products[0].outputs[0].path)
 
+
+    def test_pad_pai_parameters_are_serialized_and_drive_output_names(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            payload = explorer_payload()
+            payload["supported_products"] = [
+                {"product": "pad", "label": "Plant Area Density (PAD)", "status": "Available", "reason": "Ready."},
+                {"product": "pai", "label": "Plant Area Index (PAI)", "status": "Available", "reason": "Ready."},
+            ]
+            request = ProductPlannerRequest(
+                explorer_report_path=root / "dataset_explorer.json",
+                requested_products=(ProductType.PAD, ProductType.PAI),
+                output_folder=root / "products",
+                grid_resolution=1.0,
+                height_bin_size=2.0,
+                pad_output_filename="plot_pad.tif",
+                pai_output_filename="plot_pai.tif",
+            )
+
+            report = build_product_plan(payload, request)
+            rendered = json.loads(render_plan_json(report))
+
+            self.assertEqual("plot_pad.tif", rendered["parameters"]["pad_output_filename"])
+            self.assertEqual("plot_pai.tif", rendered["parameters"]["pai_output_filename"])
+            self.assertEqual(root / "products" / "plot_pad.tif", report.products[0].outputs[0].path)
+            self.assertEqual(root / "products" / "plot_pai.tif", report.products[1].outputs[0].path)
+
+    def test_pad_and_pai_require_height_bin_size(self) -> None:
+        for product in (ProductType.PAD, ProductType.PAI):
+            request = ProductPlannerRequest(
+                explorer_report_path=Path("report.json"),
+                requested_products=(product,),
+                output_folder=Path("out"),
+                grid_resolution=1.0,
+            )
+
+            with self.assertRaises(ProductPlanError):
+                build_product_plan(explorer_payload(), request)
+
+    def test_pad_pai_output_filenames_must_be_simple_geotiff_names(self) -> None:
+        request = ProductPlannerRequest(
+            explorer_report_path=Path("report.json"),
+            requested_products=(ProductType.PAD,),
+            output_folder=Path("out"),
+            grid_resolution=1.0,
+            height_bin_size=1.0,
+            pad_output_filename="nested/pad.tif",
+        )
+
+        with self.assertRaises(ProductPlanError):
+            build_product_plan(explorer_payload(), request)
+
     def test_canopy_cover_output_filename_must_be_simple_geotiff_name(self) -> None:
         request = ProductPlannerRequest(
             explorer_report_path=Path("report.json"),

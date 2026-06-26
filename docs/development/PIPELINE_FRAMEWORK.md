@@ -1,8 +1,8 @@
 # Processing Pipeline Framework
 
-Phase 9A introduced the processing pipeline framework. Phase 10A wires the CHM and Canopy Cover
-pipelines to the adapter for the first real scientific outputs while keeping PAI,
-PAD, FHD, rumple, vectors, and point-cloud outputs unimplemented.
+Phase 9A introduced the processing pipeline framework. Phase 13A wires the CHM, Canopy Cover, PAD, and PAI
+pipelines to the adapter for real scientific outputs while keeping FHD, rumple,
+vectors, and point-cloud outputs unimplemented.
 
 ## Purpose
 
@@ -49,11 +49,12 @@ Registered product pipelines use this standard stage order:
 8. Export
 
 Dry-run jobs execute validation stages only. Processing jobs execute only stages
-that have a product implementation. CHM can execute Generate
-Product through `PyForestScanAdapter.create_chm()`, and Canopy Cover can execute
-Generate Product through `PyForestScanAdapter.create_canopy_cover()`. Both record
-export artifacts. Other product scientific stages remain skipped, and direct calls to
-placeholder steps still raise `NotImplementedError`.
+that have a product implementation. CHM can execute Generate Product through `PyForestScanAdapter.create_chm()`,
+Canopy Cover through `PyForestScanAdapter.create_canopy_cover()`, PAD through
+`PyForestScanAdapter.create_pad()`, and PAI through
+`PyForestScanAdapter.create_pai()`. These products record export artifacts. Other
+product scientific stages remain skipped, and direct calls to placeholder steps
+still raise `NotImplementedError`.
 
 ## Job Manager Integration
 
@@ -61,9 +62,9 @@ Dry-run jobs now load pipeline contexts from the active Product Planner JSON and
 execute registered validation pipelines for each requested product. Pipeline
 results are stored on the `JobRecord` and serialized into `job_summary.json`.
 
-A dry-run job still writes only the job summary. CHM and Canopy Cover processing jobs write GeoTIFFs in
-`outputs/` and record them in the job summary. PAI, PAD, FHD, and rumple do not
-create scientific outputs.
+A dry-run job still writes only the job summary. CHM, Canopy Cover, PAD, and
+PAI processing jobs write GeoTIFFs in `outputs/` and record them in the job
+summary. FHD and rumple do not create scientific outputs.
 
 ## Mission Control Integration
 

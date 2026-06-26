@@ -99,7 +99,8 @@ call these PyForestScan internals directly:
 
 ## Phase 4 Non-Goals
 
-The adapter deliberately does not compute CHM, PAI, PAD, FHD, canopy cover,
-rumple, density rasters, polygon summaries, or exported product files.
-`compute_products()` and export/clip placeholders raise `NotImplementedError`
-until those workflows are designed and tested in later phases.
+The original Phase 4 adapter deliberately did not compute scientific products.
+Later phases now implement CHM, Canopy Cover, PAD, and PAI through explicit
+product methods while `compute_products()`, export/clip placeholders, FHD,
+rumple, density rasters, and polygon summaries remain unimplemented until those
+workflows are designed and tested.

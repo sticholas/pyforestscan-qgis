@@ -183,6 +183,55 @@ class CanopyCoverResult:
 
 
 @dataclass(frozen=True)
+class PadRequest:
+    """Adapter request for PAD generation."""
+
+    input_path: Path | str
+    output_path: Path
+    grid_resolution: float
+    voxel_height: float
+    crs: str
+    beer_lambert_constant: float = 1.0
+    drop_ground: bool = True
+
+
+@dataclass(frozen=True)
+class PadResult:
+    """Adapter result for a generated PAD multi-band GeoTIFF."""
+
+    output_path: Path
+    spatial_extent: tuple[float, float, float, float]
+    grid_resolution: float
+    voxel_height: float
+    band_count: int
+    crs: str
+
+
+@dataclass(frozen=True)
+class PaiRequest:
+    """Adapter request for PAI generation."""
+
+    input_path: Path | str
+    output_path: Path
+    grid_resolution: float
+    voxel_height: float
+    crs: str
+    min_height: float = 1.0
+    max_height: float | None = None
+
+
+@dataclass(frozen=True)
+class PaiResult:
+    """Adapter result for a generated PAI GeoTIFF."""
+
+    output_path: Path
+    spatial_extent: tuple[float, float, float, float]
+    grid_resolution: float
+    voxel_height: float
+    crs: str
+
+
+@dataclass(frozen=True)
 class ProductRequest:
     """Future product request placeholder for adapter architecture."""
 

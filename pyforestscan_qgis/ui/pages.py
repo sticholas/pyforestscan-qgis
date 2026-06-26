@@ -384,6 +384,8 @@ class PlanningPage(MissionPage):
         self.chm_valid_region_check = QCheckBox("Interpolate valid region")
         self.chm_clean_edges_check = QCheckBox("Clean edges")
         self.chm_output_filename_edit = QLineEdit("chm.tif")
+        self.pad_output_filename_edit = QLineEdit("pad.tif")
+        self.pai_output_filename_edit = QLineEdit("pai.tif")
         self.canopy_cover_threshold_spin = QDoubleSpinBox()
         self.canopy_cover_threshold_spin.setDecimals(3)
         self.canopy_cover_threshold_spin.setMinimum(0.0)
@@ -401,6 +403,8 @@ class PlanningPage(MissionPage):
         form.addRow("CHM valid region", self.chm_valid_region_check)
         form.addRow("CHM clean edges", self.chm_clean_edges_check)
         form.addRow("CHM output filename", self.chm_output_filename_edit)
+        form.addRow("PAD output filename", self.pad_output_filename_edit)
+        form.addRow("PAI output filename", self.pai_output_filename_edit)
         form.addRow("Canopy cover threshold", self.canopy_cover_threshold_spin)
         form.addRow("Canopy cover output", self.canopy_cover_output_filename_edit)
         form.addRow("Output folder", folder_row)
@@ -446,6 +450,8 @@ class PlanningPage(MissionPage):
             chm_interpolate_valid_region=self.chm_valid_region_check.isChecked(),
             chm_clean_edges=self.chm_clean_edges_check.isChecked(),
             chm_output_filename=self.chm_output_filename_edit.text().strip() or "chm.tif",
+            pad_output_filename=self.pad_output_filename_edit.text().strip() or "pad.tif",
+            pai_output_filename=self.pai_output_filename_edit.text().strip() or "pai.tif",
             canopy_cover_height_threshold=self.canopy_cover_threshold_spin.value(),
             canopy_cover_output_filename=self.canopy_cover_output_filename_edit.text().strip() or "canopy_cover.tif",
             title="Mission Control Product Plan",
@@ -479,6 +485,8 @@ class PlanningPage(MissionPage):
             f"CHM valid region interpolation: {plan.chm_interpolate_valid_region}",
             f"CHM clean edges: {plan.chm_clean_edges}",
             f"CHM output: {plan.output_folder / plan.chm_output_filename}",
+            f"PAD output: {plan.output_folder / plan.pad_output_filename}",
+            f"PAI output: {plan.output_folder / plan.pai_output_filename}",
             f"Canopy cover threshold: {plan.canopy_cover_height_threshold}",
             f"Canopy cover output: {plan.output_folder / plan.canopy_cover_output_filename}",
             plan_path,
@@ -558,7 +566,7 @@ class ProcessingPage(MissionPage):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         status.addWidget(self.log_text)
-        status.addWidget(QLabel("CHM and Canopy Cover processing are enabled. PAI, PAD, FHD, and Rumple remain future stages."))
+        status.addWidget(QLabel("CHM, Canopy Cover, PAD, and PAI processing are enabled. FHD and Rumple remain future stages."))
 
     def set_run_context(self, context: RunContext | None) -> None:
         """Use the active Mission Control run context."""
@@ -718,7 +726,7 @@ class ResultsPage(MissionPage):
             text = str(path)
             if path.suffix.lower() in {".tif", ".tiff"} and path not in self._friendly_paths:
                 self._friendly_paths.append(path)
-                label = "Canopy Cover Output" if "canopy_cover" in path.stem else "CHM Output"
+                label = _friendly_raster_label(path)
                 self.friendly_links.addItem(f"{label}: {path}")
             if not any(self.previous_reports.item(index).text().endswith(text) for index in range(self.previous_reports.count())):
                 self.previous_reports.addItem(text)
@@ -817,3 +825,15 @@ def _pipeline_status_icon(status: str) -> str:
     if status == "not_implemented":
         return "TODO"
     return "WAIT"
+
+
+def _friendly_raster_label(path: Path) -> str:
+    """Return a friendly label for generated raster outputs."""
+    stem = path.stem.lower()
+    if "canopy_cover" in stem:
+        return "Canopy Cover Output"
+    if stem == "pad" or "pad" in stem:
+        return "PAD Output"
+    if stem == "pai" or "pai" in stem:
+        return "PAI Output"
+    return "CHM Output"

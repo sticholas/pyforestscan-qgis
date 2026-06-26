@@ -69,6 +69,25 @@ class PipelineContext:
         return value or "chm.tif"
 
 
+
+    @property
+    def voxel_height(self) -> float:
+        """Return the planned voxel height / height bin size."""
+        value = self._parameter("height_bin_size", 1.0)
+        return float(value) if value is not None else 1.0
+
+    @property
+    def pad_output_filename(self) -> str:
+        """Return the planned PAD output filename."""
+        value = str(self._parameter("pad_output_filename", "pad.tif"))
+        return value or "pad.tif"
+
+    @property
+    def pai_output_filename(self) -> str:
+        """Return the planned PAI output filename."""
+        value = str(self._parameter("pai_output_filename", "pai.tif"))
+        return value or "pai.tif"
+
     @property
     def canopy_cover_height_threshold(self) -> float:
         """Return the planned canopy cover height threshold."""

@@ -11,7 +11,7 @@ from .pipeline_events import PipelineEvent, PipelineEventLevel, pipeline_utc_now
 from .pipeline_results import PipelineResult, PipelineStepResult, PipelineStepStatus
 from .pipeline_steps import PipelineStage, PipelineStep, default_product_steps
 from .product_plan import PRODUCT_LABELS
-from .types import CanopyCoverRequest, ChmRequest
+from .types import CanopyCoverRequest, ChmRequest, PadRequest, PaiRequest
 
 
 @dataclass(frozen=True)
@@ -51,7 +51,17 @@ class Pipeline:
                 generated_outputs = result.artifacts
                 results.append(result)
                 continue
-            if self.product in {"chm", "canopy_cover"} and step.stage is PipelineStage.EXPORT and generated_outputs:
+            if self.product == "pad" and step.stage is PipelineStage.GENERATE_PRODUCT:
+                result = _execute_pad_step(context, step, adapter)
+                generated_outputs = result.artifacts
+                results.append(result)
+                continue
+            if self.product == "pai" and step.stage is PipelineStage.GENERATE_PRODUCT:
+                result = _execute_pai_step(context, step, adapter)
+                generated_outputs = result.artifacts
+                results.append(result)
+                continue
+            if self.product in {"chm", "canopy_cover", "pad", "pai"} and step.stage is PipelineStage.EXPORT and generated_outputs:
                 results.append(_step_result(step, PipelineStepStatus.PASSED, f"{self.label} GeoTIFF export is available.", generated_outputs))
                 continue
             results.append(step.skipped_result())
@@ -122,6 +132,67 @@ def _execute_chm_step(context: PipelineContext, step: PipelineStep, adapter: Any
     return _step_result(step, PipelineStepStatus.PASSED, f"CHM GeoTIFF created: {result.output_path}", (result.output_path,))
 
 
+def _execute_pad_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:
+    if adapter is None:
+        return _step_result(step, PipelineStepStatus.FAILED, "PAD execution requires an adapter.")
+    if not context.source_dataset:
+        return _step_result(step, PipelineStepStatus.FAILED, "PAD execution requires a source dataset.")
+    if not context.crs:
+        return _step_result(step, PipelineStepStatus.FAILED, "PAD execution requires dataset CRS metadata.")
+    try:
+        output_path = _pad_output_path(context)
+        result = adapter.create_pad(
+            PadRequest(
+                input_path=context.source_dataset,
+                output_path=output_path,
+                grid_resolution=context.grid_resolution,
+                voxel_height=context.voxel_height,
+                crs=context.crs,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
+        return _step_result(step, PipelineStepStatus.FAILED, f"PAD generation failed: {exc}")
+    if not result.output_path.exists():
+        return _step_result(step, PipelineStepStatus.FAILED, f"PAD generation did not produce a GeoTIFF: {result.output_path}")
+    return _step_result(step, PipelineStepStatus.PASSED, f"PAD multi-band GeoTIFF created: {result.output_path}", (result.output_path,))
+
+
+def _execute_pai_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:
+    if adapter is None:
+        return _step_result(step, PipelineStepStatus.FAILED, "PAI execution requires an adapter.")
+    if not context.source_dataset:
+        return _step_result(step, PipelineStepStatus.FAILED, "PAI execution requires a source dataset.")
+    if not context.crs:
+        return _step_result(step, PipelineStepStatus.FAILED, "PAI execution requires dataset CRS metadata.")
+    try:
+        output_path = _pai_output_path(context)
+        result = adapter.create_pai(
+            PaiRequest(
+                input_path=context.source_dataset,
+                output_path=output_path,
+                grid_resolution=context.grid_resolution,
+                voxel_height=context.voxel_height,
+                crs=context.crs,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
+        return _step_result(step, PipelineStepStatus.FAILED, f"PAI generation failed: {exc}")
+    if not result.output_path.exists():
+        return _step_result(step, PipelineStepStatus.FAILED, f"PAI generation did not produce a GeoTIFF: {result.output_path}")
+    return _step_result(step, PipelineStepStatus.PASSED, f"PAI GeoTIFF created: {result.output_path}", (result.output_path,))
+
+
+def _pad_output_path(context: PipelineContext) -> Path:
+    """Return the validated PAD output path for a pipeline context."""
+    return _simple_geotiff_output_path(context.output_folder, context.pad_output_filename, "PAD")
+
+
+def _pai_output_path(context: PipelineContext) -> Path:
+    """Return the validated PAI output path for a pipeline context."""
+    return _simple_geotiff_output_path(context.output_folder, context.pai_output_filename, "PAI")
+
+
+
 def _execute_canopy_cover_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:
     if adapter is None:
         return _step_result(step, PipelineStepStatus.FAILED, "Canopy cover execution requires an adapter.")
@@ -150,19 +221,19 @@ def _execute_canopy_cover_step(context: PipelineContext, step: PipelineStep, ada
 def _canopy_cover_output_path(context: PipelineContext) -> Path:
     """Return the validated canopy cover output path for a pipeline context."""
     name = context.canopy_cover_output_filename
-    candidate = Path(name)
-    if candidate.name != name or candidate.suffix.lower() not in {".tif", ".tiff"}:
-        raise ValueError("Canopy cover output filename must be a simple .tif or .tiff filename.")
-    return context.output_folder / candidate.name
+    return _simple_geotiff_output_path(context.output_folder, context.canopy_cover_output_filename, "Canopy cover")
 
 
 def _chm_output_path(context: PipelineContext) -> Path:
     """Return the validated CHM output path for a pipeline context."""
-    name = context.chm_output_filename
+    return _simple_geotiff_output_path(context.output_folder, context.chm_output_filename, "CHM")
+
+
+def _simple_geotiff_output_path(output_folder: Path, name: str, label: str) -> Path:
     candidate = Path(name)
     if candidate.name != name or candidate.suffix.lower() not in {".tif", ".tiff"}:
-        raise ValueError("CHM output filename must be a simple .tif or .tiff filename.")
-    return context.output_folder / candidate.name
+        raise ValueError(f"{label} output filename must be a simple .tif or .tiff filename.")
+    return output_folder / candidate.name
 
 
 def _step_result(

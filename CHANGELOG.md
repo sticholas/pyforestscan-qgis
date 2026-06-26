@@ -9,6 +9,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- PAD and PAI processing workflows with adapter-backed PyForestScan calls, Product Planner controls, pipeline execution, QGIS result loading, tests, and manual QA documentation.
 - Dataset Footprint Preview in Mission Control with bounds-derived footprint summary, in-memory QGIS footprint layer creation, main canvas zoom, and plain-Python preview tests.
 - Canopy Cover processing spike with adapter-backed PyForestScan canopy cover generation, planning controls, pipeline execution, QGIS result loading, tests, and manual QA guide.
 - CHM production workflow stabilization with Mission Control parameters, stronger validation, job summary parameters, friendly CHM result links, best-effort QGIS raster polish, and QA documentation.
