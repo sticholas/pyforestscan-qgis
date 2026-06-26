@@ -11,7 +11,7 @@ from .pipeline_events import PipelineEvent, PipelineEventLevel, pipeline_utc_now
 from .pipeline_results import PipelineResult, PipelineStepResult, PipelineStepStatus
 from .pipeline_steps import PipelineStage, PipelineStep, default_product_steps
 from .product_plan import PRODUCT_LABELS
-from .types import CanopyCoverRequest, ChmRequest, PadRequest, PaiRequest
+from .types import CanopyCoverRequest, ChmRequest, FhdRequest, PadRequest, PaiRequest, RumpleRequest
 
 
 @dataclass(frozen=True)
@@ -61,8 +61,19 @@ class Pipeline:
                 generated_outputs = result.artifacts
                 results.append(result)
                 continue
-            if self.product in {"chm", "canopy_cover", "pad", "pai"} and step.stage is PipelineStage.EXPORT and generated_outputs:
-                results.append(_step_result(step, PipelineStepStatus.PASSED, f"{self.label} GeoTIFF export is available.", generated_outputs))
+            if self.product == "fhd" and step.stage is PipelineStage.GENERATE_PRODUCT:
+                result = _execute_fhd_step(context, step, adapter)
+                generated_outputs = result.artifacts
+                results.append(result)
+                continue
+            if self.product == "rumple" and step.stage is PipelineStage.GENERATE_PRODUCT:
+                result = _execute_rumple_step(context, step, adapter)
+                generated_outputs = result.artifacts
+                results.append(result)
+                continue
+            if self.product in {"chm", "canopy_cover", "pad", "pai", "fhd", "rumple"} and step.stage is PipelineStage.EXPORT and generated_outputs:
+                output_label = "CSV table" if self.product == "rumple" else "GeoTIFF"
+                results.append(_step_result(step, PipelineStepStatus.PASSED, f"{self.label} {output_label} export is available.", generated_outputs))
                 continue
             results.append(step.skipped_result())
         return PipelineResult(self.pipeline_id, self.product, self.label, tuple(results))
@@ -182,6 +193,69 @@ def _execute_pai_step(context: PipelineContext, step: PipelineStep, adapter: Any
     return _step_result(step, PipelineStepStatus.PASSED, f"PAI GeoTIFF created: {result.output_path}", (result.output_path,))
 
 
+
+
+def _execute_fhd_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:
+    if adapter is None:
+        return _step_result(step, PipelineStepStatus.FAILED, "FHD execution requires an adapter.")
+    if not context.source_dataset:
+        return _step_result(step, PipelineStepStatus.FAILED, "FHD execution requires a source dataset.")
+    if not context.crs:
+        return _step_result(step, PipelineStepStatus.FAILED, "FHD execution requires dataset CRS metadata.")
+    try:
+        output_path = _fhd_output_path(context)
+        result = adapter.create_fhd(
+            FhdRequest(
+                input_path=context.source_dataset,
+                output_path=output_path,
+                grid_resolution=context.grid_resolution,
+                voxel_height=context.voxel_height,
+                crs=context.crs,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
+        return _step_result(step, PipelineStepStatus.FAILED, f"FHD generation failed: {exc}")
+    if not result.output_path.exists():
+        return _step_result(step, PipelineStepStatus.FAILED, f"FHD generation did not produce a GeoTIFF: {result.output_path}")
+    return _step_result(step, PipelineStepStatus.PASSED, f"FHD GeoTIFF created: {result.output_path}", (result.output_path,))
+
+
+def _execute_rumple_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:
+    if adapter is None:
+        return _step_result(step, PipelineStepStatus.FAILED, "Rumple execution requires an adapter.")
+    if not context.source_dataset:
+        return _step_result(step, PipelineStepStatus.FAILED, "Rumple execution requires a source dataset.")
+    if not context.crs:
+        return _step_result(step, PipelineStepStatus.FAILED, "Rumple execution requires dataset CRS metadata.")
+    try:
+        output_path = _rumple_output_path(context)
+        result = adapter.create_rumple(
+            RumpleRequest(
+                input_path=context.source_dataset,
+                output_path=output_path,
+                grid_resolution=context.grid_resolution,
+                crs=context.crs,
+                interpolation=context.chm_interpolation,
+                interp_valid_region=context.chm_interpolate_valid_region,
+                interp_clean_edges=context.chm_clean_edges,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
+        return _step_result(step, PipelineStepStatus.FAILED, f"Rumple generation failed: {exc}")
+    if not result.output_path.exists():
+        return _step_result(step, PipelineStepStatus.FAILED, f"Rumple generation did not produce a CSV table: {result.output_path}")
+    return _step_result(step, PipelineStepStatus.PASSED, f"Rumple CSV summary created: {result.output_path}", (result.output_path,))
+
+
+def _fhd_output_path(context: PipelineContext) -> Path:
+    """Return the validated FHD output path for a pipeline context."""
+    return _simple_geotiff_output_path(context.output_folder, context.fhd_output_filename, "FHD")
+
+
+def _rumple_output_path(context: PipelineContext) -> Path:
+    """Return the validated rumple output path for a pipeline context."""
+    return _simple_csv_output_path(context.output_folder, context.rumple_output_filename, "Rumple")
+
 def _pad_output_path(context: PipelineContext) -> Path:
     """Return the validated PAD output path for a pipeline context."""
     return _simple_geotiff_output_path(context.output_folder, context.pad_output_filename, "PAD")
@@ -233,6 +307,13 @@ def _simple_geotiff_output_path(output_folder: Path, name: str, label: str) -> P
     candidate = Path(name)
     if candidate.name != name or candidate.suffix.lower() not in {".tif", ".tiff"}:
         raise ValueError(f"{label} output filename must be a simple .tif or .tiff filename.")
+    return output_folder / candidate.name
+
+
+def _simple_csv_output_path(output_folder: Path, name: str, label: str) -> Path:
+    candidate = Path(name)
+    if candidate.name != name or candidate.suffix.lower() != ".csv":
+        raise ValueError(f"{label} output filename must be a simple .csv filename.")
     return output_folder / candidate.name
 
 

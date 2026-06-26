@@ -386,6 +386,8 @@ class PlanningPage(MissionPage):
         self.chm_output_filename_edit = QLineEdit("chm.tif")
         self.pad_output_filename_edit = QLineEdit("pad.tif")
         self.pai_output_filename_edit = QLineEdit("pai.tif")
+        self.fhd_output_filename_edit = QLineEdit("fhd.tif")
+        self.rumple_output_filename_edit = QLineEdit("rumple_summary.csv")
         self.canopy_cover_threshold_spin = QDoubleSpinBox()
         self.canopy_cover_threshold_spin.setDecimals(3)
         self.canopy_cover_threshold_spin.setMinimum(0.0)
@@ -405,6 +407,8 @@ class PlanningPage(MissionPage):
         form.addRow("CHM output filename", self.chm_output_filename_edit)
         form.addRow("PAD output filename", self.pad_output_filename_edit)
         form.addRow("PAI output filename", self.pai_output_filename_edit)
+        form.addRow("FHD output filename", self.fhd_output_filename_edit)
+        form.addRow("Rumple output filename", self.rumple_output_filename_edit)
         form.addRow("Canopy cover threshold", self.canopy_cover_threshold_spin)
         form.addRow("Canopy cover output", self.canopy_cover_output_filename_edit)
         form.addRow("Output folder", folder_row)
@@ -452,6 +456,8 @@ class PlanningPage(MissionPage):
             chm_output_filename=self.chm_output_filename_edit.text().strip() or "chm.tif",
             pad_output_filename=self.pad_output_filename_edit.text().strip() or "pad.tif",
             pai_output_filename=self.pai_output_filename_edit.text().strip() or "pai.tif",
+            fhd_output_filename=self.fhd_output_filename_edit.text().strip() or "fhd.tif",
+            rumple_output_filename=self.rumple_output_filename_edit.text().strip() or "rumple_summary.csv",
             canopy_cover_height_threshold=self.canopy_cover_threshold_spin.value(),
             canopy_cover_output_filename=self.canopy_cover_output_filename_edit.text().strip() or "canopy_cover.tif",
             title="Mission Control Product Plan",
@@ -487,6 +493,8 @@ class PlanningPage(MissionPage):
             f"CHM output: {plan.output_folder / plan.chm_output_filename}",
             f"PAD output: {plan.output_folder / plan.pad_output_filename}",
             f"PAI output: {plan.output_folder / plan.pai_output_filename}",
+            f"FHD output: {plan.output_folder / plan.fhd_output_filename}",
+            f"Rumple output: {plan.output_folder / plan.rumple_output_filename}",
             f"Canopy cover threshold: {plan.canopy_cover_height_threshold}",
             f"Canopy cover output: {plan.output_folder / plan.canopy_cover_output_filename}",
             plan_path,
@@ -836,4 +844,8 @@ def _friendly_raster_label(path: Path) -> str:
         return "PAD Output"
     if stem == "pai" or "pai" in stem:
         return "PAI Output"
+    if stem == "fhd" or "fhd" in stem:
+        return "FHD Output"
+    if "rumple" in stem:
+        return "Rumple Summary"
     return "CHM Output"

@@ -88,6 +88,19 @@ class PipelineContext:
         value = str(self._parameter("pai_output_filename", "pai.tif"))
         return value or "pai.tif"
 
+
+    @property
+    def fhd_output_filename(self) -> str:
+        """Return the planned FHD output filename."""
+        value = str(self._parameter("fhd_output_filename", "fhd.tif"))
+        return value or "fhd.tif"
+
+    @property
+    def rumple_output_filename(self) -> str:
+        """Return the planned rumple output filename."""
+        value = str(self._parameter("rumple_output_filename", "rumple_summary.csv"))
+        return value or "rumple_summary.csv"
+
     @property
     def canopy_cover_height_threshold(self) -> float:
         """Return the planned canopy cover height threshold."""

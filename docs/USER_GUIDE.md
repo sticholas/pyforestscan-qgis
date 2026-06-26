@@ -205,8 +205,8 @@ The job validates the plan, runs implemented product pipelines through the
 adapter, writes selected GeoTIFF outputs in `outputs/`, and writes
 `logs/job_summary.json`.
 
-CHM, Canopy Cover, PAD, and PAI are implemented. FHD and rumple remain future
-products and do not create rasters.
+CHM, Canopy Cover, PAD, PAI, FHD, and Rumple are implemented for
+single-dataset workflows. Rumple writes a scalar CSV summary rather than a raster.
 
 ### Workflow
 
@@ -254,6 +254,16 @@ flowchart TD
 - PAI output filename must be a simple `.tif` or `.tiff` name. PAI is written as
   a single-band GeoTIFF.
 
+
+### FHD and Rumple Parameters
+
+- FHD uses grid resolution and height bin size, and writes a single-band
+  `.tif` or `.tiff` raster.
+- Rumple uses grid resolution to build an internal CHM prerequisite, and writes
+  a scalar `.csv` summary because PyForestScan 0.4.0 returns one rumple index
+  value rather than a raster.
+- Rumple output filename must be a simple `.csv` name.
+
 ### Canopy Cover QA
 
 After a successful run, confirm the canopy cover raster opens in QGIS, values are
@@ -266,6 +276,13 @@ After a successful run, confirm PAI opens as a single-band raster, PAD opens as 
 multi-band raster, CRS and extent align with the source dataset, values are
 non-negative, and changing height bin size changes PAD banding as expected.
 
+
+### FHD and Rumple QA
+
+After a successful run, confirm FHD opens as a single-band raster, CRS and extent
+align with the source dataset, and the Rumple CSV contains one `rumple_index`
+row. Rumple is not loaded as a raster layer because it is scalar output.
+
 ### CHM QA
 
 After a successful run, confirm the CHM opens in QGIS, the CRS and extent align
@@ -274,6 +291,6 @@ acceptable for the selected interpolation options.
 
 A successful summary includes `processing_executed: true`,
 `scientific_outputs_created: true`, selected product `parameters`, and GeoTIFF
-result paths such as `chm_geotiff`, `canopy_cover_geotiff`, `pad_geotiff`, or
-`pai_geotiff`. Failed jobs still
+result paths such as `chm_geotiff`, `canopy_cover_geotiff`, `pad_geotiff`,
+`pai_geotiff`, `fhd_geotiff`, or `rumple_csv`. Failed jobs still
 write `logs/job_summary.json` with a clear error message.

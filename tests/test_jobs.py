@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pyforestscan_qgis.core.job_manager import JobExecutionError, JobManager
 from pyforestscan_qgis.core.job_results import job_to_dict, render_job_summary_json
-from pyforestscan_qgis.core.types import CanopyCoverResult, ChmResult, PadResult, PaiResult
+from pyforestscan_qgis.core.types import CanopyCoverResult, ChmResult, FhdResult, PadResult, PaiResult, RumpleResult
 from pyforestscan_qgis.core.jobs import JobStatus
 
 
@@ -169,6 +169,41 @@ class JobManagerTests(unittest.TestCase):
             self.assertEqual(2.0, payload["parameters"]["height_bin_size"])
             self.assertEqual(str(root / "outputs" / "job_pai.tif"), payload["results"][0]["path"])
 
+
+    def test_processing_job_creates_fhd_result_record(self) -> None:
+        """An FHD processing job records the GeoTIFF output artifact."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            dataset_report = root / "dataset_report.json"
+            dataset_report.write_text(json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8")
+            plan_path = _write_plan(root / "product_plan.json", include_pai=False, product="fhd", filename="job_fhd.tif")
+            manager = JobManager(adapter=_FakeAdapter())
+
+            job = manager.run_pipeline(plan_path, root / "logs", title="FHD Processing Test", summary_path=root / "logs" / "job_summary.json")
+
+            self.assertEqual(JobStatus.COMPLETED, job.status)
+            fhd_results = [result for result in job.results if result.result_type == "fhd_geotiff"]
+            self.assertEqual(1, len(fhd_results))
+            self.assertEqual(root / "outputs" / "job_fhd.tif", fhd_results[0].path)
+
+    def test_processing_job_creates_rumple_result_record(self) -> None:
+        """A rumple processing job records the scalar CSV output artifact."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            dataset_report = root / "dataset_report.json"
+            dataset_report.write_text(json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8")
+            plan_path = _write_plan(root / "product_plan.json", include_pai=False, product="rumple", filename="job_rumple.csv")
+            manager = JobManager(adapter=_FakeAdapter())
+
+            job = manager.run_pipeline(plan_path, root / "logs", title="Rumple Processing Test", summary_path=root / "logs" / "job_summary.json")
+
+            self.assertEqual(JobStatus.COMPLETED, job.status)
+            rumple_results = [result for result in job.results if result.result_type == "rumple_csv"]
+            self.assertEqual(1, len(rumple_results))
+            self.assertEqual(root / "outputs" / "job_rumple.csv", rumple_results[0].path)
+            payload = json.loads((root / "logs" / "job_summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(str(root / "outputs" / "job_rumple.csv"), payload["results"][0]["path"])
+
     def test_job_summary_renderer_marks_no_scientific_outputs(self) -> None:
         """Serialized summaries explicitly state that processing did not run."""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -194,7 +229,7 @@ def _write_plan(path: Path, status: str = "Ready", include_pai: bool = True, pro
     products = [
         {
             "product": product,
-            "label": {"canopy_cover": "Canopy Cover", "pad": "Plant Area Density (PAD)", "pai": "Plant Area Index (PAI)"}.get(product, "Canopy Height Model (CHM)"),
+            "label": {"canopy_cover": "Canopy Cover", "pad": "Plant Area Density (PAD)", "pai": "Plant Area Index (PAI)", "fhd": "Foliage Height Diversity (FHD)", "rumple": "Rumple Index"}.get(product, "Canopy Height Model (CHM)"),
             "requested": True,
             "feasibility_status": "Available",
             "plan_status": status,
@@ -234,7 +269,7 @@ def _write_plan(path: Path, status: str = "Ready", include_pai: bool = True, pro
         "source_report": str(path.parent / "dataset_report.json"),
         "processing_executed": False,
         "output_folder": str(path.parent / "outputs"),
-        "parameters": {"grid_resolution": 1.0, "height_bin_size": 2.0, "chm_interpolation": "nearest", "chm_interpolate_valid_region": True, "chm_clean_edges": True, "chm_output_filename": filename, "pad_output_filename": filename, "pai_output_filename": filename, "canopy_cover_height_threshold": 2.0, "canopy_cover_output_filename": filename},
+        "parameters": {"grid_resolution": 1.0, "height_bin_size": 2.0, "chm_interpolation": "nearest", "chm_interpolate_valid_region": True, "chm_clean_edges": True, "chm_output_filename": filename, "pad_output_filename": filename, "pai_output_filename": filename, "fhd_output_filename": filename if filename.endswith(".tif") else "job_fhd.tif", "rumple_output_filename": filename if filename.endswith(".csv") else "job_rumple.csv", "canopy_cover_height_threshold": 2.0, "canopy_cover_output_filename": filename},
         "products": products,
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -284,6 +319,28 @@ class _FakeAdapter:
             spatial_extent=(0.0, 1.0, 0.0, 1.0),
             grid_resolution=request.grid_resolution,
             voxel_height=request.voxel_height,
+            crs=request.crs,
+        )
+
+    def create_fhd(self, request):  # type: ignore[no-untyped-def]
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        request.output_path.write_text("fake fhd", encoding="utf-8")
+        return FhdResult(
+            output_path=request.output_path,
+            spatial_extent=(0.0, 1.0, 0.0, 1.0),
+            grid_resolution=request.grid_resolution,
+            voxel_height=request.voxel_height,
+            crs=request.crs,
+        )
+
+    def create_rumple(self, request):  # type: ignore[no-untyped-def]
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        request.output_path.write_text("metric,value\nrumple_index,1.5\n", encoding="utf-8")
+        return RumpleResult(
+            output_path=request.output_path,
+            rumple_index=1.5,
+            spatial_extent=(0.0, 1.0, 0.0, 1.0),
+            grid_resolution=request.grid_resolution,
             crs=request.crs,
         )
 

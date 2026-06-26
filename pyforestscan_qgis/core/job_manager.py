@@ -138,7 +138,8 @@ class JobManager:
                 job = self._store(job.with_pipeline_results(tuple(pipeline_results)))
                 for output_path in pipeline_result.output_paths:
                     if output_path not in tuple(result.path for result in job.results):
-                        job = self._store(job.with_result(JobResultRecord(output_path, f"{pipeline_result.product}_geotiff", f"{pipeline_result.label} GeoTIFF output.")))
+                        result_type, description = _job_result_metadata(pipeline_result.product, pipeline_result.label, output_path)
+                        job = self._store(job.with_result(JobResultRecord(output_path, result_type, description)))
                 percent = 10 + (index / total) * 80
                 job = self._progress(job, percent, f"Validated pipeline: {pipeline.label}.")
                 if self._is_cancelled(job):
@@ -232,3 +233,13 @@ class JobManager:
         if self._event_sink is not None:
             self._event_sink(job)
         return job
+
+
+def _job_result_metadata(product: str, label: str, output_path: Path) -> tuple[str, str]:
+    """Return a result type and description for a pipeline artifact."""
+    suffix = output_path.suffix.lower()
+    if suffix in {".tif", ".tiff"}:
+        return f"{product}_geotiff", f"{label} GeoTIFF output."
+    if suffix == ".csv":
+        return f"{product}_csv", f"{label} CSV output."
+    return f"{product}_output", f"{label} output."

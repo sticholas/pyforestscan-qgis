@@ -33,7 +33,7 @@ PRODUCT_OUTPUTS = {
     ProductType.PAD: ("pad.tif", "Multi-band GeoTIFF raster", "Height-binned plant area density stack; one band per height bin."),
     ProductType.FHD: ("fhd.tif", "GeoTIFF raster", "Future foliage height diversity raster."),
     ProductType.CANOPY_COVER: ("canopy_cover.tif", "GeoTIFF raster", "Canopy cover raster."),
-    ProductType.RUMPLE: ("rumple_summary.csv", "CSV table", "Future scalar rumple summary table."),
+    ProductType.RUMPLE: ("rumple_summary.csv", "CSV table", "Scalar rumple index summary table.")
 }
 
 
@@ -86,6 +86,8 @@ class ProductPlannerRequest:
     chm_output_filename: str = "chm.tif"
     pad_output_filename: str = "pad.tif"
     pai_output_filename: str = "pai.tif"
+    fhd_output_filename: str = "fhd.tif"
+    rumple_output_filename: str = "rumple_summary.csv"
     canopy_cover_height_threshold: float = 2.0
     canopy_cover_output_filename: str = "canopy_cover.tif"
     title: str = "PyForestScan Product Planner"
@@ -109,6 +111,8 @@ class ProductPlannerReport:
     chm_output_filename: str
     pad_output_filename: str
     pai_output_filename: str
+    fhd_output_filename: str
+    rumple_output_filename: str
     canopy_cover_height_threshold: float
     canopy_cover_output_filename: str
     notes: str
@@ -153,7 +157,8 @@ def build_product_plan(
         raise ProductPlanError("Height bin size must be greater than zero when provided.")
     _validate_chm_parameters(request)
     _validate_canopy_cover_parameters(request)
-    _validate_pad_pai_parameters(request)
+    _validate_height_binned_parameters(request)
+    _validate_metric_output_parameters(request)
 
     feasibility = _feasibility_by_product(explorer_report)
     dataset_warnings = _dataset_warnings(explorer_report)
@@ -170,17 +175,9 @@ def build_product_plan(
                 "Bounds are missing or invalid, so grid size could not be estimated.",
             )
         )
-    if request.height_bin_size is None and ProductType.PAD in request.requested_products:
-        global_warnings.append(
-            PlannerWarning(
-                "PAD_HEIGHT_BIN_SIZE_MISSING",
-                "WARNING",
-                "PAD was requested without a height bin size; choose a bin size before processing.",
-            )
-        )
 
     products = tuple(
-        _build_plan_item(product, feasibility, request.output_folder, request.chm_output_filename, request.canopy_cover_output_filename, request.pad_output_filename, request.pai_output_filename)
+        _build_plan_item(product, feasibility, request.output_folder, request.chm_output_filename, request.canopy_cover_output_filename, request.pad_output_filename, request.pai_output_filename, request.fhd_output_filename, request.rumple_output_filename)
         for product in request.requested_products
     )
     next_actions = _next_actions(products, tuple(global_warnings))
@@ -199,6 +196,8 @@ def build_product_plan(
         chm_output_filename=request.chm_output_filename,
         pad_output_filename=request.pad_output_filename,
         pai_output_filename=request.pai_output_filename,
+        fhd_output_filename=request.fhd_output_filename,
+        rumple_output_filename=request.rumple_output_filename,
         canopy_cover_height_threshold=request.canopy_cover_height_threshold,
         canopy_cover_output_filename=request.canopy_cover_output_filename,
         notes=request.notes,
@@ -229,6 +228,8 @@ def plan_to_dict(report: ProductPlannerReport) -> dict[str, Any]:
             "chm_output_filename": report.chm_output_filename,
             "pad_output_filename": report.pad_output_filename,
             "pai_output_filename": report.pai_output_filename,
+            "fhd_output_filename": report.fhd_output_filename,
+            "rumple_output_filename": report.rumple_output_filename,
             "canopy_cover_height_threshold": report.canopy_cover_height_threshold,
             "canopy_cover_output_filename": report.canopy_cover_output_filename,
         },
@@ -301,6 +302,8 @@ def write_plan_csv(report: ProductPlannerReport, output_path: Path | str) -> Pat
         writer.writerow(("parameters", "", "chm_output_filename", report.chm_output_filename, "", ""))
         writer.writerow(("parameters", "", "pad_output_filename", report.pad_output_filename, "", ""))
         writer.writerow(("parameters", "", "pai_output_filename", report.pai_output_filename, "", ""))
+        writer.writerow(("parameters", "", "fhd_output_filename", report.fhd_output_filename, "", ""))
+        writer.writerow(("parameters", "", "rumple_output_filename", report.rumple_output_filename, "", ""))
         writer.writerow(("parameters", "", "canopy_cover_height_threshold", report.canopy_cover_height_threshold, "", ""))
         writer.writerow(("parameters", "", "canopy_cover_output_filename", report.canopy_cover_output_filename, "", ""))
         writer.writerow(("estimate", "", "columns", report.estimated_columns or "", "", ""))
@@ -367,6 +370,8 @@ def render_plan_html(report: ProductPlannerReport) -> str:
         <tr><th>CHM output filename</th><td>{escape(report.chm_output_filename)}</td></tr>
         <tr><th>PAD output filename</th><td>{escape(report.pad_output_filename)}</td></tr>
         <tr><th>PAI output filename</th><td>{escape(report.pai_output_filename)}</td></tr>
+        <tr><th>FHD output filename</th><td>{escape(report.fhd_output_filename)}</td></tr>
+        <tr><th>Rumple output filename</th><td>{escape(report.rumple_output_filename)}</td></tr>
         <tr><th>Canopy cover height threshold</th><td>{report.canopy_cover_height_threshold:g}</td></tr>
         <tr><th>Canopy cover output filename</th><td>{escape(report.canopy_cover_output_filename)}</td></tr>
         <tr><th>Estimated grid</th><td>{_format_grid(report)}</td></tr>
@@ -415,16 +420,22 @@ def _validate_chm_parameters(request: ProductPlannerRequest) -> None:
         raise ProductPlanError("CHM output filename must be a simple .tif or .tiff filename.")
 
 
-def _validate_pad_pai_parameters(request: ProductPlannerRequest) -> None:
-    """Validate PAD and PAI planning parameters."""
-    if ProductType.PAD in request.requested_products and request.height_bin_size is None:
-        raise ProductPlanError("PAD requires a voxel height / height bin size greater than zero.")
-    if ProductType.PAI in request.requested_products and request.height_bin_size is None:
-        raise ProductPlanError("PAI requires a voxel height / height bin size greater than zero.")
-    for label, filename in (("PAD", request.pad_output_filename), ("PAI", request.pai_output_filename)):
+def _validate_height_binned_parameters(request: ProductPlannerRequest) -> None:
+    """Validate products that require a vertical height bin size."""
+    for product, label in ((ProductType.PAD, "PAD"), (ProductType.PAI, "PAI"), (ProductType.FHD, "FHD")):
+        if product in request.requested_products and request.height_bin_size is None:
+            raise ProductPlanError(f"{label} requires a voxel height / height bin size greater than zero.")
+
+
+def _validate_metric_output_parameters(request: ProductPlannerRequest) -> None:
+    """Validate metric-specific output filenames."""
+    for label, filename in (("PAD", request.pad_output_filename), ("PAI", request.pai_output_filename), ("FHD", request.fhd_output_filename)):
         output_name = Path(filename)
         if output_name.name != filename or output_name.suffix.lower() not in {".tif", ".tiff"}:
             raise ProductPlanError(f"{label} output filename must be a simple .tif or .tiff filename.")
+    rumple_name = Path(request.rumple_output_filename)
+    if rumple_name.name != request.rumple_output_filename or rumple_name.suffix.lower() != ".csv":
+        raise ProductPlanError("Rumple output filename must be a simple .csv filename because PyForestScan returns a scalar rumple index.")
 
 
 def _validate_canopy_cover_parameters(request: ProductPlannerRequest) -> None:
@@ -570,6 +581,8 @@ def _build_plan_item(
     canopy_cover_output_filename: str = "canopy_cover.tif",
     pad_output_filename: str = "pad.tif",
     pai_output_filename: str = "pai.tif",
+    fhd_output_filename: str = "fhd.tif",
+    rumple_output_filename: str = "rumple_summary.csv",
 ) -> ProductPlanItem:
     label = PRODUCT_LABELS[product]
     raw = feasibility.get(product.value)
@@ -587,7 +600,7 @@ def _build_plan_item(
             warnings.append(PlannerWarning("PRODUCT_UNAVAILABLE", "ERROR", reason))
         elif status == "Warning":
             warnings.append(PlannerWarning("PRODUCT_NEEDS_REVIEW", "WARNING", reason))
-    outputs = _planned_outputs(product, output_folder, chm_output_filename, canopy_cover_output_filename, pad_output_filename, pai_output_filename) if plan_status != "Blocked" else ()
+    outputs = _planned_outputs(product, output_folder, chm_output_filename, canopy_cover_output_filename, pad_output_filename, pai_output_filename, fhd_output_filename, rumple_output_filename) if plan_status != "Blocked" else ()
     return ProductPlanItem(
         product=product,
         label=label,
@@ -609,7 +622,7 @@ def _plan_status_from_feasibility(status: str) -> str:
     return "Blocked"
 
 
-def _planned_outputs(product: ProductType, output_folder: Path, chm_output_filename: str = "chm.tif", canopy_cover_output_filename: str = "canopy_cover.tif", pad_output_filename: str = "pad.tif", pai_output_filename: str = "pai.tif") -> tuple[PlannedOutput, ...]:
+def _planned_outputs(product: ProductType, output_folder: Path, chm_output_filename: str = "chm.tif", canopy_cover_output_filename: str = "canopy_cover.tif", pad_output_filename: str = "pad.tif", pai_output_filename: str = "pai.tif", fhd_output_filename: str = "fhd.tif", rumple_output_filename: str = "rumple_summary.csv") -> tuple[PlannedOutput, ...]:
     filename, output_type, description = PRODUCT_OUTPUTS[product]
     if product is ProductType.CHM:
         filename = chm_output_filename
@@ -619,6 +632,10 @@ def _planned_outputs(product: ProductType, output_folder: Path, chm_output_filen
         filename = pad_output_filename
     elif product is ProductType.PAI:
         filename = pai_output_filename
+    elif product is ProductType.FHD:
+        filename = fhd_output_filename
+    elif product is ProductType.RUMPLE:
+        filename = rumple_output_filename
     output = PlannedOutput(
         product=product,
         label=PRODUCT_LABELS[product],

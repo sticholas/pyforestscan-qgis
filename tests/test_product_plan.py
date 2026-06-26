@@ -176,6 +176,56 @@ class ProductPlannerTests(unittest.TestCase):
             self.assertEqual(root / "products" / "plot_pad.tif", report.products[0].outputs[0].path)
             self.assertEqual(root / "products" / "plot_pai.tif", report.products[1].outputs[0].path)
 
+
+    def test_fhd_and_rumple_parameters_are_serialized_and_drive_output_names(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            payload = explorer_payload()
+            payload["supported_products"] = [
+                {"product": "fhd", "label": "Foliage Height Diversity (FHD)", "status": "Available", "reason": "Ready."},
+                {"product": "rumple", "label": "Rumple Index", "status": "Available", "reason": "Ready."},
+            ]
+            request = ProductPlannerRequest(
+                explorer_report_path=root / "dataset_explorer.json",
+                requested_products=(ProductType.FHD, ProductType.RUMPLE),
+                output_folder=root / "products",
+                grid_resolution=1.0,
+                height_bin_size=2.0,
+                fhd_output_filename="plot_fhd.tif",
+                rumple_output_filename="plot_rumple.csv",
+            )
+
+            report = build_product_plan(payload, request)
+            rendered = json.loads(render_plan_json(report))
+
+            self.assertEqual("plot_fhd.tif", rendered["parameters"]["fhd_output_filename"])
+            self.assertEqual("plot_rumple.csv", rendered["parameters"]["rumple_output_filename"])
+            self.assertEqual(root / "products" / "plot_fhd.tif", report.products[0].outputs[0].path)
+            self.assertEqual(root / "products" / "plot_rumple.csv", report.products[1].outputs[0].path)
+
+    def test_fhd_requires_height_bin_size(self) -> None:
+        request = ProductPlannerRequest(
+            explorer_report_path=Path("report.json"),
+            requested_products=(ProductType.FHD,),
+            output_folder=Path("out"),
+            grid_resolution=1.0,
+        )
+
+        with self.assertRaises(ProductPlanError):
+            build_product_plan(explorer_payload(), request)
+
+    def test_rumple_output_filename_must_be_simple_csv_name(self) -> None:
+        request = ProductPlannerRequest(
+            explorer_report_path=Path("report.json"),
+            requested_products=(ProductType.RUMPLE,),
+            output_folder=Path("out"),
+            grid_resolution=1.0,
+            rumple_output_filename="rumple.tif",
+        )
+
+        with self.assertRaises(ProductPlanError):
+            build_product_plan(explorer_payload(), request)
+
     def test_pad_and_pai_require_height_bin_size(self) -> None:
         for product in (ProductType.PAD, ProductType.PAI):
             request = ProductPlannerRequest(

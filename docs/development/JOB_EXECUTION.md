@@ -2,13 +2,15 @@
 
 Phase 8A introduced the execution framework that scientific processing uses.
 Phase 8C connected that framework to Mission Control run folders so users do not
-manually manage Product Planner JSON files. Phase 10A added CHM processing, Phase 11A added Canopy Cover processing,
-and Phase 13A added PAD and PAI processing. Dry-run validation remains available
-for tests and advanced callers.
+manually manage Product Planner JSON files. Phase 10A added CHM processing,
+Phase 11A added Canopy Cover processing, Phase 13A added PAD and PAI processing,
+and Phase 14A added FHD and Rumple processing. Dry-run validation remains
+available for tests and advanced callers.
 
-Processing mode calls PyForestScan only through the adapter boundary. CHM, Canopy Cover, PAD, and PAI can
-create GeoTIFF outputs in `outputs/`; FHD, rumple, vectors, and point-cloud
-outputs remain unimplemented.
+Processing mode calls PyForestScan only through the adapter boundary. CHM,
+Canopy Cover, PAD, PAI, and FHD can create GeoTIFF outputs in `outputs/`;
+Rumple creates a scalar CSV table. Vectors and point-cloud outputs
+remain unimplemented.
 
 ## Architecture
 
@@ -122,5 +124,6 @@ validation stages from the registered product pipeline, stores `PipelineResult`
 objects on the job record, and writes them into `job_summary.json`.
 
 Dry-run jobs still skip scientific and export stages. Processing jobs execute
-only implemented stages. CHM, Canopy Cover, PAD, and PAI Generate Product and Export stages can produce GeoTIFFs in
-`outputs/`; FHD and rumple remain skipped.
+only implemented stages. CHM, Canopy Cover, PAD, PAI, and FHD Generate Product
+and Export stages can produce GeoTIFFs in `outputs/`; Rumple produces a scalar
+CSV summary.

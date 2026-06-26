@@ -61,5 +61,4 @@ Product Planner produces planning reports, not scientific products:
 
 The planned product paths in these reports are estimates consumed by Mission
 Control processing. The planner itself does not create GeoTIFFs, CSV metric
-outputs, or metadata files for scientific products. Implemented processing
-products currently include CHM, Canopy Cover, PAD, and PAI.
+outputs, or metadata files for scientific products. Implemented processing products currently include CHM, Canopy Cover, PAD, PAI, FHD, and Rumple. Rumple is a scalar CSV summary in PyForestScan 0.4.0 rather than a raster.

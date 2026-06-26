@@ -2,8 +2,7 @@
 
 Phase 13A enables Plant Area Density (PAD) and Plant Area Index (PAI) as real
 adapter-backed PyForestScan products for a single small lidar dataset. CHM and
-Canopy Cover remain implemented. FHD, rumple, batch processing, and folder
-cataloging remain out of scope.
+Canopy Cover remain implemented. batch processing and folder cataloging remain out of scope.
 
 ## Exact PyForestScan API Used
 
@@ -124,7 +123,6 @@ height bin size, output filenames, and result paths such as `pad_geotiff` and
   plugin-owned processing error and failed job summary.
 - If a GeoTIFF writer does not create a file, the job should fail instead of
   reporting partial success.
-- FHD and rumple remain skipped/not implemented.
 
 ## Limitations
 

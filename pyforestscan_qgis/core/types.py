@@ -232,6 +232,55 @@ class PaiResult:
 
 
 @dataclass(frozen=True)
+class FhdRequest:
+    """Adapter request for FHD generation."""
+
+    input_path: Path | str
+    output_path: Path
+    grid_resolution: float
+    voxel_height: float
+    crs: str
+    min_height: float = 0.0
+    max_height: float | None = None
+
+
+@dataclass(frozen=True)
+class FhdResult:
+    """Adapter result for a generated FHD GeoTIFF."""
+
+    output_path: Path
+    spatial_extent: tuple[float, float, float, float]
+    grid_resolution: float
+    voxel_height: float
+    crs: str
+
+
+@dataclass(frozen=True)
+class RumpleRequest:
+    """Adapter request for rumple index generation."""
+
+    input_path: Path | str
+    output_path: Path
+    grid_resolution: float
+    crs: str
+    min_height: float | None = None
+    interpolation: str | None = "linear"
+    interp_valid_region: bool = False
+    interp_clean_edges: bool = False
+
+
+@dataclass(frozen=True)
+class RumpleResult:
+    """Adapter result for a scalar rumple index table."""
+
+    output_path: Path
+    rumple_index: float
+    spatial_extent: tuple[float, float, float, float]
+    grid_resolution: float
+    crs: str
+
+
+@dataclass(frozen=True)
 class ProductRequest:
     """Future product request placeholder for adapter architecture."""
 

@@ -1,8 +1,9 @@
 # Processing Pipeline Framework
 
-Phase 9A introduced the processing pipeline framework. Phase 13A wires the CHM, Canopy Cover, PAD, and PAI
-pipelines to the adapter for real scientific outputs while keeping FHD, rumple,
-vectors, and point-cloud outputs unimplemented.
+Phase 9A introduced the processing pipeline framework. Phase 14A wires CHM,
+Canopy Cover, PAD, PAI, FHD, and Rumple pipelines to the adapter for
+single-dataset scientific outputs while keeping vector and point-cloud outputs
+unimplemented.
 
 ## Purpose
 
@@ -51,8 +52,9 @@ Registered product pipelines use this standard stage order:
 Dry-run jobs execute validation stages only. Processing jobs execute only stages
 that have a product implementation. CHM can execute Generate Product through `PyForestScanAdapter.create_chm()`,
 Canopy Cover through `PyForestScanAdapter.create_canopy_cover()`, PAD through
-`PyForestScanAdapter.create_pad()`, and PAI through
-`PyForestScanAdapter.create_pai()`. These products record export artifacts. Other
+`PyForestScanAdapter.create_pad()`, PAI through
+`PyForestScanAdapter.create_pai()`, FHD through `PyForestScanAdapter.create_fhd()`,
+and Rumple through `PyForestScanAdapter.create_rumple()`. These products record export artifacts. Other
 product scientific stages remain skipped, and direct calls to placeholder steps
 still raise `NotImplementedError`.
 
@@ -62,15 +64,15 @@ Dry-run jobs now load pipeline contexts from the active Product Planner JSON and
 execute registered validation pipelines for each requested product. Pipeline
 results are stored on the `JobRecord` and serialized into `job_summary.json`.
 
-A dry-run job still writes only the job summary. CHM, Canopy Cover, PAD, and
-PAI processing jobs write GeoTIFFs in `outputs/` and record them in the job
-summary. FHD and rumple do not create scientific outputs.
+A dry-run job still writes only the job summary. CHM, Canopy Cover, PAD, PAI, and FHD processing jobs write GeoTIFFs in
+`outputs/`. Rumple writes a scalar CSV summary. All are recorded in the job
+summary.
 
 ## Mission Control Integration
 
 Mission Control Processing displays pipeline stages from the current job record.
-Validation steps show pass, warning, or failure messages. Future scientific and
-export steps are shown as pending future work and are not executed.
+Validation steps show pass, warning, or failure messages. Implemented scientific and export steps show pass/fail status. Unimplemented
+future output families remain outside the registered major-product workflows.
 
 ## Scope Boundary
 

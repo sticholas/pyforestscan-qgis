@@ -165,7 +165,7 @@ class MissionControlDock(QDockWidget):
     def _load_job_outputs(self, job: JobRecord) -> None:
         """Best-effort load of generated raster outputs into QGIS."""
         for result in job.results:
-            if result.result_type not in {"chm_geotiff", "canopy_cover_geotiff", "pad_geotiff", "pai_geotiff"} or result.path in self.loaded_result_paths:
+            if result.result_type not in {"chm_geotiff", "canopy_cover_geotiff", "pad_geotiff", "pai_geotiff", "fhd_geotiff"} or result.path in self.loaded_result_paths:
                 continue
             if not result.path.exists():
                 continue
@@ -184,6 +184,7 @@ class MissionControlDock(QDockWidget):
             "canopy_cover_geotiff": "Canopy Cover",
             "pad_geotiff": "PAD",
             "pai_geotiff": "PAI",
+            "fhd_geotiff": "FHD",
         }.get(result_type, "CHM")
         if self.state.active_run is not None:
             return f"{product} - {self.state.active_run.lidar_path.stem} - {self.state.active_run.run_folder.name}"
@@ -235,6 +236,12 @@ class MissionControlDock(QDockWidget):
                 shader_class.ColorRampItem(0.0, qcolor("#f8fafc"), "Low"),
                 shader_class.ColorRampItem(0.5, qcolor("#22c55e"), "Medium"),
                 shader_class.ColorRampItem(2.0, qcolor("#166534"), "High"),
+            ]
+        if result_type == "fhd_geotiff":
+            return [
+                shader_class.ColorRampItem(0.0, qcolor("#fff7ed"), "Low"),
+                shader_class.ColorRampItem(1.0, qcolor("#fb923c"), "Medium"),
+                shader_class.ColorRampItem(3.0, qcolor("#7c2d12"), "High"),
             ]
         return [
             shader_class.ColorRampItem(0.0, qcolor("#f7fcf0"), "Low"),

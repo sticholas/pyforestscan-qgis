@@ -2,7 +2,7 @@
 
 This module validates and inspects datasets, exposes typed results, and
 centralizes PyForestScan imports behind a plugin-owned API. CHM, canopy cover,
-PAD, and PAI are implemented; FHD and rumple remain unimplemented.
+PAD, PAI, FHD, and rumple are implemented for single-dataset workflows.
 """
 
 from __future__ import annotations
@@ -31,10 +31,14 @@ from .types import (
     LogContextItem,
     LogLevel,
     LogRecord,
+    FhdRequest,
+    FhdResult,
     PadRequest,
     PadResult,
     PaiRequest,
     PaiResult,
+    RumpleRequest,
+    RumpleResult,
     ProductRequest,
     ProductResult,
     ProductType,
@@ -386,6 +390,103 @@ class PyForestScanAdapter:
             self._progress.fail("PAI generation failed")
             raise ProcessingError(f"PAI generation failed: {exc}") from exc
 
+    def create_fhd(self, request: FhdRequest) -> FhdResult:
+        """Generate FHD as a single-band GeoTIFF through PyForestScan."""
+        if request.grid_resolution <= 0:
+            raise ProcessingError("FHD grid resolution must be greater than zero.")
+        if request.voxel_height <= 0:
+            raise ProcessingError("FHD voxel height must be greater than zero.")
+        if request.min_height < 0:
+            raise ProcessingError("FHD minimum height must be zero or greater.")
+        if request.max_height is not None and request.max_height <= request.min_height:
+            raise ProcessingError("FHD maximum height must be greater than minimum height.")
+        if not request.crs:
+            raise ProcessingError("FHD generation requires a dataset CRS.")
+        output_path = Path(request.output_path)
+        _validate_output_path(output_path)
+        self._progress.start("Reading lidar for FHD")
+        self._log(LogLevel.INFO, "Starting FHD generation", input=str(request.input_path), output=str(output_path))
+        try:
+            pyforestscan = _import_required("pyforestscan", ProcessingError)
+            handlers = _import_required("pyforestscan.handlers", ProcessingError)
+            point_array = self._read_hag_point_array(request.input_path, request.crs, "FHD")
+            voxel_returns, extent = pyforestscan.assign_voxels(
+                point_array,
+                (request.grid_resolution, request.grid_resolution, request.voxel_height),
+            )
+            self._progress.update(50, "Voxel returns calculated")
+            fhd = pyforestscan.calculate_fhd(
+                voxel_returns,
+                voxel_height=request.voxel_height,
+                min_height=request.min_height,
+                max_height=request.max_height,
+            )
+            self._progress.update(80, "FHD array calculated")
+            handlers.create_geotiff(fhd, str(output_path), request.crs, extent)
+            _validate_created_output(output_path)
+            self._progress.complete("FHD GeoTIFF created")
+            self._log(LogLevel.INFO, "FHD generation complete", output=str(output_path))
+            return FhdResult(
+                output_path=output_path,
+                spatial_extent=tuple(float(value) for value in extent),
+                grid_resolution=request.grid_resolution,
+                voxel_height=request.voxel_height,
+                crs=request.crs,
+            )
+        except ProcessingError:
+            self._progress.fail("FHD generation failed")
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            self._progress.fail("FHD generation failed")
+            raise ProcessingError(f"FHD generation failed: {exc}") from exc
+
+    def create_rumple(self, request: RumpleRequest) -> RumpleResult:
+        """Generate scalar rumple index and write a CSV summary."""
+        if request.grid_resolution <= 0:
+            raise ProcessingError("Rumple grid resolution must be greater than zero.")
+        if request.min_height is not None and request.min_height < 0:
+            raise ProcessingError("Rumple minimum height must be zero or greater.")
+        if not request.crs:
+            raise ProcessingError("Rumple generation requires a dataset CRS.")
+        output_path = Path(request.output_path)
+        _validate_csv_output_path(output_path)
+        self._progress.start("Reading lidar for rumple")
+        self._log(LogLevel.INFO, "Starting rumple generation", input=str(request.input_path), output=str(output_path))
+        try:
+            pyforestscan = _import_required("pyforestscan", ProcessingError)
+            point_array = self._read_hag_point_array(request.input_path, request.crs, "rumple")
+            chm, extent = pyforestscan.calculate_chm(
+                point_array,
+                (request.grid_resolution, request.grid_resolution),
+                interpolation=request.interpolation,
+                interp_valid_region=request.interp_valid_region,
+                interp_clean_edges=request.interp_clean_edges,
+            )
+            self._progress.update(65, "Internal CHM prerequisite calculated")
+            rumple_index = float(pyforestscan.calculate_rumple(
+                chm,
+                (request.grid_resolution, request.grid_resolution),
+                min_height=request.min_height,
+            ))
+            self._progress.update(85, "Rumple index calculated")
+            _write_rumple_csv(output_path, rumple_index, request, extent)
+            _validate_created_output(output_path)
+            self._progress.complete("Rumple summary created")
+            self._log(LogLevel.INFO, "Rumple generation complete", output=str(output_path), rumple_index=rumple_index)
+            return RumpleResult(
+                output_path=output_path,
+                rumple_index=rumple_index,
+                spatial_extent=tuple(float(value) for value in extent),
+                grid_resolution=request.grid_resolution,
+                crs=request.crs,
+            )
+        except ProcessingError:
+            self._progress.fail("Rumple generation failed")
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            self._progress.fail("Rumple generation failed")
+            raise ProcessingError(f"Rumple generation failed: {exc}") from exc
+
     def create_canopy_cover(self, request: CanopyCoverRequest) -> CanopyCoverResult:
         """Generate a canopy cover GeoTIFF through PyForestScan.
 
@@ -572,6 +673,24 @@ class PyForestScanAdapter:
             self._log_sink(LogRecord(level=level, message=message, context=typed_context))
 
 
+def _write_rumple_csv(output_path: Path, rumple_index: float, request: RumpleRequest, spatial_extent: object) -> None:
+    """Write a scalar rumple result as a small CSV table."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    x_min, x_max, y_min, y_max = spatial_extent
+    rows = [
+        ("metric", "value"),
+        ("rumple_index", f"{rumple_index:.12g}"),
+        ("grid_resolution", f"{request.grid_resolution:.12g}"),
+        ("min_height", "" if request.min_height is None else f"{request.min_height:.12g}"),
+        ("crs", request.crs),
+        ("extent_x_min", f"{float(x_min):.12g}"),
+        ("extent_x_max", f"{float(x_max):.12g}"),
+        ("extent_y_min", f"{float(y_min):.12g}"),
+        ("extent_y_max", f"{float(y_max):.12g}"),
+    ]
+    output_path.write_text("\n".join(f"{name},{value}" for name, value in rows) + "\n", encoding="utf-8")
+
+
 def _write_multiband_geotiff(layer: object, output_path: Path, crs: str, spatial_extent: object, nodata: float = -9999.0) -> None:
     """Write a 3D X/Y/Z PAD array as a multi-band GeoTIFF."""
     rasterio = _import_required("rasterio", ProcessingError)
@@ -604,6 +723,25 @@ def _write_multiband_geotiff(layer: object, output_path: Path, crs: str, spatial
     ) as dataset:
         for band_index in range(bands):
             dataset.write(data[:, :, band_index].T, band_index + 1)
+
+
+def _validate_csv_output_path(output_path: Path) -> None:
+    """Validate that a CSV table output path can be written."""
+    if output_path.suffix.lower() != ".csv":
+        raise ProcessingError("Rumple output filename must end with .csv because rumple is a scalar table product.")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if not output_path.parent.is_dir():
+        raise ProcessingError(f"Output folder is not available: {output_path.parent}")
+    probe = output_path.parent / f".{output_path.name}.write-test"
+    try:
+        probe.write_text("", encoding="utf-8")
+    except OSError as exc:
+        raise ProcessingError(f"Output folder is not writable: {output_path.parent}") from exc
+    finally:
+        try:
+            probe.unlink()
+        except OSError:
+            pass
 
 
 def _validate_output_path(output_path: Path) -> None:
