@@ -46,6 +46,40 @@ class PipelineContext:
             value = 1.0
         return float(value)
 
+
+    @property
+    def chm_interpolation(self) -> str:
+        """Return the planned CHM interpolation method."""
+        return str(self._parameter("chm_interpolation", "linear"))
+
+    @property
+    def chm_interpolate_valid_region(self) -> bool:
+        """Return whether CHM valid-region interpolation is enabled."""
+        return bool(self._parameter("chm_interpolate_valid_region", False))
+
+    @property
+    def chm_clean_edges(self) -> bool:
+        """Return whether CHM edge cleanup is enabled."""
+        return bool(self._parameter("chm_clean_edges", False))
+
+    @property
+    def chm_output_filename(self) -> str:
+        """Return the planned CHM output filename."""
+        value = str(self._parameter("chm_output_filename", "chm.tif"))
+        return value or "chm.tif"
+
+    @property
+    def parameters(self) -> dict[str, object]:
+        """Return user-selected execution parameters for summary output."""
+        raw = self.product_plan.get("parameters")
+        return dict(raw) if isinstance(raw, Mapping) else {}
+
+    def _parameter(self, name: str, default: object) -> object:
+        parameters = self.product_plan.get("parameters")
+        if isinstance(parameters, Mapping):
+            return parameters.get(name, default)
+        return default
+
     @property
     def crs(self) -> str | None:
         """Return the dataset CRS from Dataset Explorer JSON when available."""

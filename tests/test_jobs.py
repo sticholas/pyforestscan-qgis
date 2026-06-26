@@ -101,12 +101,15 @@ class JobManagerTests(unittest.TestCase):
             self.assertEqual(JobStatus.COMPLETED, job.status)
             chm_results = [result for result in job.results if result.result_type == "chm_geotiff"]
             self.assertEqual(1, len(chm_results))
-            self.assertEqual(root / "outputs" / "chm.tif", chm_results[0].path)
+            self.assertEqual(root / "outputs" / "job_chm.tif", chm_results[0].path)
             self.assertTrue(chm_results[0].path.exists())
             payload = json.loads((root / "logs" / "job_summary.json").read_text(encoding="utf-8"))
             self.assertTrue(payload["processing_executed"])
             self.assertTrue(payload["scientific_outputs_created"])
-            self.assertEqual(str(root / "outputs" / "chm.tif"), payload["results"][0]["path"])
+            self.assertEqual(str(root / "outputs" / "job_chm.tif"), payload["results"][0]["path"])
+            self.assertEqual("nearest", payload["parameters"]["chm_interpolation"])
+            self.assertTrue(payload["parameters"]["chm_interpolate_valid_region"])
+            self.assertTrue(payload["parameters"]["chm_clean_edges"])
 
     def test_job_summary_renderer_marks_no_scientific_outputs(self) -> None:
         """Serialized summaries explicitly state that processing did not run."""
@@ -173,7 +176,7 @@ def _write_plan(path: Path, status: str = "Ready", include_pai: bool = True) -> 
         "source_report": str(path.parent / "dataset_report.json"),
         "processing_executed": False,
         "output_folder": str(path.parent / "outputs"),
-        "parameters": {"grid_resolution": 1.0},
+        "parameters": {"grid_resolution": 1.0, "chm_interpolation": "nearest", "chm_interpolate_valid_region": True, "chm_clean_edges": True, "chm_output_filename": "job_chm.tif"},
         "products": products,
     }
     path.write_text(json.dumps(payload), encoding="utf-8")

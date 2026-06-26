@@ -145,6 +145,10 @@ It does not run PyForestScan calculations and does not create rasters.
 - Desired products: CHM, PAI, PAD, FHD, Canopy Cover, and Rumple.
 - Output folder for the plan and future products.
 - Grid resolution.
+- CHM interpolation method.
+- CHM valid-region interpolation toggle.
+- CHM clean-edges toggle.
+- CHM output filename.
 - Optional height bin size.
 - Optional plan title and notes.
 
@@ -182,8 +186,8 @@ Product Planner writes these files inside the selected output folder:
 The Mission Control Processing page starts a CHM job from the active Product
 Planner report. Users do not need to browse for `product_plan.json`; Mission
 Control uses the current run folder automatically. The job validates the plan,
-runs the CHM pipeline through the adapter, writes `outputs/chm.tif`, and writes
-`logs/job_summary.json`.
+runs the CHM pipeline through the adapter, writes the selected CHM GeoTIFF in
+`outputs/`, and writes `logs/job_summary.json`.
 
 Only CHM is implemented. PAI, PAD, FHD, canopy cover, and rumple remain future
 products and do not create rasters.
@@ -195,7 +199,7 @@ flowchart TD
     A["Product Planner JSON"] --> B["Mission Control Processing page"]
     B --> C["JobManager pipeline execution"]
     C --> D["PyForestScanAdapter.create_chm"]
-    D --> E["outputs/chm.tif"]
+    D --> E["outputs/<chosen_chm_filename>.tif"]
     C --> F["logs/job_summary.json"]
     F --> G["Mission Control Results history"]
 ```
@@ -208,5 +212,21 @@ flowchart TD
 4. Select Start CHM Job.
 5. Open Results to review the job history and friendly result links.
 
+### CHM Parameters
+
+- Grid resolution must be greater than zero.
+- Interpolation can be `linear`, `nearest`, or `cubic`.
+- Valid-region interpolation and clean-edges options are passed to
+  `pyforestscan.calculate_chm`.
+- Output filename must be a simple `.tif` or `.tiff` name.
+
+### CHM QA
+
+After a successful run, confirm the CHM opens in QGIS, the CRS and extent align
+with the source dataset, values look reasonable, and edge artifacts are
+acceptable for the selected interpolation options.
+
 A successful CHM summary includes `processing_executed: true`,
-`scientific_outputs_created: true`, and a `chm_geotiff` result path.
+`scientific_outputs_created: true`, selected CHM `parameters`, and a
+`chm_geotiff` result path. Failed jobs still write `logs/job_summary.json` with
+a clear error message.

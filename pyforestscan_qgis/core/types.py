@@ -137,7 +137,7 @@ class DatasetInspection:
 
 @dataclass(frozen=True)
 class ChmRequest:
-    """Adapter request for a CHM processing spike."""
+    """Adapter request for CHM generation."""
 
     input_path: Path | str
     output_path: Path

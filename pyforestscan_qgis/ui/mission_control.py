@@ -169,12 +169,48 @@ class MissionControlDock(QDockWidget):
                 continue
             if not result.path.exists():
                 continue
+            layer_name = self._layer_name(result.path)
             try:
-                layer = self.iface.addRasterLayer(str(result.path), result.path.stem)
+                layer = self.iface.addRasterLayer(str(result.path), layer_name)
             except Exception:  # noqa: BLE001 - UI layer loading must not break job completion.
                 layer = None
             if layer is not None:
+                self._polish_chm_layer(layer)
                 self.loaded_result_paths.add(result.path)
+
+    def _layer_name(self, path: Path) -> str:
+        """Return a friendly layer name for generated CHM rasters."""
+        if self.state.active_run is not None:
+            return f"CHM - {self.state.active_run.lidar_path.stem} - {self.state.active_run.run_folder.name}"
+        return f"CHM - {path.stem}"
+
+    def _polish_chm_layer(self, layer: object) -> None:
+        """Best-effort CHM statistics and raster styling."""
+        try:
+            provider = layer.dataProvider()
+            provider.bandStatistics(1)
+        except Exception:  # noqa: BLE001 - statistics are helpful but optional.
+            return
+        try:
+            from qgis.PyQt.QtGui import QColor
+            from qgis.core import QgsColorRampShader, QgsRasterShader, QgsSingleBandPseudoColorRenderer
+
+            shader = QgsRasterShader()
+            ramp = QgsColorRampShader()
+            ramp.setColorRampType(QgsColorRampShader.Interpolated)
+            ramp.setColorRampItemList(
+                [
+                    QgsColorRampShader.ColorRampItem(0.0, QColor("#f7fcf0"), "Low"),
+                    QgsColorRampShader.ColorRampItem(10.0, QColor("#74c476"), "Medium"),
+                    QgsColorRampShader.ColorRampItem(30.0, QColor("#00441b"), "High"),
+                ]
+            )
+            shader.setRasterShaderFunction(ramp)
+            renderer = QgsSingleBandPseudoColorRenderer(layer.dataProvider(), 1, shader)
+            layer.setRenderer(renderer)
+            layer.triggerRepaint()
+        except Exception:  # noqa: BLE001 - styling should never break layer loading.
+            return
 
     def _refresh_home(self) -> None:
         self.home_page.set_versions(self._pyforestscan_version())

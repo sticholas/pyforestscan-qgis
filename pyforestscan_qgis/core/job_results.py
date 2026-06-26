@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from .jobs import JobRecord
 from .pipeline_results import pipeline_result_to_dict
@@ -27,6 +27,7 @@ def job_to_dict(job: JobRecord) -> dict[str, Any]:
             "message": job.progress.message,
         },
         "requested_products": list(job.requested_products),
+        "parameters": _job_parameters(job),
         "pipelines": [pipeline_result_to_dict(result) for result in job.pipeline_results],
         "logs": [
             {"timestamp": entry.timestamp, "level": entry.level, "message": entry.message}
@@ -44,6 +45,18 @@ def job_to_dict(job: JobRecord) -> dict[str, Any]:
         "processing_executed": any(result.result_type != "job_summary_json" for result in job.results),
         "scientific_outputs_created": any(result.result_type != "job_summary_json" for result in job.results),
     }
+
+
+def _job_parameters(job: JobRecord) -> dict[str, Any]:
+    """Return Product Planner parameters for reproducible job summaries."""
+    try:
+        payload = json.loads(job.product_plan_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, Mapping):
+        return {}
+    parameters = payload.get("parameters")
+    return dict(parameters) if isinstance(parameters, Mapping) else {}
 
 
 def render_job_summary_json(job: JobRecord) -> str:

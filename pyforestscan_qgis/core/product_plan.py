@@ -28,7 +28,7 @@ PRODUCT_LABELS = {
 }
 
 PRODUCT_OUTPUTS = {
-    ProductType.CHM: ("chm.tif", "GeoTIFF raster", "Future canopy height raster."),
+    ProductType.CHM: ("chm.tif", "GeoTIFF raster", "Canopy height raster."),
     ProductType.PAI: ("pai.tif", "GeoTIFF raster", "Future plant area index raster."),
     ProductType.PAD: ("pad_height_bins.tif", "GeoTIFF raster stack", "Future height-binned PAD stack."),
     ProductType.FHD: ("fhd.tif", "GeoTIFF raster", "Future foliage height diversity raster."),
@@ -80,6 +80,10 @@ class ProductPlannerRequest:
     output_folder: Path
     grid_resolution: float
     height_bin_size: float | None = None
+    chm_interpolation: str = "linear"
+    chm_interpolate_valid_region: bool = False
+    chm_clean_edges: bool = False
+    chm_output_filename: str = "chm.tif"
     title: str = "PyForestScan Product Planner"
     notes: str = ""
 
@@ -95,6 +99,10 @@ class ProductPlannerReport:
     output_folder: Path
     grid_resolution: float
     height_bin_size: float | None
+    chm_interpolation: str
+    chm_interpolate_valid_region: bool
+    chm_clean_edges: bool
+    chm_output_filename: str
     notes: str
     estimated_columns: int | None
     estimated_rows: int | None
@@ -135,6 +143,7 @@ def build_product_plan(
         raise ProductPlanError("Grid resolution must be greater than zero.")
     if request.height_bin_size is not None and request.height_bin_size <= 0:
         raise ProductPlanError("Height bin size must be greater than zero when provided.")
+    _validate_chm_parameters(request)
 
     feasibility = _feasibility_by_product(explorer_report)
     dataset_warnings = _dataset_warnings(explorer_report)
@@ -142,6 +151,7 @@ def build_product_plan(
     height_bins = _estimate_height_bins(explorer_report, request.height_bin_size)
 
     global_warnings = list(dataset_warnings)
+    global_warnings.extend(_chm_planning_warnings(explorer_report, request))
     if cells is None:
         global_warnings.append(
             PlannerWarning(
@@ -160,7 +170,7 @@ def build_product_plan(
         )
 
     products = tuple(
-        _build_plan_item(product, feasibility, request.output_folder)
+        _build_plan_item(product, feasibility, request.output_folder, request.chm_output_filename)
         for product in request.requested_products
     )
     next_actions = _next_actions(products, tuple(global_warnings))
@@ -173,6 +183,10 @@ def build_product_plan(
         output_folder=request.output_folder,
         grid_resolution=request.grid_resolution,
         height_bin_size=request.height_bin_size,
+        chm_interpolation=request.chm_interpolation,
+        chm_interpolate_valid_region=request.chm_interpolate_valid_region,
+        chm_clean_edges=request.chm_clean_edges,
+        chm_output_filename=request.chm_output_filename,
         notes=request.notes,
         estimated_columns=columns,
         estimated_rows=rows,
@@ -195,6 +209,10 @@ def plan_to_dict(report: ProductPlannerReport) -> dict[str, Any]:
         "parameters": {
             "grid_resolution": report.grid_resolution,
             "height_bin_size": report.height_bin_size,
+            "chm_interpolation": report.chm_interpolation,
+            "chm_interpolate_valid_region": report.chm_interpolate_valid_region,
+            "chm_clean_edges": report.chm_clean_edges,
+            "chm_output_filename": report.chm_output_filename,
         },
         "estimates": {
             "columns": report.estimated_columns,
@@ -259,6 +277,10 @@ def write_plan_csv(report: ProductPlannerReport, output_path: Path | str) -> Pat
         writer.writerow(("dataset", "", "source_dataset", report.source_dataset or "Unknown", "", ""))
         writer.writerow(("parameters", "", "grid_resolution", report.grid_resolution, "", ""))
         writer.writerow(("parameters", "", "height_bin_size", report.height_bin_size or "", "", ""))
+        writer.writerow(("parameters", "", "chm_interpolation", report.chm_interpolation, "", ""))
+        writer.writerow(("parameters", "", "chm_interpolate_valid_region", report.chm_interpolate_valid_region, "", ""))
+        writer.writerow(("parameters", "", "chm_clean_edges", report.chm_clean_edges, "", ""))
+        writer.writerow(("parameters", "", "chm_output_filename", report.chm_output_filename, "", ""))
         writer.writerow(("estimate", "", "columns", report.estimated_columns or "", "", ""))
         writer.writerow(("estimate", "", "rows", report.estimated_rows or "", "", ""))
         writer.writerow(("estimate", "", "cells", report.estimated_cells or "", "", ""))
@@ -317,6 +339,10 @@ def render_plan_html(report: ProductPlannerReport) -> str:
         <tr><th>Output folder</th><td>{escape(str(report.output_folder))}</td></tr>
         <tr><th>Grid resolution</th><td>{report.grid_resolution:g}</td></tr>
         <tr><th>Height bin size</th><td>{_format_optional_number(report.height_bin_size)}</td></tr>
+        <tr><th>CHM interpolation</th><td>{escape(report.chm_interpolation)}</td></tr>
+        <tr><th>CHM interpolate valid region</th><td>{str(report.chm_interpolate_valid_region)}</td></tr>
+        <tr><th>CHM clean edges</th><td>{str(report.chm_clean_edges)}</td></tr>
+        <tr><th>CHM output filename</th><td>{escape(report.chm_output_filename)}</td></tr>
         <tr><th>Estimated grid</th><td>{_format_grid(report)}</td></tr>
         <tr><th>Estimated height bins</th><td>{report.estimated_height_bins if report.estimated_height_bins is not None else 'Unknown'}</td></tr>
       </table>
@@ -351,6 +377,72 @@ def _require_report_sections(payload: Mapping[str, Any]) -> None:
     for key in ("dataset", "geometry", "point_statistics", "supported_products"):
         if key not in payload:
             raise ProductPlanError(f"Dataset Explorer report is missing required section: {key}")
+
+
+def _validate_chm_parameters(request: ProductPlannerRequest) -> None:
+    """Validate CHM-specific planning parameters."""
+    allowed_interpolation = {"linear", "nearest", "cubic"}
+    if request.chm_interpolation not in allowed_interpolation:
+        raise ProductPlanError("CHM interpolation must be linear, nearest, or cubic.")
+    output_name = Path(request.chm_output_filename)
+    if output_name.name != request.chm_output_filename or output_name.suffix.lower() not in {".tif", ".tiff"}:
+        raise ProductPlanError("CHM output filename must be a simple .tif or .tiff filename.")
+
+
+def _chm_planning_warnings(explorer_report: Mapping[str, Any], request: ProductPlannerRequest) -> list[PlannerWarning]:
+    """Return CHM readiness warnings that should travel with the plan."""
+    if ProductType.CHM not in request.requested_products:
+        return []
+    warnings: list[PlannerWarning] = []
+    point_statistics = explorer_report.get("point_statistics")
+    point_statistics = point_statistics if isinstance(point_statistics, Mapping) else {}
+    dimensions = set(str(value) for value in point_statistics.get("dimensions", []) if value)
+    if "HeightAboveGround" not in dimensions:
+        warnings.append(
+            PlannerWarning(
+                "CHM_HAG_FROM_PDAL",
+                "WARNING",
+                "HeightAboveGround is not present in the source dimensions; CHM processing will request PDAL height normalization.",
+            )
+        )
+    classification_entries = point_statistics.get("classification_summary")
+    has_ground = False
+    if isinstance(classification_entries, list):
+        for item in classification_entries:
+            if isinstance(item, dict) and int(item.get("classification", -1)) == 2 and int(item.get("count", 0)) > 0:
+                has_ground = True
+    if not has_ground:
+        warnings.append(
+            PlannerWarning(
+                "CHM_GROUND_REVIEW",
+                "WARNING",
+                "Ground class 2 was not confirmed; review height normalization and CHM values after processing.",
+            )
+        )
+    point_count = point_statistics.get("point_count")
+    if isinstance(point_count, int) and point_count > 5_000_000:
+        warnings.append(
+            PlannerWarning(
+                "CHM_LARGE_POINT_COUNT",
+                "WARNING",
+                "This dataset has more than 5 million points; Phase 10B CHM processing is not tiled and may be slow or memory intensive.",
+            )
+        )
+    source_dataset = _source_dataset(explorer_report)
+    if source_dataset:
+        try:
+            source_path = Path(source_dataset)
+            if source_path.is_file() and source_path.stat().st_size > 1_000_000_000:
+                warnings.append(
+                    PlannerWarning(
+                        "CHM_LARGE_FILE",
+                        "WARNING",
+                        "The source point-cloud file is larger than 1 GB; test CHM processing on a small dataset before larger production runs.",
+                    )
+                )
+        except OSError:
+            pass
+    return warnings
 
 
 def _feasibility_by_product(report: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
@@ -427,6 +519,7 @@ def _build_plan_item(
     product: ProductType,
     feasibility: Mapping[str, Mapping[str, Any]],
     output_folder: Path,
+    chm_output_filename: str = "chm.tif",
 ) -> ProductPlanItem:
     label = PRODUCT_LABELS[product]
     raw = feasibility.get(product.value)
@@ -444,7 +537,7 @@ def _build_plan_item(
             warnings.append(PlannerWarning("PRODUCT_UNAVAILABLE", "ERROR", reason))
         elif status == "Warning":
             warnings.append(PlannerWarning("PRODUCT_NEEDS_REVIEW", "WARNING", reason))
-    outputs = _planned_outputs(product, output_folder) if plan_status != "Blocked" else ()
+    outputs = _planned_outputs(product, output_folder, chm_output_filename) if plan_status != "Blocked" else ()
     return ProductPlanItem(
         product=product,
         label=label,
@@ -466,8 +559,10 @@ def _plan_status_from_feasibility(status: str) -> str:
     return "Blocked"
 
 
-def _planned_outputs(product: ProductType, output_folder: Path) -> tuple[PlannedOutput, ...]:
+def _planned_outputs(product: ProductType, output_folder: Path, chm_output_filename: str = "chm.tif") -> tuple[PlannedOutput, ...]:
     filename, output_type, description = PRODUCT_OUTPUTS[product]
+    if product is ProductType.CHM:
+        filename = chm_output_filename
     output = PlannedOutput(
         product=product,
         label=PRODUCT_LABELS[product],

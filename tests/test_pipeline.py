@@ -82,6 +82,35 @@ class PipelineFrameworkTests(unittest.TestCase):
             self.assertEqual((root / "outputs" / "chm.tif",), result.output_paths)
             self.assertEqual(root / "outputs" / "chm.tif", adapter.output_path)
 
+
+    def test_chm_pipeline_passes_selected_parameters_to_adapter(self) -> None:
+        """The CHM pipeline uses Product Planner CHM parameters."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            dataset_report = root / "dataset_report.json"
+            dataset_report.write_text(json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8")
+            product_plan = _write_product_plan(root / "product_plan.json", dataset_report)
+            payload = json.loads(product_plan.read_text(encoding="utf-8"))
+            payload["parameters"].update(
+                {
+                    "chm_interpolation": "cubic",
+                    "chm_interpolate_valid_region": True,
+                    "chm_clean_edges": True,
+                    "chm_output_filename": "custom_chm.tif",
+                }
+            )
+            product_plan.write_text(json.dumps(payload), encoding="utf-8")
+            context = load_pipeline_contexts(product_plan, root / "logs")[0]
+            adapter = _FakeChmAdapter()
+
+            result = build_default_pipeline_registry().get("chm").run(context, adapter=adapter, execute_products=True)
+
+            self.assertTrue(result.passed)
+            self.assertEqual((root / "outputs" / "custom_chm.tif",), result.output_paths)
+            self.assertEqual("cubic", adapter.request.interpolation)
+            self.assertTrue(adapter.request.interp_valid_region)
+            self.assertTrue(adapter.request.interp_clean_edges)
+
     def test_non_chm_pipeline_execution_remains_placeholder(self) -> None:
         """Non-CHM product pipelines do not execute scientific stages."""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -104,7 +133,7 @@ def _write_product_plan(path: Path, dataset_report: Path, product: str = "chm", 
         "source_report": str(dataset_report),
         "processing_executed": False,
         "output_folder": str(path.parent / "outputs"),
-        "parameters": {"grid_resolution": 1.5},
+        "parameters": {"grid_resolution": 1.5, "chm_interpolation": "linear", "chm_interpolate_valid_region": False, "chm_clean_edges": False, "chm_output_filename": "chm.tif"},
         "products": [
             {
                 "product": product,
@@ -129,8 +158,10 @@ class _FakeChmResult:
 
 class _FakeChmAdapter:
     output_path: Path | None = None
+    request = None
 
     def create_chm(self, request):  # type: ignore[no-untyped-def]
+        self.request = request
         self.output_path = request.output_path
         request.output_path.parent.mkdir(parents=True, exist_ok=True)
         request.output_path.write_text("fake chm", encoding="utf-8")

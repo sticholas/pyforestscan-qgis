@@ -65,6 +65,34 @@ class AdapterChmTests(unittest.TestCase):
             self.assertEqual(calls["calculate"][1], (1.0, 1.0))  # type: ignore[index]
             self.assertEqual(calls["write"][1], str(output_path))  # type: ignore[index]
 
+
+    def test_create_chm_fails_when_geotiff_writer_does_not_create_file(self) -> None:
+        """A missing GeoTIFF is treated as a processing failure."""
+        point_array = np.array(
+            [(0.0, 0.0, 2.0)],
+            dtype=[("X", "f8"), ("Y", "f8"), ("HeightAboveGround", "f8")],
+        )
+        fake_pyforestscan = types.ModuleType("pyforestscan")
+        fake_handlers = types.ModuleType("pyforestscan.handlers")
+        fake_pyforestscan.calculate_chm = lambda *args, **kwargs: (np.array([[2.0]], dtype="f8"), [0.0, 1.0, 0.0, 1.0])  # type: ignore[attr-defined]
+        fake_handlers.read_lidar = lambda *args, **kwargs: [point_array]  # type: ignore[attr-defined]
+        fake_handlers.create_geotiff = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
+            sys.modules,
+            {"pyforestscan": fake_pyforestscan, "pyforestscan.handlers": fake_handlers},
+        ):
+            adapter = PyForestScanAdapter()
+            with self.assertRaises(ProcessingError):
+                adapter.create_chm(ChmRequest("plot.laz", Path(temp_dir) / "chm.tif", 1.0, "EPSG:32610"))
+            self.assertEqual(ProgressState.FAILED, adapter.get_progress().state)
+
+    def test_create_chm_requires_geotiff_output_extension(self) -> None:
+        """Invalid CHM output extensions are rejected before processing."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaises(ProcessingError):
+                PyForestScanAdapter().create_chm(ChmRequest("plot.laz", Path(temp_dir) / "chm.asc", 1.0, "EPSG:32610"))
+
     def test_create_chm_requires_hag_dimension(self) -> None:
         """Missing HeightAboveGround is reported as a processing error."""
         fake_pyforestscan = types.ModuleType("pyforestscan")

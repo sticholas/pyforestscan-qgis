@@ -104,6 +104,42 @@ class ProductPlannerTests(unittest.TestCase):
         with self.assertRaises(ProductPlanError):
             build_product_plan(explorer_payload(), request)
 
+
+    def test_chm_parameters_are_serialized_and_drive_output_name(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = ProductPlannerRequest(
+                explorer_report_path=root / "dataset_explorer.json",
+                requested_products=(ProductType.CHM,),
+                output_folder=root / "products",
+                grid_resolution=0.5,
+                chm_interpolation="nearest",
+                chm_interpolate_valid_region=True,
+                chm_clean_edges=True,
+                chm_output_filename="plot_chm.tif",
+            )
+
+            report = build_product_plan(explorer_payload(), request)
+            payload = json.loads(render_plan_json(report))
+
+            self.assertEqual("nearest", payload["parameters"]["chm_interpolation"])
+            self.assertTrue(payload["parameters"]["chm_interpolate_valid_region"])
+            self.assertTrue(payload["parameters"]["chm_clean_edges"])
+            self.assertEqual("plot_chm.tif", payload["parameters"]["chm_output_filename"])
+            self.assertEqual(root / "products" / "plot_chm.tif", report.products[0].outputs[0].path)
+
+    def test_chm_output_filename_must_be_simple_geotiff_name(self) -> None:
+        request = ProductPlannerRequest(
+            explorer_report_path=Path("report.json"),
+            requested_products=(ProductType.CHM,),
+            output_folder=Path("out"),
+            grid_resolution=1.0,
+            chm_output_filename="nested/chm.tif",
+        )
+
+        with self.assertRaises(ProductPlanError):
+            build_product_plan(explorer_payload(), request)
+
     def test_product_plan_loads_and_writes_reports(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

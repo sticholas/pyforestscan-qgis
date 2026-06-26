@@ -14,6 +14,7 @@ from qgis.PyQt.QtCore import QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -304,6 +305,11 @@ class PlanningPage(MissionPage):
         self.height_bin_spin.setMinimum(0.0)
         self.height_bin_spin.setSpecialValueText("Not specified")
         self.height_bin_spin.setValue(1.0)
+        self.chm_interpolation_combo = QComboBox()
+        self.chm_interpolation_combo.addItems(("linear", "nearest", "cubic"))
+        self.chm_valid_region_check = QCheckBox("Interpolate valid region")
+        self.chm_clean_edges_check = QCheckBox("Clean edges")
+        self.chm_output_filename_edit = QLineEdit("chm.tif")
         self.output_folder_edit = QLineEdit()
         folder_button = QPushButton("Browse")
         folder_button.clicked.connect(self.browse_folder)
@@ -312,6 +318,10 @@ class PlanningPage(MissionPage):
         folder_row.addWidget(folder_button)
         form.addRow("Grid resolution", self.resolution_spin)
         form.addRow("Height bin size", self.height_bin_spin)
+        form.addRow("CHM interpolation", self.chm_interpolation_combo)
+        form.addRow("CHM valid region", self.chm_valid_region_check)
+        form.addRow("CHM clean edges", self.chm_clean_edges_check)
+        form.addRow("CHM output filename", self.chm_output_filename_edit)
         form.addRow("Output folder", folder_row)
         controls.addLayout(form)
         build = QPushButton("Build Plan")
@@ -351,6 +361,10 @@ class PlanningPage(MissionPage):
             output_folder=output_folder,
             grid_resolution=self.resolution_spin.value(),
             height_bin_size=height_bin_size,
+            chm_interpolation=self.chm_interpolation_combo.currentText(),
+            chm_interpolate_valid_region=self.chm_valid_region_check.isChecked(),
+            chm_clean_edges=self.chm_clean_edges_check.isChecked(),
+            chm_output_filename=self.chm_output_filename_edit.text().strip() or "chm.tif",
             title="Mission Control Product Plan",
         )
         try:
@@ -378,8 +392,10 @@ class PlanningPage(MissionPage):
             f"Needs review: {review}",
             f"Blocked: {blocked}",
             f"Estimated cells: {plan.estimated_cells if plan.estimated_cells is not None else 'Unknown'}",
-            "Estimated runtime: Not available until scientific processing is implemented.",
-            "Estimated storage: Not available until product writers are implemented.",
+            f"CHM interpolation: {plan.chm_interpolation}",
+            f"CHM valid region interpolation: {plan.chm_interpolate_valid_region}",
+            f"CHM clean edges: {plan.chm_clean_edges}",
+            f"CHM output: {plan.output_folder / plan.chm_output_filename}",
             plan_path,
             "",
         ]
@@ -615,6 +631,9 @@ class ResultsPage(MissionPage):
         """Display recently recorded report paths in advanced details."""
         for path in paths:
             text = str(path)
+            if path.suffix.lower() in {".tif", ".tiff"} and path not in self._friendly_paths:
+                self._friendly_paths.append(path)
+                self.friendly_links.addItem(f"CHM Output: {path}")
             if not any(self.previous_reports.item(index).text().endswith(text) for index in range(self.previous_reports.count())):
                 self.previous_reports.addItem(text)
                 self._advanced_paths.append(path)

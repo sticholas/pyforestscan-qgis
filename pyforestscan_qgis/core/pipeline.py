@@ -97,19 +97,33 @@ def _execute_chm_step(context: PipelineContext, step: PipelineStep, adapter: Any
         return _step_result(step, PipelineStepStatus.FAILED, "CHM execution requires a source dataset.")
     if not context.crs:
         return _step_result(step, PipelineStepStatus.FAILED, "CHM execution requires dataset CRS metadata.")
-    output_path = context.output_folder / "chm.tif"
     try:
+        output_path = _chm_output_path(context)
         result = adapter.create_chm(
             ChmRequest(
                 input_path=context.source_dataset,
                 output_path=output_path,
                 grid_resolution=context.grid_resolution,
                 crs=context.crs,
+                interpolation=context.chm_interpolation,
+                interp_valid_region=context.chm_interpolate_valid_region,
+                interp_clean_edges=context.chm_clean_edges,
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
         return _step_result(step, PipelineStepStatus.FAILED, f"CHM generation failed: {exc}")
+    if not result.output_path.exists():
+        return _step_result(step, PipelineStepStatus.FAILED, f"CHM generation did not produce a GeoTIFF: {result.output_path}")
     return _step_result(step, PipelineStepStatus.PASSED, f"CHM GeoTIFF created: {result.output_path}", (result.output_path,))
+
+
+def _chm_output_path(context: PipelineContext) -> Path:
+    """Return the validated CHM output path for a pipeline context."""
+    name = context.chm_output_filename
+    candidate = Path(name)
+    if candidate.name != name or candidate.suffix.lower() not in {".tif", ".tiff"}:
+        raise ValueError("CHM output filename must be a simple .tif or .tiff filename.")
+    return context.output_folder / candidate.name
 
 
 def _step_result(

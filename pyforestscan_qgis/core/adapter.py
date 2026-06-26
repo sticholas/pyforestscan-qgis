@@ -1,8 +1,8 @@
 """Architecture-only adapter boundary around PyForestScan and PDAL.
 
 This module validates and inspects datasets, exposes typed results, and
-centralizes PyForestScan imports behind a plugin-owned API. Phase 10A implements
-CHM only; PAI, PAD, FHD, canopy cover, and rumple remain unimplemented.
+centralizes PyForestScan imports behind a plugin-owned API. CHM is implemented;
+PAI, PAD, FHD, canopy cover, and rumple remain unimplemented.
 """
 
 from __future__ import annotations
@@ -229,16 +229,15 @@ class PyForestScanAdapter:
     def create_chm(self, request: ChmRequest) -> ChmResult:
         """Generate a CHM GeoTIFF through PyForestScan.
 
-        Phase 10A intentionally supports CHM only. The adapter owns all direct
-        PyForestScan imports and converts dependency or processing failures into
-        plugin-owned ``ProcessingError`` exceptions.
+        The adapter owns all direct PyForestScan imports and converts dependency or
+        processing failures into plugin-owned ``ProcessingError`` exceptions.
         """
         if request.grid_resolution <= 0:
             raise ProcessingError("CHM grid resolution must be greater than zero.")
         if not request.crs:
             raise ProcessingError("CHM generation requires a dataset CRS.")
         output_path = Path(request.output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        _validate_output_path(output_path)
         self._progress.start("Reading lidar for CHM")
         self._log(LogLevel.INFO, "Starting CHM generation", input=str(request.input_path), output=str(output_path))
         try:
@@ -263,6 +262,7 @@ class PyForestScanAdapter:
             )
             self._progress.update(70, "CHM array calculated")
             handlers.create_geotiff(chm, str(output_path), request.crs, extent)
+            _validate_created_output(output_path)
             self._progress.complete("CHM GeoTIFF created")
             self._log(LogLevel.INFO, "CHM generation complete", output=str(output_path))
             return ChmResult(
@@ -390,6 +390,36 @@ class PyForestScanAdapter:
                 LogContextItem(key=str(key), value=value) for key, value in context.items()
             )
             self._log_sink(LogRecord(level=level, message=message, context=typed_context))
+
+
+def _validate_output_path(output_path: Path) -> None:
+    """Validate that a CHM output path can be written."""
+    if output_path.suffix.lower() not in {".tif", ".tiff"}:
+        raise ProcessingError("CHM output filename must end with .tif or .tiff.")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if not output_path.parent.is_dir():
+        raise ProcessingError(f"CHM output folder is not available: {output_path.parent}")
+    probe = output_path.parent / f".{output_path.name}.write-test"
+    try:
+        probe.write_text("", encoding="utf-8")
+    except OSError as exc:
+        raise ProcessingError(f"CHM output folder is not writable: {output_path.parent}") from exc
+    finally:
+        try:
+            probe.unlink()
+        except OSError:
+            pass
+
+
+def _validate_created_output(output_path: Path) -> None:
+    """Require the PyForestScan GeoTIFF writer to create a usable file."""
+    if not output_path.exists():
+        raise ProcessingError(f"CHM GeoTIFF was not created: {output_path}")
+    try:
+        if output_path.stat().st_size <= 0:
+            raise ProcessingError(f"CHM GeoTIFF is empty: {output_path}")
+    except OSError as exc:
+        raise ProcessingError(f"CHM GeoTIFF could not be inspected: {output_path}") from exc
 
 
 def _merge_point_cloud_arrays(point_cloud: object) -> object:
