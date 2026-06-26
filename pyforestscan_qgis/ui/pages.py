@@ -1,7 +1,8 @@
 """Mission Control page widgets.
 
 These widgets orchestrate existing adapter-backed workflows. They do not call
-PyForestScan directly and do not create scientific products.
+PyForestScan directly. CHM execution is routed through JobManager, Pipeline, and
+the adapter boundary.
 """
 
 from __future__ import annotations
@@ -109,7 +110,7 @@ class HomePage(MissionPage):
             summary.addWidget(widget)
 
         quick = self.add_section("Quick Start")
-        quick.addWidget(QLabel("1. Check the environment.\n2. Inspect a dataset.\n3. Plan products.\n4. Return when scientific processing is available."))
+        quick.addWidget(QLabel("1. Check the environment.\n2. Inspect a dataset.\n3. Plan products.\n4. Run the CHM job when the plan is ready."))
         docs = QPushButton("Open Documentation")
         docs.clicked.connect(self.openDocumentationRequested.emit)
         quick.addWidget(docs)
@@ -388,29 +389,29 @@ class PlanningPage(MissionPage):
 
 
 class ProcessingPage(MissionPage):
-    """Dry-run job execution page using the active product plan."""
+    """Pipeline execution page using the active product plan."""
 
     jobUpdated = pyqtSignal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        """Create the dry-run processing page."""
+        """Create the processing page."""
         super().__init__("Processing", parent)
         self.job_manager = JobManager(event_sink=self._on_job_update)
         self.current_job_id: str | None = None
         self.run_context: RunContext | None = None
 
-        controls = self.add_section("Dry-Run Job")
+        controls = self.add_section("CHM Job")
         self.current_plan_label = QLabel("Current product plan: none")
         self.current_output_label = QLabel("Run folder: none")
         controls.addWidget(self.current_plan_label)
         controls.addWidget(self.current_output_label)
 
-        self.job_title_edit = QLineEdit("Mission Control Dry-Run Job")
+        self.job_title_edit = QLineEdit("Mission Control CHM Job")
         controls.addWidget(self.job_title_edit)
 
         button_row = QHBoxLayout()
-        self.start_button = QPushButton("Start Dry Run")
-        self.start_button.clicked.connect(self.start_dry_run)
+        self.start_button = QPushButton("Start CHM Job")
+        self.start_button.clicked.connect(self.start_job)
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.clicked.connect(self.cancel_current_job)
         self.cancel_button.setEnabled(False)
@@ -456,7 +457,7 @@ class ProcessingPage(MissionPage):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         status.addWidget(self.log_text)
-        status.addWidget(QLabel("Dry-run mode validates the plan and writes a job summary only. It does not create rasters or run PyForestScan calculations."))
+        status.addWidget(QLabel("CHM processing is enabled for this spike. Other products remain future pipeline stages."))
 
     def set_run_context(self, context: RunContext | None) -> None:
         """Use the active Mission Control run context."""
@@ -482,16 +483,16 @@ class ProcessingPage(MissionPage):
         if path:
             self.job_output_folder_edit.setText(path)
 
-    def start_dry_run(self) -> None:
-        """Start a safe dry-run job from the active Product Planner report."""
+    def start_job(self) -> None:
+        """Start a CHM processing job from the active Product Planner report."""
         plan_path = self.product_plan_edit.text().strip()
         output_folder = self.job_output_folder_edit.text().strip()
         summary_path = self.run_context.job_summary_json if self.run_context is not None else None
         if not plan_path:
-            self.log_text.setPlainText("Build a product plan before starting a dry-run job.")
+            self.log_text.setPlainText("Build a product plan before starting a CHM job.")
             return
         if not Path(plan_path).exists():
-            self.log_text.setPlainText("Build a product plan before starting a dry-run job.")
+            self.log_text.setPlainText("Build a product plan before starting a CHM job.")
             return
         if not output_folder:
             self.log_text.setPlainText("Choose an output folder for the job summary JSON.")
@@ -500,14 +501,14 @@ class ProcessingPage(MissionPage):
         self.cancel_button.setEnabled(True)
         self.log_text.clear()
         try:
-            job = self.job_manager.run_dry_run(
+            job = self.job_manager.run_pipeline(
                 Path(plan_path),
                 Path(output_folder),
-                self.job_title_edit.text().strip() or "Mission Control Dry-Run Job",
+                self.job_title_edit.text().strip() or "Mission Control CHM Job",
                 summary_path=summary_path,
             )
         except JobExecutionError as exc:
-            self.log_text.setPlainText(f"Dry-run job could not start: {exc}")
+            self.log_text.setPlainText(f"Processing job could not start: {exc}")
             self.start_button.setEnabled(True)
             self.cancel_button.setEnabled(False)
             return
@@ -535,7 +536,7 @@ class ProcessingPage(MissionPage):
         self.jobUpdated.emit(job)
 
     def _set_pipeline_results(self, job: JobRecord) -> None:
-        """Display pipeline stages for the current dry-run job."""
+        """Display pipeline stages for the current job."""
         self.pipeline_list.clear()
         for pipeline in job.pipeline_results:
             self.pipeline_list.addItem(f"{pipeline.label}")
@@ -562,7 +563,7 @@ class ResultsPage(MissionPage):
         jobs = self.add_section("Job History")
         self.job_history = QListWidget()
         jobs.addWidget(self.job_history)
-        jobs.addWidget(QLabel("Dry-run job summaries are listed here. Scientific products are not generated in this phase."))
+        jobs.addWidget(QLabel("Job summaries and generated CHM outputs are listed here."))
 
         advanced = QGroupBox("Advanced details")
         advanced.setCheckable(True)
@@ -619,7 +620,7 @@ class ResultsPage(MissionPage):
                 self._advanced_paths.append(path)
 
     def set_jobs(self, jobs: tuple[JobRecord, ...]) -> None:
-        """Display dry-run job history."""
+        """Display job history."""
         self.job_history.clear()
         for job in jobs:
             detail = f"{job.title} - {job.status.value} - {job.progress.percent:.0f}%"

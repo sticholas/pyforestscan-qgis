@@ -136,6 +136,29 @@ class DatasetInspection:
 
 
 @dataclass(frozen=True)
+class ChmRequest:
+    """Adapter request for a CHM processing spike."""
+
+    input_path: Path | str
+    output_path: Path
+    grid_resolution: float
+    crs: str
+    interpolation: str | None = "linear"
+    interp_valid_region: bool = False
+    interp_clean_edges: bool = False
+
+
+@dataclass(frozen=True)
+class ChmResult:
+    """Adapter result for a generated CHM GeoTIFF."""
+
+    output_path: Path
+    spatial_extent: tuple[float, float, float, float]
+    grid_resolution: float
+    crs: str
+
+
+@dataclass(frozen=True)
 class ProductRequest:
     """Future product request placeholder for adapter architecture."""
 

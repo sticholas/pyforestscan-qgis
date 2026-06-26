@@ -14,11 +14,11 @@ flowchart TD
     B --> W["RunContext"]
     W --> D["Dataset report core"]
     W --> E["Product planner core"]
-    W --> H["Job manager dry-run core"]
+    W --> H["Job manager"]
     H --> P["Pipeline registry"]
     C --> F["Dependency checks and dataset inspection"]
-    H -."future".-> C
-    F -."future".-> G["PyForestScan public API"]
+    H --> C
+    C --> G["PyForestScan public API"]
 ```
 
 ## Pages
@@ -31,11 +31,11 @@ flowchart TD
   run folder, and write Dataset Explorer reports into it.
 - Planning: Product Planner uses the active Dataset Explorer report and writes
   plan reports into the run folder. No product execution is performed.
-- Processing: start a dry-run job from the active Product Planner report, view
-  progress, inspect validation pipeline stages, and write `logs/job_summary.json`
-  without scientific processing.
+- Processing: start a CHM job from the active Product Planner report, view
+  progress, inspect pipeline stages, write `outputs/chm.tif`, and write
+  `logs/job_summary.json`.
 - Results: view friendly Dataset Report, Product Plan, Job Summary, Output
-  Folder, and Future Products links, with raw paths under Advanced details.
+  Folder, and Products links, with raw paths under Advanced details.
 - Settings: default output folder, logging placeholder, and future preferences.
 
 ## UI Architecture
@@ -56,7 +56,7 @@ flowchart LR
     E["Dataset explored"] --> F["datasetExplored with RunContext"]
     F --> G["Planning and Processing receive active run"]
     H["Plan built"] --> I["planningChanged"]
-    K["Dry-run job update"] --> L["jobUpdated"]
+    K["Job update"] --> L["jobUpdated"]
     D --> J["Status bar and Home"]
     F --> J
     I --> J
@@ -67,7 +67,7 @@ flowchart LR
 ## Scope Boundary
 
 Mission Control coordinates current workflows only. The run folder is not a
-required `.pfs` project file. The Processing page is a dry-run execution shell
-that validates the active Product Planner JSON and writes job summaries. It does
-not implement CHM, PAI, PAD, FHD, canopy cover, rumple, raster generation, or
-PyForestScan scientific calculations.
+required `.pfs` project file. The Processing page runs the active Product
+Planner JSON through JobManager and the pipeline registry. CHM is implemented
+through the adapter; PAI, PAD, FHD, canopy cover, and rumple remain future
+products.

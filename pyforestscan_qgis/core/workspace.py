@@ -42,7 +42,7 @@ class RunContext:
             ("Product Plan", self.product_plan_html),
             ("Job Summary", self.job_summary_json),
             ("Output Folder", self.run_folder),
-            ("Future Products", self.outputs_dir),
+            ("Products", self.outputs_dir),
         )
 
     @property

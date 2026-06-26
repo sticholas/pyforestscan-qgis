@@ -55,7 +55,7 @@ class PipelineStep:
 
     def skipped_result(self) -> PipelineStepResult:
         """Return a skipped result for non-executed future steps."""
-        return self._result(PipelineStepStatus.SKIPPED, "Future scientific processing stage; not executed in this phase.")
+        return self._result(PipelineStepStatus.SKIPPED, "Scientific processing stage is not implemented for this product yet.")
 
     def _result(self, status: PipelineStepStatus, message: str) -> PipelineStepResult:
         event = PipelineEvent(
@@ -78,10 +78,10 @@ def validate_dataset_step(context: PipelineContext, step: PipelineStep) -> Pipel
 
 
 def validate_environment_step(context: PipelineContext, step: PipelineStep) -> PipelineStepResult:
-    """Validate dry-run plan flags without importing scientific dependencies."""
+    """Validate plan flags without importing scientific dependencies."""
     if context.product_plan.get("processing_executed") is not False:
         return step._result(PipelineStepStatus.FAILED, "Product plan must have processing_executed=false.")
-    return step._result(PipelineStepStatus.PASSED, "Execution environment accepted for dry-run validation.")
+    return step._result(PipelineStepStatus.PASSED, "Execution environment accepted for pipeline execution.")
 
 
 def validate_crs_step(context: PipelineContext, step: PipelineStep) -> PipelineStepResult:

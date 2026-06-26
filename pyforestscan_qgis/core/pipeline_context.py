@@ -36,6 +36,27 @@ class PipelineContext:
         value = self.product_plan.get("source_report")
         return Path(str(value)) if value else None
 
+    @property
+    def grid_resolution(self) -> float:
+        """Return the planned grid resolution."""
+        parameters = self.product_plan.get("parameters")
+        if isinstance(parameters, Mapping):
+            value = parameters.get("grid_resolution", 1.0)
+        else:
+            value = 1.0
+        return float(value)
+
+    @property
+    def crs(self) -> str | None:
+        """Return the dataset CRS from Dataset Explorer JSON when available."""
+        if self.dataset_report is None:
+            return None
+        geometry = self.dataset_report.get("geometry")
+        if not isinstance(geometry, Mapping):
+            return None
+        value = geometry.get("crs")
+        return str(value) if value else None
+
 
 def load_pipeline_contexts(product_plan_path: Path | str, output_folder: Path | str) -> tuple[PipelineContext, ...]:
     """Load one pipeline context per requested product from Product Planner JSON."""
@@ -64,7 +85,7 @@ def load_pipeline_contexts(product_plan_path: Path | str, output_folder: Path | 
                 product=product,
                 product_label=str(entry.get("label") or product),
                 product_plan_path=plan_path,
-                output_folder=Path(output_folder),
+                output_folder=_planned_output_folder(payload, output_folder),
                 product_plan=payload,
                 product_entry=entry,
                 dataset_report=dataset_report,
@@ -87,3 +108,8 @@ def _load_dataset_report(product_plan: Mapping[str, Any]) -> Mapping[str, Any] |
     except (OSError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _planned_output_folder(product_plan: Mapping[str, Any], fallback: Path | str) -> Path:
+    value = product_plan.get("output_folder")
+    return Path(str(value)) if value else Path(fallback)

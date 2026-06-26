@@ -59,6 +59,8 @@ from .workspace import RunContext, create_run_context
 from .types import (
     AdapterParameter,
     Bounds3D,
+    ChmRequest,
+    ChmResult,
     ClassificationCount,
     DatasetFormat,
     DatasetInspection,
@@ -82,6 +84,8 @@ __all__ = [
     "AlgorithmRunRequest",
     "Bounds3D",
     "CheckStatus",
+    "ChmRequest",
+    "ChmResult",
     "ClassificationCount",
     "DatasetExplorerReport",
     "DatasetWarning",

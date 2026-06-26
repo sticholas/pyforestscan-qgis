@@ -49,6 +49,7 @@ class MissionControlDock(QDockWidget):
         self.adapter = PyForestScanAdapter()
         self.state = MissionControlState()
         self.job_history: tuple[JobRecord, ...] = ()
+        self.loaded_result_paths: set[Path] = set()
         self.root_widget = QWidget(self)
         self.ui = FORM_CLASS()
         self.ui.setupUi(self.root_widget)
@@ -150,14 +151,30 @@ class MissionControlDock(QDockWidget):
     def _set_job_status(self, job: JobRecord) -> None:
         existing = tuple(item for item in self.job_history if item.job_id != job.job_id)
         self.job_history = (job,) + existing
-        state = self.state.with_activity("Dry-run job", f"{job.title}: {job.status.value}")
+        state = self.state.with_activity("Processing job", f"{job.title}: {job.status.value}")
         for result in job.results:
             state = state.with_report_path(result.path)
+        self._load_job_outputs(job)
         if self.state.active_run is not None:
             self.results_page.set_run_context(self.state.active_run)
         self.state = state
         self._refresh_home()
         self._update_status_bar()
+
+
+    def _load_job_outputs(self, job: JobRecord) -> None:
+        """Best-effort load of generated raster outputs into QGIS."""
+        for result in job.results:
+            if result.result_type != "chm_geotiff" or result.path in self.loaded_result_paths:
+                continue
+            if not result.path.exists():
+                continue
+            try:
+                layer = self.iface.addRasterLayer(str(result.path), result.path.stem)
+            except Exception:  # noqa: BLE001 - UI layer loading must not break job completion.
+                layer = None
+            if layer is not None:
+                self.loaded_result_paths.add(result.path)
 
     def _refresh_home(self) -> None:
         self.home_page.set_versions(self._pyforestscan_version())

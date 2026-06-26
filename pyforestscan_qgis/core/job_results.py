@@ -41,8 +41,8 @@ def job_to_dict(job: JobRecord) -> dict[str, Any]:
             for result in job.results
         ],
         "error_message": job.error_message,
-        "processing_executed": False,
-        "scientific_outputs_created": False,
+        "processing_executed": any(result.result_type != "job_summary_json" for result in job.results),
+        "scientific_outputs_created": any(result.result_type != "job_summary_json" for result in job.results),
     }
 
 
@@ -52,7 +52,7 @@ def render_job_summary_json(job: JobRecord) -> str:
 
 
 def write_job_summary_json(job: JobRecord, output_path: Path | str) -> Path:
-    """Write a dry-run job summary JSON file."""
+    """Write a job summary JSON file."""
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render_job_summary_json(job) + "\n", encoding="utf-8")

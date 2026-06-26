@@ -1,8 +1,8 @@
 # Processing Pipeline Framework
 
-Phase 9A introduces the processing pipeline framework that future scientific
-product execution will use. It is orchestration only. It does not compute CHM,
-PAI, PAD, FHD, canopy cover, rumple, rasters, vectors, or point-cloud outputs.
+Phase 9A introduced the processing pipeline framework. Phase 10A wires the CHM
+pipeline to the adapter for the first real scientific output while keeping PAI,
+PAD, FHD, canopy cover, rumple, vectors, and point-cloud outputs unimplemented.
 
 ## Purpose
 
@@ -48,9 +48,11 @@ Registered product pipelines use this standard stage order:
 7. Generate Product
 8. Export
 
-Only validation stages execute in Phase 9A. Normalize Heights, Clip, Generate
-Product, and Export are present as future stages. Calling those steps directly
-raises `NotImplementedError`.
+Dry-run jobs execute validation stages only. Processing jobs execute only stages
+that have a product implementation. In Phase 10A, CHM can execute Generate
+Product through `PyForestScanAdapter.create_chm()` and then records the export
+artifact. Other product scientific stages remain skipped, and direct calls to
+placeholder steps still raise `NotImplementedError`.
 
 ## Job Manager Integration
 
@@ -58,8 +60,9 @@ Dry-run jobs now load pipeline contexts from the active Product Planner JSON and
 execute registered validation pipelines for each requested product. Pipeline
 results are stored on the `JobRecord` and serialized into `job_summary.json`.
 
-A dry-run job still writes only the job summary. It does not run PyForestScan
-calculations and does not create scientific outputs.
+A dry-run job still writes only the job summary. A CHM processing job writes
+`outputs/chm.tif` and records it in the job summary. Non-CHM products do not
+create scientific outputs.
 
 ## Mission Control Integration
 
@@ -70,5 +73,5 @@ export steps are shown as pending future work and are not executed.
 ## Scope Boundary
 
 The pipeline framework is an orchestration contract. Product-specific science
-must enter through the adapter boundary in later phases. QGIS UI pages and
-Processing algorithm classes should not call PyForestScan functions directly.
+must enter through the adapter boundary. QGIS UI pages and Processing algorithm
+classes must not call PyForestScan functions directly.

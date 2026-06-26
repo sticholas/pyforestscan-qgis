@@ -8,9 +8,9 @@ current workflows:
 - Environment: refresh dependency checks.
 - Dataset: select a lidar dataset and output folder, then inspect the dataset.
 - Planning: build a product plan from the active Dataset Explorer result.
-- Processing: run a dry-run job from the active Product Planner result.
+- Processing: run a CHM job from the active Product Planner result.
 - Results: open friendly Dataset Report, Product Plan, Job Summary, Output Folder,
-  and Future Products links.
+  and Products links.
 - Settings: choose a default output folder for Mission Control runs.
 
 Mission Control creates a timestamped run folder and manages internal JSON/CSV
@@ -31,15 +31,15 @@ a run folder like this:
 ```
 
 Inside that folder, Mission Control stores reports, tables, logs, temporary
-files, and a reserved `outputs/` folder for future products. If a run with the
+files, and an `outputs/` folder for CHM and future products. If a run with the
 same timestamp and dataset stem already exists, Mission Control adds a numeric
 suffix to avoid overwriting it. The Results page
 shows friendly links for Dataset Report, Product Plan, Job Summary, Output
-Folder, and Future Products. Advanced details still expose JSON and CSV paths for
+Folder, and Products. Advanced details still expose JSON and CSV paths for
 troubleshooting and reproducibility.
 
-This guide describes current user-facing PyForestScan QGIS workflows. Phase 5
-implements the first complete workflow: Dataset Explorer.
+This guide describes current user-facing PyForestScan QGIS workflows: Dataset
+Explorer, Product Planner, Mission Control run folders, and CHM-only processing.
 
 ## Dataset Explorer
 
@@ -177,25 +177,27 @@ Product Planner writes these files inside the selected output folder:
 - `Needs review`: Dataset Explorer marked the product as feasible with warnings.
 - `Blocked`: Dataset Explorer marked the product unavailable or did not report it.
 
-## Dry-Run Job Execution
+## CHM Job Execution
 
-The Mission Control Processing page starts a dry-run job from the active Product
+The Mission Control Processing page starts a CHM job from the active Product
 Planner report. Users do not need to browse for `product_plan.json`; Mission
 Control uses the current run folder automatically. The job validates the plan,
-simulates progress, and writes `logs/job_summary.json`.
+runs the CHM pipeline through the adapter, writes `outputs/chm.tif`, and writes
+`logs/job_summary.json`.
 
-Dry-run jobs do not call PyForestScan scientific processing and do not create
-CHM, PAI, PAD, FHD, canopy cover, rumple, raster, vector, or point-cloud outputs.
+Only CHM is implemented. PAI, PAD, FHD, canopy cover, and rumple remain future
+products and do not create rasters.
 
 ### Workflow
 
 ```mermaid
 flowchart TD
     A["Product Planner JSON"] --> B["Mission Control Processing page"]
-    B --> C["JobManager dry-run validation"]
-    C --> D["Progress and logs"]
-    D --> E["Job summary JSON"]
-    E --> F["Mission Control Results history"]
+    B --> C["JobManager pipeline execution"]
+    C --> D["PyForestScanAdapter.create_chm"]
+    D --> E["outputs/chm.tif"]
+    C --> F["logs/job_summary.json"]
+    F --> G["Mission Control Results history"]
 ```
 
 ### Steps
@@ -203,8 +205,8 @@ flowchart TD
 1. Open Mission Control.
 2. Go to Processing.
 3. Confirm the current product plan is shown.
-4. Select Start Dry Run.
+4. Select Start CHM Job.
 5. Open Results to review the job history and friendly result links.
 
-The generated summary includes `processing_executed: false` and
-`scientific_outputs_created: false` so dry-run artifacts are auditable.
+A successful CHM summary includes `processing_executed: true`,
+`scientific_outputs_created: true`, and a `chm_geotiff` result path.

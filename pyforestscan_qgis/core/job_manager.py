@@ -1,8 +1,8 @@
-"""Dry-run job execution manager.
+"""Job execution manager for dry-run and implemented pipeline work.
 
-The manager owns lifecycle transitions for PyForestScan jobs. Phase 8A performs
-validation and dry-run simulation only. It never calls PyForestScan scientific
-processing functions and never creates rasters or product outputs.
+The manager owns lifecycle transitions for PyForestScan jobs. Dry-run mode still
+performs validation only. Processing mode executes only pipeline stages that are
+implemented behind the adapter boundary.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from .adapter import PyForestScanAdapter
 from .job_results import write_job_summary_json
 from .jobs import JobMode, JobRecord, JobRequest, JobResultRecord, JobStatus, utc_now
 from .pipeline import PipelineRegistry, build_default_pipeline_registry
@@ -25,12 +26,18 @@ class JobExecutionError(ValueError):
 
 
 class JobManager:
-    """Create, validate, run, cancel, and retain dry-run job records."""
+    """Create, validate, run, cancel, and retain job records."""
 
-    def __init__(self, event_sink: JobEventSink | None = None, pipeline_registry: PipelineRegistry | None = None) -> None:
-        """Create a manager with optional event and pipeline registry hooks."""
+    def __init__(
+        self,
+        event_sink: JobEventSink | None = None,
+        pipeline_registry: PipelineRegistry | None = None,
+        adapter: PyForestScanAdapter | None = None,
+    ) -> None:
+        """Create a manager with optional event, registry, and adapter hooks."""
         self._event_sink = event_sink
         self._pipeline_registry = pipeline_registry or build_default_pipeline_registry()
+        self._adapter = adapter or PyForestScanAdapter()
         self._jobs: dict[str, JobRecord] = {}
         self._cancel_requested: set[str] = set()
 
@@ -55,24 +62,24 @@ class JobManager:
         return self._store(job)
 
     def create_dry_run_job(self, request: JobRequest) -> JobRecord:
-        """Create a pending dry-run job after validating the product plan."""
-        if request.mode is not JobMode.DRY_RUN:
-            raise JobExecutionError("Only dry-run jobs are supported in this phase.")
+        """Create a pending job after validating the product plan."""
+        if request.mode not in {JobMode.DRY_RUN, JobMode.PROCESSING}:
+            raise JobExecutionError("Unsupported job execution mode.")
         plan = self._load_product_plan(request.product_plan_path)
         requested_products = self._requested_products(plan)
         created_at = utc_now()
         job = JobRecord(
             job_id=f"pfs-{uuid.uuid4().hex[:12]}",
-            title=request.title or "PyForestScan Dry-Run Job",
+            title=request.title or ("PyForestScan Processing Job" if request.mode is JobMode.PROCESSING else "PyForestScan Dry-Run Job"),
             status=JobStatus.PENDING,
-            mode=JobMode.DRY_RUN,
+            mode=request.mode,
             product_plan_path=Path(request.product_plan_path),
             output_folder=Path(request.output_folder),
             summary_path=Path(request.summary_path) if request.summary_path else None,
             created_at=created_at,
             updated_at=created_at,
             requested_products=tuple(requested_products),
-        ).with_log("INFO", "Dry-run job created.")
+        ).with_log("INFO", f"{request.mode.value} job created.")
         return self._store(job)
 
     def run_dry_run(
@@ -82,31 +89,56 @@ class JobManager:
         title: str = "PyForestScan Dry-Run Job",
         summary_path: Path | str | None = None,
     ) -> JobRecord:
-        """Run a cancellable dry-run job and write a JSON summary."""
+        """Run validation-only pipelines and write a JSON summary."""
+        return self._run_pipeline_job(product_plan_path, output_folder, title, summary_path, execute_products=False)
+
+    def run_pipeline(
+        self,
+        product_plan_path: Path | str,
+        output_folder: Path | str,
+        title: str = "PyForestScan Processing Job",
+        summary_path: Path | str | None = None,
+    ) -> JobRecord:
+        """Run implemented product pipelines and write a JSON summary."""
+        return self._run_pipeline_job(product_plan_path, output_folder, title, summary_path, execute_products=True)
+
+    def _run_pipeline_job(
+        self,
+        product_plan_path: Path | str,
+        output_folder: Path | str,
+        title: str,
+        summary_path: Path | str | None,
+        execute_products: bool,
+    ) -> JobRecord:
         request = JobRequest(
             product_plan_path=Path(product_plan_path),
             output_folder=Path(output_folder),
             title=title,
+            mode=JobMode.PROCESSING if execute_products else JobMode.DRY_RUN,
             summary_path=Path(summary_path) if summary_path else None,
         )
         job = self.create_dry_run_job(request)
         try:
             plan = self._load_product_plan(request.product_plan_path)
             self._validate_plan_for_execution(plan)
-            job = self._transition(job, JobStatus.VALIDATING, "Product plan validated for dry-run execution.")
+            job = self._transition(job, JobStatus.VALIDATING, "Product plan validated for pipeline execution.")
             contexts = load_pipeline_contexts(request.product_plan_path, request.output_folder)
             job = self._progress(job, 10, "Pipeline contexts loaded.")
             if self._is_cancelled(job):
                 return self._finalize_cancelled(job)
 
-            job = self._transition(job, JobStatus.RUNNING, "Pipeline dry-run validation started.")
+            start_message = "Processing pipeline started." if execute_products else "Pipeline dry-run validation started."
+            job = self._transition(job, JobStatus.RUNNING, start_message)
             pipeline_results = []
             total = max(1, len(contexts))
             for index, pipeline_context in enumerate(contexts, start=1):
                 pipeline = self._pipeline_registry.get(pipeline_context.product)
-                pipeline_result = pipeline.run_validation(pipeline_context)
+                pipeline_result = pipeline.run(pipeline_context, adapter=self._adapter, execute_products=execute_products)
                 pipeline_results.append(pipeline_result)
                 job = self._store(job.with_pipeline_results(tuple(pipeline_results)))
+                for output_path in pipeline_result.output_paths:
+                    if output_path not in tuple(result.path for result in job.results):
+                        job = self._store(job.with_result(JobResultRecord(output_path, f"{pipeline_result.product}_geotiff", f"{pipeline_result.label} GeoTIFF output.")))
                 percent = 10 + (index / total) * 80
                 job = self._progress(job, percent, f"Validated pipeline: {pipeline.label}.")
                 if self._is_cancelled(job):
@@ -114,14 +146,16 @@ class JobManager:
             if any(not result.passed for result in pipeline_results):
                 raise JobExecutionError("One or more pipeline validation stages failed.")
 
-            job = self._progress(job, 100, "Pipeline dry-run completed.")
-            job = self._transition(job, JobStatus.COMPLETED, "Dry-run pipeline completed without scientific processing.")
+            finish_progress = "Processing pipeline completed." if execute_products else "Pipeline dry-run completed."
+            job = self._progress(job, 100, finish_progress)
+            complete_message = "Processing pipeline completed." if execute_products else "Dry-run pipeline completed without scientific processing."
+            job = self._transition(job, JobStatus.COMPLETED, complete_message)
             return self._write_summary(job)
         except Exception as exc:
             if isinstance(exc, (JobExecutionError, PipelineContextError, KeyError)):
                 message = str(exc)
             else:
-                message = f"Unexpected dry-run job failure: {exc}"
+                message = f"Unexpected job failure: {exc}"
             failed = job.with_error(message)
             failed = self._store(failed)
             return self._write_summary(failed)
@@ -178,8 +212,8 @@ class JobManager:
 
     def _finalize_cancelled(self, job: JobRecord) -> JobRecord:
         self._cancel_requested.discard(job.job_id)
-        job = self._progress(job, job.progress.percent, "Dry-run cancelled.")
-        job = self._transition(job, JobStatus.CANCELLED, "Dry-run job cancelled before completion.")
+        job = self._progress(job, job.progress.percent, "Job cancelled.")
+        job = self._transition(job, JobStatus.CANCELLED, "Job cancelled before completion.")
         return self._write_summary(job)
 
     def _write_summary(self, job: JobRecord) -> JobRecord:
@@ -187,7 +221,7 @@ class JobManager:
         result = JobResultRecord(
             path=summary_path,
             result_type="job_summary_json",
-            description="Dry-run job summary JSON. No scientific outputs were created.",
+            description="Job summary JSON.",
         )
         job_with_result = self._store(job.with_result(result))
         write_job_summary_json(job_with_result, summary_path)

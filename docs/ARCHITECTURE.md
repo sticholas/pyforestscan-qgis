@@ -136,7 +136,7 @@ PyForestScan must not depend on the plugin.
 Phase 9A adds a core pipeline orchestration layer between `JobManager` and future
 adapter-backed scientific processing. `PipelineRegistry` maps planned products
 to validation-first `Pipeline` definitions. `JobManager` executes these pipelines
-in dry-run mode and records `PipelineResult` objects in the job summary.
+in dry-run or processing mode and records `PipelineResult` objects in the job summary. Phase 10A enables CHM-only processing through the adapter.
 
 Only validation stages execute. Normalize Heights, Clip, Generate Product, and
 Export are registered as future steps and raise `NotImplementedError` if called

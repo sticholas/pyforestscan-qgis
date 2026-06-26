@@ -1,8 +1,8 @@
 """Architecture-only adapter boundary around PyForestScan and PDAL.
 
-This module intentionally does not compute CHM, PAI, PAD, FHD, canopy cover, or
-rumple products. It validates and inspects datasets, exposes typed results, and
-centralizes future PyForestScan imports behind a plugin-owned API.
+This module validates and inspects datasets, exposes typed results, and
+centralizes PyForestScan imports behind a plugin-owned API. Phase 10A implements
+CHM only; PAI, PAD, FHD, canopy cover, and rumple remain unimplemented.
 """
 
 from __future__ import annotations
@@ -16,9 +16,11 @@ from urllib.parse import urlparse
 
 from .config import AdapterConfig, DatasetOpenOptions, InspectionOptions
 from .dependency_check import EnvironmentReport, collect_environment_report
-from .exceptions import AdapterError, DatasetError, EnvironmentError
+from .exceptions import AdapterError, DatasetError, EnvironmentError, ProcessingError
 from .types import (
     Bounds3D,
+    ChmRequest,
+    ChmResult,
     ClassificationCount,
     DatasetFormat,
     DatasetInspection,
@@ -224,6 +226,58 @@ class PyForestScanAdapter:
         self._progress.complete("Dataset inspection complete")
         return inspection
 
+    def create_chm(self, request: ChmRequest) -> ChmResult:
+        """Generate a CHM GeoTIFF through PyForestScan.
+
+        Phase 10A intentionally supports CHM only. The adapter owns all direct
+        PyForestScan imports and converts dependency or processing failures into
+        plugin-owned ``ProcessingError`` exceptions.
+        """
+        if request.grid_resolution <= 0:
+            raise ProcessingError("CHM grid resolution must be greater than zero.")
+        if not request.crs:
+            raise ProcessingError("CHM generation requires a dataset CRS.")
+        output_path = Path(request.output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        self._progress.start("Reading lidar for CHM")
+        self._log(LogLevel.INFO, "Starting CHM generation", input=str(request.input_path), output=str(output_path))
+        try:
+            pyforestscan = _import_required("pyforestscan", ProcessingError)
+            handlers = _import_required("pyforestscan.handlers", ProcessingError)
+            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, hag=True)
+            if point_cloud is None:
+                raise ProcessingError("PyForestScan returned no point data for CHM generation.")
+            self._progress.update(35, "Point cloud loaded")
+            point_array = _merge_point_cloud_arrays(point_cloud)
+            names = getattr(point_array.dtype, "names", ()) or ()
+            required = {"X", "Y", "HeightAboveGround"}
+            missing = sorted(required.difference(names))
+            if missing:
+                raise ProcessingError(f"CHM input is missing required dimensions: {', '.join(missing)}")
+            chm, extent = pyforestscan.calculate_chm(
+                point_array,
+                (request.grid_resolution, request.grid_resolution),
+                interpolation=request.interpolation,
+                interp_valid_region=request.interp_valid_region,
+                interp_clean_edges=request.interp_clean_edges,
+            )
+            self._progress.update(70, "CHM array calculated")
+            handlers.create_geotiff(chm, str(output_path), request.crs, extent)
+            self._progress.complete("CHM GeoTIFF created")
+            self._log(LogLevel.INFO, "CHM generation complete", output=str(output_path))
+            return ChmResult(
+                output_path=output_path,
+                spatial_extent=tuple(float(value) for value in extent),
+                grid_resolution=request.grid_resolution,
+                crs=request.crs,
+            )
+        except ProcessingError:
+            self._progress.fail("CHM generation failed")
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            self._progress.fail("CHM generation failed")
+            raise ProcessingError(f"CHM generation failed: {exc}") from exc
+
     def clip_dataset(self, *args: object, **kwargs: object) -> None:
         """Placeholder for future adapter-managed clipping."""
         raise NotImplementedError("Dataset clipping is not implemented in Phase 4.")
@@ -336,6 +390,19 @@ class PyForestScanAdapter:
                 LogContextItem(key=str(key), value=value) for key, value in context.items()
             )
             self._log_sink(LogRecord(level=level, message=message, context=typed_context))
+
+
+def _merge_point_cloud_arrays(point_cloud: object) -> object:
+    """Return one structured array from PyForestScan read_lidar output."""
+    if isinstance(point_cloud, (list, tuple)):
+        arrays = [array for array in point_cloud if getattr(array, "size", len(array) if hasattr(array, "__len__") else 0) > 0]
+        if not arrays:
+            raise ProcessingError("PyForestScan returned empty point arrays for CHM generation.")
+        if len(arrays) == 1:
+            return arrays[0]
+        numpy = _import_required("numpy", ProcessingError)
+        return numpy.concatenate(arrays)
+    return point_cloud
 
 
 def _detect_format(path: str) -> DatasetFormat | None:

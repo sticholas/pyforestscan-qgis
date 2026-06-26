@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from .pipeline_events import PipelineEvent
@@ -30,6 +31,7 @@ class PipelineStepResult:
     status: PipelineStepStatus
     message: str
     events: tuple[PipelineEvent, ...] = ()
+    artifacts: tuple[Path, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,18 @@ class PipelineResult:
     product: str
     label: str
     steps: tuple[PipelineStepResult, ...]
+
+    @property
+    def output_paths(self) -> tuple[Path, ...]:
+        """Return output artifacts produced by this pipeline."""
+        paths: list[Path] = []
+        seen: set[Path] = set()
+        for step in self.steps:
+            for path in step.artifacts:
+                if path not in seen:
+                    paths.append(path)
+                    seen.add(path)
+        return tuple(paths)
 
     @property
     def passed(self) -> bool:
@@ -61,6 +75,7 @@ def pipeline_result_to_dict(result: PipelineResult) -> dict[str, Any]:
                 "label": step.label,
                 "status": step.status.value,
                 "message": step.message,
+                "artifacts": [str(path) for path in step.artifacts],
                 "events": [
                     {
                         "timestamp": event.timestamp,

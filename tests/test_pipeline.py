@@ -65,17 +65,50 @@ class PipelineFrameworkTests(unittest.TestCase):
             self.assertTrue(result.passed)
             self.assertIn(PipelineStepStatus.WARNING, {step.status for step in result.steps})
 
+    def test_chm_pipeline_execution_creates_artifact_with_adapter(self) -> None:
+        """The CHM pipeline can execute its implemented adapter-backed stage."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            dataset_report = root / "dataset_report.json"
+            dataset_report.write_text(json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8")
+            product_plan = _write_product_plan(root / "product_plan.json", dataset_report)
+            context = load_pipeline_contexts(product_plan, root / "logs")[0]
+            pipeline = build_default_pipeline_registry().get("chm")
+            adapter = _FakeChmAdapter()
 
-def _write_product_plan(path: Path, dataset_report: Path) -> Path:
+            result = pipeline.run(context, adapter=adapter, execute_products=True)
+
+            self.assertTrue(result.passed)
+            self.assertEqual((root / "outputs" / "chm.tif",), result.output_paths)
+            self.assertEqual(root / "outputs" / "chm.tif", adapter.output_path)
+
+    def test_non_chm_pipeline_execution_remains_placeholder(self) -> None:
+        """Non-CHM product pipelines do not execute scientific stages."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            product_plan = _write_product_plan(root / "product_plan.json", root / "missing.json", product="pai", label="Plant Area Index (PAI)")
+            context = load_pipeline_contexts(product_plan, root / "logs")[0]
+            pipeline = build_default_pipeline_registry().get("pai")
+
+            result = pipeline.run(context, adapter=_FakeChmAdapter(), execute_products=True)
+
+            self.assertTrue(result.passed)
+            self.assertEqual((), result.output_paths)
+            self.assertEqual(PipelineStepStatus.SKIPPED, result.steps[-1].status)
+
+
+def _write_product_plan(path: Path, dataset_report: Path, product: str = "chm", label: str = "Canopy Height Model (CHM)") -> Path:
     payload = {
         "title": "Pipeline Test Plan",
         "source_dataset": "plot.laz",
         "source_report": str(dataset_report),
         "processing_executed": False,
+        "output_folder": str(path.parent / "outputs"),
+        "parameters": {"grid_resolution": 1.5},
         "products": [
             {
-                "product": "chm",
-                "label": "Canopy Height Model (CHM)",
+                "product": product,
+                "label": label,
                 "requested": True,
                 "feasibility_status": "Available",
                 "plan_status": "Ready",
@@ -87,6 +120,21 @@ def _write_product_plan(path: Path, dataset_report: Path) -> Path:
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
+
+
+class _FakeChmResult:
+    def __init__(self, output_path: Path) -> None:
+        self.output_path = output_path
+
+
+class _FakeChmAdapter:
+    output_path: Path | None = None
+
+    def create_chm(self, request):  # type: ignore[no-untyped-def]
+        self.output_path = request.output_path
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        request.output_path.write_text("fake chm", encoding="utf-8")
+        return _FakeChmResult(request.output_path)
 
 
 if __name__ == "__main__":

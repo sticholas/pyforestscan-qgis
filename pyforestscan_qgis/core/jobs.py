@@ -1,8 +1,8 @@
 """Typed job records for PyForestScan execution workflows.
 
 The job model is intentionally independent from QGIS and PyForestScan internals.
-Phase 8A supports dry-run execution only; future scientific processing should
-reuse these records and status transitions through ``JobManager``.
+The same records support dry-run validation and implemented processing stages
+through ``JobManager``.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ class JobMode(str, Enum):
     """Supported execution modes."""
 
     DRY_RUN = "dry_run"
+    PROCESSING = "processing"
 
 
 @dataclass(frozen=True)
@@ -61,7 +62,7 @@ class JobProgress:
 
 @dataclass(frozen=True)
 class JobRequest:
-    """Normalized request to start a dry-run execution job."""
+    """Normalized request to start an execution job."""
 
     product_plan_path: Path
     output_folder: Path

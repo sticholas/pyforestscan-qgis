@@ -1,7 +1,7 @@
 # Mission Control User Workflow
 
 Mission Control uses a run-folder workflow so users do not need to manually pass
-JSON files between Dataset Explorer, Product Planner, and dry-run execution.
+JSON files between Dataset Explorer, Product Planner, and CHM execution.
 
 ## User-Facing Flow
 
@@ -11,7 +11,7 @@ flowchart TD
     B --> C["Mission Control creates run folder"]
     C --> D["Dataset Explorer writes reports"]
     D --> E["Product Planner uses current dataset report"]
-    E --> F["Dry-run job uses current product plan"]
+    E --> F["CHM job uses current product plan"]
     F --> G["Results page shows friendly links"]
 ```
 
@@ -22,9 +22,9 @@ The primary workflow is:
 3. Select an output folder.
 4. Run Dataset Explorer.
 5. Open Planning and build a product plan.
-6. Open Processing and start a dry-run job.
+6. Open Processing and start a CHM job.
 7. Open Results for Dataset Report, Product Plan, Job Summary, Output Folder,
-   and Future Products links.
+   and Products links.
 
 ## Run Folder Layout
 
@@ -55,6 +55,7 @@ reports/product_plan.json
 reports/product_plan.html
 tables/product_plan.csv
 logs/job_summary.json
+outputs/chm.tif
 ```
 
 The JSON and CSV files remain available in Advanced details, but the normal UI
@@ -66,6 +67,5 @@ The run folder is not a project file. Phase 8C intentionally does not require a
 `.pfs` project file or persistent project database. It is a simple execution
 workspace for one Mission Control run.
 
-Mission Control still does not create CHM, PAI, PAD, FHD, canopy cover, rumple,
-raster, vector, or point-cloud outputs. The `outputs/` folder is reserved for
-future scientific products.
+Mission Control can create `outputs/chm.tif` for CHM-only jobs. PAI, PAD, FHD,
+canopy cover, rumple, vector, and point-cloud outputs remain future products.
