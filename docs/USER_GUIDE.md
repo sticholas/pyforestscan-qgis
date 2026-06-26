@@ -6,7 +6,7 @@ current workflows:
 
 - Home: versions, status, quick start, and recent activity.
 - Environment: refresh dependency checks.
-- Dataset: select a lidar dataset and output folder, then inspect the dataset.
+- Dataset: select a lidar dataset and output folder, inspect the dataset, and preview its spatial footprint.
 - Planning: build a product plan from the active Dataset Explorer result.
 - Processing: run implemented product jobs from the active Product Planner result.
 - Results: open friendly Dataset Report, Product Plan, Job Summary, Output Folder,
@@ -129,6 +129,20 @@ Screenshots will be captured during QGIS release testing and stored under
 - Processing feedback report.
 - CSV summary loaded as a QGIS table.
 - HTML report opened in a browser.
+
+
+## Dataset Footprint Preview
+
+After Dataset Explorer finishes, the Dataset page shows a Spatial Preview built
+from the inspected XY bounds. It reports CRS, coordinate extent, approximate area,
+center point, and warnings. Use `Add Footprint Layer` to add a transparent
+rectangle named `PyForestScan Footprint - <dataset stem>` to QGIS, or `Zoom to
+Footprint` to zoom the main QGIS map canvas. If CRS is unknown, Mission Control
+warns clearly and disables automatic zoom because map reprojection cannot be
+trusted.
+
+The preview uses the rectangular bounds reported by Dataset Explorer; it is not a
+convex hull or exact point-cloud coverage mask.
 
 ## Product Planner
 

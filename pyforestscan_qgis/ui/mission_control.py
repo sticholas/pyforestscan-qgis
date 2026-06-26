@@ -59,7 +59,7 @@ class MissionControlDock(QDockWidget):
 
         self.home_page = HomePage(plugin_version=self._plugin_version())
         self.environment_page = EnvironmentPage(self.adapter)
-        self.dataset_page = DatasetPage(self.adapter)
+        self.dataset_page = DatasetPage(self.adapter, iface=self.iface)
         self.planning_page = PlanningPage()
         self.processing_page = ProcessingPage()
         self.results_page = ResultsPage()

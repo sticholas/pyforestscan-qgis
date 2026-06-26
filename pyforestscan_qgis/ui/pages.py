@@ -60,6 +60,7 @@ from ..core.product_plan import (
 )
 from ..core.types import ProductType
 from ..core.workspace import RunContext, create_run_context
+from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
 
 ActivityCallback = Callable[[str, str], None]
 
@@ -176,11 +177,13 @@ class DatasetPage(MissionPage):
 
     datasetExplored = pyqtSignal(object, str, object)
 
-    def __init__(self, adapter: PyForestScanAdapter, parent: QWidget | None = None) -> None:
+    def __init__(self, adapter: PyForestScanAdapter, iface: object | None = None, parent: QWidget | None = None) -> None:
         """Create the dataset page."""
         super().__init__("Dataset", parent)
         self.adapter = adapter
+        self.iface = iface
         self.active_run: RunContext | None = None
+        self.footprint_preview: FootprintPreview | None = None
         picker = self.add_section("Dataset")
         row = QHBoxLayout()
         self.dataset_path_edit = QLineEdit()
@@ -208,6 +211,26 @@ class DatasetPage(MissionPage):
         self.summary_text = QTextEdit()
         self.summary_text.setReadOnly(True)
         summary.addWidget(self.summary_text)
+
+        spatial = self.add_section("Spatial Preview")
+        self.footprint_text = QTextEdit()
+        self.footprint_text.setReadOnly(True)
+        self.footprint_text.setPlainText("Run Dataset Explorer to preview the dataset footprint.")
+        spatial.addWidget(self.footprint_text)
+        spatial_buttons = QHBoxLayout()
+        self.add_footprint_button = QPushButton("Add Footprint Layer")
+        self.add_footprint_button.clicked.connect(self.add_footprint_layer)
+        self.add_footprint_button.setEnabled(False)
+        self.zoom_footprint_button = QPushButton("Zoom to Footprint")
+        self.zoom_footprint_button.clicked.connect(self.zoom_to_footprint)
+        self.zoom_footprint_button.setEnabled(False)
+        self.open_report_button = QPushButton("Open Report")
+        self.open_report_button.clicked.connect(self.open_report)
+        self.open_report_button.setEnabled(False)
+        spatial_buttons.addWidget(self.add_footprint_button)
+        spatial_buttons.addWidget(self.zoom_footprint_button)
+        spatial_buttons.addWidget(self.open_report_button)
+        spatial.addLayout(spatial_buttons)
 
     def set_default_output_folder(self, folder: Path | None) -> None:
         """Use the configured output folder when the page has no explicit folder."""
@@ -256,6 +279,7 @@ class DatasetPage(MissionPage):
             return
         self.active_run = context
         self.set_report(report, context)
+        self.set_footprint_preview(report, path, context)
         self.datasetExplored.emit(report, path, context)
 
     def set_report(self, report: DatasetExplorerReport, context: RunContext | None = None) -> None:
@@ -274,6 +298,56 @@ class DatasetPage(MissionPage):
             f"Available products:\n{products}"
         )
         self.summary_text.setPlainText(text)
+
+    def set_footprint_preview(self, report: DatasetExplorerReport, dataset_path: str, context: RunContext | None = None) -> None:
+        """Display a footprint preview built from Dataset Explorer bounds."""
+        self.footprint_preview = preview_from_report(report, dataset_path)
+        self.open_report_button.setEnabled(context is not None)
+        if self.footprint_preview is None:
+            self.footprint_text.setPlainText("Footprint unavailable: Dataset Explorer did not report usable XY bounds.")
+            self.add_footprint_button.setEnabled(False)
+            self.zoom_footprint_button.setEnabled(False)
+            return
+        preview = self.footprint_preview
+        warnings = "\n".join(f"WARNING: {message}" for message in preview.warnings) or "None"
+        crs = preview.crs or "Unknown"
+        report_path = f"\nReport: {context.dataset_report_html}" if context is not None else ""
+        self.footprint_text.setPlainText(
+            "Footprint status: Ready\n"
+            f"CRS: {crs}\n"
+            f"Coordinate extent: {preview.extent_text}\n"
+            f"Approximate area: {preview.area:g} square map units\n"
+            f"Center point: {preview.center_text}\n"
+            f"Warnings: {warnings}"
+            f"{report_path}"
+        )
+        self.add_footprint_button.setEnabled(True)
+        self.zoom_footprint_button.setEnabled(bool(preview.crs))
+
+    def add_footprint_layer(self) -> None:
+        """Add the current footprint preview to the QGIS project."""
+        if self.footprint_preview is None:
+            self.footprint_text.setPlainText("Run Dataset Explorer before adding a footprint layer.")
+            return
+        result = add_footprint_layer(self.footprint_preview, self.iface)
+        self._append_footprint_message(result.message)
+
+    def zoom_to_footprint(self) -> None:
+        """Zoom the QGIS map canvas to the current footprint preview."""
+        if self.footprint_preview is None:
+            self.footprint_text.setPlainText("Run Dataset Explorer before zooming to a footprint.")
+            return
+        result = zoom_to_footprint(self.footprint_preview, self.iface)
+        self._append_footprint_message(result.message)
+
+    def open_report(self) -> None:
+        """Open the Dataset Explorer HTML report for the active run."""
+        if self.active_run is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.active_run.dataset_report_html)))
+
+    def _append_footprint_message(self, message: str) -> None:
+        current = self.footprint_text.toPlainText().strip()
+        self.footprint_text.setPlainText(f"{current}\n\n{message}" if current else message)
 
 
 class PlanningPage(MissionPage):
