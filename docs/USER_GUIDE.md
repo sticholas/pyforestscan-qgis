@@ -230,10 +230,12 @@ Product Planner writes these files inside the selected output folder:
 The Mission Control Processing page starts an implemented product job from the
 active Product Planner report. Users do not need to browse for
 `product_plan.json`; Mission Control uses the current run folder automatically.
-The Processing page shows selected products, output folder, estimated processing
-time, current status, and the Run button by default. The estimate is
-deterministic planning guidance, not a guarantee. JSON paths, pipeline stages,
-and logs are hidden under Technical Details. The job validates the plan, runs
+The Processing page shows selected products, output folder, Processing Footprint,
+current status, and the Run button by default. The footprint summarizes
+estimated output storage, raster dimensions, raster bands, and large-job
+warnings. Processing time is not predicted; it depends on machine, storage speed,
+point density, and product selection. JSON paths, pipeline stages, and logs are
+hidden under Technical Details. The job validates the plan, runs
 implemented product pipelines through the adapter, writes selected GeoTIFF
 outputs in `outputs/`, and writes `logs/job_summary.json` plus
 `logs/job_summary.html`.

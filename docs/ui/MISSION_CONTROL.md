@@ -36,7 +36,7 @@ flowchart TD
 - Planning: Product Planner uses the active Dataset Explorer report and writes
   plan reports into the run folder. No product execution is performed.
 - Processing: start implemented product jobs from the active Product Planner
-  report, view selected products, output folder, estimated time, current status,
+  report, view selected products, output folder, Processing Footprint, current status,
   and progress by default. Product Plan JSON paths, pipeline stages, and logs are
   available under Technical Details.
 - Results: view friendly Dataset Report, Product Plan, Job Summary, Output
@@ -104,11 +104,13 @@ Parameters, Advanced Product Settings, and Run Summary sections. Product-specifi
 filenames and CHM / Canopy Cover controls are collapsed by default because the
 recommended/shared settings are enough for the normal workflow.
 
-## Processing Estimates
+## Processing Footprint
 
-Mission Control displays deterministic processing time estimates before running
-a job. Estimates are based on selected product count, relative product
-complexity, Product Planner grid-cell estimates, height bins, and Dataset
-Explorer point count when available. They are explicitly labeled as estimates
-with confidence because hardware, storage speed, compression, and data
-distribution can change actual runtime.
+Mission Control does not predict runtime in the primary UI. The Processing page
+instead displays a Processing Footprint based on Product Planner raster
+dimensions, selected products, height-bin count, and a conservative float32
+assumption of 4 bytes per raster cell. CHM, Canopy Cover, PAI, and FHD count as
+one raster band each. PAD uses the planned height-bin count as its band count.
+Rumple is shown as minimal CSV/table storage. Runtime remains a caveat because it
+depends on machine, storage speed, point density, compression, and product
+selection.

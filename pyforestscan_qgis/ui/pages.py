@@ -55,7 +55,7 @@ from ..core.exceptions import AdapterError
 from ..core.job_manager import JobExecutionError, JobManager
 from ..core.knowledge import RecommendationReport
 from ..core.jobs import JobRecord, JobStatus
-from ..core.processing_estimate import ProcessingTimeEstimate, estimate_from_plan_file
+from ..core.processing_footprint import ProcessingFootprint, footprint_from_plan_file
 from ..core.product_plan import (
     PRODUCT_LABELS,
     ProductPlanError,
@@ -840,18 +840,18 @@ class ProcessingPage(MissionPage):
         self.job_manager = JobManager(event_sink=self._on_job_update)
         self.current_job_id: str | None = None
         self.run_context: RunContext | None = None
-        self.current_estimate: ProcessingTimeEstimate | None = None
+        self.current_footprint: ProcessingFootprint | None = None
 
         overview = self.add_section("Ready To Run")
         self.selected_products_label = _body_label("Selected products: build a Product Plan first.")
         self.current_output_label = _body_label("Outputs: choose a dataset and output folder, then build a Product Plan.")
-        self.estimate_label = _body_label("Estimated time: unavailable until a Product Plan exists.")
+        self.footprint_label = _body_label("Processing footprint: build a Product Plan to see expected outputs, raster size, bands, and storage.")
         self.status_label = QLabel("Status: Not started")
         self.status_label.setObjectName("advisorMetric")
         self.status_label.setWordWrap(True)
         overview.addWidget(self.selected_products_label)
         overview.addWidget(self.current_output_label)
-        overview.addWidget(self.estimate_label)
+        overview.addWidget(self.footprint_label)
         overview.addWidget(self.status_label)
 
         self.job_title_edit = QLineEdit("Mission Control Product Job")
@@ -916,7 +916,7 @@ class ProcessingPage(MissionPage):
             self.current_plan_label.setText("Product plan file: none")
             self.selected_products_label.setText("Selected products: build a Product Plan first.")
             self.current_output_label.setText("Outputs: choose a dataset and output folder, then build a Product Plan.")
-            self.estimate_label.setText("Estimated time: unavailable until a Product Plan exists.")
+            self.footprint_label.setText("Processing footprint: build a Product Plan to see expected outputs, raster size, bands, and storage.")
             return
         self.product_plan_edit.setText(str(context.product_plan_json))
         self.job_output_folder_edit.setText(str(context.logs_dir))
@@ -925,27 +925,24 @@ class ProcessingPage(MissionPage):
         self._refresh_plan_summary()
 
     def _refresh_plan_summary(self) -> None:
-        """Refresh selected products and time estimate from the active Product Plan."""
+        """Refresh selected products and footprint summary from the active Product Plan."""
         plan_path = Path(self.product_plan_edit.text().strip()) if self.product_plan_edit.text().strip() else None
         if plan_path is None or not plan_path.exists():
             self.selected_products_label.setText("Selected products: build a Product Plan first.")
-            self.estimate_label.setText("Estimated time: unavailable until a Product Plan exists.")
+            self.footprint_label.setText("Processing footprint: build a Product Plan to see expected outputs, raster size, bands, and storage.")
             return
         try:
             payload = json.loads(plan_path.read_text(encoding="utf-8"))
             products = [item for item in payload.get("products", []) if isinstance(item, dict) and item.get("requested", True)]
             labels = [str(item.get("label") or item.get("product")) for item in products]
-            estimate = estimate_from_plan_file(plan_path)
+            footprint = footprint_from_plan_file(plan_path)
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             self.selected_products_label.setText("Selected products: Product Plan could not be read.")
-            self.estimate_label.setText(f"Estimated time: unavailable ({exc})")
+            self.footprint_label.setText(f"Processing footprint: unavailable ({exc})")
             return
-        self.current_estimate = estimate
+        self.current_footprint = footprint
         self.selected_products_label.setText("Selected products: " + (", ".join(labels) if labels else "none"))
-        self.estimate_label.setText(
-            f"Estimated time: {estimate.display_range} ({estimate.confidence} confidence). "
-            f"This is a planning estimate, not a guarantee. {estimate.rationale}"
-        )
+        self.footprint_label.setText(_processing_footprint_text(footprint))
 
     def browse_product_plan(self) -> None:
         """Choose a Product Planner JSON report for advanced troubleshooting."""
@@ -1162,6 +1159,24 @@ class SettingsPage(MissionPage):
 
 
 
+
+
+
+def _processing_footprint_text(footprint: ProcessingFootprint) -> str:
+    """Return concise user-facing processing footprint text."""
+    product_lines = ", ".join(footprint.selected_products) or "none"
+    warnings = "\n".join(f"Warning: {item}" for item in footprint.warnings)
+    details = [
+        f"Processing footprint: {product_lines}",
+        f"Output folder: {footprint.output_folder or 'Unknown'}",
+        f"Raster dimensions: {footprint.display_dimensions}",
+        f"Raster bands: {footprint.total_bands}",
+        f"Estimated output storage: {footprint.display_storage} ({footprint.confidence} confidence)",
+        footprint.caveat,
+    ]
+    if warnings:
+        details.append(warnings)
+    return "\n".join(details)
 
 
 def _collapsible_section(parent: QVBoxLayout, title: str, checked: bool = False) -> tuple[QGroupBox, QVBoxLayout]:
