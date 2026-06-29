@@ -209,11 +209,13 @@ adapter, writes selected GeoTIFF outputs in `outputs/`, and writes
 CHM, Canopy Cover, PAD, PAI, FHD, and Rumple are implemented for
 single-dataset workflows. Rumple writes a scalar CSV summary rather than a raster.
 
-Raster outputs are loaded into QGIS with grayscale styling by default. Mission
-Control refreshes provider statistics and applies an explicit display min/max so
-a newly generated raster should not appear blank merely because QGIS initially
-reported a `0` to `0` range. The selected display range is also recorded on the
-QGIS layer as PyForestScan custom properties.
+CHM, Canopy Cover, PAI, and FHD are loaded into QGIS with grayscale styling by
+default. PAD is multi-band and loads as an RGB composite using red band 5, green
+band 3, and blue band 2 when those bands exist. Mission Control refreshes
+provider statistics and applies explicit display ranges so a newly generated
+raster should not appear blank merely because QGIS initially reported a `0` to
+`0` range. The selected display settings are also recorded on the QGIS layer as
+PyForestScan custom properties.
 
 ### Workflow
 
@@ -258,8 +260,10 @@ flowchart TD
   height used by PyForestScan.
 - PAD output filename must be a simple `.tif` or `.tiff` name. PAD is written as
   a multi-band GeoTIFF, with one band per height bin. Mission Control initially
-  displays PAD band 1 in grayscale; users can switch bands later in QGIS layer
-  styling if they want to inspect other height bins.
+  displays PAD as an RGB composite: red band 5, green band 3, and blue band 2.
+  If fewer than five bands exist, it uses the highest available RGB fallback
+  where possible, or grayscale band 1 if there are fewer than three bands. Users
+  can change bands later in QGIS Symbology.
 - PAI output filename must be a simple `.tif` or `.tiff` name. PAI is written as
   a single-band GeoTIFF.
 
@@ -280,9 +284,9 @@ After any raster product completes, confirm the auto-loaded QGIS layer has visib
 contrast without removing and re-adding it manually. CHM, PAI, and FHD should use
 an observed non-zero range when data are present. Canopy Cover should display in
 a `0` to `1` range when provider statistics are unavailable. PAD should load as
-`PyForestScan PAD band 1 - <dataset>` using band 1 in grayscale. No generated
-raster should receive a `0` to `0` display range unless the provider confirms the
-raster is truly all zero.
+`PyForestScan PAD RGB 5-3-2 - <dataset>` using an RGB composite when at least
+five bands exist. No generated raster should receive a `0` to `0` display range
+unless the provider confirms the raster is truly all zero.
 
 ### Canopy Cover QA
 
@@ -292,9 +296,10 @@ and a higher height threshold does not unexpectedly increase canopy cover.
 
 ### PAD and PAI QA
 
-After a successful run, confirm PAI opens as a single-band raster, PAD opens as a
-multi-band raster, CRS and extent align with the source dataset, values are
-non-negative, and changing height bin size changes PAD banding as expected.
+After a successful run, confirm PAI opens as a single-band grayscale raster, PAD
+opens as a multi-band RGB composite using bands 5/3/2 when available, CRS and
+extent align with the source dataset, values are non-negative, and changing
+height bin size changes PAD banding as expected.
 
 
 ### FHD and Rumple QA

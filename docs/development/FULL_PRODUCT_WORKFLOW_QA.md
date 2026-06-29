@@ -51,29 +51,34 @@ raster.
 ## QGIS Layer QA
 
 - CHM, Canopy Cover, PAD, PAI, and FHD rasters load into QGIS when possible.
-- Loaded raster layer names use the pattern `PyForestScan <Product> - <dataset>`, except PAD which loads as `PyForestScan PAD band 1 - <dataset>`.
-- All loaded rasters use grayscale styling by default.
+- Loaded raster layer names use the pattern `PyForestScan <Product> - <dataset>`, except PAD which loads as `PyForestScan PAD RGB 5-3-2 - <dataset>`.
+- CHM, Canopy Cover, PAI, and FHD use grayscale styling by default.
 - No colorful ramps are applied automatically.
-- PAD loads band 1 by default in grayscale; users can manually inspect other bands in QGIS layer styling.
+- PAD uses an RGB composite by default: red band 5, green band 3, blue band 2.
+- Users can manually inspect or change PAD bands in QGIS Symbology.
 - Rumple appears as a CSV/report link and is not loaded as a raster layer.
 
 
 ## Raster Display Statistics QA
 
-For CHM, Canopy Cover, PAD, PAI, and FHD, open the layer styling panel after the
+For CHM, Canopy Cover, PAI, and FHD, open the layer styling panel after the
 automatic load and confirm the displayed grayscale range is not `0` to `0` unless
-the raster is genuinely all zero. The auto-loaded layer should look substantially
-the same as the same GeoTIFF removed and re-added manually from disk. Canopy
-Cover may fall back to `0` to `1` if statistics are unavailable. CHM, PAI, FHD,
-and PAD band 1 should use observed provider min/max values when QGIS exposes
-them, or a safe `0` to `1` fallback rather than a blank `0` to `0` range.
+the raster is genuinely all zero. For PAD, confirm the renderer is an RGB
+composite with red band 5, green band 3, and blue band 2 when at least five
+bands exist. The auto-loaded layer should look substantially the same as the same
+GeoTIFF removed and re-added manually from disk, except that PAD should not fall
+back to QGIS default RGB 1/2/3. If PAD has only three or four bands, red should
+use the highest available band; if it has fewer than three bands, grayscale band
+1 fallback is acceptable.
 
 Generated raster layers record these custom properties when styling succeeds:
 
 - `pyforestscan/display_minimum`
 - `pyforestscan/display_maximum`
 - `pyforestscan/display_range_source`
-- `pyforestscan/display_band`
+- `pyforestscan/display_band` for grayscale layers
+- `pyforestscan/display_mode`
+- `pyforestscan/red_band`, `pyforestscan/green_band`, and `pyforestscan/blue_band` for PAD RGB layers
 
 ## Summary QA
 

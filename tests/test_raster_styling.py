@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from pyforestscan_qgis.ui.raster_styling import layer_display_name, qgis_raster_display_range, safe_display_range
+from pyforestscan_qgis.ui.raster_styling import layer_display_name, qgis_raster_display_range, safe_display_range, select_pad_rgb_bands
 
 
 class RasterStylingTests(unittest.TestCase):
@@ -53,9 +53,31 @@ class RasterStylingTests(unittest.TestCase):
         self.assertEqual(9.5, display_range.maximum)
         self.assertEqual("observed", display_range.source)
 
-    def test_pad_layer_name_defaults_to_band_one(self) -> None:
-        """PAD is named as a band-1 grayscale layer because it is multi-band."""
-        self.assertEqual("PyForestScan PAD band 1 - tile_001", layer_display_name("pad_geotiff", "tile_001"))
+    def test_pad_layer_name_defaults_to_rgb_composite(self) -> None:
+        """PAD is named as an RGB composite because it is multi-band."""
+        self.assertEqual("PyForestScan PAD RGB 5-3-2 - tile_001", layer_display_name("pad_geotiff", "tile_001"))
+
+    def test_pad_rgb_bands_use_requested_mapping_when_available(self) -> None:
+        """PAD uses red 5, green 3, blue 2 when at least five bands exist."""
+        bands = select_pad_rgb_bands(8)
+
+        self.assertIsNotNone(bands)
+        assert bands is not None
+        self.assertEqual((5, 3, 2), (bands.red, bands.green, bands.blue))
+        self.assertEqual("requested_5_3_2", bands.source)
+
+    def test_pad_rgb_bands_use_highest_available_fallback(self) -> None:
+        """PAD uses a descending RGB composite when fewer than five bands exist."""
+        bands = select_pad_rgb_bands(4)
+
+        self.assertIsNotNone(bands)
+        assert bands is not None
+        self.assertEqual((4, 3, 2), (bands.red, bands.green, bands.blue))
+        self.assertEqual("highest_available", bands.source)
+
+    def test_pad_rgb_bands_return_none_for_grayscale_fallback(self) -> None:
+        """PAD falls back to grayscale when an RGB composite is not possible."""
+        self.assertIsNone(select_pad_rgb_bands(2))
 
 
 class _FakeProvider:

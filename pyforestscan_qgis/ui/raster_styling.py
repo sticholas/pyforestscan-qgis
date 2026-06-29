@@ -28,6 +28,26 @@ class RasterDisplayRange:
     band: int = 1
 
 
+@dataclass(frozen=True)
+class PadRgbBands:
+    """Band mapping selected for PAD visualization."""
+
+    red: int
+    green: int
+    blue: int
+    source: str
+
+
+@dataclass(frozen=True)
+class PadRgbDisplay:
+    """Display metadata selected for a PAD RGB composite."""
+
+    bands: PadRgbBands
+    red_range: RasterDisplayRange
+    green_range: RasterDisplayRange
+    blue_range: RasterDisplayRange
+
+
 def is_raster_result(result_type: str) -> bool:
     """Return whether a job result is a generated raster artifact."""
     return result_type in RASTER_RESULT_TYPES
@@ -38,7 +58,7 @@ def layer_display_name(result_type: str, dataset_stem: str | None) -> str:
     product = {
         "chm_geotiff": "CHM",
         "canopy_cover_geotiff": "Canopy Cover",
-        "pad_geotiff": "PAD band 1",
+        "pad_geotiff": "PAD RGB 5-3-2",
         "pai_geotiff": "PAI",
         "fhd_geotiff": "FHD",
     }.get(result_type, "Raster")
@@ -82,20 +102,67 @@ def qgis_raster_display_range(layer: Any, result_type: str, *, band: int = 1) ->
     return safe_display_range(result_type, None, observed_maximum, band=band)
 
 
+def select_pad_rgb_bands(band_count: int) -> PadRgbBands | None:
+    """Return the PAD RGB band mapping for an available band count."""
+    if band_count >= 5:
+        return PadRgbBands(red=5, green=3, blue=2, source="requested_5_3_2")
+    if band_count >= 3:
+        return PadRgbBands(red=band_count, green=band_count - 1, blue=max(1, band_count - 2), source="highest_available")
+    return None
+
+
+def apply_generated_raster_renderer(layer: Any, result_type: str) -> RasterDisplayRange | PadRgbDisplay:
+    """Apply the default display renderer for a generated raster product."""
+    if result_type == "pad_geotiff":
+        return apply_pad_renderer(layer)
+    return apply_grayscale_renderer(layer, result_type, band=1)
+
+
+def apply_pad_renderer(layer: Any) -> RasterDisplayRange | PadRgbDisplay:
+    """Apply the PAD RGB composite when possible, with grayscale fallback."""
+    band_count = _band_count(layer)
+    bands = select_pad_rgb_bands(band_count)
+    if bands is None:
+        display_range = apply_grayscale_renderer(layer, "pad_geotiff", band=1)
+        _record_layer_properties(
+            layer,
+            (
+                ("pyforestscan/display_mode", "grayscale"),
+                ("pyforestscan/display_fallback", "pad_has_fewer_than_three_bands"),
+            ),
+        )
+        return display_range
+    return apply_pad_rgb_renderer(layer, bands)
+
+
+def apply_pad_rgb_renderer(layer: Any, bands: PadRgbBands) -> PadRgbDisplay:
+    """Apply an RGB renderer for PAD using selected height-bin bands."""
+    from qgis.core import QgsContrastEnhancement, QgsMultiBandColorRenderer
+
+    provider = layer.dataProvider()
+    red_range = qgis_raster_display_range(layer, "pad_geotiff", band=bands.red)
+    green_range = qgis_raster_display_range(layer, "pad_geotiff", band=bands.green)
+    blue_range = qgis_raster_display_range(layer, "pad_geotiff", band=bands.blue)
+    renderer = QgsMultiBandColorRenderer(provider, bands.red, bands.green, bands.blue)
+    _set_channel_contrast(renderer, "setRedContrastEnhancement", provider.dataType(bands.red), red_range)
+    _set_channel_contrast(renderer, "setGreenContrastEnhancement", provider.dataType(bands.green), green_range)
+    _set_channel_contrast(renderer, "setBlueContrastEnhancement", provider.dataType(bands.blue), blue_range)
+    layer.setRenderer(renderer)
+    _record_pad_rgb_metadata(layer, bands, red_range, green_range, blue_range)
+    layer.triggerRepaint()
+    return PadRgbDisplay(bands=bands, red_range=red_range, green_range=green_range, blue_range=blue_range)
+
+
 def apply_grayscale_renderer(layer: Any, result_type: str, *, band: int = 1) -> RasterDisplayRange:
     """Apply grayscale rendering with an explicit min/max contrast range."""
-    from qgis.core import QgsContrastEnhancement, QgsSingleBandGrayRenderer
+    from qgis.core import QgsSingleBandGrayRenderer
 
     display_range = qgis_raster_display_range(layer, result_type, band=band)
     provider = layer.dataProvider()
     renderer = QgsSingleBandGrayRenderer(provider, band)
-    contrast = QgsContrastEnhancement(provider.dataType(band))
-    contrast.setContrastEnhancementAlgorithm(QgsContrastEnhancement.StretchToMinimumMaximum)
-    contrast.setMinimumValue(display_range.minimum)
-    contrast.setMaximumValue(display_range.maximum)
-    renderer.setContrastEnhancement(contrast)
+    _set_channel_contrast(renderer, "setContrastEnhancement", provider.dataType(band), display_range)
     layer.setRenderer(renderer)
-    _record_display_metadata(layer, display_range)
+    _record_grayscale_metadata(layer, display_range)
     layer.triggerRepaint()
     return display_range
 
@@ -134,13 +201,70 @@ def _refresh_provider(layer: Any, provider: Any) -> None:
                 pass
 
 
-def _record_display_metadata(layer: Any, display_range: RasterDisplayRange) -> None:
-    for key, value in (
-        ("pyforestscan/display_minimum", display_range.minimum),
-        ("pyforestscan/display_maximum", display_range.maximum),
-        ("pyforestscan/display_range_source", display_range.source),
-        ("pyforestscan/display_band", display_range.band),
-    ):
+def _band_count(layer: Any) -> int:
+    for target in (layer, layer.dataProvider()):
+        method = getattr(target, "bandCount", None)
+        if callable(method):
+            try:
+                return max(0, int(method()))
+            except Exception:  # noqa: BLE001 - provider APIs vary across QGIS builds.
+                continue
+    return 0
+
+
+def _set_channel_contrast(renderer: Any, method_name: str, data_type: Any, display_range: RasterDisplayRange) -> None:
+    from qgis.core import QgsContrastEnhancement
+
+    method = getattr(renderer, method_name, None)
+    if not callable(method):
+        return
+    contrast = QgsContrastEnhancement(data_type)
+    contrast.setContrastEnhancementAlgorithm(QgsContrastEnhancement.StretchToMinimumMaximum)
+    contrast.setMinimumValue(display_range.minimum)
+    contrast.setMaximumValue(display_range.maximum)
+    method(contrast)
+
+
+def _record_grayscale_metadata(layer: Any, display_range: RasterDisplayRange) -> None:
+    _record_layer_properties(
+        layer,
+        (
+            ("pyforestscan/display_mode", "grayscale"),
+            ("pyforestscan/display_minimum", display_range.minimum),
+            ("pyforestscan/display_maximum", display_range.maximum),
+            ("pyforestscan/display_range_source", display_range.source),
+            ("pyforestscan/display_band", display_range.band),
+        ),
+    )
+
+
+def _record_pad_rgb_metadata(
+    layer: Any,
+    bands: PadRgbBands,
+    red_range: RasterDisplayRange,
+    green_range: RasterDisplayRange,
+    blue_range: RasterDisplayRange,
+) -> None:
+    _record_layer_properties(
+        layer,
+        (
+            ("pyforestscan/display_mode", "rgb"),
+            ("pyforestscan/red_band", bands.red),
+            ("pyforestscan/green_band", bands.green),
+            ("pyforestscan/blue_band", bands.blue),
+            ("pyforestscan/pad_rgb_band_source", bands.source),
+            ("pyforestscan/red_display_minimum", red_range.minimum),
+            ("pyforestscan/red_display_maximum", red_range.maximum),
+            ("pyforestscan/green_display_minimum", green_range.minimum),
+            ("pyforestscan/green_display_maximum", green_range.maximum),
+            ("pyforestscan/blue_display_minimum", blue_range.minimum),
+            ("pyforestscan/blue_display_maximum", blue_range.maximum),
+        ),
+    )
+
+
+def _record_layer_properties(layer: Any, properties: tuple[tuple[str, object], ...]) -> None:
+    for key, value in properties:
         try:
             layer.setCustomProperty(key, value)
         except Exception:  # noqa: BLE001 - metadata should not break rendering.

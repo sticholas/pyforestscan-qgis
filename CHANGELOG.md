@@ -9,6 +9,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- PAD default QGIS visualization as an RGB composite using bands 5/3/2, with safe fallback for shorter height-bin stacks.
 - Raster auto-display stabilization with explicit QGIS raster statistics refresh, grayscale min/max contrast ranges, PAD band-1 naming, and display-range QA guidance.
 - Full product workflow stabilization with floating Mission Control launch, lighter UI styling, grayscale raster defaults, friendly all-product result links, final HTML run summaries, and large dataset warnings.
 - FHD and Rumple processing workflows with adapter-backed PyForestScan calls, Product Planner controls, pipeline execution, QGIS FHD raster loading, Rumple CSV summaries, tests, and manual QA documentation.

@@ -58,10 +58,13 @@ PAD is a height-binned 3D product, so Phase 13A does not flatten it into a false
 Each band represents one vertical bin. The bin height comes from Product
 Planner's `height_bin_size` parameter. Band 1 is the first vertical bin returned
 by PyForestScan after ground handling. Mission Control auto-loads PAD as
-`PyForestScan PAD band 1 - <dataset>` with grayscale styling and an explicit
-display range. Users can switch to other PAD bands in QGIS layer styling. The
-adapter currently writes bands in the same order returned by `calculate_pad`; it
-does not yet write per-band metadata labels.
+`PyForestScan PAD RGB 5-3-2 - <dataset>` using red band 5, green band 3, and
+blue band 2 when at least five bands exist. If the PAD stack has only three or
+four bands, red uses the highest available band with a descending RGB fallback.
+If fewer than three bands exist, Mission Control falls back to grayscale band 1.
+Users can switch to other PAD bands in QGIS Symbology. The adapter currently
+writes bands in the same order returned by `calculate_pad`; it does not yet write
+per-band metadata labels.
 
 ## Expected Run Folder Outputs
 
@@ -108,7 +111,7 @@ height bin size, output filenames, and result paths such as `pad_geotiff` and
 
 - PAI opens as a single-band raster in QGIS.
 - PAD opens as a multi-band raster in QGIS.
-- Automatic PAD loading displays band 1 in grayscale with refreshed provider statistics.
+- Automatic PAD loading displays an RGB composite with R=5, G=3, B=2 when those bands are available.
 - CRS matches the input dataset CRS reported by Dataset Explorer.
 - Extent aligns with the point cloud footprint.
 - PAI values are non-negative and spatially plausible.
@@ -131,7 +134,7 @@ height bin size, output filenames, and result paths such as `pad_geotiff` and
 
 - Small datasets only; no tiling, chunking, or batch execution yet.
 - PAD multi-band GeoTIFFs do not yet include per-band height labels.
-- PAD is styled using band 1 only when automatically loaded into QGIS.
+- PAD is styled as an RGB 5/3/2 composite when automatically loaded into QGIS, with documented fallback for shorter band stacks.
 - PAI uses `min_height=1.0` and no maximum height by default.
 - Beer-Lambert and extinction coefficient controls are not exposed in Mission
   Control yet.

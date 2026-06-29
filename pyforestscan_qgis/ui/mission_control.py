@@ -24,7 +24,7 @@ from .pages import (
     ResultsPage,
     SettingsPage,
 )
-from .raster_styling import apply_grayscale_renderer, is_raster_result, layer_display_name
+from .raster_styling import apply_generated_raster_renderer, is_raster_result, layer_display_name
 from .state import MissionControlState
 
 FORM_CLASS, _ = uic.loadUiType(str(plugin_root() / "ui" / "forms" / "mission_control.ui"))
@@ -194,7 +194,7 @@ class MissionControlDock(QDockWidget):
     def _polish_raster_layer(self, layer: object, result_type: str) -> None:
         """Best-effort generated raster statistics and styling."""
         try:
-            apply_grayscale_renderer(layer, result_type, band=1)
+            apply_generated_raster_renderer(layer, result_type)
         except Exception:  # noqa: BLE001 - styling should never break layer loading.
             return
 
