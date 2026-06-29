@@ -7,6 +7,7 @@ the adapter boundary.
 
 from __future__ import annotations
 
+import json
 from html import escape
 from pathlib import Path
 from typing import Callable
@@ -54,6 +55,7 @@ from ..core.exceptions import AdapterError
 from ..core.job_manager import JobExecutionError, JobManager
 from ..core.knowledge import RecommendationReport
 from ..core.jobs import JobRecord, JobStatus
+from ..core.processing_estimate import ProcessingTimeEstimate, estimate_from_plan_file
 from ..core.product_plan import (
     PRODUCT_LABELS,
     ProductPlanError,
@@ -390,6 +392,10 @@ class ScientificAdvisorPage(MissionPage):
         self.advisor_layout.setContentsMargins(18, 12, 22, 22)
         self.advisor_layout.setSpacing(16)
 
+        executive = self._add_card("Executive Summary")
+        self.executive_summary_label = _body_label("Run Dataset Explorer to generate a concise readiness summary and next action.")
+        executive.addWidget(self.executive_summary_label)
+
         overview = self._add_card("Dataset Health")
         metrics_row = QHBoxLayout()
         metrics_row.setSpacing(12)
@@ -416,38 +422,32 @@ class ScientificAdvisorPage(MissionPage):
         self.parameter_list = _readable_list()
         parameters.addWidget(self.parameter_list)
 
-        qgis_tools = self._add_card("QGIS Tools")
-        self.qgis_tools_summary = _body_label(_tool_instruction_summary())
+        qgis_tools = self._add_card("Recommended Next Actions")
+        self.qgis_tools_summary = _body_label("After processing, inspect generated layers in QGIS Layer Styling and Histogram before publication or interpretation.")
         qgis_tools.addWidget(self.qgis_tools_summary)
-        self.qgis_tools_details = _details_label(_tool_instruction_text())
-        qgis_tools.addWidget(self.qgis_tools_details)
-        button_row = QHBoxLayout()
-        button_row.setSpacing(10)
-        self.processing_toolbox_button = QPushButton("Open Processing Toolbox")
-        self.processing_toolbox_button.clicked.connect(self.open_processing_toolbox)
-        self.layer_styling_button = QPushButton("Open Layer Styling")
-        self.layer_styling_button.clicked.connect(self.open_layer_styling)
-        self.zoom_layer_button = QPushButton("Zoom to Selected Layer")
-        self.zoom_layer_button.clicked.connect(self.zoom_to_selected_layer)
         self.open_output_folder_button = QPushButton("Open Output Folder")
+        self.open_output_folder_button.setMinimumHeight(34)
         self.open_output_folder_button.clicked.connect(self.open_output_folder)
-        for button in (self.processing_toolbox_button, self.layer_styling_button, self.zoom_layer_button, self.open_output_folder_button):
-            button.setMinimumHeight(34)
-            button_row.addWidget(button)
-        qgis_tools.addLayout(button_row)
+        qgis_tools.addWidget(self.open_output_folder_button)
+        tools_group, tools_layout = _collapsible_section(self.advisor_layout, "QGIS Tool Instructions", checked=False)
+        self.qgis_tools_details = _details_label(_tool_instruction_text())
+        tools_layout.addWidget(self.qgis_tools_details)
+        _wire_collapsible_group(tools_group)
 
-        notes = self._add_card("Scientific Notes")
+        notes_group, notes = _collapsible_section(self.advisor_layout, "Scientific Notes", checked=False)
         self.notes_summary = _body_label("Recommendations will appear after Dataset Explorer runs. Threshold-based guidance is configurable and must be calibrated for production interpretation.")
         notes.addWidget(self.notes_summary)
         self.notes_details = _details_label("")
         notes.addWidget(self.notes_details)
+        _wire_collapsible_group(notes_group)
 
-        cards = self._add_card("Product Explanations")
+        cards_group, cards = _collapsible_section(self.advisor_layout, "Product Explanations", checked=False)
         product_grid = QVBoxLayout()
         product_grid.setSpacing(10)
         for explanation in PRODUCT_EXPLANATIONS:
             product_grid.addWidget(_product_explanation_card(explanation))
         cards.addLayout(product_grid)
+        _wire_collapsible_group(cards_group)
 
         next_steps = self._add_card("Next Steps")
         self.next_steps_label = _body_label("Run Dataset Explorer to generate top-priority next steps.")
@@ -478,6 +478,15 @@ class ScientificAdvisorPage(MissionPage):
         """Display a Knowledge Engine recommendation report."""
         self.score_label.setText(f"<b>Dataset score</b><br>{report.dataset_score}/100")
         self.confidence_label.setText(f"<b>Confidence / readiness</b><br>{_stars(report.confidence_stars)} ({report.confidence_stars}/5)")
+        best_product = report.recommended_products[0].label if report.recommended_products else "No product recommendation yet"
+        key_warning = report.warnings[0].reason if report.warnings else "No blocking warning from the Knowledge Engine"
+        next_action = report.suggested_next_actions[0].suggested_action if report.suggested_next_actions else "Build a Product Plan when the dataset report is ready"
+        self.executive_summary_label.setText(
+            f"Dataset readiness: {report.dataset_score}/100 with {_stars(report.confidence_stars)} confidence.\n"
+            f"Best product to consider: {best_product}.\n"
+            f"Key warning: {key_warning}.\n"
+            f"Next: {next_action}"
+        )
 
         self.recommendation_list.clear()
         for item in report.suggested_next_actions[:4]:
@@ -571,7 +580,7 @@ class ScientificAdvisorPage(MissionPage):
             text = f"Start here: {first.suggested_action}"
         else:
             text = "Start here: build a Product Planner report using the recommended products and parameter notes, then run one small validation workflow before production use."
-        self.next_steps_label.setText(text + "\n\nUse the QGIS tool suggestions below for QA rather than treating outputs as publication-ready immediately.")
+        self.next_steps_label.setText(text + "\n\nUse QGIS QA tools after processing rather than treating outputs as publication-ready immediately.")
 
 
 class PlanningPage(MissionPage):
@@ -648,7 +657,8 @@ class PlanningPage(MissionPage):
         shared_form.addRow("Height bin size", self.height_bin_spin)
         shared.addLayout(shared_form)
 
-        product_params = self.add_section("Product-Specific Parameters")
+        product_params_group, product_params = _collapsible_section(self.content_layout, "Advanced Product Settings", checked=False)
+        product_params.addWidget(_details_label("Expand only when you need to change product-specific filenames, CHM interpolation options, or canopy-cover threshold. Recommended/shared settings above are enough for the default workflow."))
         params_grid = QGridLayout()
         params_grid.setHorizontalSpacing(20)
         params_grid.setVerticalSpacing(12)
@@ -696,6 +706,7 @@ class PlanningPage(MissionPage):
         params_grid.setColumnStretch(0, 1)
         params_grid.setColumnStretch(1, 1)
         product_params.addLayout(params_grid)
+        _wire_collapsible_group(product_params_group)
 
         summary = self.add_section("Run Summary")
         build = QPushButton("Build Plan")
@@ -829,89 +840,126 @@ class ProcessingPage(MissionPage):
         self.job_manager = JobManager(event_sink=self._on_job_update)
         self.current_job_id: str | None = None
         self.run_context: RunContext | None = None
+        self.current_estimate: ProcessingTimeEstimate | None = None
 
-        controls = self.add_section("Product Job")
-        self.current_plan_label = QLabel("Current product plan: none")
-        self.current_output_label = QLabel("Run folder: none")
-        controls.addWidget(self.current_plan_label)
-        controls.addWidget(self.current_output_label)
+        overview = self.add_section("Ready To Run")
+        self.selected_products_label = _body_label("Selected products: build a Product Plan first.")
+        self.current_output_label = _body_label("Outputs: choose a dataset and output folder, then build a Product Plan.")
+        self.estimate_label = _body_label("Estimated time: unavailable until a Product Plan exists.")
+        self.status_label = QLabel("Status: Not started")
+        self.status_label.setObjectName("advisorMetric")
+        self.status_label.setWordWrap(True)
+        overview.addWidget(self.selected_products_label)
+        overview.addWidget(self.current_output_label)
+        overview.addWidget(self.estimate_label)
+        overview.addWidget(self.status_label)
 
         self.job_title_edit = QLineEdit("Mission Control Product Job")
-        controls.addWidget(self.job_title_edit)
+        self.job_title_edit.setPlaceholderText("Optional run label")
+        overview.addWidget(self.job_title_edit)
 
         button_row = QHBoxLayout()
-        self.start_button = QPushButton("Start Processing Job")
+        button_row.setSpacing(10)
+        self.start_button = QPushButton("Run Selected Products")
+        self.start_button.setMinimumHeight(40)
         self.start_button.clicked.connect(self.start_job)
         self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.setMinimumHeight(40)
         self.cancel_button.clicked.connect(self.cancel_current_job)
         self.cancel_button.setEnabled(False)
         button_row.addWidget(self.start_button)
         button_row.addWidget(self.cancel_button)
-        controls.addLayout(button_row)
+        button_row.addStretch(1)
+        overview.addLayout(button_row)
 
-        advanced = QGroupBox("Advanced details")
-        advanced.setCheckable(True)
-        advanced.setChecked(False)
-        advanced_layout = QVBoxLayout(advanced)
+        progress = self.add_section("Current Progress")
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        progress.addWidget(self.progress_bar)
+        progress.addWidget(_body_label("All implemented products can run together. Keep QGIS open until the job completes or fails cleanly."))
+
+        technical_group, technical = _collapsible_section(self.content_layout, "Technical Details", checked=False)
+        technical.addWidget(_details_label("Run files, Product Planner JSON paths, pipeline stages, and logs are shown here for troubleshooting and reproducibility."))
+        self.current_plan_label = QLabel("Product plan file: none")
+        self.current_plan_label.setWordWrap(True)
+        technical.addWidget(self.current_plan_label)
         plan_row = QHBoxLayout()
         self.product_plan_edit = QLineEdit()
         self.product_plan_edit.setPlaceholderText("Optional Product Planner JSON override")
         plan_browse = QPushButton("Browse")
         plan_browse.clicked.connect(self.browse_product_plan)
-        plan_row.addWidget(self.product_plan_edit)
-        plan_row.addWidget(plan_browse)
-        advanced_layout.addLayout(plan_row)
+        plan_row.addWidget(self.product_plan_edit, 1)
+        plan_row.addWidget(plan_browse, 0)
+        technical.addLayout(plan_row)
         output_row = QHBoxLayout()
         self.job_output_folder_edit = QLineEdit()
         self.job_output_folder_edit.setPlaceholderText("Optional job log folder override")
         output_browse = QPushButton("Browse")
         output_browse.clicked.connect(self.browse_output_folder)
-        output_row.addWidget(self.job_output_folder_edit)
-        output_row.addWidget(output_browse)
-        advanced_layout.addLayout(output_row)
-        advanced_widgets = (self.product_plan_edit, plan_browse, self.job_output_folder_edit, output_browse)
-        for widget in advanced_widgets:
-            widget.setVisible(False)
-        advanced.toggled.connect(lambda checked: [widget.setVisible(checked) for widget in advanced_widgets])
-        controls.addWidget(advanced)
-
-        status = self.add_section("Progress")
-        self.status_label = QLabel("Status: Not started")
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        status.addWidget(self.status_label)
-        status.addWidget(self.progress_bar)
+        output_row.addWidget(self.job_output_folder_edit, 1)
+        output_row.addWidget(output_browse, 0)
+        technical.addLayout(output_row)
         self.pipeline_list = QListWidget()
-        status.addWidget(self.pipeline_list)
+        self.pipeline_list.setMinimumHeight(120)
+        technical.addWidget(self.pipeline_list)
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        status.addWidget(self.log_text)
-        status.addWidget(QLabel("All implemented products can run together: CHM, Canopy Cover, PAD, PAI, FHD, and Rumple summary."))
+        self.log_text.setMinimumHeight(120)
+        technical.addWidget(self.log_text)
+        _wire_collapsible_group(technical_group)
 
     def set_run_context(self, context: RunContext | None) -> None:
         """Use the active Mission Control run context."""
         self.run_context = context
         if context is None:
-            self.current_plan_label.setText("Current product plan: none")
-            self.current_output_label.setText("Run folder: none")
+            self.current_plan_label.setText("Product plan file: none")
+            self.selected_products_label.setText("Selected products: build a Product Plan first.")
+            self.current_output_label.setText("Outputs: choose a dataset and output folder, then build a Product Plan.")
+            self.estimate_label.setText("Estimated time: unavailable until a Product Plan exists.")
             return
         self.product_plan_edit.setText(str(context.product_plan_json))
         self.job_output_folder_edit.setText(str(context.logs_dir))
-        self.current_plan_label.setText(f"Current product plan: {context.product_plan_html}")
-        self.current_output_label.setText(f"Run folder: {context.run_folder}")
+        self.current_plan_label.setText(f"Product plan file: {context.product_plan_json}")
+        self.current_output_label.setText(f"Outputs: {context.outputs_dir}")
+        self._refresh_plan_summary()
+
+    def _refresh_plan_summary(self) -> None:
+        """Refresh selected products and time estimate from the active Product Plan."""
+        plan_path = Path(self.product_plan_edit.text().strip()) if self.product_plan_edit.text().strip() else None
+        if plan_path is None or not plan_path.exists():
+            self.selected_products_label.setText("Selected products: build a Product Plan first.")
+            self.estimate_label.setText("Estimated time: unavailable until a Product Plan exists.")
+            return
+        try:
+            payload = json.loads(plan_path.read_text(encoding="utf-8"))
+            products = [item for item in payload.get("products", []) if isinstance(item, dict) and item.get("requested", True)]
+            labels = [str(item.get("label") or item.get("product")) for item in products]
+            estimate = estimate_from_plan_file(plan_path)
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            self.selected_products_label.setText("Selected products: Product Plan could not be read.")
+            self.estimate_label.setText(f"Estimated time: unavailable ({exc})")
+            return
+        self.current_estimate = estimate
+        self.selected_products_label.setText("Selected products: " + (", ".join(labels) if labels else "none"))
+        self.estimate_label.setText(
+            f"Estimated time: {estimate.display_range} ({estimate.confidence} confidence). "
+            f"This is a planning estimate, not a guarantee. {estimate.rationale}"
+        )
 
     def browse_product_plan(self) -> None:
         """Choose a Product Planner JSON report for advanced troubleshooting."""
         path, _ = QFileDialog.getOpenFileName(self, "Choose Product Planner JSON", "", "JSON reports (*.json);;All files (*.*)")
         if path:
             self.product_plan_edit.setText(path)
+            self._refresh_plan_summary()
 
     def browse_output_folder(self) -> None:
         """Choose a job summary output folder for advanced troubleshooting."""
         path = QFileDialog.getExistingDirectory(self, "Choose job output folder")
         if path:
             self.job_output_folder_edit.setText(path)
+            self.current_output_label.setText(f"Outputs: {path}")
 
     def start_job(self) -> None:
         """Start a processing job from the active Product Planner report."""
@@ -919,12 +967,15 @@ class ProcessingPage(MissionPage):
         output_folder = self.job_output_folder_edit.text().strip()
         summary_path = self.run_context.job_summary_json if self.run_context is not None else None
         if not plan_path:
+            self.status_label.setText("Status: Build a product plan before starting a processing job.")
             self.log_text.setPlainText("Build a product plan before starting a processing job.")
             return
         if not Path(plan_path).exists():
+            self.status_label.setText("Status: Build a product plan before starting a processing job.")
             self.log_text.setPlainText("Build a product plan before starting a processing job.")
             return
         if not output_folder:
+            self.status_label.setText("Status: Choose an output folder before starting.")
             self.log_text.setPlainText("Choose an output folder for the job summary JSON.")
             return
         self.start_button.setEnabled(False)
@@ -938,6 +989,7 @@ class ProcessingPage(MissionPage):
                 summary_path=summary_path,
             )
         except JobExecutionError as exc:
+            self.status_label.setText(f"Status: Processing job could not start: {exc}")
             self.log_text.setPlainText(f"Processing job could not start: {exc}")
             self.start_button.setEnabled(True)
             self.cancel_button.setEnabled(False)
@@ -995,10 +1047,8 @@ class ResultsPage(MissionPage):
         jobs.addWidget(self.job_history)
         jobs.addWidget(QLabel("Job summaries and generated product outputs are listed here."))
 
-        advanced = QGroupBox("Advanced details")
-        advanced.setCheckable(True)
-        advanced.setChecked(False)
-        advanced_layout = QVBoxLayout(advanced)
+        advanced, advanced_layout = _collapsible_section(self.content_layout, "Run files and logs", checked=False)
+        advanced_layout.addWidget(_details_label("Internal JSON, CSV, HTML reports, and logs are available here for reproducibility and troubleshooting."))
         row = QHBoxLayout()
         self.report_path_edit = QLineEdit()
         self.report_path_edit.setPlaceholderText("Choose JSON, CSV, or HTML report")
@@ -1012,11 +1062,7 @@ class ResultsPage(MissionPage):
         advanced_layout.addLayout(row)
         self.previous_reports = QListWidget()
         advanced_layout.addWidget(self.previous_reports)
-        advanced_widgets = (self.report_path_edit, browse, open_button, self.previous_reports)
-        for widget in advanced_widgets:
-            widget.setVisible(False)
-        advanced.toggled.connect(lambda checked: [widget.setVisible(checked) for widget in advanced_widgets])
-        self.content_layout.addWidget(advanced)
+        _wire_collapsible_group(advanced)
 
     def set_run_context(self, context: RunContext | None) -> None:
         """Display friendly run links for the active context."""
@@ -1117,6 +1163,52 @@ class SettingsPage(MissionPage):
 
 
 
+
+def _collapsible_section(parent: QVBoxLayout, title: str, checked: bool = False) -> tuple[QGroupBox, QVBoxLayout]:
+    """Add a checkable section whose contents are hidden until expanded."""
+    group = QGroupBox(title)
+    group.setCheckable(True)
+    group.setChecked(checked)
+    group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+    layout = QVBoxLayout(group)
+    layout.setContentsMargins(14, 16, 14, 14)
+    layout.setSpacing(10)
+    parent.addWidget(group)
+    return group, layout
+
+
+def _wire_collapsible_group(group: QGroupBox) -> None:
+    """Connect and apply visibility for a checkable section's content widgets."""
+    _set_collapsible_content_visible(group, group.isChecked())
+    group.toggled.connect(lambda checked: _set_collapsible_content_visible(group, checked))
+
+
+def _set_collapsible_content_visible(group: QGroupBox, visible: bool) -> None:
+    layout = group.layout()
+    if layout is None:
+        return
+    for index in range(layout.count()):
+        item = layout.itemAt(index)
+        widget = item.widget()
+        child_layout = item.layout()
+        if widget is not None:
+            widget.setVisible(visible)
+        if child_layout is not None:
+            _set_layout_visible(child_layout, visible)
+
+
+def _set_layout_visible(layout: object, visible: bool) -> None:
+    if not hasattr(layout, "count"):
+        return
+    for index in range(layout.count()):
+        item = layout.itemAt(index)
+        widget = item.widget()
+        child_layout = item.layout()
+        if widget is not None:
+            widget.setVisible(visible)
+        if child_layout is not None:
+            _set_layout_visible(child_layout, visible)
+
 def _readable_list() -> QListWidget:
     """Return a list widget tuned for wrapped Advisor recommendation summaries."""
     widget = QListWidget()
@@ -1187,10 +1279,6 @@ def _product_explanation_card(item: object) -> QFrame:
     layout.addWidget(details)
     return frame
 
-
-def _tool_instruction_summary() -> str:
-    """Return concise QGIS tool guidance for the Advisor overview."""
-    return "Use QGIS tools for QA and interpretation rather than treating generated products as publication-ready immediately. Common checks include styling, histograms, raster calculations, profiles, 3D context, and layouts."
 
 
 def _html_lines(lines: tuple[str, ...] | list[str]) -> str:

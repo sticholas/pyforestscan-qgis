@@ -38,8 +38,7 @@ files, and an `outputs/` folder for generated products. If a run with the
 same timestamp and dataset stem already exists, Mission Control adds a numeric
 suffix to avoid overwriting it. The Results page
 shows friendly links for Dataset Report, Product Plan, Job Summary, Output
-Folder, and Products. Advanced details still expose JSON and CSV paths for
-troubleshooting and reproducibility.
+Folder, and Products. Run files and logs still expose JSON, CSV, HTML, and log paths for troubleshooting and reproducibility.
 
 This guide describes current user-facing PyForestScan QGIS workflows: Dataset
 Explorer, Product Planner, Mission Control run folders, CHM, Canopy Cover, PAD,
@@ -165,20 +164,22 @@ processing job completes, the Advisor lists completed products and recommends QA
 steps such as inspecting Layer Styling, Histograms, CRS/extent alignment, and the
 final job summary.
 
-Advisor buttons open QGIS tools where the QGIS API is stable. If a direct launch
-is version-dependent, the Advisor shows clear instructions for opening the tool
-from QGIS menus instead.
+The Advisor starts with an executive summary: dataset readiness, best product to
+consider, key warning, and suggested next action. Detailed scientific notes,
+QGIS tool instructions, and product explanations are available in collapsed
+sections so the default view stays focused.
 
 ## Product Planner
 
 Product Planner is a planning workflow that reads a Dataset Explorer JSON report
 and helps users decide which products should be generated in a future processing
 phase. Mission Control groups Planning controls into Dataset, Output, Product
-Selection, Shared Parameters, Product-Specific Parameters, and Run Summary
-sections so parameters remain readable in the full-window layout. Product Planner
-validates selected products against Dataset Explorer feasibility results,
-estimates planned output names, records grid and height-bin settings, and writes
-JSON, CSV, and HTML plan reports.
+Selection, Shared Parameters, and Run Summary sections by default. Product-
+specific settings are available under Advanced Product Settings when users need
+to override filenames, CHM interpolation, edge handling, or canopy-cover
+thresholds. Product Planner validates selected products against Dataset Explorer
+feasibility results, estimates planned output names, records grid and height-bin
+settings, and writes JSON, CSV, and HTML plan reports.
 
 It does not run PyForestScan calculations and does not create rasters.
 
@@ -229,9 +230,13 @@ Product Planner writes these files inside the selected output folder:
 The Mission Control Processing page starts an implemented product job from the
 active Product Planner report. Users do not need to browse for
 `product_plan.json`; Mission Control uses the current run folder automatically.
-The job validates the plan, runs implemented product pipelines through the
-adapter, writes selected GeoTIFF outputs in `outputs/`, and writes
-`logs/job_summary.json` plus `logs/job_summary.html`.
+The Processing page shows selected products, output folder, estimated processing
+time, current status, and the Run button by default. The estimate is
+deterministic planning guidance, not a guarantee. JSON paths, pipeline stages,
+and logs are hidden under Technical Details. The job validates the plan, runs
+implemented product pipelines through the adapter, writes selected GeoTIFF
+outputs in `outputs/`, and writes `logs/job_summary.json` plus
+`logs/job_summary.html`.
 
 CHM, Canopy Cover, PAD, PAI, FHD, and Rumple are implemented for
 single-dataset workflows. Rumple writes a scalar CSV summary rather than a raster.

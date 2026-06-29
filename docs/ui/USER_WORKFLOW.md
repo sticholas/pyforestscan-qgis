@@ -64,7 +64,7 @@ outputs/fhd.tif
 outputs/rumple_summary.csv
 ```
 
-The JSON and CSV files remain available in Advanced details, but the normal UI
+The JSON and CSV files remain available in Run files and logs, but the normal UI
 surfaces friendly links instead of asking users to browse for internal files.
 
 ## Scope Boundary

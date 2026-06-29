@@ -9,6 +9,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Mission Control progressive disclosure UX with simplified Processing defaults, collapsed technical details, concise Scientific Advisor summaries, collapsed product explanations, and deterministic processing time estimates.
 - Mission Control full-window layout redesign with a 1400x900 default floating window, 1150x760 minimum size, bounded sidebar, full-page scroll regions, and grouped Planning controls.
 - Scientific Advisor readability polish with a larger default Mission Control window, spacious card sections, wrapped recommendation rows, clearer warnings, and readable product explanation cards.
 - Scientific Advisor Mission Control workflow with Knowledge Engine recommendations, product explanation cards, QGIS tool guidance, completed-product next steps, and UI support tests.

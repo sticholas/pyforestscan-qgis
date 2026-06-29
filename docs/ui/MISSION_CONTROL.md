@@ -36,10 +36,11 @@ flowchart TD
 - Planning: Product Planner uses the active Dataset Explorer report and writes
   plan reports into the run folder. No product execution is performed.
 - Processing: start implemented product jobs from the active Product Planner
-  report, view progress, inspect pipeline stages, write GeoTIFF outputs under
-  `outputs/`, and write `logs/job_summary.json` plus `logs/job_summary.html`.
+  report, view selected products, output folder, estimated time, current status,
+  and progress by default. Product Plan JSON paths, pipeline stages, and logs are
+  available under Technical Details.
 - Results: view friendly Dataset Report, Product Plan, Job Summary, Output
-  Folder, and Products links, with raw paths under Advanced details.
+  Folder, and Products links first, with raw paths under Run files and logs.
 - Settings: default output folder, logging placeholder, and future preferences.
 
 ## UI Architecture
@@ -86,20 +87,28 @@ Planner JSON through JobManager and the pipeline registry. CHM, Canopy Cover, PA
 ## Scientific Advisor Integration
 
 The Scientific Advisor page consumes `RecommendationReport` objects from
-`core/knowledge`. QGIS actions stay in the UI layer: Processing Toolbox opening,
-selected-layer properties, selected-layer zoom, and output-folder opening are all
-best-effort UI actions with text fallbacks.
+`core/knowledge`. QGIS tool guidance stays in the UI layer and is shown as
+concise next-action text by default. Version-dependent QGIS tool instructions are
+kept in collapsed details, while direct buttons are limited to actions that are
+useful in the current run context, such as opening the output folder.
 
-The Advisor is laid out as readable vertical card sections: Dataset Health, Key
-Recommendations, Warnings, Recommended Products, Recommended Parameters, QGIS
-Tools, Scientific Notes, Product Explanations, and Next Steps. Long rationale is
-kept in quieter detail areas below concise summary text so the page remains
-usable at the default floating Mission Control size and fills the main page
-region instead of appearing as a narrow nested panel.
+The Advisor starts with an Executive Summary: dataset readiness, best product to
+consider, key warning, and suggested next action. Detailed QGIS tool
+instructions, scientific notes, and product explanations are collapsed by
+default so users see the next useful decision before deeper rationale.
 
 ## Planning Layout
 
 The Planning page is grouped into Dataset, Output, Product Selection, Shared
-Parameters, Product-Specific Parameters, and Run Summary sections. Shared grid
-and height-bin settings are separated from product-specific filenames and CHM /
-Canopy Cover controls so the page remains readable without horizontal scrolling.
+Parameters, Advanced Product Settings, and Run Summary sections. Product-specific
+filenames and CHM / Canopy Cover controls are collapsed by default because the
+recommended/shared settings are enough for the normal workflow.
+
+## Processing Estimates
+
+Mission Control displays deterministic processing time estimates before running
+a job. Estimates are based on selected product count, relative product
+complexity, Product Planner grid-cell estimates, height bins, and Dataset
+Explorer point count when available. They are explicitly labeled as estimates
+with confidence because hardware, storage speed, compression, and data
+distribution can change actual runtime.
