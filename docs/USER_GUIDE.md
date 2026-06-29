@@ -321,3 +321,11 @@ paths such as `chm_geotiff`, `canopy_cover_geotiff`, `pad_geotiff`,
 `logs/job_summary.json` and `logs/job_summary.html`. Failed jobs still write
 summary files with a clear error message. If one selected product fails, the
 overall job is failed while successful product outputs remain recorded.
+
+## Knowledge Engine
+
+Phase 16A adds a core deterministic Knowledge Engine foundation. It is not yet a
+Mission Control page and does not change processing behavior. Future UI phases
+can use it to explain dataset suitability, product choices, parameter starting
+points, scientific caveats, and relevant QGIS tools. Its threshold-based advice
+is configurable and explicitly marks calibration needs.

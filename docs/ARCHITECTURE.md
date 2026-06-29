@@ -150,3 +150,26 @@ flowchart TD
     D -."future".-> E["Adapter scientific methods"]
     E -."future".-> F["PyForestScan public API"]
 ```
+
+
+## Knowledge Engine
+
+Phase 16A adds `pyforestscan_qgis/core/knowledge/` as a deterministic
+recommendation layer. It consumes Dataset Explorer JSON facts and returns a typed
+`RecommendationReport` with dataset score, confidence, product recommendations,
+parameter suggestions, warnings, scientific notes, QGIS tool suggestions, and the
+thresholds used.
+
+The Knowledge Engine is core-only and QGIS-free. It does not call PyForestScan,
+does not alter product calculations, and does not invent hidden scientific
+defaults. Configurable thresholds carry rationale and calibration flags so
+uncertain guidance remains transparent.
+
+```mermaid
+flowchart TD
+    A["Dataset Explorer Report"] --> B["Knowledge diagnostics"]
+    B --> C["DatasetFacts"]
+    C --> D["Deterministic rule registry"]
+    D --> E["RecommendationReport"]
+    E -."future UI".-> F["Mission Control guidance"]
+```

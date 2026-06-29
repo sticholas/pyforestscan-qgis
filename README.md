@@ -65,6 +65,7 @@ ambiguous.
 - [Testing Strategy](docs/TESTING_STRATEGY.md)
 - [User Experience](docs/USER_EXPERIENCE.md)
 - [User Guide](docs/USER_GUIDE.md)
+- [Knowledge Engine](docs/development/KNOWLEDGE_ENGINE.md)
 - [Mission Control](docs/ui/MISSION_CONTROL.md)
 
 ## Mission Control

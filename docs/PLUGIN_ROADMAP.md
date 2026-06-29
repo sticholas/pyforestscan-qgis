@@ -249,3 +249,28 @@ Acceptance Criteria:
 - Dock opens and navigation works.
 - Current workflows remain available from Processing Toolbox.
 - No scientific processing is implemented.
+
+
+## Phase 16A: Knowledge Engine Foundation
+
+Purpose: Begin the transition from processing interface to deterministic expert
+assistant by evaluating Dataset Explorer facts with documented rules.
+
+Deliverables:
+
+- Core `knowledge` package.
+- Typed recommendation report.
+- Configurable thresholds with rationale and calibration flags.
+- QGIS tool suggestions for QA and interpretation.
+
+Risks:
+
+- Recommendations may be mistaken for universal scientific rules.
+- Thresholds require literature review or project calibration before being
+  treated as production defaults.
+
+Acceptance Criteria:
+
+- No new scientific processing.
+- Recommendations are structured and transparent.
+- Uncertain thresholds are configurable and documented.

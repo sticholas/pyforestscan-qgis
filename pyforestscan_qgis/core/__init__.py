@@ -31,6 +31,21 @@ from .exceptions import AdapterError, DatasetError, EnvironmentError, Processing
 from .job_manager import JobEventSink, JobExecutionError, JobManager
 from .job_results import job_to_dict, render_job_summary_html, render_job_summary_json, write_job_summary_html, write_job_summary_json
 from .jobs import JobLogRecord, JobMode, JobProgress, JobRecord, JobRequest, JobResultRecord, JobStatus
+from .knowledge import (
+    DatasetFacts,
+    KnowledgeConfig,
+    KnowledgeEngine,
+    KnowledgeThreshold,
+    QgisToolSuggestion,
+    Recommendation,
+    RecommendationCategory,
+    RecommendationReport,
+    RecommendationSeverity,
+    RecommendedParameter,
+    RecommendedProduct,
+    evaluate_dataset_explorer_report,
+    report_to_dict as knowledge_report_to_dict,
+)
 from .pipeline import Pipeline, PipelineRegistry, build_default_pipeline_registry, registered_product_ids
 from .pipeline_context import PipelineContext, PipelineContextError, load_pipeline_contexts
 from .pipeline_events import PipelineEvent, PipelineEventLevel
@@ -119,6 +134,19 @@ __all__ = [
     "EnvironmentError",
     "EnvironmentReport",
     "InspectionOptions",
+    "DatasetFacts",
+    "KnowledgeConfig",
+    "KnowledgeEngine",
+    "KnowledgeThreshold",
+    "QgisToolSuggestion",
+    "Recommendation",
+    "RecommendationCategory",
+    "RecommendationReport",
+    "RecommendationSeverity",
+    "RecommendedParameter",
+    "RecommendedProduct",
+    "evaluate_dataset_explorer_report",
+    "knowledge_report_to_dict",
     "JobEventSink",
     "JobExecutionError",
     "JobLogRecord",
