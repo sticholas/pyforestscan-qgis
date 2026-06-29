@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from .adapter import PyForestScanAdapter
-from .job_results import write_job_summary_json
+from .job_results import write_job_summary_html, write_job_summary_json
 from .jobs import JobMode, JobRecord, JobRequest, JobResultRecord, JobStatus, utc_now
 from .pipeline import PipelineRegistry, build_default_pipeline_registry
 from .pipeline_context import PipelineContextError, load_pipeline_contexts
@@ -219,14 +219,20 @@ class JobManager:
 
     def _write_summary(self, job: JobRecord) -> JobRecord:
         summary_path = job.summary_path or (job.output_folder / f"{job.job_id}_job_summary.json")
-        result = JobResultRecord(
-            path=summary_path,
-            result_type="job_summary_json",
-            description="Job summary JSON.",
-        )
-        job_with_result = self._store(job.with_result(result))
-        write_job_summary_json(job_with_result, summary_path)
-        return job_with_result
+        html_path = summary_path.with_suffix(".html")
+        job_with_results = job
+        if summary_path not in tuple(result.path for result in job_with_results.results):
+            job_with_results = job_with_results.with_result(
+                JobResultRecord(summary_path, "job_summary_json", "Job summary JSON.")
+            )
+        if html_path not in tuple(result.path for result in job_with_results.results):
+            job_with_results = job_with_results.with_result(
+                JobResultRecord(html_path, "job_summary_html", "Final run summary HTML.")
+            )
+        job_with_results = self._store(job_with_results)
+        write_job_summary_json(job_with_results, summary_path)
+        write_job_summary_html(job_with_results, html_path)
+        return job_with_results
 
     def _store(self, job: JobRecord) -> JobRecord:
         self._jobs[job.job_id] = job

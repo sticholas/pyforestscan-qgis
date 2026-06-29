@@ -55,6 +55,7 @@ reports/product_plan.json
 reports/product_plan.html
 tables/product_plan.csv
 logs/job_summary.json
+logs/job_summary.html
 outputs/chm.tif
 outputs/canopy_cover.tif
 outputs/pad.tif
@@ -73,4 +74,4 @@ The run folder is not a project file. Phase 8C intentionally does not require a
 workspace for one Mission Control run.
 
 Mission Control can create CHM, Canopy Cover, PAD, PAI, and FHD GeoTIFFs in
-`outputs/`, plus a Rumple scalar CSV summary. Vector and point-cloud outputs remain future products.
+`outputs/`, plus a Rumple scalar CSV summary. Rasters load with grayscale styling by default. Vector and point-cloud outputs remain future products.

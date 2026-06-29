@@ -166,6 +166,7 @@ def build_product_plan(
     height_bins = _estimate_height_bins(explorer_report, request.height_bin_size)
 
     global_warnings = list(dataset_warnings)
+    global_warnings.extend(_large_dataset_warnings(explorer_report))
     global_warnings.extend(_chm_planning_warnings(explorer_report, request))
     if cells is None:
         global_warnings.append(
@@ -447,6 +448,37 @@ def _validate_canopy_cover_parameters(request: ProductPlannerRequest) -> None:
         raise ProductPlanError("Canopy cover output filename must be a simple .tif or .tiff filename.")
 
 
+def _large_dataset_warnings(explorer_report: Mapping[str, Any]) -> list[PlannerWarning]:
+    """Return warnings for datasets likely to stress single-file processing."""
+    warnings: list[PlannerWarning] = []
+    point_statistics = explorer_report.get("point_statistics")
+    point_statistics = point_statistics if isinstance(point_statistics, Mapping) else {}
+    point_count = point_statistics.get("point_count")
+    if isinstance(point_count, int) and point_count > 5_000_000:
+        warnings.append(
+            PlannerWarning(
+                "LARGE_POINT_COUNT",
+                "WARNING",
+                "This dataset has more than 5 million points; current processing is single-file and may be slow or memory intensive.",
+            )
+        )
+    source_dataset = _source_dataset(explorer_report)
+    if source_dataset:
+        try:
+            source_path = Path(source_dataset)
+            if source_path.is_file() and source_path.stat().st_size > 1_000_000_000:
+                warnings.append(
+                    PlannerWarning(
+                        "LARGE_SOURCE_FILE",
+                        "WARNING",
+                        "The source point-cloud file is larger than 1 GB; test on a small dataset before larger production runs.",
+                    )
+                )
+        except OSError:
+            pass
+    return warnings
+
+
 def _chm_planning_warnings(explorer_report: Mapping[str, Any], request: ProductPlannerRequest) -> list[PlannerWarning]:
     """Return CHM readiness warnings that should travel with the plan."""
     if ProductType.CHM not in request.requested_products:
@@ -477,29 +509,6 @@ def _chm_planning_warnings(explorer_report: Mapping[str, Any], request: ProductP
                 "Ground class 2 was not confirmed; review height normalization and CHM values after processing.",
             )
         )
-    point_count = point_statistics.get("point_count")
-    if isinstance(point_count, int) and point_count > 5_000_000:
-        warnings.append(
-            PlannerWarning(
-                "CHM_LARGE_POINT_COUNT",
-                "WARNING",
-                "This dataset has more than 5 million points; Phase 10B CHM processing is not tiled and may be slow or memory intensive.",
-            )
-        )
-    source_dataset = _source_dataset(explorer_report)
-    if source_dataset:
-        try:
-            source_path = Path(source_dataset)
-            if source_path.is_file() and source_path.stat().st_size > 1_000_000_000:
-                warnings.append(
-                    PlannerWarning(
-                        "CHM_LARGE_FILE",
-                        "WARNING",
-                        "The source point-cloud file is larger than 1 GB; test CHM processing on a small dataset before larger production runs.",
-                    )
-                )
-        except OSError:
-            pass
     return warnings
 
 

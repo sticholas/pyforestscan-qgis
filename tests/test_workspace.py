@@ -30,6 +30,7 @@ class RunContextTests(unittest.TestCase):
             self.assertEqual(context.product_plan_html, context.run_folder / "reports" / "product_plan.html")
             self.assertEqual(context.product_plan_csv, context.run_folder / "tables" / "product_plan.csv")
             self.assertEqual(context.job_summary_json, context.run_folder / "logs" / "job_summary.json")
+            self.assertEqual(context.job_summary_html, context.run_folder / "logs" / "job_summary.html")
             self.assertEqual(context.outputs_dir, context.run_folder / "outputs")
             self.assertEqual(context.temp_dir, context.run_folder / "temp")
 
@@ -43,6 +44,7 @@ class RunContextTests(unittest.TestCase):
             self.assertFalse(context.dataset_report_json.exists())
             self.assertFalse(context.product_plan_json.exists())
             self.assertFalse(context.job_summary_json.exists())
+            self.assertFalse(context.job_summary_html.exists())
 
     def test_ept_json_uses_parent_folder_as_run_stem(self) -> None:
         """EPT datasets use the parent folder instead of the literal ept stem."""

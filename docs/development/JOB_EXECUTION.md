@@ -9,7 +9,7 @@ available for tests and advanced callers.
 
 Processing mode calls PyForestScan only through the adapter boundary. CHM,
 Canopy Cover, PAD, PAI, and FHD can create GeoTIFF outputs in `outputs/`;
-Rumple creates a scalar CSV table. Vectors and point-cloud outputs
+Rumple creates a scalar CSV table. Job completion writes both JSON and HTML run summaries. Vectors and point-cloud outputs
 remain unimplemented.
 
 ## Architecture
@@ -52,7 +52,7 @@ Supported statuses are:
 - `completed`
 
 A normal dry-run moves through `pending`, `validating`, `running`, and
-`completed`. Invalid plans move to `failed` and still write a summary JSON file.
+`completed`. Invalid plans move to `failed` and still write JSON and HTML summary files.
 Cancellation can be requested while a job is active; because Phase 8A dry-runs
 are synchronous and intentionally fast, cancellation is best-effort but the core
 manager already supports the status transition.

@@ -275,6 +275,21 @@ class ProductPlannerTests(unittest.TestCase):
         with self.assertRaises(ProductPlanError):
             build_product_plan(explorer_payload(), request)
 
+
+    def test_large_dataset_warning_is_reported_for_all_products(self) -> None:
+        payload = explorer_payload()
+        payload["point_statistics"]["point_count"] = 6_000_001
+        request = ProductPlannerRequest(
+            explorer_report_path=Path("report.json"),
+            requested_products=(ProductType.CANOPY_COVER,),
+            output_folder=Path("out"),
+            grid_resolution=1.0,
+        )
+
+        report = build_product_plan(payload, request)
+
+        self.assertTrue(any(warning.code == "LARGE_POINT_COUNT" for warning in report.warnings))
+
     def test_product_plan_loads_and_writes_reports(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

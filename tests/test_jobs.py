@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from pyforestscan_qgis.core.job_manager import JobExecutionError, JobManager
-from pyforestscan_qgis.core.job_results import job_to_dict, render_job_summary_json
+from pyforestscan_qgis.core.job_results import job_to_dict, render_job_summary_html, render_job_summary_json
 from pyforestscan_qgis.core.types import CanopyCoverResult, ChmResult, FhdResult, PadResult, PaiResult, RumpleResult
 from pyforestscan_qgis.core.jobs import JobStatus
 
@@ -28,9 +28,13 @@ class JobManagerTests(unittest.TestCase):
             self.assertEqual(JobStatus.COMPLETED, job.status)
             self.assertEqual(100.0, job.progress.percent)
             self.assertEqual(("chm", "pai"), job.requested_products)
-            self.assertEqual(1, len(job.results))
-            self.assertTrue(job.results[0].path.exists())
-            payload = json.loads(job.results[0].path.read_text(encoding="utf-8"))
+            summary_results = [result for result in job.results if result.result_type == "job_summary_json"]
+            html_results = [result for result in job.results if result.result_type == "job_summary_html"]
+            self.assertEqual(1, len(summary_results))
+            self.assertEqual(1, len(html_results))
+            self.assertTrue(summary_results[0].path.exists())
+            self.assertTrue(html_results[0].path.exists())
+            payload = json.loads(summary_results[0].path.read_text(encoding="utf-8"))
             self.assertFalse(payload["processing_executed"])
             self.assertFalse(payload["scientific_outputs_created"])
             self.assertEqual("completed", payload["status"])
@@ -61,8 +65,9 @@ class JobManagerTests(unittest.TestCase):
 
             self.assertEqual(JobStatus.FAILED, job.status)
             self.assertIsNotNone(job.error_message)
-            self.assertTrue(job.results[0].path.exists())
-            payload = json.loads(job.results[0].path.read_text(encoding="utf-8"))
+            summary_result = next(result for result in job.results if result.result_type == "job_summary_json")
+            self.assertTrue(summary_result.path.exists())
+            payload = json.loads(summary_result.path.read_text(encoding="utf-8"))
             self.assertEqual("failed", payload["status"])
 
     def test_event_sink_can_request_cancellation(self) -> None:
@@ -82,8 +87,9 @@ class JobManagerTests(unittest.TestCase):
             job = manager.run_dry_run(plan_path, root / "jobs")
 
             self.assertEqual(JobStatus.CANCELLED, job.status)
-            self.assertTrue(job.results[0].path.exists())
-            payload = json.loads(job.results[0].path.read_text(encoding="utf-8"))
+            summary_result = next(result for result in job.results if result.result_type == "job_summary_json")
+            self.assertTrue(summary_result.path.exists())
+            payload = json.loads(summary_result.path.read_text(encoding="utf-8"))
             self.assertEqual("cancelled", payload["status"])
 
 
@@ -213,10 +219,12 @@ class JobManagerTests(unittest.TestCase):
 
             payload = job_to_dict(job)
             rendered = render_job_summary_json(job)
+            html = render_job_summary_html(job)
 
             self.assertFalse(payload["processing_executed"])
             self.assertFalse(payload["scientific_outputs_created"])
             self.assertIn('"scientific_outputs_created": false', rendered)
+            self.assertIn("Run Summary", html)
 
 
 def _job_request(plan_path: Path, output_folder: Path):  # type: ignore[no-untyped-def]

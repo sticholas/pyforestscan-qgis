@@ -55,7 +55,8 @@ class MissionControlDock(QDockWidget):
         self.ui.setupUi(self.root_widget)
         self.setWidget(self.root_widget)
         self.setObjectName("PyForestScanMissionControlDock")
-        self.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
+        self.setAllowedAreas(Qt.AllDockWidgetAreas)
+        self.setFeatures(self.features() | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetMovable)
 
         self.home_page = HomePage(plugin_version=self._plugin_version())
         self.environment_page = EnvironmentPage(self.adapter)
@@ -102,16 +103,22 @@ class MissionControlDock(QDockWidget):
     def _configure_style(self) -> None:
         self.root_widget.setStyleSheet(
             """
-            #headerFrame { background: #163b3d; color: white; }
+            QWidget { background: #f7f8f9; color: #23313a; }
+            #headerFrame { background: #eef3f4; color: #22323a; border-bottom: 1px solid #d8e1e5; }
             #titleLabel { font-size: 20px; font-weight: 700; }
-            #subtitleLabel { color: #dbe8e7; }
-            #statusFrame { background: #edf3f5; border-top: 1px solid #cbd7dc; }
-            #pageHeading { font-size: 18px; font-weight: 700; margin: 8px; }
-            QListWidget { border: 0; background: #f3f6f7; }
-            QListWidget::item { padding: 9px; }
-            QListWidget::item:selected { background: #2d7c83; color: white; }
-            QGroupBox { font-weight: 600; margin-top: 12px; }
-            QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; }
+            #subtitleLabel { color: #5f6f77; }
+            #statusFrame { background: #f2f5f6; border-top: 1px solid #dbe3e6; }
+            #pageHeading { font-size: 18px; font-weight: 700; margin: 8px; color: #22323a; }
+            QListWidget { border: 1px solid #dfe6e9; background: #ffffff; border-radius: 4px; }
+            QListWidget::item { padding: 9px; border-bottom: 1px solid #eef2f3; }
+            QListWidget::item:selected { background: #dde8ec; color: #1f2d35; }
+            QGroupBox { font-weight: 600; margin-top: 12px; border: 1px solid #dfe6e9; border-radius: 5px; padding: 10px; background: #ffffff; }
+            QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; color: #32424a; }
+            QPushButton { background: #ffffff; border: 1px solid #cfd9dd; border-radius: 4px; padding: 6px 10px; }
+            QPushButton:hover { background: #f0f4f5; }
+            QLineEdit, QTextEdit, QDoubleSpinBox, QComboBox { background: #ffffff; border: 1px solid #d4dee2; border-radius: 4px; padding: 4px; }
+            QProgressBar { border: 1px solid #cfd9dd; border-radius: 4px; background: #ffffff; text-align: center; }
+            QProgressBar::chunk { background: #9eacb3; border-radius: 3px; }
             """
         )
 
@@ -187,8 +194,8 @@ class MissionControlDock(QDockWidget):
             "fhd_geotiff": "FHD",
         }.get(result_type, "CHM")
         if self.state.active_run is not None:
-            return f"{product} - {self.state.active_run.lidar_path.stem} - {self.state.active_run.run_folder.name}"
-        return f"{product} - {path.stem}"
+            return f"PyForestScan {product} - {self.state.active_run.lidar_path.stem}"
+        return f"PyForestScan {product}"
 
     def _polish_raster_layer(self, layer: object, result_type: str) -> None:
         """Best-effort generated raster statistics and styling."""
@@ -198,56 +205,13 @@ class MissionControlDock(QDockWidget):
         except Exception:  # noqa: BLE001 - statistics are helpful but optional.
             return
         try:
-            from qgis.PyQt.QtGui import QColor
-            from qgis.core import QgsColorRampShader, QgsRasterShader, QgsSingleBandPseudoColorRenderer
+            from qgis.core import QgsSingleBandGrayRenderer
 
-            shader = QgsRasterShader()
-            ramp = QgsColorRampShader()
-            ramp.setColorRampType(QgsColorRampShader.Interpolated)
-            ramp.setColorRampItemList(
-                [
-                    *self._raster_ramp_items(result_type, QColor, QgsColorRampShader),
-                ]
-            )
-            shader.setRasterShaderFunction(ramp)
-            renderer = QgsSingleBandPseudoColorRenderer(layer.dataProvider(), 1, shader)
+            renderer = QgsSingleBandGrayRenderer(layer.dataProvider(), 1)
             layer.setRenderer(renderer)
             layer.triggerRepaint()
         except Exception:  # noqa: BLE001 - styling should never break layer loading.
             return
-
-
-    def _raster_ramp_items(self, result_type: str, qcolor: object, shader_class: object) -> list[object]:
-        """Return simple color ramp items for generated raster products."""
-        if result_type == "canopy_cover_geotiff":
-            return [
-                shader_class.ColorRampItem(0.0, qcolor("#f7fbff"), "Low"),
-                shader_class.ColorRampItem(0.5, qcolor("#6baed6"), "Medium"),
-                shader_class.ColorRampItem(1.0, qcolor("#08306b"), "High"),
-            ]
-        if result_type == "pai_geotiff":
-            return [
-                shader_class.ColorRampItem(0.0, qcolor("#fef3c7"), "Low"),
-                shader_class.ColorRampItem(2.0, qcolor("#65a30d"), "Medium"),
-                shader_class.ColorRampItem(6.0, qcolor("#14532d"), "High"),
-            ]
-        if result_type == "pad_geotiff":
-            return [
-                shader_class.ColorRampItem(0.0, qcolor("#f8fafc"), "Low"),
-                shader_class.ColorRampItem(0.5, qcolor("#22c55e"), "Medium"),
-                shader_class.ColorRampItem(2.0, qcolor("#166534"), "High"),
-            ]
-        if result_type == "fhd_geotiff":
-            return [
-                shader_class.ColorRampItem(0.0, qcolor("#fff7ed"), "Low"),
-                shader_class.ColorRampItem(1.0, qcolor("#fb923c"), "Medium"),
-                shader_class.ColorRampItem(3.0, qcolor("#7c2d12"), "High"),
-            ]
-        return [
-            shader_class.ColorRampItem(0.0, qcolor("#f7fcf0"), "Low"),
-            shader_class.ColorRampItem(10.0, qcolor("#74c476"), "Medium"),
-            shader_class.ColorRampItem(30.0, qcolor("#00441b"), "High"),
-        ]
 
     def _refresh_home(self) -> None:
         self.home_page.set_versions(self._pyforestscan_version())

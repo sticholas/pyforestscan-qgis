@@ -369,6 +369,14 @@ class PlanningPage(MissionPage):
                 check.setChecked(True)
             self.product_checks[product] = check
             controls.addWidget(check)
+        product_button_row = QHBoxLayout()
+        select_all = QPushButton("Select All Products")
+        select_all.clicked.connect(lambda: self._set_all_products(True))
+        clear_all = QPushButton("Clear Products")
+        clear_all.clicked.connect(lambda: self._set_all_products(False))
+        product_button_row.addWidget(select_all)
+        product_button_row.addWidget(clear_all)
+        controls.addLayout(product_button_row)
         form = QFormLayout()
         self.resolution_spin = QDoubleSpinBox()
         self.resolution_spin.setDecimals(3)
@@ -421,6 +429,11 @@ class PlanningPage(MissionPage):
         self.plan_text = QTextEdit()
         self.plan_text.setReadOnly(True)
         summary.addWidget(self.plan_text)
+
+    def _set_all_products(self, checked: bool) -> None:
+        """Set all product checkboxes to a common state."""
+        for check in self.product_checks.values():
+            check.setChecked(checked)
 
     def set_dataset_report(self, report: DatasetExplorerReport, context: RunContext | None = None) -> None:
         """Store latest Dataset Explorer report and run context for planning."""
@@ -574,7 +587,7 @@ class ProcessingPage(MissionPage):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         status.addWidget(self.log_text)
-        status.addWidget(QLabel("CHM, Canopy Cover, PAD, and PAI processing are enabled. FHD and Rumple remain future stages."))
+        status.addWidget(QLabel("All implemented products can run together: CHM, Canopy Cover, PAD, PAI, FHD, and Rumple summary."))
 
     def set_run_context(self, context: RunContext | None) -> None:
         """Use the active Mission Control run context."""
@@ -680,7 +693,7 @@ class ResultsPage(MissionPage):
         jobs = self.add_section("Job History")
         self.job_history = QListWidget()
         jobs.addWidget(self.job_history)
-        jobs.addWidget(QLabel("Job summaries and generated CHM outputs are listed here."))
+        jobs.addWidget(QLabel("Job summaries and generated product outputs are listed here."))
 
         advanced = QGroupBox("Advanced details")
         advanced.setCheckable(True)
@@ -732,9 +745,9 @@ class ResultsPage(MissionPage):
         """Display recently recorded report paths in advanced details."""
         for path in paths:
             text = str(path)
-            if path.suffix.lower() in {".tif", ".tiff"} and path not in self._friendly_paths:
+            if _is_friendly_result_path(path) and path not in self._friendly_paths:
                 self._friendly_paths.append(path)
-                label = _friendly_raster_label(path)
+                label = _friendly_result_label(path)
                 self.friendly_links.addItem(f"{label}: {path}")
             if not any(self.previous_reports.item(index).text().endswith(text) for index in range(self.previous_reports.count())):
                 self.previous_reports.addItem(text)
@@ -835,7 +848,7 @@ def _pipeline_status_icon(status: str) -> str:
     return "WAIT"
 
 
-def _friendly_raster_label(path: Path) -> str:
+def _friendly_result_label(path: Path) -> str:
     """Return a friendly label for generated raster outputs."""
     stem = path.stem.lower()
     if "canopy_cover" in stem:
@@ -848,4 +861,19 @@ def _friendly_raster_label(path: Path) -> str:
         return "FHD Output"
     if "rumple" in stem:
         return "Rumple Summary"
+    if stem == "job_summary":
+        return "Final Run Summary" if path.suffix.lower() == ".html" else "Job Summary"
     return "CHM Output"
+
+
+def _is_friendly_result_path(path: Path) -> bool:
+    """Return whether a generated result should be shown as a friendly link."""
+    suffix = path.suffix.lower()
+    stem = path.stem.lower()
+    if suffix in {".tif", ".tiff"}:
+        return True
+    if suffix == ".csv" and "rumple" in stem:
+        return True
+    if suffix == ".html" and stem == "job_summary":
+        return True
+    return False

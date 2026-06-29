@@ -27,6 +27,7 @@ class RunContext:
     product_plan_html: Path
     product_plan_csv: Path
     job_summary_json: Path
+    job_summary_html: Path
 
     def ensure_directories(self) -> "RunContext":
         """Create the run folder directory structure and return this context."""
@@ -40,7 +41,7 @@ class RunContext:
         return (
             ("Dataset Report", self.dataset_report_html),
             ("Product Plan", self.product_plan_html),
-            ("Job Summary", self.job_summary_json),
+            ("Job Summary", self.job_summary_html),
             ("Output Folder", self.run_folder),
             ("Products", self.outputs_dir),
         )
@@ -56,6 +57,7 @@ class RunContext:
             ("Product Plan HTML", self.product_plan_html),
             ("Product Plan CSV", self.product_plan_csv),
             ("Job Summary JSON", self.job_summary_json),
+            ("Job Summary HTML", self.job_summary_html),
             ("Run Folder", self.run_folder),
             ("Temp Folder", self.temp_dir),
         )
@@ -93,6 +95,7 @@ def create_run_context(
         product_plan_html=reports / "product_plan.html",
         product_plan_csv=tables / "product_plan.csv",
         job_summary_json=logs / "job_summary.json",
+        job_summary_html=logs / "job_summary.html",
     )
 
 

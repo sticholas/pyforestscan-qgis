@@ -29,7 +29,7 @@ from .dependency_check import (
 )
 from .exceptions import AdapterError, DatasetError, EnvironmentError, ProcessingError
 from .job_manager import JobEventSink, JobExecutionError, JobManager
-from .job_results import job_to_dict, render_job_summary_json, write_job_summary_json
+from .job_results import job_to_dict, render_job_summary_html, render_job_summary_json, write_job_summary_html, write_job_summary_json
 from .jobs import JobLogRecord, JobMode, JobProgress, JobRecord, JobRequest, JobResultRecord, JobStatus
 from .pipeline import Pipeline, PipelineRegistry, build_default_pipeline_registry, registered_product_ids
 from .pipeline_context import PipelineContext, PipelineContextError, load_pipeline_contexts
@@ -130,7 +130,9 @@ __all__ = [
     "JobResultRecord",
     "JobStatus",
     "job_to_dict",
+    "render_job_summary_html",
     "render_job_summary_json",
+    "write_job_summary_html",
     "write_job_summary_json",
     "LogContextItem",
     "LogLevel",

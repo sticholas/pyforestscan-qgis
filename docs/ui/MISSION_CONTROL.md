@@ -1,6 +1,6 @@
 # Mission Control
 
-Mission Control is the dockable graphical operating environment for PyForestScan
+Mission Control is the floating-by-default, dockable graphical operating environment for PyForestScan
 QGIS. It coordinates the workflows already implemented in the plugin while
 leaving Processing algorithms available for advanced and automated use.
 
@@ -34,7 +34,7 @@ flowchart TD
   plan reports into the run folder. No product execution is performed.
 - Processing: start implemented product jobs from the active Product Planner
   report, view progress, inspect pipeline stages, write GeoTIFF outputs under
-  `outputs/`, and write `logs/job_summary.json`.
+  `outputs/`, and write `logs/job_summary.json` plus `logs/job_summary.html`.
 - Results: view friendly Dataset Report, Product Plan, Job Summary, Output
   Folder, and Products links, with raw paths under Advanced details.
 - Settings: default output folder, logging placeholder, and future preferences.
@@ -72,4 +72,4 @@ flowchart LR
 Mission Control coordinates current workflows only. Dataset footprint preview uses
 QGIS APIs only in the UI layer; core adapter and report code remain QGIS-free.
 The run folder is not a required `.pfs` project file. The Processing page runs the active Product
-Planner JSON through JobManager and the pipeline registry. CHM, Canopy Cover, PAD, PAI, FHD, and Rumple are implemented through the adapter for single-dataset workflows.
+Planner JSON through JobManager and the pipeline registry. CHM, Canopy Cover, PAD, PAI, FHD, and Rumple are implemented through the adapter for single-dataset workflows. Raster outputs are loaded with grayscale styling by default; users can restyle layers manually in QGIS.

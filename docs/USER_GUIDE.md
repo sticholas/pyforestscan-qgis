@@ -1,7 +1,8 @@
 
 ## Mission Control
 
-Mission Control opens as a dockable QGIS panel and provides guided pages for the
+Mission Control opens as a floating movable QGIS window by default and still can
+be docked if your QGIS workspace supports it. It provides guided pages for the
 current workflows:
 
 - Home: versions, status, quick start, and recent activity.
@@ -31,7 +32,7 @@ a run folder like this:
 ```
 
 Inside that folder, Mission Control stores reports, tables, logs, temporary
-files, and an `outputs/` folder for CHM and future products. If a run with the
+files, and an `outputs/` folder for generated products. If a run with the
 same timestamp and dataset stem already exists, Mission Control adds a numeric
 suffix to avoid overwriting it. The Results page
 shows friendly links for Dataset Report, Product Plan, Job Summary, Output
@@ -39,8 +40,8 @@ Folder, and Products. Advanced details still expose JSON and CSV paths for
 troubleshooting and reproducibility.
 
 This guide describes current user-facing PyForestScan QGIS workflows: Dataset
-Explorer, Product Planner, Mission Control run folders, CHM processing, and
-Canopy Cover processing.
+Explorer, Product Planner, Mission Control run folders, CHM, Canopy Cover, PAD,
+PAI, FHD, and Rumple summary processing.
 
 ## Dataset Explorer
 
@@ -290,7 +291,9 @@ with the source dataset, values look reasonable, and edge artifacts are
 acceptable for the selected interpolation options.
 
 A successful summary includes `processing_executed: true`,
-`scientific_outputs_created: true`, selected product `parameters`, and GeoTIFF
-result paths such as `chm_geotiff`, `canopy_cover_geotiff`, `pad_geotiff`,
-`pai_geotiff`, `fhd_geotiff`, or `rumple_csv`. Failed jobs still
-write `logs/job_summary.json` with a clear error message.
+`scientific_outputs_created: true`, selected product `parameters`, and result
+paths such as `chm_geotiff`, `canopy_cover_geotiff`, `pad_geotiff`,
+`pai_geotiff`, `fhd_geotiff`, or `rumple_csv`. Jobs write both
+`logs/job_summary.json` and `logs/job_summary.html`. Failed jobs still write
+summary files with a clear error message. If one selected product fails, the
+overall job is failed while successful product outputs remain recorded.
