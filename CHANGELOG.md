@@ -9,6 +9,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Scientific Advisor readability polish with a larger default Mission Control window, spacious card sections, wrapped recommendation rows, clearer warnings, and readable product explanation cards.
 - Scientific Advisor Mission Control workflow with Knowledge Engine recommendations, product explanation cards, QGIS tool guidance, completed-product next steps, and UI support tests.
 - Deterministic Knowledge Engine foundation with typed recommendation reports, configurable scientific thresholds, transparent calibration notes, QGIS tool suggestions, and unit tests.
 - PAD default QGIS visualization as an RGB composite using bands 5/3/2, with safe fallback for shorter height-bin stacks.

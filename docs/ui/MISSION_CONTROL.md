@@ -82,3 +82,9 @@ The Scientific Advisor page consumes `RecommendationReport` objects from
 `core/knowledge`. QGIS actions stay in the UI layer: Processing Toolbox opening,
 selected-layer properties, selected-layer zoom, and output-folder opening are all
 best-effort UI actions with text fallbacks.
+
+The Advisor is laid out as readable vertical card sections: Dataset Health, Key
+Recommendations, Warnings, Recommended Products, Recommended Parameters, QGIS
+Tools, Scientific Notes, Product Explanations, and Next Steps. Long rationale is
+kept in quieter detail areas below concise summary text so the page remains
+usable at the default floating Mission Control size.

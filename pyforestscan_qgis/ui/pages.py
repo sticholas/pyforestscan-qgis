@@ -7,24 +7,28 @@ the adapter boundary.
 
 from __future__ import annotations
 
+from html import escape
 from pathlib import Path
 from typing import Callable
 
-from qgis.PyQt.QtCore import QUrl, pyqtSignal
+from qgis.PyQt.QtCore import QSize, Qt, QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QDoubleSpinBox,
     QTextEdit,
@@ -362,41 +366,53 @@ class ScientificAdvisorPage(MissionPage):
         self.run_context: RunContext | None = None
         self.completed_products: tuple[str, ...] = ()
 
-        overview = self.add_section("Dataset Readiness")
-        self.score_label = QLabel("Dataset score: Run Dataset Explorer to evaluate.")
-        self.confidence_label = QLabel("Confidence: Unknown")
-        overview.addWidget(self.score_label)
-        overview.addWidget(self.confidence_label)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(0)
+        self.advisor_scroll = QScrollArea()
+        self.advisor_scroll.setWidgetResizable(True)
+        self.advisor_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.advisor_scroll.setObjectName("advisorScroll")
+        self.advisor_body = QWidget()
+        self.advisor_body.setObjectName("advisorBody")
+        self.advisor_layout = QVBoxLayout(self.advisor_body)
+        self.advisor_layout.setContentsMargins(14, 10, 18, 18)
+        self.advisor_layout.setSpacing(16)
+        self.advisor_scroll.setWidget(self.advisor_body)
+        self.content_layout.addWidget(self.advisor_scroll)
 
-        warnings = self.add_section("Key Warnings")
-        self.warning_list = QListWidget()
+        overview = self._add_card("Dataset Health")
+        metrics_row = QHBoxLayout()
+        metrics_row.setSpacing(12)
+        self.score_label = _advisor_metric_card("Dataset score", "Run Dataset Explorer to evaluate.")
+        self.confidence_label = _advisor_metric_card("Confidence / readiness", "Unknown")
+        metrics_row.addWidget(self.score_label)
+        metrics_row.addWidget(self.confidence_label)
+        overview.addLayout(metrics_row)
+
+        recommendations = self._add_card("Key Recommendations")
+        self.recommendation_list = _readable_list()
+        recommendations.addWidget(self.recommendation_list)
+
+        warnings = self._add_card("Warnings")
+        self.warning_list = _readable_list()
+        self.warning_list.setObjectName("advisorWarningList")
         warnings.addWidget(self.warning_list)
 
-        products = self.add_section("Recommended Products")
-        self.product_list = QListWidget()
+        products = self._add_card("Recommended Products")
+        self.product_list = _readable_list()
         products.addWidget(self.product_list)
 
-        parameters = self.add_section("Recommended Parameters")
-        self.parameter_list = QListWidget()
+        parameters = self._add_card("Recommended Parameters")
+        self.parameter_list = _readable_list()
         parameters.addWidget(self.parameter_list)
 
-        notes = self.add_section("Scientific Notes")
-        self.notes_text = QTextEdit()
-        self.notes_text.setReadOnly(True)
-        self.notes_text.setPlainText("Recommendations will appear after Dataset Explorer runs. Threshold-based guidance is configurable and must be calibrated for production interpretation.")
-        notes.addWidget(self.notes_text)
-
-        next_steps = self.add_section("Next Steps")
-        self.next_steps_text = QTextEdit()
-        self.next_steps_text.setReadOnly(True)
-        next_steps.addWidget(self.next_steps_text)
-
-        qgis_tools = self.add_section("QGIS Tools")
-        self.qgis_tools_text = QTextEdit()
-        self.qgis_tools_text.setReadOnly(True)
-        self.qgis_tools_text.setPlainText(_tool_instruction_text())
-        qgis_tools.addWidget(self.qgis_tools_text)
+        qgis_tools = self._add_card("QGIS Tools")
+        self.qgis_tools_summary = _body_label(_tool_instruction_summary())
+        qgis_tools.addWidget(self.qgis_tools_summary)
+        self.qgis_tools_details = _details_label(_tool_instruction_text())
+        qgis_tools.addWidget(self.qgis_tools_details)
         button_row = QHBoxLayout()
+        button_row.setSpacing(10)
         self.processing_toolbox_button = QPushButton("Open Processing Toolbox")
         self.processing_toolbox_button.clicked.connect(self.open_processing_toolbox)
         self.layer_styling_button = QPushButton("Open Layer Styling")
@@ -406,14 +422,43 @@ class ScientificAdvisorPage(MissionPage):
         self.open_output_folder_button = QPushButton("Open Output Folder")
         self.open_output_folder_button.clicked.connect(self.open_output_folder)
         for button in (self.processing_toolbox_button, self.layer_styling_button, self.zoom_layer_button, self.open_output_folder_button):
+            button.setMinimumHeight(34)
             button_row.addWidget(button)
         qgis_tools.addLayout(button_row)
 
-        cards = self.add_section("Product Explanations")
-        self.product_cards_text = QTextEdit()
-        self.product_cards_text.setReadOnly(True)
-        self.product_cards_text.setPlainText(_product_cards_text())
-        cards.addWidget(self.product_cards_text)
+        notes = self._add_card("Scientific Notes")
+        self.notes_summary = _body_label("Recommendations will appear after Dataset Explorer runs. Threshold-based guidance is configurable and must be calibrated for production interpretation.")
+        notes.addWidget(self.notes_summary)
+        self.notes_details = _details_label("")
+        notes.addWidget(self.notes_details)
+
+        cards = self._add_card("Product Explanations")
+        product_grid = QVBoxLayout()
+        product_grid.setSpacing(10)
+        for explanation in PRODUCT_EXPLANATIONS:
+            product_grid.addWidget(_product_explanation_card(explanation))
+        cards.addLayout(product_grid)
+
+        next_steps = self._add_card("Next Steps")
+        self.next_steps_label = _body_label("Run Dataset Explorer to generate top-priority next steps.")
+        next_steps.addWidget(self.next_steps_label)
+        self.advisor_layout.addStretch(1)
+
+    def _add_card(self, title: str) -> QVBoxLayout:
+        """Add a spacious Advisor card section and return its layout."""
+        frame = QFrame()
+        frame.setObjectName("advisorCard")
+        frame.setFrameShape(QFrame.StyledPanel)
+        frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(16, 14, 16, 16)
+        layout.setSpacing(10)
+        heading = QLabel(title)
+        heading.setObjectName("advisorSectionHeading")
+        heading.setWordWrap(True)
+        layout.addWidget(heading)
+        self.advisor_layout.addWidget(frame)
+        return layout
 
     def set_run_context(self, context: RunContext | None) -> None:
         """Store active run context for output-folder actions."""
@@ -421,35 +466,48 @@ class ScientificAdvisorPage(MissionPage):
 
     def set_recommendation_report(self, report: RecommendationReport) -> None:
         """Display a Knowledge Engine recommendation report."""
-        self.score_label.setText(f"Dataset score: {report.dataset_score}/100")
-        self.confidence_label.setText(f"Confidence/readiness: {_stars(report.confidence_stars)} ({report.confidence_stars}/5)")
+        self.score_label.setText(f"<b>Dataset score</b><br>{report.dataset_score}/100")
+        self.confidence_label.setText(f"<b>Confidence / readiness</b><br>{_stars(report.confidence_stars)} ({report.confidence_stars}/5)")
+
+        self.recommendation_list.clear()
+        for item in report.suggested_next_actions[:4]:
+            _add_advisor_item(self.recommendation_list, f"{item.reason}\nNext: {item.suggested_action}")
+        if not report.suggested_next_actions:
+            _add_advisor_item(self.recommendation_list, "No priority next-action records were generated. Review product feasibility and warnings below.")
+
         self.warning_list.clear()
         if report.warnings:
-            for item in report.warnings:
-                self.warning_list.addItem(f"{item.severity.value.upper()} {item.code}: {item.reason} Action: {item.suggested_action}")
+            for item in report.warnings[:5]:
+                _add_advisor_item(self.warning_list, f"{item.severity.value.upper()} - {item.reason}\nAction: {item.suggested_action}", 68)
+            if len(report.warnings) > 5:
+                _add_advisor_item(self.warning_list, f"{len(report.warnings) - 5} additional warning(s) are included in the detailed scientific notes below.")
         else:
-            self.warning_list.addItem("No blocking warnings from the Knowledge Engine.")
+            _add_advisor_item(self.warning_list, "No blocking warnings from the Knowledge Engine.")
 
         self.product_list.clear()
-        for product in report.recommended_products:
-            self.product_list.addItem(f"{product.label}: {product.status}. {product.reason}")
+        for product in report.recommended_products[:6]:
+            _add_advisor_item(self.product_list, f"{product.label}: {product.status}\n{product.reason}")
         if not report.recommended_products:
-            self.product_list.addItem("No product feasibility records were available.")
+            _add_advisor_item(self.product_list, "No product feasibility records were available.")
 
         self.parameter_list.clear()
-        for parameter in report.recommended_parameters:
+        for parameter in report.recommended_parameters[:6]:
             calibration = " Calibration required." if parameter.calibration_required else ""
-            self.parameter_list.addItem(f"{parameter.product} {parameter.name}: {parameter.value} {parameter.unit}. {parameter.reason}{calibration}")
+            _add_advisor_item(self.parameter_list, f"{parameter.product} {parameter.name}: {parameter.value} {parameter.unit}\n{parameter.reason}{calibration}", 68)
         if not report.recommended_parameters:
-            self.parameter_list.addItem("No parameter recommendations were available.")
+            _add_advisor_item(self.parameter_list, "No parameter recommendations were available.")
 
-        scientific_notes = [f"- {item.code}: {item.reason} {item.scientific_note or ''}" for item in report.scientific_notes]
-        threshold_notes = [f"- {threshold.name}: {threshold.value if threshold.value is not None else 'unset'} {threshold.unit}. {threshold.rationale}" for threshold in report.thresholds if threshold.calibration_required]
-        self.notes_text.setPlainText(
-            "Scientific notes:\n"
-            + ("\n".join(scientific_notes) or "- None")
-            + "\n\nConfigurable thresholds:\n"
-            + "\n".join(threshold_notes)
+        note_count = len(report.scientific_notes)
+        threshold_count = len([threshold for threshold in report.thresholds if threshold.calibration_required])
+        self.notes_summary.setText(
+            f"{note_count} scientific note(s) and {threshold_count} calibration-sensitive threshold(s) are available. "
+            "Use the details below for transparent rationale before interpreting products."
+        )
+        scientific_notes = [f"* {item.code}: {item.reason} {item.scientific_note or ''}" for item in report.scientific_notes]
+        threshold_notes = [f"* {threshold.name}: {threshold.value if threshold.value is not None else 'unset'} {threshold.unit}. {threshold.rationale}" for threshold in report.thresholds if threshold.calibration_required]
+        self.notes_details.setText(
+            "<b>More details</b><br>"
+            + _html_lines(("Scientific notes:", *scientific_notes, "", "Configurable thresholds:", *threshold_notes))
         )
         self._update_next_steps(report)
 
@@ -458,7 +516,7 @@ class ScientificAdvisorPage(MissionPage):
         self.completed_products = products
         if products:
             completed = ", ".join(_product_label(product) for product in products)
-            self.next_steps_text.setPlainText(
+            self.next_steps_label.setText(
                 f"Completed products: {completed}\n\n"
                 "Next: inspect loaded layers with Layer Styling and Histogram, compare extents/CRS, open the final job summary, and only then prepare layouts or derived analyses."
             )
@@ -469,7 +527,7 @@ class ScientificAdvisorPage(MissionPage):
         if callable(method):
             method()
             return
-        self.qgis_tools_text.setPlainText(_tool_instruction_text() + "\n\nProcessing Toolbox: open it from Processing > Toolbox in QGIS.")
+        self.qgis_tools_details.setText(_html_lines((_tool_instruction_text(), "", "Processing Toolbox: open it from Processing > Toolbox in QGIS.")))
 
     def open_layer_styling(self) -> None:
         """Open selected-layer properties when available, otherwise show instructions."""
@@ -478,7 +536,7 @@ class ScientificAdvisorPage(MissionPage):
         if layer is not None and callable(method):
             method(layer)
             return
-        self.qgis_tools_text.setPlainText(_tool_instruction_text() + "\n\nLayer Styling: select a raster layer, then open Layer Styling or Layer Properties > Symbology.")
+        self.qgis_tools_details.setText(_html_lines((_tool_instruction_text(), "", "Layer Styling: select a raster layer, then open Layer Styling or Layer Properties > Symbology.")))
 
     def zoom_to_selected_layer(self) -> None:
         """Zoom the main QGIS canvas to the selected layer when available."""
@@ -488,12 +546,12 @@ class ScientificAdvisorPage(MissionPage):
             canvas.setExtent(layer.extent())
             canvas.refresh()
             return
-        self.qgis_tools_text.setPlainText(_tool_instruction_text() + "\n\nZoom: select an output layer in the Layers panel, then use Zoom to Layer in QGIS.")
+        self.qgis_tools_details.setText(_html_lines((_tool_instruction_text(), "", "Zoom: select an output layer in the Layers panel, then use Zoom to Layer in QGIS.")))
 
     def open_output_folder(self) -> None:
         """Open the active run output folder."""
         if self.run_context is None:
-            self.next_steps_text.setPlainText("Run Dataset Explorer before opening an output folder.")
+            self.next_steps_label.setText("Run Dataset Explorer before opening an output folder.")
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.run_context.outputs_dir)))
 
@@ -503,7 +561,7 @@ class ScientificAdvisorPage(MissionPage):
             text = f"Start here: {first.suggested_action}"
         else:
             text = "Start here: build a Product Planner report using the recommended products and parameter notes, then run one small validation workflow before production use."
-        self.next_steps_text.setPlainText(text + "\n\nUse the QGIS tool suggestions below for QA rather than treating outputs as publication-ready immediately.")
+        self.next_steps_label.setText(text + "\n\nUse the QGIS tool suggestions below for QA rather than treating outputs as publication-ready immediately.")
 
 
 class PlanningPage(MissionPage):
@@ -988,6 +1046,87 @@ class SettingsPage(MissionPage):
         self.defaultOutputFolderChanged.emit(Path(value) if value else None)
 
 
+
+
+def _readable_list() -> QListWidget:
+    """Return a list widget tuned for wrapped Advisor recommendation summaries."""
+    widget = QListWidget()
+    widget.setObjectName("advisorList")
+    widget.setWordWrap(True)
+    widget.setSpacing(6)
+    widget.setMinimumHeight(118)
+    widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
+    return widget
+
+
+def _add_advisor_item(widget: QListWidget, text: str, height: int = 58) -> None:
+    """Add a wrapped Advisor list item with enough vertical space to read."""
+    item = QListWidgetItem(text)
+    item.setSizeHint(QSize(0, height))
+    widget.addItem(item)
+
+
+def _body_label(text: str) -> QLabel:
+    """Return a readable wrapped Advisor body label."""
+    label = QLabel(text)
+    label.setObjectName("advisorBodyText")
+    label.setWordWrap(True)
+    label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse)
+    label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+    return label
+
+
+def _details_label(text: str) -> QLabel:
+    """Return a visually quieter wrapped label for long Advisor detail text."""
+    label = _body_label(text)
+    label.setObjectName("advisorDetailsText")
+    return label
+
+
+def _advisor_metric_card(title: str, value: str) -> QLabel:
+    """Return a large metric card label for the Advisor health summary."""
+    label = QLabel(f"<b>{escape(title)}</b><br>{escape(value)}")
+    label.setObjectName("advisorMetric")
+    label.setWordWrap(True)
+    label.setMinimumHeight(72)
+    label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+    return label
+
+
+def _product_explanation_card(item: object) -> QFrame:
+    """Create a readable product explanation card."""
+    frame = QFrame()
+    frame.setObjectName("advisorNestedCard")
+    layout = QVBoxLayout(frame)
+    layout.setContentsMargins(12, 10, 12, 12)
+    layout.setSpacing(7)
+    title = QLabel(getattr(item, "label"))
+    title.setObjectName("advisorCardTitle")
+    title.setWordWrap(True)
+    layout.addWidget(title)
+    summary = _body_label(f"Measures: {getattr(item, 'measures')}")
+    layout.addWidget(summary)
+    details = _details_label(
+        _html_lines(
+            (
+                f"Use when: {getattr(item, 'use_when')}",
+                f"Caution: {getattr(item, 'be_cautious_when')}",
+                f"QGIS QA: {getattr(item, 'qgis_inspection')}",
+            )
+        )
+    )
+    layout.addWidget(details)
+    return frame
+
+
+def _tool_instruction_summary() -> str:
+    """Return concise QGIS tool guidance for the Advisor overview."""
+    return "Use QGIS tools for QA and interpretation rather than treating generated products as publication-ready immediately. Common checks include styling, histograms, raster calculations, profiles, 3D context, and layouts."
+
+
+def _html_lines(lines: tuple[str, ...] | list[str]) -> str:
+    """Format plain lines as simple wrapped rich text for QLabel."""
+    return "<br>".join(escape(line) if line else "<br>" for line in lines)
 
 
 def _stars(value: int) -> str:

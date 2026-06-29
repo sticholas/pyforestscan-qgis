@@ -20,6 +20,12 @@ LLM. It renders transparent, rule-based guidance from Dataset Explorer facts.
 
 ## What The Advisor Displays
 
+The Advisor is grouped into spacious vertical sections rather than one dense text
+block. The first visible cards prioritize the dataset health summary, immediate
+recommendations, warnings, product feasibility, and parameter guidance. Longer
+scientific rationale remains visible in quieter detail areas below the concise
+summaries.
+
 - Dataset quality score from deterministic warning/error severity.
 - Confidence/readiness from metadata completeness.
 - Key warnings, each with a reason and suggested action.
@@ -32,7 +38,8 @@ LLM. It renders transparent, rule-based guidance from Dataset Explorer facts.
 
 ## Product Cards
 
-Each card explains:
+Product cards are rendered as individual readable cards with wrapped text. Each
+card explains:
 
 - what the product measures
 - when to use it

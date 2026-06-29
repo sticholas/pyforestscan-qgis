@@ -77,7 +77,7 @@ class PyForestScanPlugin:
             self.mission_control = MissionControlDock(self.iface, self.iface.mainWindow())
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.mission_control)
             self.mission_control.setFloating(True)
-            self.mission_control.resize(980, 720)
+            self.mission_control.resize(1180, 820)
         self.mission_control.show()
         self.mission_control.raise_()
         activate = getattr(self.mission_control, "activateWindow", None)

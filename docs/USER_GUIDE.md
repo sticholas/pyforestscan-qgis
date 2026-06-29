@@ -152,7 +152,10 @@ Mission Control includes a Scientific Advisor page. After Dataset Explorer runs,
 the Advisor automatically evaluates the active dataset with the deterministic
 Knowledge Engine and displays dataset score, confidence, warnings, recommended
 products, recommended parameters, scientific notes, next steps, QGIS tool
-suggestions, and product explanation cards.
+suggestions, and product explanation cards. The page is organized as vertical
+card sections so the top recommendations, warnings, parameters, tools, product
+explanations, and next steps can be read at the normal floating Mission Control
+window size without horizontal resizing.
 
 The Advisor can adopt practical parameter guidance into Product Planner, such as
 a suggested CHM grid resolution, while keeping threshold caveats visible. After a

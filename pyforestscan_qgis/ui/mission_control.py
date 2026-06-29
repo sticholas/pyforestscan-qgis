@@ -117,15 +117,26 @@ class MissionControlDock(QDockWidget):
             #titleLabel { font-size: 20px; font-weight: 700; }
             #subtitleLabel { color: #5f6f77; }
             #statusFrame { background: #f2f5f6; border-top: 1px solid #dbe3e6; }
-            #pageHeading { font-size: 18px; font-weight: 700; margin: 8px; color: #22323a; }
+            #pageHeading { font-size: 20px; font-weight: 700; margin: 10px 12px; color: #22323a; }
+            #advisorScroll { border: 0; background: #f7f8f9; }
+            #advisorBody { background: #f7f8f9; }
+            #advisorCard { background: #ffffff; border: 1px solid #dfe6e9; border-radius: 7px; }
+            #advisorNestedCard { background: #f8fafb; border: 1px solid #e3eaed; border-radius: 6px; }
+            #advisorSectionHeading { font-size: 18px; font-weight: 700; color: #22323a; margin-bottom: 4px; }
+            #advisorCardTitle { font-size: 15px; font-weight: 700; color: #283840; }
+            #advisorBodyText { font-size: 13px; line-height: 1.35; color: #30414a; }
+            #advisorDetailsText { font-size: 12px; line-height: 1.35; color: #52656d; background: #fbfcfd; border: 1px solid #edf2f4; border-radius: 5px; padding: 8px; }
+            #advisorMetric { font-size: 15px; background: #f8fafb; border: 1px solid #e1e9ec; border-radius: 6px; padding: 12px; color: #22323a; }
+            #advisorList { font-size: 13px; border: 1px solid #dfe6e9; background: #ffffff; border-radius: 5px; }
+            #advisorWarningList { font-size: 13px; border: 1px solid #e0cda8; background: #fffdf8; border-radius: 5px; }
             QListWidget { border: 1px solid #dfe6e9; background: #ffffff; border-radius: 4px; }
-            QListWidget::item { padding: 9px; border-bottom: 1px solid #eef2f3; }
+            QListWidget::item { padding: 10px; border-bottom: 1px solid #eef2f3; }
             QListWidget::item:selected { background: #dde8ec; color: #1f2d35; }
             QGroupBox { font-weight: 600; margin-top: 12px; border: 1px solid #dfe6e9; border-radius: 5px; padding: 10px; background: #ffffff; }
             QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; color: #32424a; }
-            QPushButton { background: #ffffff; border: 1px solid #cfd9dd; border-radius: 4px; padding: 6px 10px; }
+            QPushButton { background: #ffffff; border: 1px solid #cfd9dd; border-radius: 4px; padding: 8px 12px; }
             QPushButton:hover { background: #f0f4f5; }
-            QLineEdit, QTextEdit, QDoubleSpinBox, QComboBox { background: #ffffff; border: 1px solid #d4dee2; border-radius: 4px; padding: 4px; }
+            QLineEdit, QTextEdit, QDoubleSpinBox, QComboBox { background: #ffffff; border: 1px solid #d4dee2; border-radius: 4px; padding: 5px; }
             QProgressBar { border: 1px solid #cfd9dd; border-radius: 4px; background: #ffffff; text-align: center; }
             QProgressBar::chunk { background: #9eacb3; border-radius: 3px; }
             """
