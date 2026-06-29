@@ -15,6 +15,7 @@ from typing import Callable
 from qgis.PyQt.QtCore import QSize, Qt, QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -39,6 +40,8 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..core.adapter import PyForestScanAdapter
+from ..core.batch import BatchProductSettings, BatchRequest, discover_lidar_files
+from ..core.batch_runner import BatchExecutionError, BatchRunner
 from ..core.dataset_report import (
     DatasetExplorerReport,
     build_dataset_explorer_report,
@@ -1023,6 +1026,261 @@ class ProcessingPage(MissionPage):
                 self.pipeline_list.addItem(f"  {_pipeline_status_icon(step.status.value)} {step.label}: {step.message}")
 
 
+class BatchPage(MissionPage):
+    """Sequential folder-to-products batch workflow."""
+
+    jobUpdated = pyqtSignal(object)
+    batchCompleted = pyqtSignal(object)
+
+    def __init__(self, adapter: PyForestScanAdapter, parent: QWidget | None = None) -> None:
+        """Create the Batch page."""
+        super().__init__("Batch", parent)
+        self.adapter = adapter
+        self.discovered_paths: list[Path] = []
+        self.latest_result: object | None = None
+
+        source = self.add_section("Input Folder")
+        folder_row = QHBoxLayout()
+        self.input_folder_edit = QLineEdit()
+        self.input_folder_edit.setPlaceholderText("Choose a folder containing LAS, LAZ, COPC, or EPT datasets")
+        input_browse = QPushButton("Browse")
+        input_browse.clicked.connect(self.browse_input_folder)
+        folder_row.addWidget(self.input_folder_edit, 1)
+        folder_row.addWidget(input_browse, 0)
+        source.addLayout(folder_row)
+        self.recursive_check = QCheckBox("Search subfolders")
+        source.addWidget(self.recursive_check)
+        discover_row = QHBoxLayout()
+        self.discover_button = QPushButton("Discover Files")
+        self.discover_button.clicked.connect(self.discover_files)
+        select_all = QPushButton("Select All")
+        select_all.clicked.connect(lambda: self._set_all_files(True))
+        clear_all = QPushButton("Clear")
+        clear_all.clicked.connect(lambda: self._set_all_files(False))
+        discover_row.addWidget(self.discover_button)
+        discover_row.addWidget(select_all)
+        discover_row.addWidget(clear_all)
+        discover_row.addStretch(1)
+        source.addLayout(discover_row)
+        self.file_list = QListWidget()
+        self.file_list.setMinimumHeight(180)
+        source.addWidget(self.file_list)
+
+        output = self.add_section("Output")
+        output_row = QHBoxLayout()
+        self.output_folder_edit = QLineEdit()
+        self.output_folder_edit.setPlaceholderText("Choose one output folder for the batch")
+        output_browse = QPushButton("Browse")
+        output_browse.clicked.connect(self.browse_output_folder)
+        output_row.addWidget(self.output_folder_edit, 1)
+        output_row.addWidget(output_browse, 0)
+        output.addLayout(output_row)
+        output.addWidget(_body_label("Mission Control creates one batch folder, then one organized run folder per selected dataset."))
+
+        products = self.add_section("Products and Shared Settings")
+        self.product_checks: dict[ProductType, QCheckBox] = {}
+        product_grid = QGridLayout()
+        product_grid.setHorizontalSpacing(22)
+        product_grid.setVerticalSpacing(8)
+        for index, (product, label) in enumerate(PRODUCT_LABELS.items()):
+            check = QCheckBox(label)
+            check.setMinimumHeight(28)
+            if product is ProductType.CHM:
+                check.setChecked(True)
+            self.product_checks[product] = check
+            product_grid.addWidget(check, index // 2, index % 2)
+        products.addLayout(product_grid)
+        settings_form = QFormLayout()
+        settings_form.setVerticalSpacing(10)
+        self.resolution_spin = QDoubleSpinBox()
+        self.resolution_spin.setDecimals(3)
+        self.resolution_spin.setMinimum(0.01)
+        self.resolution_spin.setValue(1.0)
+        self.height_bin_spin = QDoubleSpinBox()
+        self.height_bin_spin.setDecimals(3)
+        self.height_bin_spin.setMinimum(0.0)
+        self.height_bin_spin.setSpecialValueText("Not specified")
+        self.height_bin_spin.setValue(1.0)
+        self.canopy_threshold_spin = QDoubleSpinBox()
+        self.canopy_threshold_spin.setDecimals(3)
+        self.canopy_threshold_spin.setMinimum(0.0)
+        self.canopy_threshold_spin.setValue(2.0)
+        self.chm_interpolation_combo = QComboBox()
+        self.chm_interpolation_combo.addItems(("linear", "nearest", "cubic"))
+        settings_form.addRow("Grid resolution", self.resolution_spin)
+        settings_form.addRow("Height bin size", self.height_bin_spin)
+        settings_form.addRow("Canopy cover threshold", self.canopy_threshold_spin)
+        settings_form.addRow("CHM interpolation", self.chm_interpolation_combo)
+        products.addLayout(settings_form)
+        self.stop_on_error_check = QCheckBox("Stop batch when a file fails")
+        products.addWidget(self.stop_on_error_check)
+        for check in self.product_checks.values():
+            check.toggled.connect(lambda _checked: self._refresh_footprint_label())
+        self.resolution_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
+        self.height_bin_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
+        self.file_list.itemChanged.connect(lambda _item: self._refresh_footprint_label())
+
+        footprint = self.add_section("Processing Footprint")
+        self.footprint_label = _body_label("Select files and products to review the batch footprint. Raster dimensions are estimated per file after Dataset Explorer runs.")
+        footprint.addWidget(self.footprint_label)
+
+        run_section = self.add_section("Run Batch")
+        self.run_button = QPushButton("Run Selected Files Sequentially")
+        self.run_button.setMinimumHeight(40)
+        self.run_button.clicked.connect(self.run_batch)
+        run_section.addWidget(self.run_button)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        run_section.addWidget(self.progress_bar)
+        self.status_label = QLabel("Status: Not started")
+        self.status_label.setObjectName("advisorMetric")
+        self.status_label.setWordWrap(True)
+        run_section.addWidget(self.status_label)
+        self.batch_results = QListWidget()
+        self.batch_results.setMinimumHeight(180)
+        run_section.addWidget(self.batch_results)
+
+    def set_default_output_folder(self, folder: Path | None) -> None:
+        """Use configured default output folder when empty."""
+        if folder is not None and not self.output_folder_edit.text().strip():
+            self.output_folder_edit.setText(str(folder))
+
+    def browse_input_folder(self) -> None:
+        """Choose the folder to scan for lidar datasets."""
+        path = QFileDialog.getExistingDirectory(self, "Choose input folder")
+        if path:
+            self.input_folder_edit.setText(path)
+
+    def browse_output_folder(self) -> None:
+        """Choose the batch output root folder."""
+        path = QFileDialog.getExistingDirectory(self, "Choose output folder")
+        if path:
+            self.output_folder_edit.setText(path)
+
+    def discover_files(self) -> None:
+        """Discover supported lidar datasets for batch selection."""
+        folder = self.input_folder_edit.text().strip()
+        if not folder:
+            self.status_label.setText("Status: Choose an input folder before discovery.")
+            return
+        try:
+            datasets = discover_lidar_files(folder, self.recursive_check.isChecked())
+        except ValueError as exc:
+            self.status_label.setText(f"Status: Discovery failed: {exc}")
+            return
+        self.discovered_paths = [item.path for item in datasets]
+        self.file_list.clear()
+        for item in datasets:
+            row = QListWidgetItem(f"{item.path.name}\nStatus: {item.status}; bounds: {item.bounds_summary}\n{item.path}")
+            row.setFlags(row.flags() | Qt.ItemIsUserCheckable)
+            row.setCheckState(Qt.Checked if item.selected else Qt.Unchecked)
+            row.setSizeHint(QSize(0, 72))
+            self.file_list.addItem(row)
+        self.status_label.setText(f"Status: Discovered {len(datasets)} supported dataset(s).")
+        self._refresh_footprint_label()
+
+    def run_batch(self) -> None:
+        """Run selected datasets sequentially using the core batch runner."""
+        selected = self._selected_paths()
+        output_folder = self.output_folder_edit.text().strip()
+        if not selected:
+            self.status_label.setText("Status: Select at least one discovered file before running.")
+            return
+        if not output_folder:
+            self.status_label.setText("Status: Choose an output folder before running.")
+            return
+        products = tuple(product for product, check in self.product_checks.items() if check.isChecked())
+        if not products:
+            self.status_label.setText("Status: Select at least one product before running.")
+            return
+        settings = BatchProductSettings(
+            products=products,
+            grid_resolution=self.resolution_spin.value(),
+            height_bin_size=self.height_bin_spin.value() if self.height_bin_spin.value() > 0 else None,
+            chm_interpolation=self.chm_interpolation_combo.currentText(),
+            canopy_cover_height_threshold=self.canopy_threshold_spin.value(),
+            stop_on_error=self.stop_on_error_check.isChecked(),
+        )
+        request = BatchRequest(
+            input_folder=Path(self.input_folder_edit.text().strip()),
+            output_folder=Path(output_folder),
+            recursive=self.recursive_check.isChecked(),
+            datasets=tuple(selected),
+            settings=settings,
+            title="PyForestScan Batch",
+        )
+        self.batch_results.clear()
+        self.progress_bar.setValue(0)
+        self.run_button.setEnabled(False)
+        self.status_label.setText(f"Status: Running {len(selected)} dataset(s) sequentially.")
+        self._processed_items = 0
+        self._total_items = len(selected)
+        runner = BatchRunner(
+            adapter=self.adapter,
+            item_callback=self._on_batch_item,
+            job_callback=self._on_batch_job_update,
+        )
+        try:
+            result = runner.run(request)
+        except BatchExecutionError as exc:
+            self.status_label.setText(f"Status: Batch could not start: {exc}")
+            self.run_button.setEnabled(True)
+            return
+        finally:
+            self.run_button.setEnabled(True)
+        self.latest_result = result
+        self.progress_bar.setValue(100 if result.items else 0)
+        self.status_label.setText(
+            f"Status: Batch complete. Completed {result.success_count}; failed {result.failure_count}. Summary: {result.summary_html}"
+        )
+        self.batchCompleted.emit(result)
+
+    def _selected_paths(self) -> list[Path]:
+        paths: list[Path] = []
+        for index, path in enumerate(self.discovered_paths):
+            item = self.file_list.item(index)
+            if item is not None and item.checkState() == Qt.Checked:
+                paths.append(path)
+        return paths
+
+    def _set_all_files(self, selected: bool) -> None:
+        for index in range(self.file_list.count()):
+            item = self.file_list.item(index)
+            item.setCheckState(Qt.Checked if selected else Qt.Unchecked)
+        self._refresh_footprint_label()
+
+    def _refresh_footprint_label(self) -> None:
+        selected_count = len(self._selected_paths())
+        products = [PRODUCT_LABELS[product] for product, check in self.product_checks.items() if check.isChecked()]
+        pad_note = "PAD storage depends on height-bin count." if ProductType.PAD in [p for p, c in self.product_checks.items() if c.isChecked()] else ""
+        self.footprint_label.setText(
+            f"Selected files: {selected_count}\n"
+            f"Selected products: {', '.join(products) if products else 'none'}\n"
+            f"Shared grid resolution: {self.resolution_spin.value():g}\n"
+            "Per-file raster dimensions and storage are estimated after each dataset is inspected and its Product Plan is written. "
+            "Processing time depends on machine, storage speed, point density, and product selection. "
+            f"{pad_note}"
+        )
+
+    def _on_batch_item(self, item: object) -> None:
+        self._processed_items = getattr(self, "_processed_items", 0) + 1
+        total = max(1, getattr(self, "_total_items", 1))
+        self.progress_bar.setValue(int((self._processed_items / total) * 100))
+        dataset_name = Path(getattr(item, "dataset_path")).name
+        status = getattr(item, "status")
+        message = getattr(item, "message")
+        run_folder = getattr(getattr(item, "run_context"), "run_folder")
+        bounds = getattr(item, "bounds_summary", "Unavailable")
+        self.batch_results.addItem(f"{status.upper()} - {dataset_name}\nBounds: {bounds}\n{message}\n{run_folder}")
+        self.status_label.setText(f"Status: {self._processed_items}/{total} dataset(s) processed.")
+        QApplication.processEvents()
+
+    def _on_batch_job_update(self, job: JobRecord) -> None:
+        self.jobUpdated.emit(job)
+        QApplication.processEvents()
+
+
 class ResultsPage(MissionPage):
     """Friendly report links and job history page."""
 
@@ -1394,6 +1652,8 @@ def _friendly_result_label(path: Path) -> str:
         return "Rumple Summary"
     if stem == "job_summary":
         return "Final Run Summary" if path.suffix.lower() == ".html" else "Job Summary"
+    if stem == "batch_summary":
+        return "Batch Summary"
     return "CHM Output"
 
 
@@ -1405,6 +1665,8 @@ def _is_friendly_result_path(path: Path) -> bool:
         return True
     if suffix == ".csv" and "rumple" in stem:
         return True
-    if suffix == ".html" and stem == "job_summary":
+    if suffix == ".html" and stem in {"job_summary", "batch_summary"}:
+        return True
+    if suffix in {".csv", ".json"} and stem == "batch_summary":
         return True
     return False

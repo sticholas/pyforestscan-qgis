@@ -9,6 +9,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Batch Processing v1 with folder discovery, selectable files, sequential per-dataset execution, organized batch run folders, per-file failure recording, Mission Control Batch page, and JSON/CSV/HTML batch summaries.
 - Processing Footprint summaries replaced misleading runtime prediction with selected products, raster dimensions, band counts, estimated output storage, and runtime caveats.
 - Mission Control progressive disclosure UX with simplified Processing defaults, collapsed technical details, concise Scientific Advisor summaries, collapsed product explanations, and Processing Footprint output storage summaries.
 - Mission Control full-window layout redesign with a 1400x900 default floating window, 1150x760 minimum size, bounded sidebar, full-page scroll regions, and grouped Planning controls.

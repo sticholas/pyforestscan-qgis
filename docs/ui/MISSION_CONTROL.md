@@ -39,6 +39,9 @@ flowchart TD
   report, view selected products, output folder, Processing Footprint, current status,
   and progress by default. Product Plan JSON paths, pipeline stages, and logs are
   available under Technical Details.
+- Batch: discover multiple LAS, LAZ, COPC, and EPT datasets from a folder, select
+  files, apply one shared product plan/settings set, and process them sequentially
+  into one organized batch folder.
 - Results: view friendly Dataset Report, Product Plan, Job Summary, Output
   Folder, and Products links first, with raw paths under Run files and logs.
 - Settings: default output folder, logging placeholder, and future preferences.
@@ -69,6 +72,7 @@ flowchart LR
     F --> G["Planning and Processing receive active run"]
     H["Plan built"] --> I["planningChanged"]
     K["Job update"] --> L["jobUpdated"]
+    N["Batch complete"] --> O["batchCompleted"]
     D --> J["Status bar and Home"]
     F --> J
     I --> J
@@ -114,3 +118,8 @@ one raster band each. PAD uses the planned height-bin count as its band count.
 Rumple is shown as minimal CSV/table storage. Runtime remains a caveat because it
 depends on machine, storage speed, point density, compression, and product
 selection.
+
+
+## Batch Processing
+
+Mission Control includes a Batch page for sequential folder-to-products workflows. Users choose an input folder, optional recursive discovery, selected files, one output folder, products, and shared settings. Batch v1 creates one `pyforestscan_batch_<timestamp>` folder and one normal run folder per selected dataset. Each dataset reuses Dataset Explorer, Product Planner, JobManager, the pipeline registry, and the adapter boundary. Failures are recorded per file and do not stop the whole batch unless the user enables stop-on-error. Batch summary JSON, CSV, and HTML files are shown in Results after completion.

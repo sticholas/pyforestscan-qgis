@@ -12,6 +12,7 @@ workflows:
 - Dataset: select a lidar dataset and output folder, inspect the dataset, and preview its spatial footprint.
 - Planning: build a product plan from the active Dataset Explorer result.
 - Processing: run implemented product jobs from the active Product Planner result.
+- Batch: discover and process multiple lidar files sequentially with shared settings.
 - Results: open friendly Dataset Report, Product Plan, Job Summary, Output Folder,
   and Products links.
 - Settings: choose a default output folder for Mission Control runs.
@@ -224,6 +225,21 @@ Product Planner writes these files inside the selected output folder:
 - `Ready`: Dataset Explorer marked the product available.
 - `Needs review`: Dataset Explorer marked the product as feasible with warnings.
 - `Blocked`: Dataset Explorer marked the product unavailable or did not report it.
+
+
+## Batch Processing
+
+Use the Batch page when several lidar files need the same products and shared settings. Choose an input folder, decide whether to search subfolders, discover supported LAS, LAZ, COPC, COPC LAZ, and local EPT `ept.json` files, then select the files to run. Choose one output folder and one shared product/settings set.
+
+Batch v1 runs files sequentially. It creates a folder like:
+
+```text
+<output_folder>/pyforestscan_batch_<YYYYMMDD_HHMMSS>/
+```
+
+Each selected dataset receives its own run folder inside that batch folder, with the same `reports/`, `tables/`, `outputs/`, `logs/`, and `temp/` structure used by the single-file workflow. The batch also writes `batch_summary.json`, `batch_summary.csv`, and `batch_summary.html`. Failed files are recorded in the summary and the batch continues by default. Enable stop-on-error if the batch should stop after the first failed file.
+
+Batch processing reuses Dataset Explorer, Product Planner, JobManager, Pipeline, and Adapter services. It does not use separate scientific processing code. Batch v1 is sequential and may keep QGIS busy during large runs; parallel/background execution is reserved for a later phase.
 
 ## Product Job Execution
 

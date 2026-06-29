@@ -18,6 +18,7 @@ from ..core.jobs import JobRecord
 from ..core.workspace import RunContext
 from ..resources import plugin_root
 from .pages import (
+    BatchPage,
     DatasetPage,
     EnvironmentPage,
     HomePage,
@@ -44,6 +45,7 @@ class MissionControlDock(QDockWidget):
         "Scientific Advisor",
         "Planning",
         "Processing",
+        "Batch",
         "Results",
         "Settings",
     )
@@ -89,6 +91,7 @@ class MissionControlDock(QDockWidget):
         self.advisor_page = ScientificAdvisorPage(iface=self.iface)
         self.planning_page = PlanningPage()
         self.processing_page = ProcessingPage()
+        self.batch_page = BatchPage(self.adapter)
         self.results_page = ResultsPage()
         self.settings_page = SettingsPage()
         self.pages = (
@@ -98,6 +101,7 @@ class MissionControlDock(QDockWidget):
             self.advisor_page,
             self.planning_page,
             self.processing_page,
+            self.batch_page,
             self.results_page,
             self.settings_page,
         )
@@ -125,6 +129,8 @@ class MissionControlDock(QDockWidget):
         self.dataset_page.datasetExplored.connect(self._set_dataset_report)
         self.planning_page.planningChanged.connect(self._set_planning_status)
         self.processing_page.jobUpdated.connect(self._set_job_status)
+        self.batch_page.jobUpdated.connect(self._set_job_status)
+        self.batch_page.batchCompleted.connect(self._set_batch_status)
         self.settings_page.defaultOutputFolderChanged.connect(self._set_default_output_folder)
 
     def _configure_style(self) -> None:
@@ -198,6 +204,7 @@ class MissionControlDock(QDockWidget):
         path = folder if isinstance(folder, Path) else None
         self.state = self.state.with_default_output_folder(path).with_activity("Default output folder", str(path) if path else "Cleared")
         self.dataset_page.set_default_output_folder(path)
+        self.batch_page.set_default_output_folder(path)
         self._refresh_home()
         self._update_status_bar()
 
@@ -212,6 +219,21 @@ class MissionControlDock(QDockWidget):
         if self.state.active_run is not None:
             self.results_page.set_run_context(self.state.active_run)
             self.advisor_page.set_run_context(self.state.active_run)
+        self.state = state
+        self._refresh_home()
+        self._update_status_bar()
+
+    def _set_batch_status(self, result: object) -> None:
+        """Record a completed batch summary in Mission Control results."""
+        summary_json = getattr(result, "summary_json", None)
+        summary_csv = getattr(result, "summary_csv", None)
+        summary_html = getattr(result, "summary_html", None)
+        success_count = getattr(result, "success_count", 0)
+        failure_count = getattr(result, "failure_count", 0)
+        state = self.state.with_activity("Batch complete", f"Completed {success_count}; failed {failure_count}")
+        for path in (summary_html, summary_csv, summary_json):
+            if isinstance(path, Path):
+                state = state.with_report_path(path)
         self.state = state
         self._refresh_home()
         self._update_status_bar()
@@ -235,7 +257,12 @@ class MissionControlDock(QDockWidget):
 
     def _layer_name(self, path: Path, result_type: str) -> str:
         """Return a friendly layer name for generated rasters."""
-        dataset_stem = self.state.active_run.lidar_path.stem if self.state.active_run is not None else path.stem
+        if path.parent.name == "outputs" and path.parent.parent.name:
+            dataset_stem = path.parent.parent.name
+        elif self.state.active_run is not None:
+            dataset_stem = self.state.active_run.lidar_path.stem
+        else:
+            dataset_stem = path.stem
         return layer_display_name(result_type, dataset_stem)
 
     def _polish_raster_layer(self, layer: object, result_type: str) -> None:
