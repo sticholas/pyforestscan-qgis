@@ -12,6 +12,8 @@ from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import QDockWidget, QWidget
 
 from ..core.adapter import PyForestScanAdapter
+from ..core.dataset_report import report_to_dict as dataset_report_to_dict
+from ..core.knowledge import KnowledgeEngine
 from ..core.jobs import JobRecord
 from ..core.workspace import RunContext
 from ..resources import plugin_root
@@ -22,8 +24,10 @@ from .pages import (
     PlanningPage,
     ProcessingPage,
     ResultsPage,
+    ScientificAdvisorPage,
     SettingsPage,
 )
+from .advisor import completed_products_from_job
 from .raster_styling import apply_generated_raster_renderer, is_raster_result, layer_display_name
 from .state import MissionControlState
 
@@ -37,6 +41,7 @@ class MissionControlDock(QDockWidget):
         "Home",
         "Environment",
         "Dataset",
+        "Scientific Advisor",
         "Planning",
         "Processing",
         "Results",
@@ -48,6 +53,7 @@ class MissionControlDock(QDockWidget):
         super().__init__("PyForestScan Mission Control", parent)
         self.iface = iface
         self.adapter = PyForestScanAdapter()
+        self.knowledge_engine = KnowledgeEngine()
         self.state = MissionControlState()
         self.job_history: tuple[JobRecord, ...] = ()
         self.loaded_result_paths: set[Path] = set()
@@ -62,6 +68,7 @@ class MissionControlDock(QDockWidget):
         self.home_page = HomePage(plugin_version=self._plugin_version())
         self.environment_page = EnvironmentPage(self.adapter)
         self.dataset_page = DatasetPage(self.adapter, iface=self.iface)
+        self.advisor_page = ScientificAdvisorPage(iface=self.iface)
         self.planning_page = PlanningPage()
         self.processing_page = ProcessingPage()
         self.results_page = ResultsPage()
@@ -70,6 +77,7 @@ class MissionControlDock(QDockWidget):
             self.home_page,
             self.environment_page,
             self.dataset_page,
+            self.advisor_page,
             self.planning_page,
             self.processing_page,
             self.results_page,
@@ -132,6 +140,13 @@ class MissionControlDock(QDockWidget):
         self.planning_page.set_dataset_report(report, context)  # type: ignore[arg-type]
         self.processing_page.set_run_context(context)
         self.results_page.set_run_context(context)
+        self.advisor_page.set_run_context(context)
+        try:
+            advisor_report = self.knowledge_engine.evaluate_dataset_explorer_report(dataset_report_to_dict(report))  # type: ignore[arg-type]
+            self.advisor_page.set_recommendation_report(advisor_report)
+            self.planning_page.apply_recommendation_report(advisor_report)
+        except Exception:  # noqa: BLE001 - advisor guidance must not break Dataset Explorer.
+            pass
         state = self.state.with_active_run(context).with_report_path(context.dataset_report_html)
         state = state.with_report_path(context.dataset_summary_csv).with_activity("Dataset explored", Path(dataset_path).name)
         self.state = state
@@ -163,8 +178,10 @@ class MissionControlDock(QDockWidget):
         for result in job.results:
             state = state.with_report_path(result.path)
         self._load_job_outputs(job)
+        self.advisor_page.set_completed_products(completed_products_from_job(job))
         if self.state.active_run is not None:
             self.results_page.set_run_context(self.state.active_run)
+            self.advisor_page.set_run_context(self.state.active_run)
         self.state = state
         self._refresh_home()
         self._update_status_bar()
@@ -207,6 +224,7 @@ class MissionControlDock(QDockWidget):
         )
         self.home_page.set_activities(tuple((item.label, item.detail) for item in self.state.activities))
         self.results_page.set_run_context(self.state.active_run)
+        self.advisor_page.set_run_context(self.state.active_run)
         self.results_page.set_report_paths(self.state.latest_report_paths)
         self.results_page.set_jobs(self.job_history)
 

@@ -66,6 +66,7 @@ ambiguous.
 - [User Experience](docs/USER_EXPERIENCE.md)
 - [User Guide](docs/USER_GUIDE.md)
 - [Knowledge Engine](docs/development/KNOWLEDGE_ENGINE.md)
+- [Scientific Advisor](docs/knowledge/SCIENTIFIC_ADVISOR.md)
 - [Mission Control](docs/ui/MISSION_CONTROL.md)
 
 ## Mission Control

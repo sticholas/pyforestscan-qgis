@@ -27,6 +27,7 @@ flowchart TD
   latest project, recent activity, quick start, and documentation access.
 - Environment: adapter-backed runtime checks for QGIS, Python, PyForestScan,
   PDAL, GDAL, rasterio, and numpy.
+- Scientific Advisor: deterministic Knowledge Engine guidance after Dataset Explorer, including warnings, product explanations, parameter suggestions, and QGIS QA tools.
 - Dataset: choose LAS, LAZ, COPC, or EPT plus an output folder, create the active
   run folder, write Dataset Explorer reports, show a spatial footprint preview,
   add the footprint to QGIS, and zoom the main map canvas.
@@ -72,4 +73,12 @@ flowchart LR
 Mission Control coordinates current workflows only. Dataset footprint preview uses
 QGIS APIs only in the UI layer; core adapter and report code remain QGIS-free.
 The run folder is not a required `.pfs` project file. The Processing page runs the active Product
-Planner JSON through JobManager and the pipeline registry. CHM, Canopy Cover, PAD, PAI, FHD, and Rumple are implemented through the adapter for single-dataset workflows. Raster outputs are loaded with grayscale styling by default; users can restyle layers manually in QGIS.
+Planner JSON through JobManager and the pipeline registry. CHM, Canopy Cover, PAD, PAI, FHD, and Rumple are implemented through the adapter for single-dataset workflows. Raster outputs are loaded with product-aware default styling: CHM, Canopy Cover, PAI, and FHD use grayscale, while PAD uses its documented RGB band composite. Users can restyle layers manually in QGIS.
+
+
+## Scientific Advisor Integration
+
+The Scientific Advisor page consumes `RecommendationReport` objects from
+`core/knowledge`. QGIS actions stay in the UI layer: Processing Toolbox opening,
+selected-layer properties, selected-layer zoom, and output-folder opening are all
+best-effort UI actions with text fallbacks.

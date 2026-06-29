@@ -145,6 +145,25 @@ trusted.
 The preview uses the rectangular bounds reported by Dataset Explorer; it is not a
 convex hull or exact point-cloud coverage mask.
 
+
+## Scientific Advisor
+
+Mission Control includes a Scientific Advisor page. After Dataset Explorer runs,
+the Advisor automatically evaluates the active dataset with the deterministic
+Knowledge Engine and displays dataset score, confidence, warnings, recommended
+products, recommended parameters, scientific notes, next steps, QGIS tool
+suggestions, and product explanation cards.
+
+The Advisor can adopt practical parameter guidance into Product Planner, such as
+a suggested CHM grid resolution, while keeping threshold caveats visible. After a
+processing job completes, the Advisor lists completed products and recommends QA
+steps such as inspecting Layer Styling, Histograms, CRS/extent alignment, and the
+final job summary.
+
+Advisor buttons open QGIS tools where the QGIS API is stable. If a direct launch
+is version-dependent, the Advisor shows clear instructions for opening the tool
+from QGIS menus instead.
+
 ## Product Planner
 
 Product Planner is a planning workflow that reads a Dataset Explorer JSON report

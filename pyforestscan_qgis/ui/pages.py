@@ -47,6 +47,7 @@ from ..core.dataset_report import (
 from ..core.dependency_check import CheckStatus, EnvironmentReport
 from ..core.exceptions import AdapterError
 from ..core.job_manager import JobExecutionError, JobManager
+from ..core.knowledge import RecommendationReport
 from ..core.jobs import JobRecord, JobStatus
 from ..core.product_plan import (
     PRODUCT_LABELS,
@@ -60,6 +61,7 @@ from ..core.product_plan import (
 )
 from ..core.types import ProductType
 from ..core.workspace import RunContext, create_run_context
+from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
 
 ActivityCallback = Callable[[str, str], None]
@@ -350,6 +352,160 @@ class DatasetPage(MissionPage):
         self.footprint_text.setPlainText(f"{current}\n\n{message}" if current else message)
 
 
+class ScientificAdvisorPage(MissionPage):
+    """Scientific Advisor page driven by the deterministic Knowledge Engine."""
+
+    def __init__(self, iface: object | None = None, parent: QWidget | None = None) -> None:
+        """Create the advisor page."""
+        super().__init__("Scientific Advisor", parent)
+        self.iface = iface
+        self.run_context: RunContext | None = None
+        self.completed_products: tuple[str, ...] = ()
+
+        overview = self.add_section("Dataset Readiness")
+        self.score_label = QLabel("Dataset score: Run Dataset Explorer to evaluate.")
+        self.confidence_label = QLabel("Confidence: Unknown")
+        overview.addWidget(self.score_label)
+        overview.addWidget(self.confidence_label)
+
+        warnings = self.add_section("Key Warnings")
+        self.warning_list = QListWidget()
+        warnings.addWidget(self.warning_list)
+
+        products = self.add_section("Recommended Products")
+        self.product_list = QListWidget()
+        products.addWidget(self.product_list)
+
+        parameters = self.add_section("Recommended Parameters")
+        self.parameter_list = QListWidget()
+        parameters.addWidget(self.parameter_list)
+
+        notes = self.add_section("Scientific Notes")
+        self.notes_text = QTextEdit()
+        self.notes_text.setReadOnly(True)
+        self.notes_text.setPlainText("Recommendations will appear after Dataset Explorer runs. Threshold-based guidance is configurable and must be calibrated for production interpretation.")
+        notes.addWidget(self.notes_text)
+
+        next_steps = self.add_section("Next Steps")
+        self.next_steps_text = QTextEdit()
+        self.next_steps_text.setReadOnly(True)
+        next_steps.addWidget(self.next_steps_text)
+
+        qgis_tools = self.add_section("QGIS Tools")
+        self.qgis_tools_text = QTextEdit()
+        self.qgis_tools_text.setReadOnly(True)
+        self.qgis_tools_text.setPlainText(_tool_instruction_text())
+        qgis_tools.addWidget(self.qgis_tools_text)
+        button_row = QHBoxLayout()
+        self.processing_toolbox_button = QPushButton("Open Processing Toolbox")
+        self.processing_toolbox_button.clicked.connect(self.open_processing_toolbox)
+        self.layer_styling_button = QPushButton("Open Layer Styling")
+        self.layer_styling_button.clicked.connect(self.open_layer_styling)
+        self.zoom_layer_button = QPushButton("Zoom to Selected Layer")
+        self.zoom_layer_button.clicked.connect(self.zoom_to_selected_layer)
+        self.open_output_folder_button = QPushButton("Open Output Folder")
+        self.open_output_folder_button.clicked.connect(self.open_output_folder)
+        for button in (self.processing_toolbox_button, self.layer_styling_button, self.zoom_layer_button, self.open_output_folder_button):
+            button_row.addWidget(button)
+        qgis_tools.addLayout(button_row)
+
+        cards = self.add_section("Product Explanations")
+        self.product_cards_text = QTextEdit()
+        self.product_cards_text.setReadOnly(True)
+        self.product_cards_text.setPlainText(_product_cards_text())
+        cards.addWidget(self.product_cards_text)
+
+    def set_run_context(self, context: RunContext | None) -> None:
+        """Store active run context for output-folder actions."""
+        self.run_context = context
+
+    def set_recommendation_report(self, report: RecommendationReport) -> None:
+        """Display a Knowledge Engine recommendation report."""
+        self.score_label.setText(f"Dataset score: {report.dataset_score}/100")
+        self.confidence_label.setText(f"Confidence/readiness: {_stars(report.confidence_stars)} ({report.confidence_stars}/5)")
+        self.warning_list.clear()
+        if report.warnings:
+            for item in report.warnings:
+                self.warning_list.addItem(f"{item.severity.value.upper()} {item.code}: {item.reason} Action: {item.suggested_action}")
+        else:
+            self.warning_list.addItem("No blocking warnings from the Knowledge Engine.")
+
+        self.product_list.clear()
+        for product in report.recommended_products:
+            self.product_list.addItem(f"{product.label}: {product.status}. {product.reason}")
+        if not report.recommended_products:
+            self.product_list.addItem("No product feasibility records were available.")
+
+        self.parameter_list.clear()
+        for parameter in report.recommended_parameters:
+            calibration = " Calibration required." if parameter.calibration_required else ""
+            self.parameter_list.addItem(f"{parameter.product} {parameter.name}: {parameter.value} {parameter.unit}. {parameter.reason}{calibration}")
+        if not report.recommended_parameters:
+            self.parameter_list.addItem("No parameter recommendations were available.")
+
+        scientific_notes = [f"- {item.code}: {item.reason} {item.scientific_note or ''}" for item in report.scientific_notes]
+        threshold_notes = [f"- {threshold.name}: {threshold.value if threshold.value is not None else 'unset'} {threshold.unit}. {threshold.rationale}" for threshold in report.thresholds if threshold.calibration_required]
+        self.notes_text.setPlainText(
+            "Scientific notes:\n"
+            + ("\n".join(scientific_notes) or "- None")
+            + "\n\nConfigurable thresholds:\n"
+            + "\n".join(threshold_notes)
+        )
+        self._update_next_steps(report)
+
+    def set_completed_products(self, products: tuple[str, ...]) -> None:
+        """Update next-step context after processing completes."""
+        self.completed_products = products
+        if products:
+            completed = ", ".join(_product_label(product) for product in products)
+            self.next_steps_text.setPlainText(
+                f"Completed products: {completed}\n\n"
+                "Next: inspect loaded layers with Layer Styling and Histogram, compare extents/CRS, open the final job summary, and only then prepare layouts or derived analyses."
+            )
+
+    def open_processing_toolbox(self) -> None:
+        """Open QGIS Processing Toolbox when the iface exposes a stable hook."""
+        method = getattr(self.iface, "openProcessingToolbox", None) if self.iface is not None else None
+        if callable(method):
+            method()
+            return
+        self.qgis_tools_text.setPlainText(_tool_instruction_text() + "\n\nProcessing Toolbox: open it from Processing > Toolbox in QGIS.")
+
+    def open_layer_styling(self) -> None:
+        """Open selected-layer properties when available, otherwise show instructions."""
+        layer = _selected_layer(self.iface)
+        method = getattr(self.iface, "showLayerProperties", None) if self.iface is not None else None
+        if layer is not None and callable(method):
+            method(layer)
+            return
+        self.qgis_tools_text.setPlainText(_tool_instruction_text() + "\n\nLayer Styling: select a raster layer, then open Layer Styling or Layer Properties > Symbology.")
+
+    def zoom_to_selected_layer(self) -> None:
+        """Zoom the main QGIS canvas to the selected layer when available."""
+        layer = _selected_layer(self.iface)
+        canvas = self.iface.mapCanvas() if self.iface is not None and hasattr(self.iface, "mapCanvas") else None
+        if layer is not None and canvas is not None and hasattr(layer, "extent"):
+            canvas.setExtent(layer.extent())
+            canvas.refresh()
+            return
+        self.qgis_tools_text.setPlainText(_tool_instruction_text() + "\n\nZoom: select an output layer in the Layers panel, then use Zoom to Layer in QGIS.")
+
+    def open_output_folder(self) -> None:
+        """Open the active run output folder."""
+        if self.run_context is None:
+            self.next_steps_text.setPlainText("Run Dataset Explorer before opening an output folder.")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.run_context.outputs_dir)))
+
+    def _update_next_steps(self, report: RecommendationReport) -> None:
+        if report.warnings:
+            first = report.warnings[0]
+            text = f"Start here: {first.suggested_action}"
+        else:
+            text = "Start here: build a Product Planner report using the recommended products and parameter notes, then run one small validation workflow before production use."
+        self.next_steps_text.setPlainText(text + "\n\nUse the QGIS tool suggestions below for QA rather than treating outputs as publication-ready immediately.")
+
+
 class PlanningPage(MissionPage):
     """Product planning page using the active run context."""
 
@@ -442,6 +598,23 @@ class PlanningPage(MissionPage):
         if context is not None:
             self.output_folder_edit.setText(str(context.outputs_dir))
         self.plan_text.setPlainText("Dataset report loaded. Choose products and build a plan.")
+
+    def apply_recommendation_report(self, report: RecommendationReport) -> None:
+        """Adopt practical Advisor parameter recommendations into planning controls."""
+        adopted: list[str] = []
+        for parameter in report.recommended_parameters:
+            if parameter.product == "chm" and parameter.name == "grid_resolution":
+                try:
+                    value = float(parameter.value)
+                except (TypeError, ValueError):
+                    continue
+                if value > 0:
+                    self.resolution_spin.setValue(value)
+                    adopted.append(f"CHM grid resolution set to {value:g} {parameter.unit}")
+        if adopted:
+            current = self.plan_text.toPlainText().strip()
+            note = "Advisor recommendations adopted:\n" + "\n".join(f"- {item}" for item in adopted)
+            self.plan_text.setPlainText(f"{current}\n\n{note}" if current else note)
 
     def browse_folder(self) -> None:
         """Choose a future output folder."""
@@ -814,6 +987,53 @@ class SettingsPage(MissionPage):
         value = self.default_output_folder.text().strip()
         self.defaultOutputFolderChanged.emit(Path(value) if value else None)
 
+
+
+
+def _stars(value: int) -> str:
+    count = max(0, min(5, value))
+    return "*" * count + "-" * (5 - count)
+
+
+def _product_label(product_id: str) -> str:
+    for item in PRODUCT_EXPLANATIONS:
+        if item.product_id == product_id:
+            return item.label
+    return product_id
+
+
+def _product_cards_text() -> str:
+    sections = []
+    for item in PRODUCT_EXPLANATIONS:
+        sections.append(
+            f"{item.label}\n"
+            f"Measures: {item.measures}\n"
+            f"Use when: {item.use_when}\n"
+            f"Be cautious when: {item.be_cautious_when}\n"
+            f"Inspect in QGIS: {item.qgis_inspection}"
+        )
+    return "\n\n".join(sections)
+
+
+def _tool_instruction_text() -> str:
+    return "\n\n".join(
+        f"{item.tool_name}\nOpen: {item.how_to_open}\nUse for: {item.use_for}"
+        for item in QGIS_TOOL_INSTRUCTIONS
+    )
+
+
+def _selected_layer(iface: object | None) -> object | None:
+    if iface is None:
+        return None
+    layer_tree = getattr(iface, "layerTreeView", None)
+    if not callable(layer_tree):
+        return None
+    try:
+        view = layer_tree()
+        current_layer = getattr(view, "currentLayer", None)
+        return current_layer() if callable(current_layer) else None
+    except Exception:  # noqa: BLE001 - UI helper must degrade to instructions.
+        return None
 
 def _status_icon(status: str) -> str:
     if status == CheckStatus.PASS.value:
