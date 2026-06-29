@@ -35,6 +35,7 @@ class BatchProductSettings:
     chm_clean_edges: bool = False
     canopy_cover_height_threshold: float = 2.0
     stop_on_error: bool = False
+    load_outputs_into_qgis: bool = False
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,29 @@ class BatchResult:
     def failure_count(self) -> int:
         """Return failed item count."""
         return len([item for item in self.items if item.status == "failed"])
+
+    @property
+    def skipped_count(self) -> int:
+        """Return skipped item count."""
+        return len([item for item in self.items if item.status == "skipped"])
+
+    @property
+    def total_output_count(self) -> int:
+        """Return the number of output artifacts recorded by all items."""
+        return sum(len(item.outputs) for item in self.items)
+
+    @property
+    def total_estimated_output_bytes(self) -> int:
+        """Return a best-effort total size for output artifacts that exist on disk."""
+        total = 0
+        for item in self.items:
+            for path in item.outputs:
+                try:
+                    if path.exists() and path.is_file():
+                        total += path.stat().st_size
+                except OSError:
+                    continue
+        return total
 
 
 def discover_lidar_files(input_folder: Path | str, recursive: bool = False) -> tuple[BatchDataset, ...]:

@@ -95,6 +95,9 @@ class BatchWorkflowTests(unittest.TestCase):
             self.assertTrue(written.summary_csv.exists())
             self.assertTrue(written.summary_html.exists())
             self.assertEqual(1, payload["success_count"])
+            self.assertEqual(0, payload["skipped_count"])
+            self.assertEqual(1, payload["total_files"])
+            self.assertEqual(1, payload["total_output_count"])
             self.assertEqual("completed", payload["items"][0]["status"])
             self.assertIn("Test Batch", written.summary_html.read_text(encoding="utf-8"))
 
@@ -127,6 +130,42 @@ class BatchWorkflowTests(unittest.TestCase):
             self.assertEqual(2, result.failure_count)
             self.assertEqual(["failed", "failed"], [item["status"] for item in payload["items"]])
             self.assertTrue(result.summary_json.exists())
+
+    def test_batch_runner_can_cancel_remaining_files(self) -> None:
+        """Cancel control records unprocessed files as skipped and writes summaries."""
+
+        class FailingAdapter:
+            def inspect_dataset(self, _path: Path) -> object:
+                raise RuntimeError("inspection failed")
+
+        calls = {"count": 0}
+
+        def control() -> str | None:
+            calls["count"] += 1
+            return "cancel" if calls["count"] > 1 else None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            one = root / "one.las"
+            two = root / "two.las"
+            one.write_text("", encoding="utf-8")
+            two.write_text("", encoding="utf-8")
+            request = BatchRequest(
+                input_folder=root,
+                output_folder=root / "out",
+                recursive=False,
+                datasets=(one, two),
+                settings=BatchProductSettings(products=(ProductType.CHM,), grid_resolution=1.0),
+            )
+            runner = BatchRunner(adapter=FailingAdapter(), control_callback=control)  # type: ignore[arg-type]
+
+            result = runner.run(request)
+            payload = batch_result_to_dict(result)
+
+            self.assertEqual(1, result.failure_count)
+            self.assertEqual(1, result.skipped_count)
+            self.assertEqual(["failed", "skipped"], [item["status"] for item in payload["items"]])
+            self.assertTrue(result.summary_html.exists())
 
 
 if __name__ == "__main__":

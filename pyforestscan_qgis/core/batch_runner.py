@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +18,7 @@ from .product_plan import ProductPlannerRequest, build_product_plan, write_plan_
 
 BatchProgressCallback = Callable[[BatchItemResult], None]
 BatchJobCallback = Callable[[JobRecord], None]
+BatchControlCallback = Callable[[], str | None]
 
 
 class BatchExecutionError(ValueError):
@@ -32,12 +34,14 @@ class BatchRunner:
         job_manager_factory: Callable[[BatchJobCallback | None], JobManager] | None = None,
         item_callback: BatchProgressCallback | None = None,
         job_callback: BatchJobCallback | None = None,
+        control_callback: BatchControlCallback | None = None,
     ) -> None:
         """Create a batch runner with injectable adapter and job manager factory."""
         self.adapter = adapter or PyForestScanAdapter()
         self.job_manager_factory = job_manager_factory or (lambda callback: JobManager(event_sink=callback, adapter=self.adapter))
         self.item_callback = item_callback
         self.job_callback = job_callback
+        self.control_callback = control_callback
 
     def run(self, request: BatchRequest) -> BatchResult:
         """Run a sequential batch and write JSON, CSV, and HTML summaries."""
@@ -49,16 +53,21 @@ class BatchRunner:
         batch_folder = create_batch_folder(request.output_folder)
         batch_id = f"pfs-batch-{uuid.uuid4().hex[:10]}"
         items: list[BatchItemResult] = []
-        stop = False
-        for dataset in request.datasets:
-            if stop:
+        for index, dataset in enumerate(request.datasets):
+            control = self._control_state()
+            while control == "pause":
+                time.sleep(0.05)
+                control = self._control_state()
+            if control == "cancel":
+                items.extend(self._skipped_items(request.datasets[index:], batch_folder, "Cancelled before processing."))
                 break
             item = self._run_dataset(Path(dataset), batch_folder, request)
             items.append(item)
             if self.item_callback is not None:
                 self.item_callback(item)
             if item.status == "failed" and request.settings.stop_on_error:
-                stop = True
+                items.extend(self._skipped_items(request.datasets[index + 1 :], batch_folder, "Skipped after stop-on-error."))
+                break
         finished_at = datetime.now(timezone.utc).isoformat()
         result = BatchResult(
             batch_id=batch_id,
@@ -123,6 +132,31 @@ class BatchRunner:
                 outputs=(),
                 bounds_summary="Unavailable",
             )
+
+    def _control_state(self) -> str | None:
+        """Return the current batch control state from the UI, if any."""
+        if self.control_callback is None:
+            return None
+        state = self.control_callback()
+        return state if state in {"pause", "cancel"} else None
+
+    def _skipped_items(self, datasets: tuple[Path, ...], batch_folder: Path, message: str) -> list[BatchItemResult]:
+        """Create skipped records for datasets that were not processed."""
+        skipped: list[BatchItemResult] = []
+        for dataset in datasets:
+            context = batch_run_context(dataset, batch_folder).ensure_directories()
+            item = BatchItemResult(
+                dataset_path=Path(dataset),
+                run_context=context,
+                status="skipped",
+                message=message,
+                outputs=(),
+                bounds_summary="Not inspected",
+            )
+            skipped.append(item)
+            if self.item_callback is not None:
+                self.item_callback(item)
+        return skipped
 
 
 def _bounds_summary(bounds: object) -> str:

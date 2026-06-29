@@ -25,8 +25,9 @@ flowchart TD
 
 ## Pages
 
-- Home: plugin version, PyForestScan version, environment status, latest dataset,
-  latest project, recent activity, quick start, and documentation access.
+- Home: workflow dashboard with environment status, active dataset, batch status,
+  recommended next action, recent run folder, and primary Start Single Dataset /
+  Start Batch actions. Version details are collapsed by default.
 - Environment: adapter-backed runtime checks for QGIS, Python, PyForestScan,
   PDAL, GDAL, rasterio, and numpy.
 - Scientific Advisor: deterministic Knowledge Engine guidance after Dataset Explorer, including warnings, product explanations, parameter suggestions, and QGIS QA tools.
@@ -40,8 +41,9 @@ flowchart TD
   and progress by default. Product Plan JSON paths, pipeline stages, and logs are
   available under Technical Details.
 - Batch: discover multiple LAS, LAZ, COPC, and EPT datasets from a folder, select
-  files, apply one shared product plan/settings set, and process them sequentially
-  into one organized batch folder.
+  files, apply one shared product plan/settings set, process them sequentially
+  into one organized batch folder, filter results, retry failures, and optionally
+  load generated outputs into QGIS.
 - Results: view friendly Dataset Report, Product Plan, Job Summary, Output
   Folder, and Products links first, with raw paths under Run files and logs.
 - Settings: default output folder, logging placeholder, and future preferences.
@@ -123,3 +125,10 @@ selection.
 ## Batch Processing
 
 Mission Control includes a Batch page for sequential folder-to-products workflows. Users choose an input folder, optional recursive discovery, selected files, one output folder, products, and shared settings. Batch v1 creates one `pyforestscan_batch_<timestamp>` folder and one normal run folder per selected dataset. Each dataset reuses Dataset Explorer, Product Planner, JobManager, the pipeline registry, and the adapter boundary. Failures are recorded per file and do not stop the whole batch unless the user enables stop-on-error. Batch summary JSON, CSV, and HTML files are shown in Results after completion.
+
+
+## UX Streamlining
+
+The Home page is intentionally a workflow dashboard rather than a documentation landing page. The former Open Documentation button was removed from Home because it competed with the primary actions. Users start work through Start Single Dataset or Start Batch, while technical paths and internal files remain collapsed on their respective pages.
+
+Batch v2 keeps the default workflow focused on the choices users need: input folder, selected files, output folder, products, shared settings, and run controls. Internal reports remain available through Results and run-folder summaries.

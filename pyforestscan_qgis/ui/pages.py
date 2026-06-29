@@ -119,33 +119,47 @@ class MissionPage(QWidget):
 
 
 class HomePage(MissionPage):
-    """Mission Control home page."""
+    """Mission Control workflow dashboard."""
 
-    openDocumentationRequested = pyqtSignal()
+    startSingleDatasetRequested = pyqtSignal()
+    startBatchRequested = pyqtSignal()
 
     def __init__(self, plugin_version: str, parent: QWidget | None = None) -> None:
-        """Create the home page."""
+        """Create the home dashboard."""
         super().__init__("Home", parent)
-        summary = self.add_section("Project")
-        self.plugin_version_label = QLabel(f"Plugin version: {plugin_version}")
-        self.pyforestscan_version_label = QLabel("PyForestScan version: Unknown")
-        self.environment_label = QLabel("Environment: Unknown")
-        self.dataset_label = QLabel("Latest dataset: None")
-        self.project_label = QLabel("Latest project: None")
-        for widget in (
-            self.plugin_version_label,
-            self.pyforestscan_version_label,
-            self.environment_label,
-            self.dataset_label,
-            self.project_label,
-        ):
-            summary.addWidget(widget)
+        dashboard = self.add_section("Workflow Dashboard")
+        self.environment_label = _body_label("Environment: Unknown")
+        self.dataset_label = _body_label("Active dataset: None")
+        self.batch_label = _body_label("Batch: Not started")
+        self.next_action_label = QLabel("Next: refresh the environment or start a dataset workflow.")
+        self.next_action_label.setObjectName("advisorMetric")
+        self.next_action_label.setWordWrap(True)
+        self.recent_run_label = _body_label("Recent run folder: None")
+        dashboard.addWidget(self.environment_label)
+        dashboard.addWidget(self.dataset_label)
+        dashboard.addWidget(self.batch_label)
+        dashboard.addWidget(self.next_action_label)
+        dashboard.addWidget(self.recent_run_label)
 
-        quick = self.add_section("Quick Start")
-        quick.addWidget(QLabel("1. Check the environment.\n2. Inspect a dataset.\n3. Plan products.\n4. Run the CHM job when the plan is ready."))
-        docs = QPushButton("Open Documentation")
-        docs.clicked.connect(self.openDocumentationRequested.emit)
-        quick.addWidget(docs)
+        actions = QHBoxLayout()
+        self.start_single_button = QPushButton("Start Single Dataset")
+        self.start_single_button.setMinimumHeight(42)
+        self.start_single_button.clicked.connect(self.startSingleDatasetRequested.emit)
+        self.start_batch_button = QPushButton("Start Batch")
+        self.start_batch_button.setMinimumHeight(42)
+        self.start_batch_button.clicked.connect(self.startBatchRequested.emit)
+        actions.addWidget(self.start_single_button)
+        actions.addWidget(self.start_batch_button)
+        actions.addStretch(1)
+        dashboard.addLayout(actions)
+
+        versions = _collapsible_section(self.content_layout, "Version Details", checked=False)
+        version_group, version_layout = versions
+        self.plugin_version_label = _details_label(f"Plugin version: {plugin_version}")
+        self.pyforestscan_version_label = _details_label("PyForestScan version: Unknown")
+        version_layout.addWidget(self.plugin_version_label)
+        version_layout.addWidget(self.pyforestscan_version_label)
+        _wire_collapsible_group(version_group)
 
         activity = self.add_section("Recent Activity")
         self.activity_list = QListWidget()
@@ -155,16 +169,18 @@ class HomePage(MissionPage):
         """Update version labels."""
         self.pyforestscan_version_label.setText(f"PyForestScan version: {pyforestscan_version or 'Unknown'}")
 
-    def set_summary(self, environment: str, dataset: str | None, project: str | None) -> None:
-        """Update home summary labels."""
+    def set_summary(self, environment: str, dataset: str | None, project: str | None, batch_status: str = "Not started", recent_run: str | None = None) -> None:
+        """Update dashboard labels."""
         self.environment_label.setText(f"Environment: {environment}")
-        self.dataset_label.setText(f"Latest dataset: {dataset or 'None'}")
-        self.project_label.setText(f"Latest project: {project or 'None'}")
+        self.dataset_label.setText(f"Active dataset: {Path(dataset).name if dataset else 'None'}")
+        self.batch_label.setText(f"Batch: {batch_status}")
+        self.recent_run_label.setText(f"Recent run folder: {recent_run or 'None'}")
+        self.next_action_label.setText(f"Next: {_next_home_action(environment, dataset, batch_status)}")
 
     def set_activities(self, activities: tuple[tuple[str, str], ...]) -> None:
         """Display recent activity."""
         self.activity_list.clear()
-        for label, detail in activities:
+        for label, detail in activities[:8]:
             self.activity_list.addItem(f"{label}: {detail}" if detail else label)
 
 
@@ -1038,6 +1054,10 @@ class BatchPage(MissionPage):
         self.adapter = adapter
         self.discovered_paths: list[Path] = []
         self.latest_result: object | None = None
+        self.batch_items: list[object] = []
+        self.cancel_requested = False
+        self.pause_requested = False
+        self.failed_paths: list[Path] = []
 
         source = self.add_section("Input Folder")
         folder_row = QHBoxLayout()
@@ -1076,6 +1096,10 @@ class BatchPage(MissionPage):
         output_row.addWidget(output_browse, 0)
         output.addLayout(output_row)
         output.addWidget(_body_label("Mission Control creates one batch folder, then one organized run folder per selected dataset."))
+        self.open_batch_folder_button = QPushButton("Open Batch Output Folder")
+        self.open_batch_folder_button.setEnabled(False)
+        self.open_batch_folder_button.clicked.connect(self.open_batch_output_folder)
+        output.addWidget(self.open_batch_folder_button)
 
         products = self.add_section("Products and Shared Settings")
         self.product_checks: dict[ProductType, QCheckBox] = {}
@@ -1113,7 +1137,10 @@ class BatchPage(MissionPage):
         settings_form.addRow("CHM interpolation", self.chm_interpolation_combo)
         products.addLayout(settings_form)
         self.stop_on_error_check = QCheckBox("Stop batch when a file fails")
+        self.load_outputs_check = QCheckBox("Load generated outputs into QGIS")
+        self.load_outputs_check.setToolTip("Off by default for batches so QGIS is not overwhelmed by many layers.")
         products.addWidget(self.stop_on_error_check)
+        products.addWidget(self.load_outputs_check)
         for check in self.product_checks.values():
             check.toggled.connect(lambda _checked: self._refresh_footprint_label())
         self.resolution_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
@@ -1128,7 +1155,22 @@ class BatchPage(MissionPage):
         self.run_button = QPushButton("Run Selected Files Sequentially")
         self.run_button.setMinimumHeight(40)
         self.run_button.clicked.connect(self.run_batch)
-        run_section.addWidget(self.run_button)
+        button_row = QHBoxLayout()
+        button_row.addWidget(self.run_button)
+        self.pause_button = QPushButton("Pause After Current File")
+        self.pause_button.setEnabled(False)
+        self.pause_button.clicked.connect(self.toggle_pause)
+        self.cancel_button = QPushButton("Cancel Remaining")
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.clicked.connect(self.cancel_remaining)
+        self.retry_failed_button = QPushButton("Retry Failed Files")
+        self.retry_failed_button.setEnabled(False)
+        self.retry_failed_button.clicked.connect(self.retry_failed_files)
+        button_row.addWidget(self.pause_button)
+        button_row.addWidget(self.cancel_button)
+        button_row.addWidget(self.retry_failed_button)
+        button_row.addStretch(1)
+        run_section.addLayout(button_row)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
@@ -1137,8 +1179,18 @@ class BatchPage(MissionPage):
         self.status_label.setObjectName("advisorMetric")
         self.status_label.setWordWrap(True)
         run_section.addWidget(self.status_label)
+        filter_row = QHBoxLayout()
+        filter_row.addWidget(QLabel("Show"))
+        self.result_filter_combo = QComboBox()
+        self.result_filter_combo.addItems(("All", "Failed", "Completed", "Skipped"))
+        self.result_filter_combo.currentTextChanged.connect(lambda _value: self._refresh_batch_results())
+        filter_row.addWidget(self.result_filter_combo)
+        filter_row.addStretch(1)
+        run_section.addLayout(filter_row)
+        self.summary_label = _body_label("Summary: no batch run yet.")
+        run_section.addWidget(self.summary_label)
         self.batch_results = QListWidget()
-        self.batch_results.setMinimumHeight(180)
+        self.batch_results.setMinimumHeight(220)
         run_section.addWidget(self.batch_results)
 
     def set_default_output_folder(self, folder: Path | None) -> None:
@@ -1201,6 +1253,7 @@ class BatchPage(MissionPage):
             chm_interpolation=self.chm_interpolation_combo.currentText(),
             canopy_cover_height_threshold=self.canopy_threshold_spin.value(),
             stop_on_error=self.stop_on_error_check.isChecked(),
+            load_outputs_into_qgis=self.load_outputs_check.isChecked(),
         )
         request = BatchRequest(
             input_folder=Path(self.input_folder_edit.text().strip()),
@@ -1210,9 +1263,16 @@ class BatchPage(MissionPage):
             settings=settings,
             title="PyForestScan Batch",
         )
+        self.batch_items = []
+        self.failed_paths = []
+        self.cancel_requested = False
+        self.pause_requested = False
         self.batch_results.clear()
         self.progress_bar.setValue(0)
         self.run_button.setEnabled(False)
+        self.pause_button.setEnabled(True)
+        self.cancel_button.setEnabled(True)
+        self.retry_failed_button.setEnabled(False)
         self.status_label.setText(f"Status: Running {len(selected)} dataset(s) sequentially.")
         self._processed_items = 0
         self._total_items = len(selected)
@@ -1220,6 +1280,7 @@ class BatchPage(MissionPage):
             adapter=self.adapter,
             item_callback=self._on_batch_item,
             job_callback=self._on_batch_job_update,
+            control_callback=self._batch_control_state,
         )
         try:
             result = runner.run(request)
@@ -1229,11 +1290,18 @@ class BatchPage(MissionPage):
             return
         finally:
             self.run_button.setEnabled(True)
+            self.pause_button.setEnabled(False)
+            self.cancel_button.setEnabled(False)
+            self.pause_requested = False
+            self.pause_button.setText("Pause After Current File")
         self.latest_result = result
         self.progress_bar.setValue(100 if result.items else 0)
         self.status_label.setText(
             f"Status: Batch complete. Completed {result.success_count}; failed {result.failure_count}. Summary: {result.summary_html}"
         )
+        self._set_batch_summary(result)
+        self.open_batch_folder_button.setEnabled(True)
+        self.retry_failed_button.setEnabled(bool(self.failed_paths))
         self.batchCompleted.emit(result)
 
     def _selected_paths(self) -> list[Path]:
@@ -1252,15 +1320,23 @@ class BatchPage(MissionPage):
 
     def _refresh_footprint_label(self) -> None:
         selected_count = len(self._selected_paths())
-        products = [PRODUCT_LABELS[product] for product, check in self.product_checks.items() if check.isChecked()]
-        pad_note = "PAD storage depends on height-bin count." if ProductType.PAD in [p for p, c in self.product_checks.items() if c.isChecked()] else ""
+        selected_products = [product for product, check in self.product_checks.items() if check.isChecked()]
+        products = [PRODUCT_LABELS[product] for product in selected_products]
+        warnings: list[str] = []
+        if selected_count >= 10:
+            warnings.append("Large batch: many files selected.")
+        if selected_count * max(1, len(selected_products)) >= 30:
+            warnings.append("Large workload: many file/product combinations selected.")
+        if ProductType.PAD in selected_products:
+            warnings.append("PAD storage depends on height-bin count and can be large.")
+        warning_text = ("\nWarnings: " + " ".join(warnings)) if warnings else ""
         self.footprint_label.setText(
             f"Selected files: {selected_count}\n"
             f"Selected products: {', '.join(products) if products else 'none'}\n"
             f"Shared grid resolution: {self.resolution_spin.value():g}\n"
-            "Per-file raster dimensions and storage are estimated after each dataset is inspected and its Product Plan is written. "
-            "Processing time depends on machine, storage speed, point density, and product selection. "
-            f"{pad_note}"
+            "Raster dimensions and storage are estimated per file after inspection; summaries record observed output storage when files exist. "
+            "Processing time depends on machine, storage speed, point density, and product selection."
+            f"{warning_text}"
         )
 
     def _on_batch_item(self, item: object) -> None:
@@ -1272,13 +1348,102 @@ class BatchPage(MissionPage):
         message = getattr(item, "message")
         run_folder = getattr(getattr(item, "run_context"), "run_folder")
         bounds = getattr(item, "bounds_summary", "Unavailable")
-        self.batch_results.addItem(f"{status.upper()} - {dataset_name}\nBounds: {bounds}\n{message}\n{run_folder}")
+        self.batch_items.append(item)
+        if status == "failed":
+            self.failed_paths.append(Path(getattr(item, "dataset_path")))
+        self._refresh_batch_results()
         self.status_label.setText(f"Status: {self._processed_items}/{total} dataset(s) processed.")
         QApplication.processEvents()
 
     def _on_batch_job_update(self, job: JobRecord) -> None:
-        self.jobUpdated.emit(job)
+        if self.load_outputs_check.isChecked():
+            self.jobUpdated.emit(job)
         QApplication.processEvents()
+
+    def _batch_control_state(self) -> str | None:
+        """Return pause/cancel state for the core batch runner."""
+        QApplication.processEvents()
+        if self.cancel_requested:
+            return "cancel"
+        if self.pause_requested:
+            return "pause"
+        return None
+
+    def toggle_pause(self) -> None:
+        """Pause or resume between batch files."""
+        self.pause_requested = not self.pause_requested
+        self.pause_button.setText("Resume Batch" if self.pause_requested else "Pause After Current File")
+        self.status_label.setText("Status: Batch will pause after the current file." if self.pause_requested else "Status: Batch resumed.")
+
+    def cancel_remaining(self) -> None:
+        """Cancel files that have not started yet."""
+        self.cancel_requested = True
+        self.pause_requested = False
+        self.pause_button.setText("Pause After Current File")
+        self.status_label.setText("Status: Cancelling remaining files after the current file.")
+
+    def retry_failed_files(self) -> None:
+        """Retry failed files from the last batch with current settings."""
+        if not self.failed_paths:
+            self.status_label.setText("Status: No failed files are available to retry.")
+            return
+        self.discovered_paths = list(self.failed_paths)
+        self.file_list.clear()
+        for path in self.discovered_paths:
+            row = QListWidgetItem(f"{path.name}\nStatus: retry queued; bounds: previous failure\n{path}")
+            row.setFlags(row.flags() | Qt.ItemIsUserCheckable)
+            row.setCheckState(Qt.Checked)
+            row.setSizeHint(QSize(0, 72))
+            self.file_list.addItem(row)
+        self.failed_paths = []
+        self.retry_failed_button.setEnabled(False)
+        self.status_label.setText("Status: Failed files are queued for retry. Click Run Selected Files Sequentially.")
+        self._refresh_footprint_label()
+
+    def open_batch_output_folder(self) -> None:
+        """Open the latest batch folder, or the selected output root before a run."""
+        folder = getattr(self.latest_result, "batch_folder", None)
+        if folder is None:
+            folder = Path(self.output_folder_edit.text().strip()) if self.output_folder_edit.text().strip() else None
+        if folder is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    def _refresh_batch_results(self) -> None:
+        """Refresh the visible batch result list using the selected filter."""
+        selected_filter = self.result_filter_combo.currentText().lower() if hasattr(self, "result_filter_combo") else "all"
+        self.batch_results.clear()
+        products = ", ".join(PRODUCT_LABELS[product] for product, check in self.product_checks.items() if check.isChecked()) or "none"
+        for item in self.batch_items:
+            status = getattr(item, "status")
+            if selected_filter != "all" and status != selected_filter:
+                continue
+            dataset_name = Path(getattr(item, "dataset_path")).name
+            message = getattr(item, "message")
+            run_folder = getattr(getattr(item, "run_context"), "run_folder")
+            bounds = getattr(item, "bounds_summary", "Unavailable")
+            progress = "100%" if status == "completed" else ("0%" if status == "skipped" else "needs review")
+            output_count = len(getattr(item, "outputs", ()))
+            self.batch_results.addItem(
+                f"{status.upper()} - {dataset_name}\n"
+                f"Products: {products}\n"
+                f"Progress: {progress}; outputs: {output_count}\n"
+                f"Output folder: {run_folder}\n"
+                f"Bounds: {bounds}\n"
+                f"Message: {message}"
+            )
+
+    def _set_batch_summary(self, result: object) -> None:
+        """Display the completed batch summary."""
+        total = len(getattr(result, "items", ()))
+        completed = getattr(result, "success_count", 0)
+        failed = getattr(result, "failure_count", 0)
+        skipped = getattr(result, "skipped_count", 0)
+        outputs = getattr(result, "total_output_count", 0)
+        storage = _format_storage(getattr(result, "total_estimated_output_bytes", 0))
+        self.summary_label.setText(
+            f"Summary: total {total}; completed {completed}; failed {failed}; skipped {skipped}; "
+            f"outputs {outputs}; observed output storage {storage}."
+        )
 
 
 class ResultsPage(MissionPage):
@@ -1418,6 +1583,29 @@ class SettingsPage(MissionPage):
 
 
 
+
+
+def _format_storage(value: int) -> str:
+    """Return a compact storage label."""
+    amount = float(max(0, value))
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if amount < 1024 or unit == "TB":
+            return f"{amount:.1f} {unit}" if unit != "B" else f"{int(amount)} B"
+        amount /= 1024
+    return f"{amount:.1f} TB"
+
+
+def _next_home_action(environment: str, dataset: str | None, batch_status: str) -> str:
+    """Return a concise next action for the Home dashboard."""
+    if environment == "Unknown":
+        return "open Environment and refresh dependency checks."
+    if environment == "NOT READY":
+        return "review Environment warnings before processing."
+    if "Running" in batch_status:
+        return "monitor the Batch page until the current run finishes."
+    if not dataset:
+        return "start a single dataset workflow or open Batch for multiple files."
+    return "build a Product Plan or run selected products from Processing."
 
 
 def _processing_footprint_text(footprint: ProcessingFootprint) -> str:

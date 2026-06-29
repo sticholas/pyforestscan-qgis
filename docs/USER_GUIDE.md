@@ -7,7 +7,7 @@ so the main page stack can use the full window, and each page uses one
 predictable vertical scroll area. It provides guided pages for the current
 workflows:
 
-- Home: versions, status, quick start, and recent activity.
+- Home: workflow dashboard with status, recommended next action, recent run folder, and Start Single Dataset / Start Batch actions.
 - Environment: refresh dependency checks.
 - Dataset: select a lidar dataset and output folder, inspect the dataset, and preview its spatial footprint.
 - Planning: build a product plan from the active Dataset Explorer result.
@@ -231,15 +231,17 @@ Product Planner writes these files inside the selected output folder:
 
 Use the Batch page when several lidar files need the same products and shared settings. Choose an input folder, decide whether to search subfolders, discover supported LAS, LAZ, COPC, COPC LAZ, and local EPT `ept.json` files, then select the files to run. Choose one output folder and one shared product/settings set.
 
-Batch v1 runs files sequentially. It creates a folder like:
+Batch runs files sequentially. It creates a folder like:
 
 ```text
 <output_folder>/pyforestscan_batch_<YYYYMMDD_HHMMSS>/
 ```
 
-Each selected dataset receives its own run folder inside that batch folder, with the same `reports/`, `tables/`, `outputs/`, `logs/`, and `temp/` structure used by the single-file workflow. The batch also writes `batch_summary.json`, `batch_summary.csv`, and `batch_summary.html`. Failed files are recorded in the summary and the batch continues by default. Enable stop-on-error if the batch should stop after the first failed file.
+Each selected dataset receives its own run folder inside that batch folder, with the same `reports/`, `tables/`, `outputs/`, `logs/`, and `temp/` structure used by the single-file workflow. The batch also writes `batch_summary.json`, `batch_summary.csv`, and `batch_summary.html`. Failed files are recorded in the summary and the batch continues by default. Enable stop-on-error if the batch should stop after the first failed file. Use Retry Failed Files to queue failures again with the current shared settings. Pause and Cancel Remaining apply between files, not during an individual product calculation.
 
-Batch processing reuses Dataset Explorer, Product Planner, JobManager, Pipeline, and Adapter services. It does not use separate scientific processing code. Batch v1 is sequential and may keep QGIS busy during large runs; parallel/background execution is reserved for a later phase.
+Generated outputs are not loaded into QGIS by default during batch processing. Enable Load generated outputs into QGIS only when the batch is small enough that adding many layers will not clutter or slow the project.
+
+Batch summaries report total files, completed, failed, skipped, total output count, and observed output storage. Batch processing reuses Dataset Explorer, Product Planner, JobManager, Pipeline, and Adapter services. It does not use separate scientific processing code. Batch v1 is sequential and may keep QGIS busy during large runs; parallel/background execution is reserved for a later phase.
 
 ## Product Job Execution
 

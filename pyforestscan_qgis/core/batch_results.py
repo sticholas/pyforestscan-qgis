@@ -21,6 +21,10 @@ def batch_result_to_dict(result: BatchResult) -> dict[str, Any]:
         "batch_folder": str(result.batch_folder),
         "success_count": result.success_count,
         "failure_count": result.failure_count,
+        "skipped_count": result.skipped_count,
+        "total_files": len(result.items),
+        "total_output_count": result.total_output_count,
+        "total_estimated_output_bytes": result.total_estimated_output_bytes,
         "items": [
             {
                 "dataset_path": str(item.dataset_path),
@@ -52,7 +56,7 @@ def write_batch_summary_csv(result: BatchResult, path: Path | str | None = None)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow(("dataset", "status", "message", "bounds", "run_folder", "outputs"))
+        writer.writerow(("dataset", "status", "message", "bounds", "run_folder", "output_count", "outputs"))
         for item in result.items:
             writer.writerow((
                 str(item.dataset_path),
@@ -60,6 +64,7 @@ def write_batch_summary_csv(result: BatchResult, path: Path | str | None = None)
                 item.message,
                 item.bounds_summary,
                 str(item.run_context.run_folder),
+                len(item.outputs),
                 "; ".join(str(path) for path in item.outputs),
             ))
     return output
@@ -86,7 +91,7 @@ def write_batch_summary_html(result: BatchResult, path: Path | str | None = None
 </head><body>
 <h1>{escape(result.title)}</h1>
 <p>Started: {escape(result.started_at)}<br>Finished: {escape(result.finished_at)}<br>Batch folder: {escape(str(result.batch_folder))}</p>
-<p>Completed: {result.success_count} &nbsp; Failed: {result.failure_count}</p>
+<p>Total files: {len(result.items)} &nbsp; Completed: {result.success_count} &nbsp; Failed: {result.failure_count} &nbsp; Skipped: {result.skipped_count}<br>Total outputs: {result.total_output_count} &nbsp; Observed output storage: {_format_bytes(result.total_estimated_output_bytes)}</p>
 <table><tr><th>Dataset</th><th>Status</th><th>Message</th><th>Bounds</th><th>Run folder</th><th>Outputs</th></tr>{rows}</table>
 </body></html>"""
     output.write_text(html, encoding="utf-8")
@@ -99,3 +104,13 @@ def write_batch_summaries(result: BatchResult) -> BatchResult:
     write_batch_summary_csv(result)
     write_batch_summary_html(result)
     return result
+
+
+def _format_bytes(value: int) -> str:
+    """Format byte counts for batch summary reports."""
+    amount = float(max(0, value))
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if amount < 1024 or unit == "TB":
+            return f"{amount:.1f} {unit}" if unit != "B" else f"{int(amount)} B"
+        amount /= 1024
+    return f"{amount:.1f} TB"

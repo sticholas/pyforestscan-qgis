@@ -58,6 +58,7 @@ class MissionControlDock(QDockWidget):
         self.knowledge_engine = KnowledgeEngine()
         self.state = MissionControlState()
         self.job_history: tuple[JobRecord, ...] = ()
+        self.batch_status = "Not started"
         self.loaded_result_paths: set[Path] = set()
         self.root_widget = QWidget(self)
         self.ui = FORM_CLASS()
@@ -124,7 +125,8 @@ class MissionControlDock(QDockWidget):
 
     def _wire_signals(self) -> None:
         self.ui.navigationList.currentRowChanged.connect(self.ui.pageStack.setCurrentIndex)
-        self.home_page.openDocumentationRequested.connect(self._open_documentation)
+        self.home_page.startSingleDatasetRequested.connect(lambda: self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Dataset")))
+        self.home_page.startBatchRequested.connect(lambda: self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Batch")))
         self.environment_page.environmentChanged.connect(self._set_environment_status)
         self.dataset_page.datasetExplored.connect(self._set_dataset_report)
         self.planning_page.planningChanged.connect(self._set_planning_status)
@@ -230,7 +232,9 @@ class MissionControlDock(QDockWidget):
         summary_html = getattr(result, "summary_html", None)
         success_count = getattr(result, "success_count", 0)
         failure_count = getattr(result, "failure_count", 0)
-        state = self.state.with_activity("Batch complete", f"Completed {success_count}; failed {failure_count}")
+        skipped_count = getattr(result, "skipped_count", 0)
+        self.batch_status = f"Completed {success_count}; failed {failure_count}; skipped {skipped_count}"
+        state = self.state.with_activity("Batch complete", self.batch_status)
         for path in (summary_html, summary_csv, summary_json):
             if isinstance(path, Path):
                 state = state.with_report_path(path)
@@ -274,10 +278,13 @@ class MissionControlDock(QDockWidget):
 
     def _refresh_home(self) -> None:
         self.home_page.set_versions(self._pyforestscan_version())
+        recent_run = str(self.state.active_run.run_folder) if self.state.active_run is not None else None
         self.home_page.set_summary(
             self.state.environment_status,
             self.state.latest_dataset,
             self.state.latest_project,
+            self.batch_status,
+            recent_run,
         )
         self.home_page.set_activities(tuple((item.label, item.detail) for item in self.state.activities))
         self.results_page.set_run_context(self.state.active_run)
