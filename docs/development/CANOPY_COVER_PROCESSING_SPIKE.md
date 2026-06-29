@@ -2,7 +2,7 @@
 
 Phase 11A enables the second real scientific product path: Canopy Cover
 GeoTIFF generation for a single small lidar dataset. CHM remains implemented.
-PAI, PAD, FHD, and rumple remain unimplemented user-facing products.
+PAI, PAD, FHD, and rumple are implemented in later phases and should remain compatible with canopy cover.
 
 ## Exact PyForestScan API Used
 
@@ -73,6 +73,7 @@ and the GeoTIFF as a `canopy_cover_geotiff` result when the job succeeds.
 ## Manual QA Checklist
 
 - Output GeoTIFF opens in QGIS.
+- Auto-loaded canopy cover uses grayscale styling and should not appear blank from a stale `0` to `0` display range.
 - Values are in the expected canopy cover range, normally `0` to `1`, with nodata
   where source data are insufficient.
 - CRS matches the input dataset CRS reported by Dataset Explorer.
@@ -93,8 +94,8 @@ and the GeoTIFF as a `canopy_cover_geotiff` result when the job succeeds.
   should fail clearly and write a failed summary.
 - If the GeoTIFF writer does not create a file, the job should fail instead of
   reporting partial success.
-- PAI, PAD, FHD, and rumple remain skipped/not implemented as user-facing
-  products.
+- PAI, PAD, FHD, and rumple should continue to run through their own pipelines
+  when selected in later-phase workflows.
 
 ## Limitations
 
@@ -103,5 +104,4 @@ and the GeoTIFF as a `canopy_cover_geotiff` result when the job succeeds.
 - Internal PAD is calculated only as a prerequisite for canopy cover and is not
   exported.
 - HAG is requested with `hag=True`; DTM-backed height normalization is not wired.
-- Basic layer styling/statistics are best-effort; no publication symbology,
-  pyramids, or layout is applied.
+- Auto-loaded canopy cover uses grayscale styling with refreshed display statistics; no publication symbology, pyramids, or layout is applied.

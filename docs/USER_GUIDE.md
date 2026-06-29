@@ -204,10 +204,16 @@ active Product Planner report. Users do not need to browse for
 `product_plan.json`; Mission Control uses the current run folder automatically.
 The job validates the plan, runs implemented product pipelines through the
 adapter, writes selected GeoTIFF outputs in `outputs/`, and writes
-`logs/job_summary.json`.
+`logs/job_summary.json` plus `logs/job_summary.html`.
 
 CHM, Canopy Cover, PAD, PAI, FHD, and Rumple are implemented for
 single-dataset workflows. Rumple writes a scalar CSV summary rather than a raster.
+
+Raster outputs are loaded into QGIS with grayscale styling by default. Mission
+Control refreshes provider statistics and applies an explicit display min/max so
+a newly generated raster should not appear blank merely because QGIS initially
+reported a `0` to `0` range. The selected display range is also recorded on the
+QGIS layer as PyForestScan custom properties.
 
 ### Workflow
 
@@ -251,7 +257,9 @@ flowchart TD
 - Height bin size must be greater than zero and controls the vertical voxel
   height used by PyForestScan.
 - PAD output filename must be a simple `.tif` or `.tiff` name. PAD is written as
-  a multi-band GeoTIFF, with one band per height bin.
+  a multi-band GeoTIFF, with one band per height bin. Mission Control initially
+  displays PAD band 1 in grayscale; users can switch bands later in QGIS layer
+  styling if they want to inspect other height bins.
 - PAI output filename must be a simple `.tif` or `.tiff` name. PAI is written as
   a single-band GeoTIFF.
 
@@ -264,6 +272,17 @@ flowchart TD
   a scalar `.csv` summary because PyForestScan 0.4.0 returns one rumple index
   value rather than a raster.
 - Rumple output filename must be a simple `.csv` name.
+
+
+### Raster Display QA
+
+After any raster product completes, confirm the auto-loaded QGIS layer has visible
+contrast without removing and re-adding it manually. CHM, PAI, and FHD should use
+an observed non-zero range when data are present. Canopy Cover should display in
+a `0` to `1` range when provider statistics are unavailable. PAD should load as
+`PyForestScan PAD band 1 - <dataset>` using band 1 in grayscale. No generated
+raster should receive a `0` to `0` display range unless the provider confirms the
+raster is truly all zero.
 
 ### Canopy Cover QA
 

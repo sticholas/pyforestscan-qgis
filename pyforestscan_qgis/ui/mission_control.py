@@ -24,6 +24,7 @@ from .pages import (
     ResultsPage,
     SettingsPage,
 )
+from .raster_styling import apply_grayscale_renderer, is_raster_result, layer_display_name
 from .state import MissionControlState
 
 FORM_CLASS, _ = uic.loadUiType(str(plugin_root() / "ui" / "forms" / "mission_control.ui"))
@@ -172,7 +173,7 @@ class MissionControlDock(QDockWidget):
     def _load_job_outputs(self, job: JobRecord) -> None:
         """Best-effort load of generated raster outputs into QGIS."""
         for result in job.results:
-            if result.result_type not in {"chm_geotiff", "canopy_cover_geotiff", "pad_geotiff", "pai_geotiff", "fhd_geotiff"} or result.path in self.loaded_result_paths:
+            if not is_raster_result(result.result_type) or result.path in self.loaded_result_paths:
                 continue
             if not result.path.exists():
                 continue
@@ -187,29 +188,13 @@ class MissionControlDock(QDockWidget):
 
     def _layer_name(self, path: Path, result_type: str) -> str:
         """Return a friendly layer name for generated rasters."""
-        product = {
-            "canopy_cover_geotiff": "Canopy Cover",
-            "pad_geotiff": "PAD",
-            "pai_geotiff": "PAI",
-            "fhd_geotiff": "FHD",
-        }.get(result_type, "CHM")
-        if self.state.active_run is not None:
-            return f"PyForestScan {product} - {self.state.active_run.lidar_path.stem}"
-        return f"PyForestScan {product}"
+        dataset_stem = self.state.active_run.lidar_path.stem if self.state.active_run is not None else path.stem
+        return layer_display_name(result_type, dataset_stem)
 
     def _polish_raster_layer(self, layer: object, result_type: str) -> None:
         """Best-effort generated raster statistics and styling."""
         try:
-            provider = layer.dataProvider()
-            provider.bandStatistics(1)
-        except Exception:  # noqa: BLE001 - statistics are helpful but optional.
-            return
-        try:
-            from qgis.core import QgsSingleBandGrayRenderer
-
-            renderer = QgsSingleBandGrayRenderer(layer.dataProvider(), 1)
-            layer.setRenderer(renderer)
-            layer.triggerRepaint()
+            apply_grayscale_renderer(layer, result_type, band=1)
         except Exception:  # noqa: BLE001 - styling should never break layer loading.
             return
 

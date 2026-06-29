@@ -1,8 +1,9 @@
 # CHM Processing Manual Testing
 
 Phase 10B stabilizes the first production product path: Canopy Height Model
-(CHM) generation for a single small lidar dataset. All other planned products
-remain not implemented.
+(CHM) generation for a single small lidar dataset. Later phases add Canopy
+Cover, PAD, PAI, FHD, and Rumple while keeping CHM on the same adapter/pipeline
+path.
 
 ## Exact PyForestScan API Used
 
@@ -50,7 +51,7 @@ Mission Control writes CHM outputs inside the active run folder:
 6. On Planning, leave only `Canopy Height Model (CHM)` selected for the first
    test, choose a conservative grid resolution such as `1.0`, choose interpolation
    and cleanup options, confirm the output filename, and build the plan.
-7. On Processing, choose `Start CHM Job`.
+7. On Processing, choose `Start Processing Job`.
 8. Confirm the pipeline reaches `completed` and the chosen CHM GeoTIFF exists in `outputs/`.
 9. Confirm QGIS adds the CHM raster layer automatically when possible.
 10. Open Results and verify Dataset Report, Product Plan, Job Summary, Output
@@ -73,12 +74,13 @@ Mission Control writes CHM outputs inside the active run folder:
   should fail clearly and write a failed summary.
 - If the GeoTIFF writer does not create a file, the job should fail instead of
   reporting partial success.
-- If non-CHM products are selected, they remain skipped/not implemented and do
-  not create rasters.
+- If additional products are selected in later phases, they run through their
+  own adapter-backed pipelines and should not bypass the CHM path.
 
 ## Manual QA Checklist
 
 - Output GeoTIFF opens in QGIS.
+- Auto-loaded CHM uses grayscale styling with refreshed provider statistics and should not appear blank from a stale `0` to `0` display range.
 - CHM values look reasonable for the forest/site and contain no obvious all-zero
   or all-nodata result.
 - CRS matches the input dataset CRS reported by Dataset Explorer.
@@ -99,12 +101,14 @@ Mission Control writes CHM outputs inside the active run folder:
 - Output missing: inspect `logs/job_summary.json`; the job should be `failed` if
   the GeoTIFF was not created.
 - QGIS layer does not load: confirm the GeoTIFF exists, then add it manually from
-  `outputs/`; automatic loading is best-effort.
+  `outputs/`; automatic loading is best-effort. If the layer loads but looks
+  blank, inspect the PyForestScan custom display range properties and compare
+  with the provider statistics in QGIS.
 
 ## Limitations
 
 - Small datasets only; no tiling or batch execution yet.
 - HAG is requested with `hag=True`; DTM-backed height normalization is not wired.
 - Interpolation controls are available, but no DTM-backed HAG configuration is exposed yet.
-- Basic layer styling/statistics are best-effort; no publication symbology, pyramids, or layout is applied.
-- PAI, PAD, FHD, canopy cover, and rumple remain unimplemented.
+- Auto-loaded CHM uses grayscale display styling only; no publication symbology, pyramids, or layout is applied.
+- Batch processing remains unimplemented.

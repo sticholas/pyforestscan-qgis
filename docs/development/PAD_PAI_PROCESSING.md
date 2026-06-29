@@ -57,9 +57,11 @@ PAD is a height-binned 3D product, so Phase 13A does not flatten it into a false
 
 Each band represents one vertical bin. The bin height comes from Product
 Planner's `height_bin_size` parameter. Band 1 is the first vertical bin returned
-by PyForestScan after ground handling. The adapter currently writes bands in the
-same order returned by `calculate_pad`; it does not yet write per-band metadata
-labels.
+by PyForestScan after ground handling. Mission Control auto-loads PAD as
+`PyForestScan PAD band 1 - <dataset>` with grayscale styling and an explicit
+display range. Users can switch to other PAD bands in QGIS layer styling. The
+adapter currently writes bands in the same order returned by `calculate_pad`; it
+does not yet write per-band metadata labels.
 
 ## Expected Run Folder Outputs
 
@@ -106,6 +108,7 @@ height bin size, output filenames, and result paths such as `pad_geotiff` and
 
 - PAI opens as a single-band raster in QGIS.
 - PAD opens as a multi-band raster in QGIS.
+- Automatic PAD loading displays band 1 in grayscale with refreshed provider statistics.
 - CRS matches the input dataset CRS reported by Dataset Explorer.
 - Extent aligns with the point cloud footprint.
 - PAI values are non-negative and spatially plausible.

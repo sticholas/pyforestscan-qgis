@@ -1,7 +1,9 @@
 # Full Product Workflow Manual QA
 
 Phase 15A stabilizes the complete single-dataset product workflow and polishes
-Mission Control defaults.
+Mission Control defaults. Phase 15B adds explicit raster display statistics and
+contrast handling so auto-loaded rasters appear correctly immediately after
+creation.
 
 ## Expected Workflow
 
@@ -49,11 +51,29 @@ raster.
 ## QGIS Layer QA
 
 - CHM, Canopy Cover, PAD, PAI, and FHD rasters load into QGIS when possible.
-- Loaded raster layer names use the pattern `PyForestScan <Product> - <dataset>`.
+- Loaded raster layer names use the pattern `PyForestScan <Product> - <dataset>`, except PAD which loads as `PyForestScan PAD band 1 - <dataset>`.
 - All loaded rasters use grayscale styling by default.
 - No colorful ramps are applied automatically.
-- PAD may load band 1 by default; users can manually inspect other bands in QGIS.
+- PAD loads band 1 by default in grayscale; users can manually inspect other bands in QGIS layer styling.
 - Rumple appears as a CSV/report link and is not loaded as a raster layer.
+
+
+## Raster Display Statistics QA
+
+For CHM, Canopy Cover, PAD, PAI, and FHD, open the layer styling panel after the
+automatic load and confirm the displayed grayscale range is not `0` to `0` unless
+the raster is genuinely all zero. The auto-loaded layer should look substantially
+the same as the same GeoTIFF removed and re-added manually from disk. Canopy
+Cover may fall back to `0` to `1` if statistics are unavailable. CHM, PAI, FHD,
+and PAD band 1 should use observed provider min/max values when QGIS exposes
+them, or a safe `0` to `1` fallback rather than a blank `0` to `0` range.
+
+Generated raster layers record these custom properties when styling succeeds:
+
+- `pyforestscan/display_minimum`
+- `pyforestscan/display_maximum`
+- `pyforestscan/display_range_source`
+- `pyforestscan/display_band`
 
 ## Summary QA
 
