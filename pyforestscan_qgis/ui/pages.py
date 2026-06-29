@@ -19,6 +19,7 @@ from qgis.PyQt.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -72,24 +73,42 @@ ActivityCallback = Callable[[str, str], None]
 
 
 class MissionPage(QWidget):
-    """Base class for Mission Control pages."""
+    """Base class for Mission Control pages with one full-page scroll region."""
 
     def __init__(self, title: str, parent: QWidget | None = None) -> None:
-        """Create a page with a title and scrollable content."""
+        """Create a page with a title and full-width scrollable content."""
         super().__init__(parent)
         self.title = title
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
         heading = QLabel(title)
         heading.setObjectName("pageHeading")
+        heading.setWordWrap(True)
         self.main_layout.addWidget(heading)
-        self.content_layout = QVBoxLayout()
-        self.main_layout.addLayout(self.content_layout)
-        self.main_layout.addStretch(1)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setObjectName("pageScroll")
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.content_widget = QWidget()
+        self.content_widget.setObjectName("pageContent")
+        self.content_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
+        self.content_layout = QVBoxLayout(self.content_widget)
+        self.content_layout.setContentsMargins(18, 12, 22, 22)
+        self.content_layout.setSpacing(16)
+        self.scroll_area.setWidget(self.content_widget)
+        self.main_layout.addWidget(self.scroll_area, 1)
 
     def add_section(self, title: str) -> QVBoxLayout:
-        """Add a titled section and return its layout."""
+        """Add a titled full-width section and return its layout."""
         group = QGroupBox(title)
+        group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         layout = QVBoxLayout(group)
+        layout.setContentsMargins(14, 16, 14, 14)
+        layout.setSpacing(10)
         self.content_layout.addWidget(group)
         return layout
 
@@ -366,19 +385,10 @@ class ScientificAdvisorPage(MissionPage):
         self.run_context: RunContext | None = None
         self.completed_products: tuple[str, ...] = ()
 
-        self.content_layout.setContentsMargins(0, 0, 0, 0)
-        self.content_layout.setSpacing(0)
-        self.advisor_scroll = QScrollArea()
-        self.advisor_scroll.setWidgetResizable(True)
-        self.advisor_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.advisor_scroll.setObjectName("advisorScroll")
-        self.advisor_body = QWidget()
-        self.advisor_body.setObjectName("advisorBody")
-        self.advisor_layout = QVBoxLayout(self.advisor_body)
-        self.advisor_layout.setContentsMargins(14, 10, 18, 18)
+        self.content_widget.setObjectName("advisorBody")
+        self.advisor_layout = self.content_layout
+        self.advisor_layout.setContentsMargins(18, 12, 22, 22)
         self.advisor_layout.setSpacing(16)
-        self.advisor_scroll.setWidget(self.advisor_body)
-        self.content_layout.addWidget(self.advisor_scroll)
 
         overview = self._add_card("Dataset Health")
         metrics_row = QHBoxLayout()
@@ -575,23 +585,56 @@ class PlanningPage(MissionPage):
         self.dataset_report: DatasetExplorerReport | None = None
         self.run_context: RunContext | None = None
         self.latest_plan: ProductPlannerReport | None = None
-        controls = self.add_section("Product Planner")
+
+        dataset = self.add_section("Dataset")
+        self.dataset_context_label = _body_label("Run Dataset Explorer to load an active dataset report for planning.")
+        dataset.addWidget(self.dataset_context_label)
+
+        output = self.add_section("Output")
+        self.output_folder_edit = QLineEdit()
+        self.output_folder_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        folder_button = QPushButton("Browse")
+        folder_button.setMinimumHeight(34)
+        folder_button.clicked.connect(self.browse_folder)
+        folder_row = QHBoxLayout()
+        folder_row.setSpacing(10)
+        folder_row.addWidget(self.output_folder_edit, 1)
+        folder_row.addWidget(folder_button, 0)
+        output.addWidget(_body_label("Mission Control normally uses the active run folder automatically. Advanced users can override the output folder before building a plan."))
+        output.addLayout(folder_row)
+
+        products = self.add_section("Product Selection")
         self.product_checks: dict[ProductType, QCheckBox] = {}
-        for product, label in PRODUCT_LABELS.items():
+        product_grid = QGridLayout()
+        product_grid.setHorizontalSpacing(22)
+        product_grid.setVerticalSpacing(8)
+        for index, (product, label) in enumerate(PRODUCT_LABELS.items()):
             check = QCheckBox(label)
+            check.setMinimumHeight(28)
             if product is ProductType.CHM:
                 check.setChecked(True)
             self.product_checks[product] = check
-            controls.addWidget(check)
+            product_grid.addWidget(check, index // 2, index % 2)
+        products.addLayout(product_grid)
         product_button_row = QHBoxLayout()
+        product_button_row.setSpacing(10)
         select_all = QPushButton("Select All Products")
+        select_all.setMinimumHeight(34)
         select_all.clicked.connect(lambda: self._set_all_products(True))
         clear_all = QPushButton("Clear Products")
+        clear_all.setMinimumHeight(34)
         clear_all.clicked.connect(lambda: self._set_all_products(False))
         product_button_row.addWidget(select_all)
         product_button_row.addWidget(clear_all)
-        controls.addLayout(product_button_row)
-        form = QFormLayout()
+        product_button_row.addStretch(1)
+        products.addLayout(product_button_row)
+
+        shared = self.add_section("Shared Parameters")
+        shared_form = QFormLayout()
+        shared_form.setLabelAlignment(Qt.AlignLeft)
+        shared_form.setFormAlignment(Qt.AlignLeft | Qt.AlignTop)
+        shared_form.setHorizontalSpacing(18)
+        shared_form.setVerticalSpacing(10)
         self.resolution_spin = QDoubleSpinBox()
         self.resolution_spin.setDecimals(3)
         self.resolution_spin.setMinimum(0.01)
@@ -601,47 +644,68 @@ class PlanningPage(MissionPage):
         self.height_bin_spin.setMinimum(0.0)
         self.height_bin_spin.setSpecialValueText("Not specified")
         self.height_bin_spin.setValue(1.0)
+        shared_form.addRow("Grid resolution", self.resolution_spin)
+        shared_form.addRow("Height bin size", self.height_bin_spin)
+        shared.addLayout(shared_form)
+
+        product_params = self.add_section("Product-Specific Parameters")
+        params_grid = QGridLayout()
+        params_grid.setHorizontalSpacing(20)
+        params_grid.setVerticalSpacing(12)
+        chm_box = QGroupBox("CHM")
+        chm_layout = QFormLayout(chm_box)
+        chm_layout.setVerticalSpacing(8)
         self.chm_interpolation_combo = QComboBox()
         self.chm_interpolation_combo.addItems(("linear", "nearest", "cubic"))
         self.chm_valid_region_check = QCheckBox("Interpolate valid region")
         self.chm_clean_edges_check = QCheckBox("Clean edges")
         self.chm_output_filename_edit = QLineEdit("chm.tif")
-        self.pad_output_filename_edit = QLineEdit("pad.tif")
-        self.pai_output_filename_edit = QLineEdit("pai.tif")
-        self.fhd_output_filename_edit = QLineEdit("fhd.tif")
-        self.rumple_output_filename_edit = QLineEdit("rumple_summary.csv")
+        chm_layout.addRow("Interpolation", self.chm_interpolation_combo)
+        chm_layout.addRow("Valid region", self.chm_valid_region_check)
+        chm_layout.addRow("Edges", self.chm_clean_edges_check)
+        chm_layout.addRow("Output filename", self.chm_output_filename_edit)
+
+        canopy_box = QGroupBox("Canopy Cover")
+        canopy_layout = QFormLayout(canopy_box)
+        canopy_layout.setVerticalSpacing(8)
         self.canopy_cover_threshold_spin = QDoubleSpinBox()
         self.canopy_cover_threshold_spin.setDecimals(3)
         self.canopy_cover_threshold_spin.setMinimum(0.0)
         self.canopy_cover_threshold_spin.setValue(2.0)
         self.canopy_cover_output_filename_edit = QLineEdit("canopy_cover.tif")
-        self.output_folder_edit = QLineEdit()
-        folder_button = QPushButton("Browse")
-        folder_button.clicked.connect(self.browse_folder)
-        folder_row = QHBoxLayout()
-        folder_row.addWidget(self.output_folder_edit)
-        folder_row.addWidget(folder_button)
-        form.addRow("Grid resolution", self.resolution_spin)
-        form.addRow("Height bin size", self.height_bin_spin)
-        form.addRow("CHM interpolation", self.chm_interpolation_combo)
-        form.addRow("CHM valid region", self.chm_valid_region_check)
-        form.addRow("CHM clean edges", self.chm_clean_edges_check)
-        form.addRow("CHM output filename", self.chm_output_filename_edit)
-        form.addRow("PAD output filename", self.pad_output_filename_edit)
-        form.addRow("PAI output filename", self.pai_output_filename_edit)
-        form.addRow("FHD output filename", self.fhd_output_filename_edit)
-        form.addRow("Rumple output filename", self.rumple_output_filename_edit)
-        form.addRow("Canopy cover threshold", self.canopy_cover_threshold_spin)
-        form.addRow("Canopy cover output", self.canopy_cover_output_filename_edit)
-        form.addRow("Output folder", folder_row)
-        controls.addLayout(form)
-        build = QPushButton("Build Plan")
-        build.clicked.connect(self.build_plan)
-        controls.addWidget(build)
+        canopy_layout.addRow("Height threshold", self.canopy_cover_threshold_spin)
+        canopy_layout.addRow("Output filename", self.canopy_cover_output_filename_edit)
 
-        summary = self.add_section("Plan Summary")
+        raster_box = QGroupBox("PAD / PAI / FHD / Rumple")
+        raster_layout = QFormLayout(raster_box)
+        raster_layout.setVerticalSpacing(8)
+        self.pad_output_filename_edit = QLineEdit("pad.tif")
+        self.pai_output_filename_edit = QLineEdit("pai.tif")
+        self.fhd_output_filename_edit = QLineEdit("fhd.tif")
+        self.rumple_output_filename_edit = QLineEdit("rumple_summary.csv")
+        raster_layout.addRow("PAD output", self.pad_output_filename_edit)
+        raster_layout.addRow("PAI output", self.pai_output_filename_edit)
+        raster_layout.addRow("FHD output", self.fhd_output_filename_edit)
+        raster_layout.addRow("Rumple output", self.rumple_output_filename_edit)
+
+        for box in (chm_box, canopy_box, raster_box):
+            box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        params_grid.addWidget(chm_box, 0, 0)
+        params_grid.addWidget(canopy_box, 0, 1)
+        params_grid.addWidget(raster_box, 1, 0, 1, 2)
+        params_grid.setColumnStretch(0, 1)
+        params_grid.setColumnStretch(1, 1)
+        product_params.addLayout(params_grid)
+
+        summary = self.add_section("Run Summary")
+        build = QPushButton("Build Plan")
+        build.setMinimumHeight(38)
+        build.clicked.connect(self.build_plan)
+        summary.addWidget(build)
         self.plan_text = QTextEdit()
         self.plan_text.setReadOnly(True)
+        self.plan_text.setMinimumHeight(180)
+        self.plan_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         summary.addWidget(self.plan_text)
 
     def _set_all_products(self, checked: bool) -> None:
@@ -653,6 +717,11 @@ class PlanningPage(MissionPage):
         """Store latest Dataset Explorer report and run context for planning."""
         self.dataset_report = report
         self.run_context = context
+        dataset_name = context.lidar_path.name if context is not None else "loaded dataset"
+        run_folder = str(context.run_folder) if context is not None else "not assigned"
+        self.dataset_context_label.setText(
+            f"Active dataset: {dataset_name}\nRun folder: {run_folder}\nChoose products and parameters, then build the Product Planner report."
+        )
         if context is not None:
             self.output_folder_edit.setText(str(context.outputs_dir))
         self.plan_text.setPlainText("Dataset report loaded. Choose products and build a plan.")

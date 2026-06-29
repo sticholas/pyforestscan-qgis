@@ -1,9 +1,11 @@
 
 ## Mission Control
 
-Mission Control opens as a floating movable QGIS window by default and still can
-be docked if your QGIS workspace supports it. It provides guided pages for the
-current workflows:
+Mission Control opens as a large floating, movable QGIS window by default and
+still can be docked if your QGIS workspace supports it. The sidebar is bounded
+so the main page stack can use the full window, and each page uses one
+predictable vertical scroll area. It provides guided pages for the current
+workflows:
 
 - Home: versions, status, quick start, and recent activity.
 - Environment: refresh dependency checks.
@@ -171,9 +173,12 @@ from QGIS menus instead.
 
 Product Planner is a planning workflow that reads a Dataset Explorer JSON report
 and helps users decide which products should be generated in a future processing
-phase. It validates selected products against Dataset Explorer feasibility
-results, estimates planned output names, records grid and height-bin settings,
-and writes JSON, CSV, and HTML plan reports.
+phase. Mission Control groups Planning controls into Dataset, Output, Product
+Selection, Shared Parameters, Product-Specific Parameters, and Run Summary
+sections so parameters remain readable in the full-window layout. Product Planner
+validates selected products against Dataset Explorer feasibility results,
+estimates planned output names, records grid and height-bin settings, and writes
+JSON, CSV, and HTML plan reports.
 
 It does not run PyForestScan calculations and does not create rasters.
 

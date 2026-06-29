@@ -4,8 +4,8 @@
  <widget class="QWidget" name="MissionControlRoot">
   <property name="minimumSize">
    <size>
-    <width>420</width>
-    <height>520</height>
+    <width>1150</width>
+    <height>760</height>
    </size>
   </property>
   <layout class="QVBoxLayout" name="rootLayout">
@@ -28,8 +28,8 @@
      <property name="spacing"><number>0</number></property>
      <item>
       <widget class="QListWidget" name="navigationList">
-       <property name="minimumWidth"><number>132</number></property>
-       <property name="maximumWidth"><number>170</number></property>
+       <property name="minimumWidth"><number>168</number></property>
+       <property name="maximumWidth"><number>210</number></property>
       </widget>
      </item>
      <item>

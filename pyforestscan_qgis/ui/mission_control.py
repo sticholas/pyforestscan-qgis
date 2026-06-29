@@ -9,7 +9,7 @@ from typing import Any
 from qgis.PyQt import uic
 from qgis.PyQt.QtCore import Qt, QUrl
 from qgis.PyQt.QtGui import QDesktopServices
-from qgis.PyQt.QtWidgets import QDockWidget, QWidget
+from qgis.PyQt.QtWidgets import QDockWidget, QSizePolicy, QWidget
 
 from ..core.adapter import PyForestScanAdapter
 from ..core.dataset_report import report_to_dict as dataset_report_to_dict
@@ -64,6 +64,24 @@ class MissionControlDock(QDockWidget):
         self.setObjectName("PyForestScanMissionControlDock")
         self.setAllowedAreas(Qt.AllDockWidgetAreas)
         self.setFeatures(self.features() | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetMovable)
+        self.setMinimumSize(1150, 760)
+        self.root_widget.setMinimumSize(1150, 760)
+        self.root_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.ui.navigationList.setFixedWidth(190)
+        self.ui.pageStack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.ui.bodyLayout.setStretch(0, 0)
+        self.ui.bodyLayout.setStretch(1, 1)
+        self.ui.rootLayout.setStretch(0, 0)
+        self.ui.rootLayout.setStretch(1, 1)
+        self.ui.rootLayout.setStretch(2, 0)
+        for label in (
+            self.ui.environmentStatusLabel,
+            self.ui.datasetStatusLabel,
+            self.ui.planningStatusLabel,
+            self.ui.readyStatusLabel,
+        ):
+            label.setWordWrap(True)
+            label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
 
         self.home_page = HomePage(plugin_version=self._plugin_version())
         self.environment_page = EnvironmentPage(self.adapter)
@@ -117,8 +135,9 @@ class MissionControlDock(QDockWidget):
             #titleLabel { font-size: 20px; font-weight: 700; }
             #subtitleLabel { color: #5f6f77; }
             #statusFrame { background: #f2f5f6; border-top: 1px solid #dbe3e6; }
-            #pageHeading { font-size: 20px; font-weight: 700; margin: 10px 12px; color: #22323a; }
-            #advisorScroll { border: 0; background: #f7f8f9; }
+            #pageHeading { font-size: 21px; font-weight: 700; margin: 12px 18px; color: #22323a; }
+            #pageScroll { border: 0; background: #f7f8f9; }
+            #pageContent { background: #f7f8f9; }
             #advisorBody { background: #f7f8f9; }
             #advisorCard { background: #ffffff; border: 1px solid #dfe6e9; border-radius: 7px; }
             #advisorNestedCard { background: #f8fafb; border: 1px solid #e3eaed; border-radius: 6px; }
@@ -132,8 +151,8 @@ class MissionControlDock(QDockWidget):
             QListWidget { border: 1px solid #dfe6e9; background: #ffffff; border-radius: 4px; }
             QListWidget::item { padding: 10px; border-bottom: 1px solid #eef2f3; }
             QListWidget::item:selected { background: #dde8ec; color: #1f2d35; }
-            QGroupBox { font-weight: 600; margin-top: 12px; border: 1px solid #dfe6e9; border-radius: 5px; padding: 10px; background: #ffffff; }
-            QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; color: #32424a; }
+            QGroupBox { font-weight: 600; margin-top: 12px; border: 1px solid #dfe6e9; border-radius: 6px; padding: 12px; background: #ffffff; }
+            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #32424a; }
             QPushButton { background: #ffffff; border: 1px solid #cfd9dd; border-radius: 4px; padding: 8px 12px; }
             QPushButton:hover { background: #f0f4f5; }
             QLineEdit, QTextEdit, QDoubleSpinBox, QComboBox { background: #ffffff; border: 1px solid #d4dee2; border-radius: 4px; padding: 5px; }

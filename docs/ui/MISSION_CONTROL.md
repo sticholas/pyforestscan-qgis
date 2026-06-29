@@ -1,7 +1,9 @@
 # Mission Control
 
 Mission Control is the floating-by-default, dockable graphical operating environment for PyForestScan
-QGIS. It coordinates the workflows already implemented in the plugin while
+QGIS. It opens as a large application-style window by default and keeps a
+bounded navigation sidebar so the main page stack can use the full available
+workspace. It coordinates the workflows already implemented in the plugin while
 leaving Processing algorithms available for advanced and automated use.
 
 Mission Control does not call PyForestScan directly. It uses plugin core services
@@ -41,6 +43,11 @@ flowchart TD
 - Settings: default output folder, logging placeholder, and future preferences.
 
 ## UI Architecture
+
+The Qt shell sets a production-oriented minimum size and Mission Control applies
+runtime stretch factors so the page stack expands horizontally and vertically.
+Each page uses one full-width vertical scroll area; individual pages should avoid
+adding nested scroll areas unless there is a specific interaction reason.
 
 - `pyforestscan_qgis/ui/forms/mission_control.ui`: Qt Designer shell for the
   dock header, sidebar, page stack, and status bar.
@@ -87,4 +94,12 @@ The Advisor is laid out as readable vertical card sections: Dataset Health, Key
 Recommendations, Warnings, Recommended Products, Recommended Parameters, QGIS
 Tools, Scientific Notes, Product Explanations, and Next Steps. Long rationale is
 kept in quieter detail areas below concise summary text so the page remains
-usable at the default floating Mission Control size.
+usable at the default floating Mission Control size and fills the main page
+region instead of appearing as a narrow nested panel.
+
+## Planning Layout
+
+The Planning page is grouped into Dataset, Output, Product Selection, Shared
+Parameters, Product-Specific Parameters, and Run Summary sections. Shared grid
+and height-bin settings are separated from product-specific filenames and CHM /
+Canopy Cover controls so the page remains readable without horizontal scrolling.
