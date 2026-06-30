@@ -145,3 +145,8 @@ Batch defaults to Sequential. Parallel safe mode is explicit, capped at four wor
 The Batch page uses a three-step flow: Preflight, Run Batch, and Review Results. The Run button stays disabled until preflight passes. If preflight reports warnings, the user must explicitly acknowledge them before running. Preflight shows ready status, blockers, warnings, estimated output storage, free disk space, files to process, completed files, skipped files, retry files, manifest path, execution mode, and max workers.
 
 When `batch_manifest.json` exists, Mission Control exposes Resume Batch. Completed files are skipped by default and failed files can be retried with the current shared settings.
+
+
+## External Worker Mode
+
+The Batch page includes External worker mode for higher-throughput local processing. Mission Control writes worker job JSON files, starts bounded external Python worker processes, and reads worker result JSON files to update file status, manifest, summaries, and results. External mode must be selected explicitly, remains subject to preflight, and keeps QGIS output loading disabled unless the user opts in.

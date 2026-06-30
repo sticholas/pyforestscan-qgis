@@ -42,6 +42,7 @@ from qgis.PyQt.QtWidgets import (
 from ..core.adapter import PyForestScanAdapter
 from ..core.batch import BatchProductSettings, BatchRequest, discover_lidar_files
 from ..core.batch_executor import PARALLEL_SAFE_MODE, SEQUENTIAL_MODE, BatchExecutor
+from ..core.external_worker import EXTERNAL_WORKER_MODE
 from ..core.batch_preflight import BatchPreflightReport, run_batch_preflight
 from ..core.batch_runner import BatchExecutionError
 from ..core.dataset_report import (
@@ -1177,10 +1178,11 @@ class BatchPage(MissionPage):
         self.execution_mode_combo = QComboBox()
         self.execution_mode_combo.addItem("Sequential", SEQUENTIAL_MODE)
         self.execution_mode_combo.addItem("Parallel safe mode", PARALLEL_SAFE_MODE)
+        self.execution_mode_combo.addItem("External worker mode", EXTERNAL_WORKER_MODE)
         self.execution_mode_combo.currentIndexChanged.connect(lambda _index: self._refresh_footprint_label())
         self.max_workers_spin = QSpinBox()
         self.max_workers_spin.setMinimum(1)
-        self.max_workers_spin.setMaximum(4)
+        self.max_workers_spin.setMaximum(6)
         self.max_workers_spin.setValue(2)
         self.max_workers_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
         settings_form.addRow("Execution mode", self.execution_mode_combo)
@@ -1770,7 +1772,7 @@ def _format_preflight_report(report: BatchPreflightReport) -> str:
     lines = [
         "Ready to run: " + ("YES" if report.ready else "NO"),
         f"Batch folder: {report.batch_folder}",
-        f"Execution mode: {report.execution_mode}; max workers: {report.max_workers}",
+        f"Execution mode: {report.execution_mode}; max workers: {report.max_workers}; recommended workers: {report.recommended_workers}",
         f"Files to process: {len(report.files_to_process)}",
         f"Files already completed: {len(report.files_completed)}",
         f"Files to skip: {len(report.files_to_skip)}",

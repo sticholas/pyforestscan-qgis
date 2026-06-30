@@ -388,3 +388,8 @@ is configurable and explicitly marks calibration needs.
 Run Preflight before starting a batch. Preflight checks input files, output folder writability, environment readiness, selected products, disk free space, output conflicts, workload size, execution mode, and max workers. Blockers must be fixed. Warnings must be acknowledged before running.
 
 Each batch writes `batch_manifest.json` in the batch folder before processing starts. The manifest is checkpointed after every file, along with `batch_summary.json`, `batch_summary.csv`, and `batch_summary.html`. If QGIS closes or a batch is cancelled, run Preflight again on the same output folder to resume. Completed files are skipped by default. Failed files can be retried. Successful outputs are not overwritten unless overwrite existing outputs is enabled.
+
+
+### External Worker Mode
+
+External worker mode can process multiple files through separate local Python worker processes. Use it only after Preflight reports the worker environment is ready. Start with 2 workers. Increase worker count only when files are small enough and the machine has enough RAM, CPU, and disk bandwidth. If a worker crashes, QGIS should remain open and the failed file is recorded in the batch results.

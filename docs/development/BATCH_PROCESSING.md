@@ -147,3 +147,10 @@ The manifest stores a stable batch id, per-file job ids, run folders, statuses, 
 If a manifest already exists, preflight treats the batch as resumable. Completed files are skipped by default, failed files can be retried, and successful outputs are not overwritten unless the user enables overwrite existing outputs. If all files are already complete, Run remains disabled and the user can review the existing results.
 
 Disk-space estimates are conservative placeholders based on selected file count and products. They are intended as guardrails, not scientific output-size predictions, and should be calibrated with benchmark history in a future release.
+
+
+## External Worker Mode
+
+Phase 17E adds External worker mode as a third execution mode beside Sequential and Parallel safe mode. External worker mode writes one job spec JSON per file under `worker_jobs/`, launches a separate Python process for each active worker, and reads one result JSON per file from `worker_results/`. The QGIS process remains the orchestrator and updates the batch manifest and summaries from worker result files.
+
+External worker mode is explicit and disabled by default. The worker count remains conservative: 2 by default, up to 6 only when preflight passes and the user confirms the resource risk. Worker readiness is checked during preflight with `python -m pyforestscan_qgis.worker.run_job --check`.

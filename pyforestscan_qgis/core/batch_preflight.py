@@ -10,6 +10,7 @@ from typing import Callable
 from .adapter import PyForestScanAdapter
 from .batch import BatchRequest, batch_run_context, create_batch_folder
 from .batch_executor import LARGE_FILE_COUNT, LARGE_WORKLOAD_SCORE, BatchExecutor, PARALLEL_SAFE_MODE
+from .external_worker import EXTERNAL_WORKER_MODE, check_worker_readiness
 from .batch_manifest import MANIFEST_NAME, completed_dataset_paths, failed_dataset_paths, load_manifest
 
 DiskUsageProvider = Callable[[Path], tuple[int, int, int]]
@@ -32,6 +33,7 @@ class BatchPreflightReport:
     manifest_path: Path
     execution_mode: str
     max_workers: int
+    recommended_workers: int
 
     @property
     def has_warnings(self) -> bool:
@@ -107,6 +109,13 @@ def run_batch_preflight(
         warnings.append("Large workload: many file/product combinations selected.")
     if request.settings.execution_mode == PARALLEL_SAFE_MODE:
         warnings.append("Parallel safe mode can increase memory, CPU, and disk pressure.")
+    if request.settings.execution_mode == EXTERNAL_WORKER_MODE:
+        ok, message = check_worker_readiness()
+        if not ok:
+            blockers.append(f"External worker readiness check failed: {message}")
+        else:
+            warnings.append(f"External worker readiness: {message}")
+        warnings.append("External worker mode starts separate Python processes and can multiply RAM, CPU, and disk use.")
     try:
         guardrail = BatchExecutor().guardrails(request)
         warnings.extend(guardrail.warnings)
@@ -128,6 +137,7 @@ def run_batch_preflight(
         manifest_path=manifest_path,
         execution_mode=request.settings.execution_mode,
         max_workers=request.settings.max_workers,
+        recommended_workers=_recommended_workers(len(files_to_process), workload_score, request.settings.execution_mode),
     )
 
 
@@ -166,3 +176,16 @@ def _output_conflicts(datasets: tuple[Path, ...], batch_folder: Path, overwrite_
 def _disk_usage(path: Path) -> tuple[int, int, int]:
     usage = shutil.disk_usage(path)
     return usage.total, usage.used, usage.free
+
+
+def _recommended_workers(file_count: int, workload_score: int, execution_mode: str) -> int:
+    """Recommend a conservative worker count for preflight display."""
+    if execution_mode != EXTERNAL_WORKER_MODE:
+        return 1 if file_count <= 1 else 2
+    if file_count <= 1:
+        return 1
+    if workload_score >= LARGE_WORKLOAD_SCORE or file_count >= LARGE_FILE_COUNT:
+        return 2
+    if file_count <= 4:
+        return min(4, file_count)
+    return 2
