@@ -274,3 +274,43 @@ Acceptance Criteria:
 - No new scientific processing.
 - Recommendations are structured and transparent.
 - Uncertain thresholds are configurable and documented.
+
+
+## Phase 19A: Workspace Foundation
+
+Purpose: Add local analysis memory so Mission Control can remember where the user left off without relying on a QGIS project.
+
+Deliverables:
+
+- Hidden `.pyforestscan/` workspace folder under each output root.
+- Typed Workspace, State, Session, Timeline, History, Notes, Recent, and Version models.
+- WorkspaceManager persistence and auto-save hooks.
+- Mission Control session restore for last dataset, output folder, workspace, and page.
+- QGIS-free workspace tests.
+
+Risks:
+
+- Workspace files could be mistaken for a formal project format before Resume UI exists.
+- Session restore must never manipulate the QGIS project unexpectedly.
+
+Acceptance Criteria:
+
+- Workspace files are created and serialized locally.
+- Session, timeline, history, recent items, notes, and version metadata persist.
+- Existing run-folder and product workflows keep working.
+
+## Phase 19B: Workspace User Experience
+
+Purpose: Make Workspace visible and useful through a controlled Resume/Open workflow.
+
+Potential Deliverables:
+
+- Welcome or Resume page.
+- Workspace picker.
+- Notes editor.
+- Timeline viewer.
+- Results-reviewed and QA-reviewed actions.
+
+Risks:
+
+- Too much workspace UI could clutter Mission Control if not progressively disclosed.

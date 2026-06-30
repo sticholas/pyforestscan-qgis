@@ -24,6 +24,12 @@ users who want explicit file paths.
 # User Guide
 
 
+## Workspaces
+
+Mission Control now keeps a local Workspace for each selected output root. A Workspace represents one analysis and stores resumable context in a hidden `.pyforestscan/` folder under the output folder. It records session state, recent datasets/reports, timeline events, processing history, notes, and workspace format version metadata.
+
+Users do not manually save Workspaces. Mission Control auto-saves after major operations such as Dataset Explorer, Product Planner, processing completion, and batch completion. Workspace files are local and independent from the QGIS project. There is no cloud sync, account, or database.
+
 ## Mission Control Run Folders
 
 Mission Control hides internal JSON handoff files during the normal workflow.

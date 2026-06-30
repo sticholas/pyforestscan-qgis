@@ -7,15 +7,15 @@ from pathlib import Path
 from typing import Any
 
 from qgis.PyQt import uic
-from qgis.PyQt.QtCore import Qt, QUrl
+from qgis.PyQt.QtCore import QByteArray, Qt, QUrl
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import QDockWidget, QSizePolicy, QWidget
 
 from ..core.adapter import PyForestScanAdapter
 from ..core.dataset_report import report_to_dict as dataset_report_to_dict
 from ..core.knowledge import KnowledgeEngine
-from ..core.jobs import JobRecord
-from ..core.workspace import RunContext
+from ..core.jobs import JobRecord, JobStatus
+from ..core.workspace import RunContext, WorkspaceHistoryRun, WorkspaceManager, WorkspaceSession, WorkspaceStatus
 from ..resources import plugin_root
 from .pages import (
     BatchPage,
@@ -56,6 +56,10 @@ class MissionControlDock(QDockWidget):
         self.iface = iface
         self.adapter = PyForestScanAdapter()
         self.knowledge_engine = KnowledgeEngine()
+        self.workspace_manager = WorkspaceManager()
+        self.workspace_session = self._load_workspace_session()
+        self.workspace = None
+        self._workspace_recorded_jobs: set[str] = set()
         self.state = MissionControlState()
         self.job_history: tuple[JobRecord, ...] = ()
         self.batch_status = "Not started"
@@ -95,6 +99,7 @@ class MissionControlDock(QDockWidget):
         self.batch_page = BatchPage(self.adapter)
         self.results_page = ResultsPage()
         self.settings_page = SettingsPage()
+        self.settings_page.set_workspace_session(self.workspace_session)
         self.pages = (
             self.home_page,
             self.environment_page,
@@ -110,12 +115,50 @@ class MissionControlDock(QDockWidget):
         self._configure_style()
         self._populate_navigation()
         self._wire_signals()
+        self._restore_workspace_session()
         self._refresh_home()
         self._update_status_bar()
 
     def show_home(self) -> None:
         """Show the home page."""
         self.ui.navigationList.setCurrentRow(0)
+
+    def closeEvent(self, event: object) -> None:  # noqa: N802 - Qt API name.
+        """Save the Mission Control workspace session when the window closes."""
+        self._save_workspace_session()
+        super().closeEvent(event)
+
+    def _load_workspace_session(self) -> WorkspaceSession:
+        """Load global Mission Control workspace session state."""
+        try:
+            return self.workspace_manager.load_global_session()
+        except Exception:  # noqa: BLE001 - a bad session file should not break plugin loading.
+            return WorkspaceSession()
+
+    def _restore_workspace_session(self) -> None:
+        """Restore lightweight session context without manipulating the QGIS project."""
+        session = self.workspace_session
+        if session.last_output_folder is not None and session.remember_last_output_folder:
+            self.state = self.state.with_default_output_folder(session.last_output_folder)
+            self.dataset_page.set_default_output_folder(session.last_output_folder)
+            self.batch_page.set_default_output_folder(session.last_output_folder)
+            self.settings_page.default_output_folder.setText(str(session.last_output_folder))
+        if session.last_selected_dataset is not None and session.remember_last_dataset:
+            self.dataset_page.dataset_path_edit.setText(str(session.last_selected_dataset))
+            self.state = self.state.with_dataset(str(session.last_selected_dataset))
+        if session.last_opened_workspace is not None and session.remember_last_workspace:
+            workspace_root = session.last_opened_workspace.parent if session.last_opened_workspace.name == ".pyforestscan" else session.last_opened_workspace
+            try:
+                self.workspace = self.workspace_manager.load_workspace(workspace_root)
+            except Exception:  # noqa: BLE001 - restore should be best effort.
+                self.workspace = None
+        if session.window_geometry:
+            try:
+                self.restoreGeometry(QByteArray.fromBase64(session.window_geometry.encode("ascii")))
+            except Exception:  # noqa: BLE001 - geometry restore is best effort.
+                pass
+        if session.last_page in self.PAGE_NAMES:
+            self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index(session.last_page))
 
     def _populate_navigation(self) -> None:
         for name, page in zip(self.PAGE_NAMES, self.pages):
@@ -171,6 +214,8 @@ class MissionControlDock(QDockWidget):
 
     def _set_environment_status(self, status: str) -> None:
         self.state = self.state.with_environment(status).with_activity("Environment refreshed", status)
+        self._record_workspace_event("environment_refreshed", f"Environment refreshed: {status}")
+        self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
 
@@ -188,6 +233,14 @@ class MissionControlDock(QDockWidget):
         state = self.state.with_active_run(context).with_report_path(context.dataset_report_html)
         state = state.with_report_path(context.dataset_summary_csv).with_activity("Dataset explored", Path(dataset_path).name)
         self.state = state
+        self._ensure_workspace_for_context(context)
+        self._workspace_status(WorkspaceStatus.DATASET_SELECTED, True, "Build product plan")
+        self._record_workspace_event("dataset_selected", f"Dataset selected: {Path(dataset_path).name}", {"dataset": str(dataset_path)})
+        self._record_workspace_event("dataset_explored", f"Dataset explored: {Path(dataset_path).name}", {"report": str(context.dataset_report_html)})
+        self._record_workspace_recent("dataset", dataset_path, Path(dataset_path).name)
+        self._record_workspace_recent("output_folder", context.output_root, context.output_root.name)
+        self._record_workspace_recent("report", context.dataset_report_html, "Dataset Report")
+        self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
 
@@ -199,6 +252,12 @@ class MissionControlDock(QDockWidget):
             state = state.with_report_path(self.state.active_run.product_plan_html)
             state = state.with_report_path(self.state.active_run.product_plan_csv)
         self.state = state
+        planning_complete = status == "Ready"
+        self._workspace_status(WorkspaceStatus.PLANNING_COMPLETE, planning_complete, "Run selected products" if planning_complete else "Review product plan")
+        self._record_workspace_event("planning_updated", f"Planning updated: {status}")
+        if self.state.active_run is not None:
+            self._record_workspace_recent("report", self.state.active_run.product_plan_html, "Product Plan")
+        self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
 
@@ -207,6 +266,7 @@ class MissionControlDock(QDockWidget):
         self.state = self.state.with_default_output_folder(path).with_activity("Default output folder", str(path) if path else "Cleared")
         self.dataset_page.set_default_output_folder(path)
         self.batch_page.set_default_output_folder(path)
+        self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
 
@@ -222,6 +282,8 @@ class MissionControlDock(QDockWidget):
             self.results_page.set_run_context(self.state.active_run)
             self.advisor_page.set_run_context(self.state.active_run)
         self.state = state
+        self._record_job_in_workspace(job)
+        self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
 
@@ -239,8 +301,134 @@ class MissionControlDock(QDockWidget):
             if isinstance(path, Path):
                 state = state.with_report_path(path)
         self.state = state
+        self._workspace_status(WorkspaceStatus.BATCH_COMPLETE, True, "Review batch results")
+        self._record_workspace_event("batch_complete", f"Batch complete: {self.batch_status}")
+        for path in (summary_html, summary_csv, summary_json):
+            if isinstance(path, Path):
+                self._record_workspace_recent("batch_report", path, path.name)
+        self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
+
+
+    def _ensure_workspace_for_context(self, context: RunContext) -> None:
+        """Load or create the workspace for a run context output root."""
+        try:
+            self.workspace_manager.recent_limit = self.settings_page.maximum_recent_items_spin.value()
+            self.workspace_manager.auto_save = self.settings_page.auto_save_workspace_check.isChecked()
+            self.workspace = self.workspace_manager.load_workspace(context.output_root)
+            session = self.workspace.session
+            self.workspace = self.workspace.with_session(
+                WorkspaceSession(
+                    last_opened_workspace=self.workspace.workspace_dir,
+                    last_selected_dataset=context.lidar_path,
+                    last_output_folder=context.output_root,
+                    last_planner_settings=session.last_planner_settings,
+                    last_selected_products=session.last_selected_products,
+                    last_page=self.PAGE_NAMES[self.ui.navigationList.currentRow()] if self.ui.navigationList.currentRow() >= 0 else session.last_page,
+                    window_geometry=session.window_geometry,
+                    floating=session.floating,
+                    docked=session.docked,
+                    remember_last_workspace=self.settings_page.remember_workspace_check.isChecked(),
+                    remember_last_dataset=self.settings_page.remember_dataset_check.isChecked(),
+                    remember_last_output_folder=self.settings_page.remember_output_folder_check.isChecked(),
+                    maximum_recent_items=self.settings_page.maximum_recent_items_spin.value(),
+                    auto_save_enabled=self.settings_page.auto_save_workspace_check.isChecked(),
+                )
+            )
+            if self.workspace_manager.auto_save:
+                self.workspace = self.workspace_manager.save_workspace(self.workspace)
+        except Exception:  # noqa: BLE001 - workspace persistence must not break QGIS workflows.
+            self.workspace = None
+
+    def _workspace_status(self, status: WorkspaceStatus, value: bool, current_step: str) -> None:
+        """Update workspace status if a workspace is active."""
+        if self.workspace is None:
+            return
+        try:
+            self.workspace = self.workspace_manager.update_state(self.workspace, status, value, current_step)
+        except Exception:  # noqa: BLE001 - workspace persistence must not block processing.
+            pass
+
+    def _record_workspace_event(self, event_type: str, message: str, details: dict[str, str] | None = None) -> None:
+        """Append a workspace timeline event when possible."""
+        if self.workspace is None:
+            return
+        try:
+            self.workspace = self.workspace_manager.add_timeline_event(self.workspace, event_type, message, details)
+        except Exception:  # noqa: BLE001 - timeline persistence is best effort.
+            pass
+
+    def _record_workspace_recent(self, item_type: str, path: Path | str, label: str | None = None) -> None:
+        """Record a recent workspace item when possible."""
+        if self.workspace is None:
+            return
+        try:
+            self.workspace = self.workspace_manager.add_recent_item(self.workspace, item_type, path, label)
+        except Exception:  # noqa: BLE001 - recent persistence is best effort.
+            pass
+
+    def _record_job_in_workspace(self, job: JobRecord) -> None:
+        """Record completed or failed jobs in workspace history."""
+        if self.workspace is None or job.job_id in self._workspace_recorded_jobs:
+            return
+        if job.status not in {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED}:
+            return
+        run = WorkspaceHistoryRun(
+            run_id=job.job_id,
+            products=tuple(job.requested_products),
+            parameters={},
+            success=job.status == JobStatus.COMPLETED,
+            output_paths=tuple(result.path for result in job.results),
+            started_at=job.created_at,
+            finished_at=job.updated_at,
+            error_message=job.error_message,
+        )
+        try:
+            self.workspace = self.workspace_manager.append_history(self.workspace, run)
+            if job.status == JobStatus.COMPLETED:
+                self._workspace_status(WorkspaceStatus.PRODUCTS_GENERATED, bool(job.results), "Review results")
+                self._record_workspace_event("products_generated", f"Products generated: {', '.join(job.requested_products)}")
+            else:
+                self._record_workspace_event("processing_failed", f"Processing {job.status.value}: {job.title}")
+            for result in job.results:
+                self._record_workspace_recent("output", result.path, result.description)
+            self._workspace_recorded_jobs.add(job.job_id)
+        except Exception:  # noqa: BLE001 - history persistence is best effort.
+            pass
+
+    def _save_workspace_session(self) -> None:
+        """Persist global Mission Control session metadata."""
+        current_page = self.PAGE_NAMES[self.ui.navigationList.currentRow()] if self.ui.navigationList.currentRow() >= 0 else None
+        dataset_text = self.dataset_page.dataset_path_edit.text().strip()
+        output_text = self.dataset_page.output_folder_edit.text().strip() or self.batch_page.output_folder_edit.text().strip()
+        workspace_path = self.workspace.workspace_dir if self.workspace is not None else self.workspace_session.last_opened_workspace
+        session = WorkspaceSession(
+            last_opened_workspace=workspace_path if self.settings_page.remember_workspace_check.isChecked() else None,
+            last_selected_dataset=Path(dataset_text) if dataset_text and self.settings_page.remember_dataset_check.isChecked() else None,
+            last_output_folder=Path(output_text) if output_text and self.settings_page.remember_output_folder_check.isChecked() else None,
+            last_planner_settings={
+                "grid_resolution": str(self.planning_page.resolution_spin.value()),
+                "height_bin_size": str(self.planning_page.height_bin_spin.value()),
+            },
+            last_selected_products=tuple(
+                product.value for product, check in self.planning_page.product_checks.items() if check.isChecked()
+            ),
+            last_page=current_page,
+            window_geometry=bytes(self.saveGeometry().toBase64()).decode("ascii"),
+            floating=self.isFloating(),
+            docked=not self.isFloating(),
+            remember_last_workspace=self.settings_page.remember_workspace_check.isChecked(),
+            remember_last_dataset=self.settings_page.remember_dataset_check.isChecked(),
+            remember_last_output_folder=self.settings_page.remember_output_folder_check.isChecked(),
+            maximum_recent_items=self.settings_page.maximum_recent_items_spin.value(),
+            auto_save_enabled=self.settings_page.auto_save_workspace_check.isChecked(),
+        )
+        self.workspace_session = session
+        try:
+            self.workspace_manager.save_global_session(session)
+        except Exception:  # noqa: BLE001 - session persistence is best effort.
+            pass
 
 
     def _load_job_outputs(self, job: JobRecord) -> None:

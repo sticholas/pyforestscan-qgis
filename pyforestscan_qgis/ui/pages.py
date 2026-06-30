@@ -72,7 +72,7 @@ from ..core.product_plan import (
     write_plan_json,
 )
 from ..core.types import ProductType
-from ..core.workspace import RunContext, create_run_context
+from ..core.workspace import RunContext, WorkspaceSession, create_run_context
 from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
 
@@ -1750,6 +1750,55 @@ class SettingsPage(MissionPage):
         apply_button = QPushButton("Use This Folder")
         apply_button.clicked.connect(self.emit_default_output_folder)
         defaults.addWidget(apply_button)
+
+        workspace = self.add_section("Workspace Defaults")
+        workspace_form = QFormLayout()
+        self.remember_workspace_check = QCheckBox("Remember last workspace")
+        self.remember_workspace_check.setChecked(True)
+        self.remember_dataset_check = QCheckBox("Remember last dataset")
+        self.remember_dataset_check.setChecked(True)
+        self.remember_output_folder_check = QCheckBox("Remember last output folder")
+        self.remember_output_folder_check.setChecked(True)
+        self.auto_save_workspace_check = QCheckBox("Auto-save workspace state")
+        self.auto_save_workspace_check.setChecked(True)
+        self.maximum_recent_items_spin = QSpinBox()
+        self.maximum_recent_items_spin.setMinimum(1)
+        self.maximum_recent_items_spin.setMaximum(50)
+        self.maximum_recent_items_spin.setValue(10)
+        workspace_form.addRow("Workspace", self.remember_workspace_check)
+        workspace_form.addRow("Dataset", self.remember_dataset_check)
+        workspace_form.addRow("Output folder", self.remember_output_folder_check)
+        workspace_form.addRow("Auto-save", self.auto_save_workspace_check)
+        workspace_form.addRow("Recent item limit", self.maximum_recent_items_spin)
+        workspace.addLayout(workspace_form)
+
+
+    def set_workspace_session(self, session: WorkspaceSession) -> None:
+        """Display persisted workspace session preferences."""
+        self.remember_workspace_check.setChecked(session.remember_last_workspace)
+        self.remember_dataset_check.setChecked(session.remember_last_dataset)
+        self.remember_output_folder_check.setChecked(session.remember_last_output_folder)
+        self.auto_save_workspace_check.setChecked(session.auto_save_enabled)
+        self.maximum_recent_items_spin.setValue(session.maximum_recent_items)
+
+    def workspace_session_preferences(self, session: WorkspaceSession) -> WorkspaceSession:
+        """Return session with settings-page workspace preferences applied."""
+        return WorkspaceSession(
+            last_opened_workspace=session.last_opened_workspace,
+            last_selected_dataset=session.last_selected_dataset,
+            last_output_folder=session.last_output_folder,
+            last_planner_settings=session.last_planner_settings,
+            last_selected_products=session.last_selected_products,
+            last_page=session.last_page,
+            window_geometry=session.window_geometry,
+            floating=session.floating,
+            docked=session.docked,
+            remember_last_workspace=self.remember_workspace_check.isChecked(),
+            remember_last_dataset=self.remember_dataset_check.isChecked(),
+            remember_last_output_folder=self.remember_output_folder_check.isChecked(),
+            maximum_recent_items=self.maximum_recent_items_spin.value(),
+            auto_save_enabled=self.auto_save_workspace_check.isChecked(),
+        )
 
     def browse_default_output_folder(self) -> None:
         """Choose the default output folder for Mission Control runs."""

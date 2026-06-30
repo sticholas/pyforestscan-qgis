@@ -173,3 +173,25 @@ flowchart TD
     D --> E["RecommendationReport"]
     E -."future UI".-> F["Mission Control guidance"]
 ```
+
+
+## Workspace Foundation
+
+Phase 19A adds `pyforestscan_qgis/core/workspace/` as a local persistence boundary for analysis state. A Workspace exists under an output root in `.pyforestscan/` and stores typed JSON/Markdown files for workspace identity, session, state, timeline, history, recent items, notes, and format version.
+
+The Workspace layer is QGIS-free. Mission Control uses `WorkspaceManager` to restore lightweight session context on open and auto-save after major operations. The existing `RunContext` API moved into `core/workspace/run_context.py` and remains re-exported from `core.workspace` for compatibility.
+
+```mermaid
+flowchart TD
+    A["Mission Control"] --> B["WorkspaceManager"]
+    B --> C["<output_folder>/.pyforestscan"]
+    C --> D["workspace.json"]
+    C --> E["session.json"]
+    C --> F["timeline.json"]
+    C --> G["history.json"]
+    C --> H["notes.md"]
+    A --> I["RunContext"]
+    I --> J["pyforestscan_runs/<run>"]
+```
+
+Workspaces are not QGIS projects, databases, cloud sync folders, or user accounts. Future UI can build a Welcome page, Resume workflow, Notes editor, and Timeline viewer on top of this local contract.

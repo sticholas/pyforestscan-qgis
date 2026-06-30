@@ -14,6 +14,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Local Workspace foundation with `.pyforestscan/` workspace folders, typed workspace/session/state/history/timeline/notes/version models, Mission Control session restore, and QGIS-free workspace tests.
 - Internal release checklist, known limitations, manual QA script, product audit, and release-readiness regression tests.
 - Experimental external worker research scaffold with worker job/result JSON files and subprocess entrypoint, retained behind disabled-by-default guardrails after unsafe QGIS GUI launcher behavior was found.
 - Batch preflight and resume reliability with required preflight gating, disk-space checks, output conflict detection, READY environment validation, durable batch manifests, per-file job ids, checkpointed summaries after every file, skip-completed resume behavior, and retry-failed controls.

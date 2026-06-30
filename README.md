@@ -14,6 +14,7 @@ The project is preparing for a stable internal release. Current implemented work
 - Product Planner
 - Single-dataset processing for CHM, Canopy Cover, PAD, PAI, FHD, and Rumple summary
 - Batch folder-to-products workflow with preflight, manifest, resume, retry, and guarded Parallel Safe mode
+- Local Workspace foundation with session, timeline, history, recent items, notes, and version metadata
 - QGIS result loading and product-aware raster styling
 
 External Worker mode is disabled. Sequential batch processing remains the safest path, and Parallel Safe mode is available with preflight guardrails.
@@ -35,7 +36,7 @@ Implemented output defaults are:
 
 - `pyforestscan_qgis/`: QGIS plugin package.
 - `pyforestscan_qgis/algorithms/`: QGIS Processing algorithms for Environment Check, Dataset Explorer, Product Planner, and current placeholder toolbox entries.
-- `pyforestscan_qgis/core/`: QGIS-free domain services, adapter, planning, pipeline, jobs, batch, and knowledge modules.
+- `pyforestscan_qgis/core/`: QGIS-free domain services, adapter, planning, pipeline, jobs, batch, workspace, and knowledge modules.
 - `pyforestscan_qgis/ui/`: Mission Control and QGIS integration helpers.
 - `pyforestscan_qgis/worker/`: disabled external-worker research scaffold, not user-facing.
 - `tests/`: plain-Python unit tests that do not require QGIS.
@@ -47,6 +48,7 @@ Implemented output defaults are:
 - [User Guide](docs/USER_GUIDE.md)
 - [Mission Control](docs/ui/MISSION_CONTROL.md)
 - [Known Limitations](docs/KNOWN_LIMITATIONS.md)
+- [Workspace Architecture](docs/development/WORKSPACE_ARCHITECTURE.md)
 - [Internal Release Checklist](docs/releases/INTERNAL_RELEASE_CHECKLIST.md)
 - [Manual QA Script](docs/development/MANUAL_QA_SCRIPT.md)
 - [Batch Processing](docs/development/BATCH_PROCESSING.md)
