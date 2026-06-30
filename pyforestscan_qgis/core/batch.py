@@ -36,6 +36,9 @@ class BatchProductSettings:
     canopy_cover_height_threshold: float = 2.0
     stop_on_error: bool = False
     load_outputs_into_qgis: bool = False
+    execution_mode: str = "sequential"
+    max_workers: int = 2
+    confirm_large_parallel: bool = False
 
 
 @dataclass(frozen=True)

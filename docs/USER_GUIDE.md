@@ -231,7 +231,7 @@ Product Planner writes these files inside the selected output folder:
 
 Use the Batch page when several lidar files need the same products and shared settings. Choose an input folder, decide whether to search subfolders, discover supported LAS, LAZ, COPC, COPC LAZ, and local EPT `ept.json` files, then select the files to run. Choose one output folder and one shared product/settings set.
 
-Batch runs files sequentially. It creates a folder like:
+Batch runs files sequentially by default. Advanced users can choose Parallel safe mode, which uses a small capped worker count and guardrails. It creates a folder like:
 
 ```text
 <output_folder>/pyforestscan_batch_<YYYYMMDD_HHMMSS>/
@@ -241,7 +241,7 @@ Each selected dataset receives its own run folder inside that batch folder, with
 
 Generated outputs are not loaded into QGIS by default during batch processing. Enable Load generated outputs into QGIS only when the batch is small enough that adding many layers will not clutter or slow the project.
 
-Batch summaries report total files, completed, failed, skipped, total output count, and observed output storage. Batch processing reuses Dataset Explorer, Product Planner, JobManager, Pipeline, and Adapter services. It does not use separate scientific processing code. Batch v1 is sequential and may keep QGIS busy during large runs; parallel/background execution is reserved for a later phase.
+Parallel safe mode defaults to two workers and allows one to four workers. Values above two can increase memory, disk, and PDAL/PyForestScan pressure. Large workloads require confirmation before parallel execution starts. Batch summaries report total files, completed, failed, skipped, total output count, and observed output storage. Batch processing reuses Dataset Explorer, Product Planner, JobManager, Pipeline, and Adapter services. It does not use separate scientific processing code. Batch v1 is sequential and may keep QGIS busy during large runs; parallel/background execution is reserved for a later phase.
 
 ## Product Job Execution
 

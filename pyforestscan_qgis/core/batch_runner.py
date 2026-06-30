@@ -61,7 +61,7 @@ class BatchRunner:
             if control == "cancel":
                 items.extend(self._skipped_items(request.datasets[index:], batch_folder, "Cancelled before processing."))
                 break
-            item = self._run_dataset(Path(dataset), batch_folder, request)
+            item = self.run_dataset(Path(dataset), batch_folder, request)
             items.append(item)
             if self.item_callback is not None:
                 self.item_callback(item)
@@ -82,7 +82,8 @@ class BatchRunner:
         )
         return write_batch_summaries(result)
 
-    def _run_dataset(self, dataset: Path, batch_folder: Path, request: BatchRequest) -> BatchItemResult:
+    def run_dataset(self, dataset: Path, batch_folder: Path, request: BatchRequest) -> BatchItemResult:
+        """Run one dataset inside an existing batch folder."""
         context = batch_run_context(dataset, batch_folder).ensure_directories()
         try:
             inspection = self.adapter.inspect_dataset(dataset)

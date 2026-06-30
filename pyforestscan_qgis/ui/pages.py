@@ -12,7 +12,7 @@ from html import escape
 from pathlib import Path
 from typing import Callable
 
-from qgis.PyQt.QtCore import QSize, Qt, QUrl, pyqtSignal
+from qgis.PyQt.QtCore import QObject, QSize, Qt, QThread, QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
     QApplication,
@@ -41,7 +41,8 @@ from qgis.PyQt.QtWidgets import (
 
 from ..core.adapter import PyForestScanAdapter
 from ..core.batch import BatchProductSettings, BatchRequest, discover_lidar_files
-from ..core.batch_runner import BatchExecutionError, BatchRunner
+from ..core.batch_executor import PARALLEL_SAFE_MODE, SEQUENTIAL_MODE, BatchExecutor
+from ..core.batch_runner import BatchExecutionError
 from ..core.dataset_report import (
     DatasetExplorerReport,
     build_dataset_explorer_report,
@@ -1042,6 +1043,38 @@ class ProcessingPage(MissionPage):
                 self.pipeline_list.addItem(f"  {_pipeline_status_icon(step.status.value)} {step.label}: {step.message}")
 
 
+class _BatchExecutionWorker(QObject):
+    """Qt worker that runs BatchExecutor away from the UI thread."""
+
+    itemReady = pyqtSignal(object)
+    jobReady = pyqtSignal(object)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, request: BatchRequest, control_callback: Callable[[], str | None]) -> None:
+        """Store immutable batch request and cancellation callback."""
+        super().__init__()
+        self.request = request
+        self.control_callback = control_callback
+
+    def run(self) -> None:
+        """Execute the batch and emit a final result or error message."""
+        try:
+            result = BatchExecutor(adapter_factory=PyForestScanAdapter).run(
+                self.request,
+                item_callback=self.itemReady.emit,
+                job_callback=self.jobReady.emit,
+                control_callback=self.control_callback,
+            )
+        except BatchExecutionError as exc:
+            self.failed.emit(str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001 - worker must report unexpected failures to UI.
+            self.failed.emit(f"Unexpected batch failure: {exc}")
+            return
+        self.completed.emit(result)
+
+
 class BatchPage(MissionPage):
     """Sequential folder-to-products batch workflow."""
 
@@ -1058,6 +1091,9 @@ class BatchPage(MissionPage):
         self.cancel_requested = False
         self.pause_requested = False
         self.failed_paths: list[Path] = []
+        self.active_workers = 0
+        self.batch_thread: QThread | None = None
+        self.batch_worker: _BatchExecutionWorker | None = None
 
         source = self.add_section("Input Folder")
         folder_row = QHBoxLayout()
@@ -1136,11 +1172,25 @@ class BatchPage(MissionPage):
         settings_form.addRow("Canopy cover threshold", self.canopy_threshold_spin)
         settings_form.addRow("CHM interpolation", self.chm_interpolation_combo)
         products.addLayout(settings_form)
+        self.execution_mode_combo = QComboBox()
+        self.execution_mode_combo.addItem("Sequential", SEQUENTIAL_MODE)
+        self.execution_mode_combo.addItem("Parallel safe mode", PARALLEL_SAFE_MODE)
+        self.execution_mode_combo.currentIndexChanged.connect(lambda _index: self._refresh_footprint_label())
+        self.max_workers_spin = QSpinBox()
+        self.max_workers_spin.setMinimum(1)
+        self.max_workers_spin.setMaximum(4)
+        self.max_workers_spin.setValue(2)
+        self.max_workers_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
+        settings_form.addRow("Execution mode", self.execution_mode_combo)
+        settings_form.addRow("Max workers", self.max_workers_spin)
         self.stop_on_error_check = QCheckBox("Stop batch when a file fails")
         self.load_outputs_check = QCheckBox("Load generated outputs into QGIS")
         self.load_outputs_check.setToolTip("Off by default for batches so QGIS is not overwhelmed by many layers.")
+        self.confirm_parallel_check = QCheckBox("Allow parallel safe mode for this workload after reviewing warnings")
+        self.confirm_parallel_check.toggled.connect(lambda _checked: self._refresh_footprint_label())
         products.addWidget(self.stop_on_error_check)
         products.addWidget(self.load_outputs_check)
+        products.addWidget(self.confirm_parallel_check)
         for check in self.product_checks.values():
             check.toggled.connect(lambda _checked: self._refresh_footprint_label())
         self.resolution_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
@@ -1179,6 +1229,8 @@ class BatchPage(MissionPage):
         self.status_label.setObjectName("advisorMetric")
         self.status_label.setWordWrap(True)
         run_section.addWidget(self.status_label)
+        self.worker_status_label = _body_label("Active workers: 0")
+        run_section.addWidget(self.worker_status_label)
         filter_row = QHBoxLayout()
         filter_row.addWidget(QLabel("Show"))
         self.result_filter_combo = QComboBox()
@@ -1254,6 +1306,9 @@ class BatchPage(MissionPage):
             canopy_cover_height_threshold=self.canopy_threshold_spin.value(),
             stop_on_error=self.stop_on_error_check.isChecked(),
             load_outputs_into_qgis=self.load_outputs_check.isChecked(),
+            execution_mode=str(self.execution_mode_combo.currentData()),
+            max_workers=self.max_workers_spin.value(),
+            confirm_large_parallel=self.confirm_parallel_check.isChecked(),
         )
         request = BatchRequest(
             input_folder=Path(self.input_folder_edit.text().strip()),
@@ -1267,6 +1322,7 @@ class BatchPage(MissionPage):
         self.failed_paths = []
         self.cancel_requested = False
         self.pause_requested = False
+        self._mark_selected_files_queued()
         self.batch_results.clear()
         self.progress_bar.setValue(0)
         self.run_button.setEnabled(False)
@@ -1276,33 +1332,89 @@ class BatchPage(MissionPage):
         self.status_label.setText(f"Status: Running {len(selected)} dataset(s) sequentially.")
         self._processed_items = 0
         self._total_items = len(selected)
-        runner = BatchRunner(
-            adapter=self.adapter,
-            item_callback=self._on_batch_item,
-            job_callback=self._on_batch_job_update,
-            control_callback=self._batch_control_state,
-        )
+        executor = BatchExecutor(adapter_factory=PyForestScanAdapter)
         try:
-            result = runner.run(request)
+            guardrail = executor.guardrails(request)
         except BatchExecutionError as exc:
             self.status_label.setText(f"Status: Batch could not start: {exc}")
             self.run_button.setEnabled(True)
+            self.pause_button.setEnabled(False)
+            self.cancel_button.setEnabled(False)
             return
-        finally:
+        if guardrail.blocked:
+            self.status_label.setText(f"Status: {guardrail.reason} Review warnings and confirm before using Parallel safe mode.")
             self.run_button.setEnabled(True)
             self.pause_button.setEnabled(False)
             self.cancel_button.setEnabled(False)
-            self.pause_requested = False
-            self.pause_button.setText("Pause After Current File")
+            return
+        self.active_workers = guardrail.max_workers if guardrail.is_parallel else 1
+        mode_label = guardrail.effective_mode.replace("_", " ")
+        self.worker_status_label.setText(f"Active workers: {self.active_workers} ({mode_label})")
+        self.status_label.setText(f"Status: Running {len(selected)} dataset(s) in {mode_label}.")
+        self.batch_thread = QThread(self)
+        self.batch_worker = _BatchExecutionWorker(request, self._batch_control_state)
+        self.batch_worker.moveToThread(self.batch_thread)
+        self.batch_thread.started.connect(self.batch_worker.run)
+        self.batch_worker.itemReady.connect(self._on_batch_item)
+        self.batch_worker.jobReady.connect(self._on_batch_job_update)
+        self.batch_worker.completed.connect(self._on_batch_complete)
+        self.batch_worker.failed.connect(self._on_batch_failed)
+        self.batch_worker.completed.connect(self.batch_thread.quit)
+        self.batch_worker.failed.connect(self.batch_thread.quit)
+        self.batch_thread.finished.connect(self.batch_worker.deleteLater)
+        self.batch_thread.finished.connect(self.batch_thread.deleteLater)
+        self.batch_thread.finished.connect(self._clear_batch_thread)
+        self.batch_thread.start()
+
+    def _on_batch_complete(self, result: object) -> None:
+        """Finalize UI state after a worker-thread batch completes."""
         self.latest_result = result
-        self.progress_bar.setValue(100 if result.items else 0)
+        self.progress_bar.setValue(100 if getattr(result, "items", ()) else 0)
         self.status_label.setText(
-            f"Status: Batch complete. Completed {result.success_count}; failed {result.failure_count}. Summary: {result.summary_html}"
+            f"Status: Batch complete. Completed {getattr(result, 'success_count', 0)}; failed {getattr(result, 'failure_count', 0)}. Summary: {getattr(result, 'summary_html', '')}"
         )
         self._set_batch_summary(result)
         self.open_batch_folder_button.setEnabled(True)
         self.retry_failed_button.setEnabled(bool(self.failed_paths))
         self.batchCompleted.emit(result)
+        self._finish_batch_run()
+
+    def _on_batch_failed(self, message: str) -> None:
+        """Display an executor-level batch failure."""
+        self.status_label.setText(f"Status: Batch could not start: {message}")
+        self._finish_batch_run()
+
+    def _finish_batch_run(self) -> None:
+        """Restore controls after a batch worker exits."""
+        self.run_button.setEnabled(True)
+        self.pause_button.setEnabled(False)
+        self.cancel_button.setEnabled(False)
+        self.pause_requested = False
+        self.pause_button.setText("Pause After Current File")
+        self.active_workers = 0
+        self.worker_status_label.setText("Active workers: 0")
+
+    def _clear_batch_thread(self) -> None:
+        """Clear worker references after Qt has cleaned up the thread."""
+        self.batch_thread = None
+        self.batch_worker = None
+
+    def _mark_selected_files_queued(self) -> None:
+        """Mark selected discovered files as queued before execution starts."""
+        products = ", ".join(PRODUCT_LABELS[product] for product, check in self.product_checks.items() if check.isChecked()) or "none"
+        for index, path in enumerate(self.discovered_paths):
+            item = self.file_list.item(index)
+            if item is not None and item.checkState() == Qt.Checked:
+                item.setText(f"{path.name}\nStatus: queued; products: {products}\n{path}")
+
+    def _update_file_row(self, path: Path, status: str, bounds: str, message: str) -> None:
+        """Update one discovered file row with current batch status."""
+        for index, candidate in enumerate(self.discovered_paths):
+            if candidate == path:
+                item = self.file_list.item(index)
+                if item is not None:
+                    item.setText(f"{path.name}\nStatus: {status}; bounds: {bounds}\nMessage: {message}\n{path}")
+                return
 
     def _selected_paths(self) -> list[Path]:
         paths: list[Path] = []
@@ -1349,6 +1461,7 @@ class BatchPage(MissionPage):
         run_folder = getattr(getattr(item, "run_context"), "run_folder")
         bounds = getattr(item, "bounds_summary", "Unavailable")
         self.batch_items.append(item)
+        self._update_file_row(Path(getattr(item, "dataset_path")), status, getattr(item, "bounds_summary", "Unavailable"), message)
         if status == "failed":
             self.failed_paths.append(Path(getattr(item, "dataset_path")))
         self._refresh_batch_results()
@@ -1362,7 +1475,6 @@ class BatchPage(MissionPage):
 
     def _batch_control_state(self) -> str | None:
         """Return pause/cancel state for the core batch runner."""
-        QApplication.processEvents()
         if self.cancel_requested:
             return "cancel"
         if self.pause_requested:

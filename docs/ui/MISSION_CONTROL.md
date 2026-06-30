@@ -42,8 +42,9 @@ flowchart TD
   available under Technical Details.
 - Batch: discover multiple LAS, LAZ, COPC, and EPT datasets from a folder, select
   files, apply one shared product plan/settings set, process them sequentially
-  into one organized batch folder, filter results, retry failures, and optionally
-  load generated outputs into QGIS.
+  by default or through guarded Parallel safe mode, filter results, retry
+  failures, cancel remaining files, and optionally load generated outputs into
+  QGIS.
 - Results: view friendly Dataset Report, Product Plan, Job Summary, Output
   Folder, and Products links first, with raw paths under Run files and logs.
 - Settings: default output folder, logging placeholder, and future preferences.
@@ -132,3 +133,8 @@ Mission Control includes a Batch page for sequential folder-to-products workflow
 The Home page is intentionally a workflow dashboard rather than a documentation landing page. The former Open Documentation button was removed from Home because it competed with the primary actions. Users start work through Start Single Dataset or Start Batch, while technical paths and internal files remain collapsed on their respective pages.
 
 Batch v2 keeps the default workflow focused on the choices users need: input folder, selected files, output folder, products, shared settings, and run controls. Internal reports remain available through Results and run-folder summaries.
+
+
+## Batch Execution Modes
+
+Batch defaults to Sequential. Parallel safe mode is explicit, capped at four workers, and defaults to two workers. Large workloads show warnings and require confirmation before parallel execution starts. The Batch page starts execution in a Qt worker thread so the Mission Control window remains responsive where practical. Generated output loading remains off by default.
