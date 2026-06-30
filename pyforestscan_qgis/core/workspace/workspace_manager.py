@@ -23,6 +23,7 @@ HISTORY_FILE = "history.json"
 RECENT_FILE = "recent.json"
 VERSION_FILE = "version.json"
 GLOBAL_SESSION_FILE = "session.json"
+GLOBAL_RECENT_WORKSPACES_FILE = "recent_workspaces.json"
 
 
 class WorkspaceManager:
@@ -41,7 +42,10 @@ class WorkspaceManager:
     def create_workspace(self, output_root: Path | str, name: str | None = None) -> Workspace:
         """Create and persist a workspace for an output root."""
         workspace = Workspace.create(output_root, name=name)
-        return self.save_workspace(workspace) if self.auto_save else workspace
+        if self.auto_save:
+            workspace = self.save_workspace(workspace)
+            self.record_recent_workspace(workspace)
+        return workspace
 
     def load_workspace(self, output_root: Path | str) -> Workspace:
         """Load a workspace, creating it when no metadata exists."""
@@ -94,6 +98,44 @@ class WorkspaceManager:
         item = WorkspaceRecentItem.create(item_type, path, label)
         updated = workspace.with_recent_item(item, limit=max(1, self.recent_limit))
         return self.save_workspace(updated) if self.auto_save else updated
+
+    def save_notes(self, workspace: Workspace, markdown: str) -> Workspace:
+        """Save workspace notes and append a notes timeline event."""
+        updated = workspace.with_notes(WorkspaceNotes(markdown)).with_timeline_event(
+            WorkspaceTimelineEvent.create("notes_saved", "Workspace notes saved")
+        )
+        return self.save_workspace(updated) if self.auto_save else updated
+
+    def reset_workspace_state(self, workspace: Workspace) -> Workspace:
+        """Reset current workspace progress, history, timeline, and recent items."""
+        reset = workspace.with_state(WorkspaceState()).with_history(WorkspaceHistory())._replace(
+            timeline=(WorkspaceTimelineEvent.create("workspace_reset", "Workspace reset"),),
+            recent_items=(WorkspaceRecentItem.create("workspace", workspace.workspace_dir, workspace.name),),
+        )
+        return self.save_workspace(reset) if self.auto_save else reset
+
+    def record_recent_workspace(self, workspace: Workspace) -> Workspace:
+        """Record a workspace in the global recent-workspaces list."""
+        existing = list(self.list_recent_workspace_paths())
+        paths = (workspace.workspace_dir,) + tuple(path for path in existing if path != workspace.workspace_dir)
+        self.config_root.mkdir(parents=True, exist_ok=True)
+        _write_json(
+            self.config_root / GLOBAL_RECENT_WORKSPACES_FILE,
+            {"workspaces": [str(path) for path in paths[: max(1, self.recent_limit)]]},
+        )
+        return workspace
+
+    def list_recent_workspace_paths(self) -> tuple[Path, ...]:
+        """Return global recent workspace paths."""
+        payload = _read_json(self.config_root / GLOBAL_RECENT_WORKSPACES_FILE, default={"workspaces": []})
+        return tuple(Path(item) for item in payload.get("workspaces", []))
+
+    def remove_recent_workspace(self, workspace_path: Path | str) -> None:
+        """Remove a workspace path from the global recent list."""
+        target = Path(workspace_path)
+        paths = tuple(path for path in self.list_recent_workspace_paths() if path != target)
+        self.config_root.mkdir(parents=True, exist_ok=True)
+        _write_json(self.config_root / GLOBAL_RECENT_WORKSPACES_FILE, {"workspaces": [str(path) for path in paths]})
 
     def save_global_session(self, session: WorkspaceSession) -> Path:
         """Persist the cross-workspace Mission Control session pointer."""

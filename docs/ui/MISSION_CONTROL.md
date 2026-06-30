@@ -25,9 +25,13 @@ flowchart TD
 
 ## Pages
 
-- Home: workflow dashboard with environment status, active dataset, batch status,
-  recommended next action, recent run folder, and primary Start Single Dataset /
-  Start Batch actions. Version details are collapsed by default.
+- Home: workflow dashboard with environment status, active dataset, workspace status,
+  generated products, batch status, recommended next action, recent run folder,
+  and primary Start Single Dataset / Start Batch actions. Version details are
+  collapsed by default.
+- Workspace: welcome/resume surface with Continue Last Workspace, Start New
+  Workspace, Recent Workspaces, status, recent runs, key output links, timeline,
+  notes, and clear/reset controls.
 - Environment: adapter-backed runtime checks for QGIS, Python, PyForestScan,
   PDAL, GDAL, rasterio, and numpy.
 - Scientific Advisor: deterministic Knowledge Engine guidance after Dataset Explorer, including warnings, product explanations, parameter suggestions, and QGIS QA tools.
@@ -63,13 +67,15 @@ adding nested scroll areas unless there is a specific interaction reason.
 - `pyforestscan_qgis/ui/qgis_footprint.py`: Dataset footprint preview creation,
   in-memory footprint layer integration, and main-canvas zoom helpers.
 - `pyforestscan_qgis/ui/state.py`: plain-Python immutable Mission Control state.
-- `pyforestscan_qgis/core/workspace.py`: run-folder path model shared by Mission Control pages.
+- `pyforestscan_qgis/core/workspace/`: QGIS-free workspace package containing run-folder context, workspace persistence, session/state/history/timeline/notes models, and display helpers.
 
 ## Signal And Slot Architecture
 
 ```mermaid
 flowchart LR
     A["Navigation list"] --> B["Stacked page index"]
+    W["Workspace page"] --> X["WorkspaceManager"]
+    X --> Y[".pyforestscan files"]
     C["Environment refresh"] --> D["environmentChanged"]
     E["Dataset explored"] --> F["datasetExplored with RunContext"]
     F --> G["Planning and Processing receive active run"]
@@ -90,6 +96,20 @@ QGIS APIs only in the UI layer; core adapter and report code remain QGIS-free.
 The run folder is not a required `.pfs` project file. The Processing page runs the active Product
 Planner JSON through JobManager and the pipeline registry. CHM, Canopy Cover, PAD, PAI, FHD, and Rumple are implemented through the adapter for single-dataset workflows. Raster outputs are loaded with product-aware default styling: CHM, Canopy Cover, PAI, and FHD use grayscale, while PAD uses its documented RGB band composite. Users can restyle layers manually in QGIS.
 
+
+
+## Workspace Welcome And Resume
+
+The Workspace page turns the local `.pyforestscan/` folder into a user-facing
+resume experience. Continue Last Workspace opens the newest recorded workspace,
+Start New Workspace creates a workspace in a chosen output folder, and Recent
+Workspaces lists up to 10 known entries with missing paths marked clearly.
+
+Workspace status, current step, completion percentage, recent runs, key output
+links, timeline events, and notes are shown as normal application content rather
+than raw JSON. Technical files remain hidden unless users open the run folder or
+inspect workspace files manually. Reset clears workspace progress/history in a
+controlled way and does not delete generated rasters, reports, or batch outputs.
 
 ## Scientific Advisor Integration
 

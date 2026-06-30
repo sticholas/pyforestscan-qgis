@@ -7,7 +7,8 @@ so the main page stack can use the full window, and each page uses one
 predictable vertical scroll area. It provides guided pages for the current
 workflows:
 
-- Home: workflow dashboard with status, recommended next action, recent run folder, and Start Single Dataset / Start Batch actions.
+- Home: workflow dashboard with workspace status, last dataset, output context, generated products, completion, recent activity, recommended next action, recent run folder, and Start Single Dataset / Start Batch actions.
+- Workspace: continue the last workspace, start a new workspace, reopen recent workspaces, view status/runs/timeline/outputs, edit notes, and reset workspace progress.
 - Environment: refresh dependency checks.
 - Dataset: select a lidar dataset and output folder, inspect the dataset, and preview its spatial footprint.
 - Planning: build a product plan from the active Dataset Explorer result.
@@ -28,7 +29,9 @@ users who want explicit file paths.
 
 Mission Control now keeps a local Workspace for each selected output root. A Workspace represents one analysis and stores resumable context in a hidden `.pyforestscan/` folder under the output folder. It records session state, recent datasets/reports, timeline events, processing history, notes, and workspace format version metadata.
 
-Users do not manually save Workspaces. Mission Control auto-saves after major operations such as Dataset Explorer, Product Planner, processing completion, and batch completion. Workspace files are local and independent from the QGIS project. There is no cloud sync, account, or database.
+Users do not manually save Workspaces. Mission Control auto-saves after major operations such as Dataset Explorer, Product Planner, processing completion, and batch completion. The Workspace page also provides a Save Notes button for `notes.md`. Workspace files are local and independent from the QGIS project. There is no cloud sync, account, or database.
+
+Use Continue Last Workspace to reopen the most recent workspace, or Start New Workspace to create a new `.pyforestscan/` folder under a selected output folder. Recent Workspaces shows up to 10 entries and flags missing folders. The Timeline lists recent events in readable order, and Notes supports Markdown/plain text field notes. Clear / Reset Current Workspace resets progress and history for the active workspace without deleting generated output files.
 
 ## Mission Control Run Folders
 

@@ -9,13 +9,13 @@ from typing import Any
 from qgis.PyQt import uic
 from qgis.PyQt.QtCore import QByteArray, Qt, QUrl
 from qgis.PyQt.QtGui import QDesktopServices
-from qgis.PyQt.QtWidgets import QDockWidget, QSizePolicy, QWidget
+from qgis.PyQt.QtWidgets import QDockWidget, QFileDialog, QSizePolicy, QWidget
 
 from ..core.adapter import PyForestScanAdapter
 from ..core.dataset_report import report_to_dict as dataset_report_to_dict
 from ..core.knowledge import KnowledgeEngine
 from ..core.jobs import JobRecord, JobStatus
-from ..core.workspace import RunContext, WorkspaceHistoryRun, WorkspaceManager, WorkspaceSession, WorkspaceStatus
+from ..core.workspace import RunContext, WorkspaceHistoryRun, WorkspaceManager, WorkspaceSession, WorkspaceStatus, summarize_recent_workspaces
 from ..resources import plugin_root
 from .pages import (
     BatchPage,
@@ -27,6 +27,7 @@ from .pages import (
     ResultsPage,
     ScientificAdvisorPage,
     SettingsPage,
+    WorkspacePage,
 )
 from .advisor import completed_products_from_job
 from .raster_styling import apply_generated_raster_renderer, is_raster_result, layer_display_name
@@ -40,6 +41,7 @@ class MissionControlDock(QDockWidget):
 
     PAGE_NAMES = (
         "Home",
+        "Workspace",
         "Environment",
         "Dataset",
         "Scientific Advisor",
@@ -91,6 +93,7 @@ class MissionControlDock(QDockWidget):
             label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
 
         self.home_page = HomePage(plugin_version=self._plugin_version())
+        self.workspace_page = WorkspacePage()
         self.environment_page = EnvironmentPage(self.adapter)
         self.dataset_page = DatasetPage(self.adapter, iface=self.iface)
         self.advisor_page = ScientificAdvisorPage(iface=self.iface)
@@ -102,6 +105,7 @@ class MissionControlDock(QDockWidget):
         self.settings_page.set_workspace_session(self.workspace_session)
         self.pages = (
             self.home_page,
+            self.workspace_page,
             self.environment_page,
             self.dataset_page,
             self.advisor_page,
@@ -170,6 +174,12 @@ class MissionControlDock(QDockWidget):
         self.ui.navigationList.currentRowChanged.connect(self.ui.pageStack.setCurrentIndex)
         self.home_page.startSingleDatasetRequested.connect(lambda: self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Dataset")))
         self.home_page.startBatchRequested.connect(lambda: self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Batch")))
+        self.workspace_page.continueLastRequested.connect(self._continue_last_workspace)
+        self.workspace_page.startNewRequested.connect(self._start_new_workspace)
+        self.workspace_page.workspaceSelected.connect(self._open_workspace_path)
+        self.workspace_page.removeRecentRequested.connect(self._remove_recent_workspace)
+        self.workspace_page.resetWorkspaceRequested.connect(self._reset_current_workspace)
+        self.workspace_page.notesSaveRequested.connect(self._save_workspace_notes)
         self.environment_page.environmentChanged.connect(self._set_environment_status)
         self.dataset_page.datasetExplored.connect(self._set_dataset_report)
         self.planning_page.planningChanged.connect(self._set_planning_status)
@@ -431,6 +441,100 @@ class MissionControlDock(QDockWidget):
             pass
 
 
+    def _continue_last_workspace(self) -> None:
+        """Open the most recent workspace when available."""
+        paths = self.workspace_manager.list_recent_workspace_paths()
+        if paths:
+            self._open_workspace_path(paths[0])
+            return
+        if self.workspace_session.last_opened_workspace is not None:
+            self._open_workspace_path(self.workspace_session.last_opened_workspace)
+
+    def _start_new_workspace(self) -> None:
+        """Create a new workspace under a user-selected output folder."""
+        folder = QFileDialog.getExistingDirectory(self, "Choose workspace output folder")
+        if not folder:
+            return
+        try:
+            self.workspace = self.workspace_manager.create_workspace(Path(folder))
+            self.workspace = self.workspace_manager.add_timeline_event(self.workspace, "workspace_opened", "Workspace opened")
+            self.workspace_manager.record_recent_workspace(self.workspace)
+        except Exception:  # noqa: BLE001 - workspace creation should fail softly in UI.
+            self.workspace = None
+            return
+        self.dataset_page.set_default_output_folder(Path(folder))
+        self.batch_page.set_default_output_folder(Path(folder))
+        self.state = self.state.with_default_output_folder(Path(folder)).with_activity("Workspace opened", Path(folder).name)
+        self._save_workspace_session()
+        self._refresh_home()
+        self._update_status_bar()
+        self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Workspace"))
+
+    def _open_workspace_path(self, workspace_path: object) -> None:
+        """Open a recent workspace path."""
+        path = Path(workspace_path)
+        root = path.parent if path.name == ".pyforestscan" else path
+        if not path.exists() and not (root / ".pyforestscan").exists():
+            self.workspace_manager.remove_recent_workspace(path)
+            self._refresh_home()
+            return
+        try:
+            self.workspace = self.workspace_manager.load_workspace(root)
+            self.workspace_manager.record_recent_workspace(self.workspace)
+        except Exception:  # noqa: BLE001 - bad workspace should not break Mission Control.
+            self.workspace = None
+            return
+        session = self.workspace.session
+        if session.last_selected_dataset is not None:
+            self.dataset_page.dataset_path_edit.setText(str(session.last_selected_dataset))
+            self.state = self.state.with_dataset(str(session.last_selected_dataset))
+        if session.last_output_folder is not None:
+            self.dataset_page.output_folder_edit.setText(str(session.last_output_folder))
+            self.batch_page.output_folder_edit.setText(str(session.last_output_folder))
+            self.state = self.state.with_default_output_folder(session.last_output_folder)
+        self.state = self.state.with_activity("Workspace opened", self.workspace.name)
+        self._save_workspace_session()
+        self._refresh_home()
+        self._update_status_bar()
+        self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Workspace"))
+
+    def _remove_recent_workspace(self, workspace_path: object) -> None:
+        """Remove a workspace from the recent list."""
+        self.workspace_manager.remove_recent_workspace(Path(workspace_path))
+        self._refresh_home()
+
+    def _reset_current_workspace(self) -> None:
+        """Reset current workspace state/history or clear the UI if no workspace exists."""
+        if self.workspace is None:
+            self.state = MissionControlState()
+            self.workspace_session = WorkspaceSession()
+            self._save_workspace_session()
+            self._refresh_home()
+            self._update_status_bar()
+            return
+        try:
+            self.workspace = self.workspace_manager.reset_workspace_state(self.workspace)
+        except Exception:  # noqa: BLE001 - reset should fail softly.
+            return
+        self.job_history = ()
+        self.batch_status = "Not started"
+        self.state = self.state.with_activity("Workspace reset", self.workspace.name)
+        self._save_workspace_session()
+        self._refresh_home()
+        self._update_status_bar()
+
+    def _save_workspace_notes(self, markdown: str) -> None:
+        """Save notes for the active workspace."""
+        if self.workspace is None:
+            return
+        try:
+            self.workspace = self.workspace_manager.save_notes(self.workspace, markdown)
+        except Exception:  # noqa: BLE001 - notes should fail softly.
+            return
+        self.state = self.state.with_activity("Notes saved", self.workspace.name)
+        self._refresh_home()
+
+
     def _load_job_outputs(self, job: JobRecord) -> None:
         """Best-effort load of generated raster outputs into QGIS."""
         for result in job.results:
@@ -474,6 +578,10 @@ class MissionControlDock(QDockWidget):
             self.batch_status,
             recent_run,
         )
+        self.home_page.set_workspace(self.workspace)
+        recent = summarize_recent_workspaces(self.workspace_manager.list_recent_workspace_paths(), self.workspace_session.maximum_recent_items)
+        self.workspace_page.set_workspace(self.workspace)
+        self.workspace_page.set_recent_workspaces(recent)
         self.home_page.set_activities(tuple((item.label, item.detail) for item in self.state.activities))
         self.results_page.set_run_context(self.state.active_run)
         self.advisor_page.set_run_context(self.state.active_run)

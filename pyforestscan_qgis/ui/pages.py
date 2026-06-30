@@ -72,7 +72,16 @@ from ..core.product_plan import (
     write_plan_json,
 )
 from ..core.types import ProductType
-from ..core.workspace import RunContext, WorkspaceSession, create_run_context
+from ..core.workspace import (
+    RecentWorkspaceSummary,
+    RunContext,
+    Workspace,
+    WorkspaceSession,
+    format_timeline_events,
+    workspace_primary_action,
+    workspace_status_label,
+    create_run_context,
+)
 from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
 
@@ -133,6 +142,9 @@ class HomePage(MissionPage):
         self.environment_label = _body_label("Environment: Unknown")
         self.dataset_label = _body_label("Active dataset: None")
         self.batch_label = _body_label("Batch: Not started")
+        self.workspace_label = _body_label("Workspace: None")
+        self.workspace_status_label = _body_label("Workspace status: No workspace open")
+        self.workspace_products_label = _body_label("Products generated: None")
         self.next_action_label = QLabel("Next: refresh the environment or start a dataset workflow.")
         self.next_action_label.setObjectName("advisorMetric")
         self.next_action_label.setWordWrap(True)
@@ -140,6 +152,9 @@ class HomePage(MissionPage):
         dashboard.addWidget(self.environment_label)
         dashboard.addWidget(self.dataset_label)
         dashboard.addWidget(self.batch_label)
+        dashboard.addWidget(self.workspace_label)
+        dashboard.addWidget(self.workspace_status_label)
+        dashboard.addWidget(self.workspace_products_label)
         dashboard.addWidget(self.next_action_label)
         dashboard.addWidget(self.recent_run_label)
 
@@ -179,11 +194,186 @@ class HomePage(MissionPage):
         self.recent_run_label.setText(f"Recent run folder: {recent_run or 'None'}")
         self.next_action_label.setText(f"Next: {_next_home_action(environment, dataset, batch_status)}")
 
+    def set_workspace(self, workspace: Workspace | None) -> None:
+        """Display active workspace status on Home."""
+        if workspace is None:
+            self.workspace_label.setText("Workspace: None")
+            self.workspace_status_label.setText("Workspace status: No workspace open")
+            self.workspace_products_label.setText("Products generated: None")
+            return
+        generated = ", ".join(run.products[0] if len(run.products) == 1 else "+".join(run.products) for run in workspace.history.runs if run.success) or "None"
+        self.workspace_label.setText(f"Workspace: {workspace.name}")
+        self.workspace_status_label.setText(f"Workspace status: {workspace_status_label(workspace)}")
+        self.workspace_products_label.setText(f"Products generated: {generated}")
+        self.next_action_label.setText(f"Next: {workspace_primary_action(workspace)}")
+
     def set_activities(self, activities: tuple[tuple[str, str], ...]) -> None:
         """Display recent activity."""
         self.activity_list.clear()
         for label, detail in activities[:8]:
             self.activity_list.addItem(f"{label}: {detail}" if detail else label)
+
+
+class WorkspacePage(MissionPage):
+    """Workspace welcome, resume, timeline, and notes page."""
+
+    continueLastRequested = pyqtSignal()
+    startNewRequested = pyqtSignal()
+    workspaceSelected = pyqtSignal(object)
+    removeRecentRequested = pyqtSignal(object)
+    resetWorkspaceRequested = pyqtSignal()
+    notesSaveRequested = pyqtSignal(str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        """Create the Workspace page."""
+        super().__init__("Workspace", parent)
+        self.recent_workspaces: tuple[RecentWorkspaceSummary, ...] = ()
+        self.current_workspace: Workspace | None = None
+
+        welcome = self.add_section("Welcome")
+        self.workspace_status_card = QLabel("No workspace open. Continue your last workspace or start a new one.")
+        self.workspace_status_card.setObjectName("advisorMetric")
+        self.workspace_status_card.setWordWrap(True)
+        welcome.addWidget(self.workspace_status_card)
+        action_row = QHBoxLayout()
+        self.continue_button = QPushButton("Continue Last Workspace")
+        self.continue_button.setMinimumHeight(40)
+        self.continue_button.clicked.connect(self.continueLastRequested.emit)
+        self.start_new_button = QPushButton("Start New Workspace")
+        self.start_new_button.setMinimumHeight(40)
+        self.start_new_button.clicked.connect(self.startNewRequested.emit)
+        action_row.addWidget(self.continue_button)
+        action_row.addWidget(self.start_new_button)
+        action_row.addStretch(1)
+        welcome.addLayout(action_row)
+
+        recent = self.add_section("Recent Workspaces")
+        self.recent_list = QListWidget()
+        self.recent_list.setMinimumHeight(150)
+        self.recent_list.itemDoubleClicked.connect(lambda _item: self.open_selected_workspace())
+        recent.addWidget(self.recent_list)
+        recent_row = QHBoxLayout()
+        open_recent = QPushButton("Open Selected")
+        open_recent.clicked.connect(self.open_selected_workspace)
+        remove_recent = QPushButton("Remove Missing/Selected")
+        remove_recent.clicked.connect(self.remove_selected_workspace)
+        recent_row.addWidget(open_recent)
+        recent_row.addWidget(remove_recent)
+        recent_row.addStretch(1)
+        recent.addLayout(recent_row)
+
+        status = self.add_section("Workspace Status")
+        self.current_step_label = _body_label("Current step: None")
+        self.completion_label = _body_label("Completion: 0%")
+        self.dataset_label = _body_label("Last dataset: None")
+        self.output_label = _body_label("Last output folder: None")
+        self.primary_action_label = _body_label("Primary next action: start or continue a workspace.")
+        for label in (self.current_step_label, self.completion_label, self.dataset_label, self.output_label, self.primary_action_label):
+            status.addWidget(label)
+
+        runs = self.add_section("Recent Runs")
+        self.runs_list = QListWidget()
+        self.runs_list.setMinimumHeight(130)
+        runs.addWidget(self.runs_list)
+
+        outputs = self.add_section("Key Output Links")
+        self.output_links_list = QListWidget()
+        self.output_links_list.setMinimumHeight(120)
+        outputs.addWidget(self.output_links_list)
+
+        timeline = self.add_section("Timeline")
+        self.timeline_list = QListWidget()
+        self.timeline_list.setMinimumHeight(180)
+        timeline.addWidget(self.timeline_list)
+
+        notes = self.add_section("Notes")
+        self.notes_edit = QTextEdit()
+        self.notes_edit.setMinimumHeight(220)
+        notes.addWidget(self.notes_edit)
+        save_notes = QPushButton("Save Notes")
+        save_notes.clicked.connect(lambda: self.notesSaveRequested.emit(self.notes_edit.toPlainText()))
+        notes.addWidget(save_notes)
+
+        reset = self.add_section("Reset")
+        reset.addWidget(_body_label("Clear the current workspace from Mission Control or reset its progress/history. Workspace files remain local."))
+        self.reset_button = QPushButton("Clear / Reset Current Workspace")
+        self.reset_button.clicked.connect(self.resetWorkspaceRequested.emit)
+        reset.addWidget(self.reset_button)
+
+    def set_workspace(self, workspace: Workspace | None) -> None:
+        """Display the current workspace."""
+        self.current_workspace = workspace
+        if workspace is None:
+            self.workspace_status_card.setText("No workspace open. Continue your last workspace or start a new one.")
+            self.current_step_label.setText("Current step: None")
+            self.completion_label.setText("Completion: 0%")
+            self.dataset_label.setText("Last dataset: None")
+            self.output_label.setText("Last output folder: None")
+            self.primary_action_label.setText("Primary next action: start or continue a workspace.")
+            self.runs_list.clear()
+            self.output_links_list.clear()
+            self.timeline_list.clear()
+            self.notes_edit.setPlainText("")
+            return
+        session = workspace.session
+        self.workspace_status_card.setText(workspace_status_label(workspace))
+        self.current_step_label.setText(f"Current step: {workspace.state.current_step}")
+        self.completion_label.setText(f"Completion: {workspace.state.completion_percentage}%")
+        self.dataset_label.setText(f"Last dataset: {session.last_selected_dataset or 'None'}")
+        self.output_label.setText(f"Last output folder: {session.last_output_folder or workspace.output_root}")
+        self.primary_action_label.setText(f"Primary next action: {workspace_primary_action(workspace)}")
+        self.notes_edit.setPlainText(workspace.notes.markdown)
+        self._set_runs(workspace)
+        self._set_outputs(workspace)
+        self._set_timeline(workspace)
+
+    def set_recent_workspaces(self, recent_workspaces: tuple[RecentWorkspaceSummary, ...]) -> None:
+        """Display recent workspace choices."""
+        self.recent_workspaces = recent_workspaces[:10]
+        self.recent_list.clear()
+        for item in self.recent_workspaces:
+            suffix = "" if item.exists else " [missing]"
+            self.recent_list.addItem(f"{item.label}{suffix}\n{item.path}")
+        self.continue_button.setEnabled(bool(self.recent_workspaces))
+
+    def open_selected_workspace(self) -> None:
+        """Emit the selected recent workspace path."""
+        row = self.recent_list.currentRow()
+        if 0 <= row < len(self.recent_workspaces):
+            self.workspaceSelected.emit(self.recent_workspaces[row].path)
+
+    def remove_selected_workspace(self) -> None:
+        """Request removal of the selected recent workspace path."""
+        row = self.recent_list.currentRow()
+        if 0 <= row < len(self.recent_workspaces):
+            self.removeRecentRequested.emit(self.recent_workspaces[row].path)
+
+    def _set_runs(self, workspace: Workspace) -> None:
+        self.runs_list.clear()
+        for run in workspace.history.runs[:10]:
+            status = "success" if run.success else "failed"
+            products = ", ".join(run.products) or "no products"
+            self.runs_list.addItem(f"{status.upper()} - {products}\n{run.finished_at or run.started_at or run.run_id}")
+        if not workspace.history.runs:
+            self.runs_list.addItem("No processing runs recorded yet.")
+
+    def _set_outputs(self, workspace: Workspace) -> None:
+        self.output_links_list.clear()
+        outputs = []
+        for run in workspace.history.runs:
+            outputs.extend(run.output_paths)
+        for path in outputs[:10]:
+            self.output_links_list.addItem(str(path))
+        if not outputs:
+            self.output_links_list.addItem("No generated outputs recorded yet.")
+
+    def _set_timeline(self, workspace: Workspace) -> None:
+        self.timeline_list.clear()
+        lines = format_timeline_events(workspace.timeline, limit=12)
+        for line in lines:
+            self.timeline_list.addItem(line)
+        if not lines:
+            self.timeline_list.addItem("No timeline events recorded yet.")
 
 
 class EnvironmentPage(MissionPage):
