@@ -124,3 +124,26 @@ Phase 17C keeps Sequential as the default and adds guarded Parallel safe mode. M
 Parallel safe mode is opt-in. The user must choose it explicitly and can set max workers from 1 to 4. The default is 2. Values above 2 show strong warnings because multiple PDAL/PyForestScan jobs can increase memory, CPU, and disk pressure. If the selected workload is large, the executor blocks Parallel safe mode until the user confirms that they have reviewed the warnings.
 
 The current implementation uses background Qt execution plus bounded Python worker threads rather than subprocesses. This is a conservative framework step: it protects the QGIS UI thread and provides a clear fallback to Sequential mode, while leaving process-based external workers for a future phase after platform-specific QGIS Python invocation is tested.
+
+
+## Preflight And Resume
+
+Phase 17D adds a required preflight step before execution. Preflight checks that selected input files exist, the output folder is writable, products are selected, worker limits are valid, the environment reports READY, disk free space is sufficient for a conservative storage estimate, and existing outputs will not be overwritten unexpectedly. Warnings are shown for large file counts, large product workloads, and Parallel safe mode resource risk.
+
+Preflight creates or reuses a batch folder and points Mission Control to:
+
+```text
+<batch_folder>/batch_manifest.json
+```
+
+The manifest stores a stable batch id, per-file job ids, run folders, statuses, messages, and outputs. Batch summaries are rewritten after every completed, failed, skipped, or cancelled file:
+
+```text
+<batch_folder>/batch_summary.json
+<batch_folder>/batch_summary.csv
+<batch_folder>/batch_summary.html
+```
+
+If a manifest already exists, preflight treats the batch as resumable. Completed files are skipped by default, failed files can be retried, and successful outputs are not overwritten unless the user enables overwrite existing outputs. If all files are already complete, Run remains disabled and the user can review the existing results.
+
+Disk-space estimates are conservative placeholders based on selected file count and products. They are intended as guardrails, not scientific output-size predictions, and should be calibrated with benchmark history in a future release.

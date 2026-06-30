@@ -42,6 +42,7 @@ from qgis.PyQt.QtWidgets import (
 from ..core.adapter import PyForestScanAdapter
 from ..core.batch import BatchProductSettings, BatchRequest, discover_lidar_files
 from ..core.batch_executor import PARALLEL_SAFE_MODE, SEQUENTIAL_MODE, BatchExecutor
+from ..core.batch_preflight import BatchPreflightReport, run_batch_preflight
 from ..core.batch_runner import BatchExecutionError
 from ..core.dataset_report import (
     DatasetExplorerReport,
@@ -1094,6 +1095,7 @@ class BatchPage(MissionPage):
         self.active_workers = 0
         self.batch_thread: QThread | None = None
         self.batch_worker: _BatchExecutionWorker | None = None
+        self.preflight_report: BatchPreflightReport | None = None
 
         source = self.add_section("Input Folder")
         folder_row = QHBoxLayout()
@@ -1188,9 +1190,16 @@ class BatchPage(MissionPage):
         self.load_outputs_check.setToolTip("Off by default for batches so QGIS is not overwhelmed by many layers.")
         self.confirm_parallel_check = QCheckBox("Allow parallel safe mode for this workload after reviewing warnings")
         self.confirm_parallel_check.toggled.connect(lambda _checked: self._refresh_footprint_label())
+        self.skip_completed_check = QCheckBox("Skip already-completed files on resume")
+        self.skip_completed_check.setChecked(True)
+        self.retry_failed_only_check = QCheckBox("Retry failed files only")
+        self.overwrite_existing_check = QCheckBox("Overwrite existing outputs")
         products.addWidget(self.stop_on_error_check)
         products.addWidget(self.load_outputs_check)
         products.addWidget(self.confirm_parallel_check)
+        products.addWidget(self.skip_completed_check)
+        products.addWidget(self.retry_failed_only_check)
+        products.addWidget(self.overwrite_existing_check)
         for check in self.product_checks.values():
             check.toggled.connect(lambda _checked: self._refresh_footprint_label())
         self.resolution_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
@@ -1201,12 +1210,32 @@ class BatchPage(MissionPage):
         self.footprint_label = _body_label("Select files and products to review the batch footprint. Raster dimensions are estimated per file after Dataset Explorer runs.")
         footprint.addWidget(self.footprint_label)
 
-        run_section = self.add_section("Run Batch")
+        preflight = self.add_section("1. Preflight")
+        self.preflight_button = QPushButton("Run Preflight Check")
+        self.preflight_button.setMinimumHeight(38)
+        self.preflight_button.clicked.connect(self.run_preflight)
+        preflight.addWidget(self.preflight_button)
+        self.acknowledge_warnings_check = QCheckBox("I reviewed the warnings and want to run anyway")
+        self.acknowledge_warnings_check.toggled.connect(lambda _checked: self._update_run_button_enabled())
+        self.acknowledge_warnings_check.setEnabled(False)
+        preflight.addWidget(self.acknowledge_warnings_check)
+        self.preflight_text = QTextEdit()
+        self.preflight_text.setReadOnly(True)
+        self.preflight_text.setMinimumHeight(150)
+        self.preflight_text.setPlainText("Run preflight before starting a batch.")
+        preflight.addWidget(self.preflight_text)
+
+        run_section = self.add_section("2. Run Batch")
         self.run_button = QPushButton("Run Selected Files Sequentially")
         self.run_button.setMinimumHeight(40)
         self.run_button.clicked.connect(self.run_batch)
+        self.run_button.setEnabled(False)
         button_row = QHBoxLayout()
         button_row.addWidget(self.run_button)
+        self.resume_button = QPushButton("Resume Batch")
+        self.resume_button.setEnabled(False)
+        self.resume_button.clicked.connect(self.run_batch)
+        button_row.addWidget(self.resume_button)
         self.pause_button = QPushButton("Pause After Current File")
         self.pause_button.setEnabled(False)
         self.pause_button.clicked.connect(self.toggle_pause)
@@ -1239,7 +1268,7 @@ class BatchPage(MissionPage):
         filter_row.addWidget(self.result_filter_combo)
         filter_row.addStretch(1)
         run_section.addLayout(filter_row)
-        self.summary_label = _body_label("Summary: no batch run yet.")
+        self.summary_label = _body_label("3. Review Results: no batch run yet.")
         run_section.addWidget(self.summary_label)
         self.batch_results = QListWidget()
         self.batch_results.setMinimumHeight(220)
@@ -1284,40 +1313,40 @@ class BatchPage(MissionPage):
         self.status_label.setText(f"Status: Discovered {len(datasets)} supported dataset(s).")
         self._refresh_footprint_label()
 
+    def run_preflight(self) -> None:
+        """Run batch preflight and update readiness display."""
+        try:
+            request = self._build_batch_request()
+        except BatchExecutionError as exc:
+            self.preflight_text.setPlainText(f"BLOCKER: {exc}")
+            self.preflight_report = None
+            self._update_run_button_enabled()
+            return
+        report = run_batch_preflight(request, adapter=self.adapter)
+        self.preflight_report = report
+        self.preflight_text.setPlainText(_format_preflight_report(report))
+        self.acknowledge_warnings_check.setEnabled(report.has_warnings and not report.blockers)
+        if not report.has_warnings:
+            self.acknowledge_warnings_check.setChecked(False)
+        self._update_run_button_enabled()
+
     def run_batch(self) -> None:
-        """Run selected datasets sequentially using the core batch runner."""
-        selected = self._selected_paths()
-        output_folder = self.output_folder_edit.text().strip()
-        if not selected:
-            self.status_label.setText("Status: Select at least one discovered file before running.")
+        """Run selected datasets through preflight-approved batch execution."""
+        if self.preflight_report is None:
+            self.status_label.setText("Status: Run preflight before starting the batch.")
             return
-        if not output_folder:
-            self.status_label.setText("Status: Choose an output folder before running.")
+        if self.preflight_report.blockers:
+            self.status_label.setText("Status: Preflight blockers must be resolved before running.")
             return
-        products = tuple(product for product, check in self.product_checks.items() if check.isChecked())
-        if not products:
-            self.status_label.setText("Status: Select at least one product before running.")
+        if self.preflight_report.warnings and not self.acknowledge_warnings_check.isChecked():
+            self.status_label.setText("Status: Review and acknowledge preflight warnings before running.")
             return
-        settings = BatchProductSettings(
-            products=products,
-            grid_resolution=self.resolution_spin.value(),
-            height_bin_size=self.height_bin_spin.value() if self.height_bin_spin.value() > 0 else None,
-            chm_interpolation=self.chm_interpolation_combo.currentText(),
-            canopy_cover_height_threshold=self.canopy_threshold_spin.value(),
-            stop_on_error=self.stop_on_error_check.isChecked(),
-            load_outputs_into_qgis=self.load_outputs_check.isChecked(),
-            execution_mode=str(self.execution_mode_combo.currentData()),
-            max_workers=self.max_workers_spin.value(),
-            confirm_large_parallel=self.confirm_parallel_check.isChecked(),
-        )
-        request = BatchRequest(
-            input_folder=Path(self.input_folder_edit.text().strip()),
-            output_folder=Path(output_folder),
-            recursive=self.recursive_check.isChecked(),
-            datasets=tuple(selected),
-            settings=settings,
-            title="PyForestScan Batch",
-        )
+        try:
+            request = self._build_batch_request(self.preflight_report.batch_folder, self.preflight_report.files_to_process)
+        except BatchExecutionError as exc:
+            self.status_label.setText(f"Status: Batch could not start: {exc}")
+            return
+        selected = list(request.datasets)
         self.batch_items = []
         self.failed_paths = []
         self.cancel_requested = False
@@ -1326,26 +1355,19 @@ class BatchPage(MissionPage):
         self.batch_results.clear()
         self.progress_bar.setValue(0)
         self.run_button.setEnabled(False)
+        self.resume_button.setEnabled(False)
         self.pause_button.setEnabled(True)
         self.cancel_button.setEnabled(True)
         self.retry_failed_button.setEnabled(False)
-        self.status_label.setText(f"Status: Running {len(selected)} dataset(s) sequentially.")
+        self.status_label.setText(f"Status: Running {len(selected)} dataset(s).")
         self._processed_items = 0
-        self._total_items = len(selected)
+        self._total_items = max(1, len(selected) + len(self.preflight_report.files_to_skip))
         executor = BatchExecutor(adapter_factory=PyForestScanAdapter)
         try:
             guardrail = executor.guardrails(request)
         except BatchExecutionError as exc:
             self.status_label.setText(f"Status: Batch could not start: {exc}")
-            self.run_button.setEnabled(True)
-            self.pause_button.setEnabled(False)
-            self.cancel_button.setEnabled(False)
-            return
-        if guardrail.blocked:
-            self.status_label.setText(f"Status: {guardrail.reason} Review warnings and confirm before using Parallel safe mode.")
-            self.run_button.setEnabled(True)
-            self.pause_button.setEnabled(False)
-            self.cancel_button.setEnabled(False)
+            self._finish_batch_run()
             return
         self.active_workers = guardrail.max_workers if guardrail.is_parallel else 1
         mode_label = guardrail.effective_mode.replace("_", " ")
@@ -1365,6 +1387,51 @@ class BatchPage(MissionPage):
         self.batch_thread.finished.connect(self.batch_thread.deleteLater)
         self.batch_thread.finished.connect(self._clear_batch_thread)
         self.batch_thread.start()
+
+    def _build_batch_request(self, batch_folder: Path | None = None, datasets: tuple[Path, ...] | None = None) -> BatchRequest:
+        """Build a typed batch request from current UI state."""
+        selected = tuple(datasets) if datasets is not None else tuple(self._selected_paths())
+        output_folder = self.output_folder_edit.text().strip()
+        if not selected:
+            raise BatchExecutionError("Select at least one discovered file.")
+        if not output_folder:
+            raise BatchExecutionError("Choose an output folder.")
+        products = tuple(product for product, check in self.product_checks.items() if check.isChecked())
+        if not products:
+            raise BatchExecutionError("Select at least one product.")
+        settings = BatchProductSettings(
+            products=products,
+            grid_resolution=self.resolution_spin.value(),
+            height_bin_size=self.height_bin_spin.value() if self.height_bin_spin.value() > 0 else None,
+            chm_interpolation=self.chm_interpolation_combo.currentText(),
+            canopy_cover_height_threshold=self.canopy_threshold_spin.value(),
+            stop_on_error=self.stop_on_error_check.isChecked(),
+            load_outputs_into_qgis=self.load_outputs_check.isChecked(),
+            execution_mode=str(self.execution_mode_combo.currentData()),
+            max_workers=self.max_workers_spin.value(),
+            confirm_large_parallel=self.confirm_parallel_check.isChecked(),
+            skip_completed=self.skip_completed_check.isChecked(),
+            retry_failed_only=self.retry_failed_only_check.isChecked(),
+            overwrite_existing=self.overwrite_existing_check.isChecked(),
+            preflight_acknowledged=self.acknowledge_warnings_check.isChecked(),
+        )
+        return BatchRequest(
+            input_folder=Path(self.input_folder_edit.text().strip()),
+            output_folder=Path(output_folder),
+            recursive=self.recursive_check.isChecked(),
+            datasets=selected,
+            settings=settings,
+            title="PyForestScan Batch",
+            batch_folder=batch_folder,
+        )
+
+    def _update_run_button_enabled(self) -> None:
+        """Enable Run only after preflight passes or warnings are acknowledged."""
+        report = self.preflight_report
+        enabled = bool(report and report.files_to_process and not report.blockers and (not report.warnings or self.acknowledge_warnings_check.isChecked()))
+        self.run_button.setEnabled(enabled)
+        resumable = bool(report and report.manifest_path.exists() and (report.files_completed or report.files_to_retry or report.files_to_skip))
+        self.resume_button.setEnabled(enabled and resumable)
 
     def _on_batch_complete(self, result: object) -> None:
         """Finalize UI state after a worker-thread batch completes."""
@@ -1387,6 +1454,7 @@ class BatchPage(MissionPage):
     def _finish_batch_run(self) -> None:
         """Restore controls after a batch worker exits."""
         self.run_button.setEnabled(True)
+        self._update_run_button_enabled()
         self.pause_button.setEnabled(False)
         self.cancel_button.setEnabled(False)
         self.pause_requested = False
@@ -1695,6 +1763,33 @@ class SettingsPage(MissionPage):
 
 
 
+
+
+def _format_preflight_report(report: BatchPreflightReport) -> str:
+    """Format a batch preflight report for Mission Control."""
+    lines = [
+        "Ready to run: " + ("YES" if report.ready else "NO"),
+        f"Batch folder: {report.batch_folder}",
+        f"Execution mode: {report.execution_mode}; max workers: {report.max_workers}",
+        f"Files to process: {len(report.files_to_process)}",
+        f"Files already completed: {len(report.files_completed)}",
+        f"Files to skip: {len(report.files_to_skip)}",
+        f"Files to retry: {len(report.files_to_retry)}",
+        f"Estimated output storage: {_format_storage(report.estimated_output_bytes)}",
+        f"Free disk space: {_format_storage(report.free_disk_bytes)}",
+        f"Manifest: {report.manifest_path}",
+        "",
+        "Blockers:",
+    ]
+    lines.extend(f"- {item}" for item in report.blockers)
+    if not report.blockers:
+        lines.append("- None")
+    lines.append("")
+    lines.append("Warnings:")
+    lines.extend(f"- {item}" for item in report.warnings)
+    if not report.warnings:
+        lines.append("- None")
+    return "\n".join(lines)
 
 
 def _format_storage(value: int) -> str:

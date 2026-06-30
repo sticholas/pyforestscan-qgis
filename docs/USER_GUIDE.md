@@ -231,7 +231,7 @@ Product Planner writes these files inside the selected output folder:
 
 Use the Batch page when several lidar files need the same products and shared settings. Choose an input folder, decide whether to search subfolders, discover supported LAS, LAZ, COPC, COPC LAZ, and local EPT `ept.json` files, then select the files to run. Choose one output folder and one shared product/settings set.
 
-Batch runs files sequentially by default. Advanced users can choose Parallel safe mode, which uses a small capped worker count and guardrails. It creates a folder like:
+Batch uses a three-step flow: run Preflight, run the batch, then review results. Batch runs files sequentially by default. Advanced users can choose Parallel safe mode, which uses a small capped worker count and guardrails. It creates a folder like:
 
 ```text
 <output_folder>/pyforestscan_batch_<YYYYMMDD_HHMMSS>/
@@ -381,3 +381,10 @@ Mission Control page and does not change processing behavior. Future UI phases
 can use it to explain dataset suitability, product choices, parameter starting
 points, scientific caveats, and relevant QGIS tools. Its threshold-based advice
 is configurable and explicitly marks calibration needs.
+
+
+### Batch Preflight And Resume
+
+Run Preflight before starting a batch. Preflight checks input files, output folder writability, environment readiness, selected products, disk free space, output conflicts, workload size, execution mode, and max workers. Blockers must be fixed. Warnings must be acknowledged before running.
+
+Each batch writes `batch_manifest.json` in the batch folder before processing starts. The manifest is checkpointed after every file, along with `batch_summary.json`, `batch_summary.csv`, and `batch_summary.html`. If QGIS closes or a batch is cancelled, run Preflight again on the same output folder to resume. Completed files are skipped by default. Failed files can be retried. Successful outputs are not overwritten unless overwrite existing outputs is enabled.

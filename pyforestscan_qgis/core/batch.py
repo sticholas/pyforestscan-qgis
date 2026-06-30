@@ -39,6 +39,10 @@ class BatchProductSettings:
     execution_mode: str = "sequential"
     max_workers: int = 2
     confirm_large_parallel: bool = False
+    skip_completed: bool = True
+    retry_failed_only: bool = False
+    overwrite_existing: bool = False
+    preflight_acknowledged: bool = False
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,7 @@ class BatchRequest:
     datasets: tuple[Path, ...]
     settings: BatchProductSettings
     title: str = "PyForestScan Batch"
+    batch_folder: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -145,11 +150,11 @@ def create_batch_folder(output_folder: Path | str, timestamp: datetime | None = 
         index += 1
 
 
-def batch_run_context(lidar_path: Path | str, batch_folder: Path | str) -> RunContext:
+def batch_run_context(lidar_path: Path | str, batch_folder: Path | str, reuse_existing: bool = False) -> RunContext:
     """Create a run context directly under a batch folder for one dataset."""
     lidar = Path(lidar_path)
     batch = Path(batch_folder)
-    run_folder = _unique_child(batch, _safe_run_name(lidar))
+    run_folder = batch / _safe_run_name(lidar) if reuse_existing else _unique_child(batch, _safe_run_name(lidar))
     reports = run_folder / "reports"
     tables = run_folder / "tables"
     outputs = run_folder / "outputs"

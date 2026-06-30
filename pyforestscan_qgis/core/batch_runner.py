@@ -11,6 +11,7 @@ from typing import Callable
 from .adapter import PyForestScanAdapter
 from .batch import BatchItemResult, BatchRequest, BatchResult, batch_run_context, create_batch_folder
 from .batch_results import write_batch_summaries
+from .batch_manifest import MANIFEST_NAME, create_manifest, load_manifest, update_manifest_item, write_manifest
 from .dataset_report import build_dataset_explorer_report, report_to_dict, write_csv_summary, write_html_report, write_json_report
 from .job_manager import JobManager
 from .jobs import JobRecord
@@ -50,8 +51,11 @@ class BatchRunner:
         if not request.settings.products:
             raise BatchExecutionError("Select at least one product for batch processing.")
         started_at = datetime.now(timezone.utc).isoformat()
-        batch_folder = create_batch_folder(request.output_folder)
-        batch_id = f"pfs-batch-{uuid.uuid4().hex[:10]}"
+        batch_folder = request.batch_folder or create_batch_folder(request.output_folder)
+        manifest_path = batch_folder / MANIFEST_NAME
+        manifest = load_manifest(manifest_path) if manifest_path.exists() else create_manifest(request, batch_folder)
+        write_manifest(manifest)
+        batch_id = manifest.batch_id or f"pfs-batch-{uuid.uuid4().hex[:10]}"
         items: list[BatchItemResult] = []
         for index, dataset in enumerate(request.datasets):
             control = self._control_state()
@@ -59,14 +63,27 @@ class BatchRunner:
                 time.sleep(0.05)
                 control = self._control_state()
             if control == "cancel":
-                items.extend(self._skipped_items(request.datasets[index:], batch_folder, "Cancelled before processing."))
+                skipped = self._skipped_items(request.datasets[index:], batch_folder, "Cancelled before processing.")
+                items.extend(skipped)
+                for skipped_item in skipped:
+                    manifest = update_manifest_item(manifest, skipped_item)
+                    write_manifest(manifest)
+                    self._write_partial_summary(batch_id, request, batch_folder, started_at, items)
                 break
             item = self.run_dataset(Path(dataset), batch_folder, request)
             items.append(item)
+            manifest = update_manifest_item(manifest, item)
+            write_manifest(manifest)
+            self._write_partial_summary(batch_id, request, batch_folder, started_at, items)
             if self.item_callback is not None:
                 self.item_callback(item)
             if item.status == "failed" and request.settings.stop_on_error:
-                items.extend(self._skipped_items(request.datasets[index + 1 :], batch_folder, "Skipped after stop-on-error."))
+                skipped = self._skipped_items(request.datasets[index + 1 :], batch_folder, "Skipped after stop-on-error.")
+                items.extend(skipped)
+                for skipped_item in skipped:
+                    manifest = update_manifest_item(manifest, skipped_item)
+                    write_manifest(manifest)
+                    self._write_partial_summary(batch_id, request, batch_folder, started_at, items)
                 break
         finished_at = datetime.now(timezone.utc).isoformat()
         result = BatchResult(
@@ -82,9 +99,24 @@ class BatchRunner:
         )
         return write_batch_summaries(result)
 
+    def _write_partial_summary(self, batch_id: str, request: BatchRequest, batch_folder: Path, started_at: str, items: list[BatchItemResult]) -> None:
+        """Write summaries after each file so progress survives interruption."""
+        partial = BatchResult(
+            batch_id=batch_id,
+            title=request.title,
+            started_at=started_at,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+            batch_folder=batch_folder,
+            items=tuple(items),
+            summary_json=batch_folder / "batch_summary.json",
+            summary_csv=batch_folder / "batch_summary.csv",
+            summary_html=batch_folder / "batch_summary.html",
+        )
+        write_batch_summaries(partial)
+
     def run_dataset(self, dataset: Path, batch_folder: Path, request: BatchRequest) -> BatchItemResult:
         """Run one dataset inside an existing batch folder."""
-        context = batch_run_context(dataset, batch_folder).ensure_directories()
+        context = batch_run_context(dataset, batch_folder, reuse_existing=True).ensure_directories()
         try:
             inspection = self.adapter.inspect_dataset(dataset)
             report = build_dataset_explorer_report(inspection)
@@ -145,7 +177,7 @@ class BatchRunner:
         """Create skipped records for datasets that were not processed."""
         skipped: list[BatchItemResult] = []
         for dataset in datasets:
-            context = batch_run_context(dataset, batch_folder).ensure_directories()
+            context = batch_run_context(dataset, batch_folder, reuse_existing=True).ensure_directories()
             item = BatchItemResult(
                 dataset_path=Path(dataset),
                 run_context=context,

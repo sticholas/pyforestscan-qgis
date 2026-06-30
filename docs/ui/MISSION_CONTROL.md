@@ -138,3 +138,10 @@ Batch v2 keeps the default workflow focused on the choices users need: input fol
 ## Batch Execution Modes
 
 Batch defaults to Sequential. Parallel safe mode is explicit, capped at four workers, and defaults to two workers. Large workloads show warnings and require confirmation before parallel execution starts. The Batch page starts execution in a Qt worker thread so the Mission Control window remains responsive where practical. Generated output loading remains off by default.
+
+
+## Batch Preflight And Resume UI
+
+The Batch page uses a three-step flow: Preflight, Run Batch, and Review Results. The Run button stays disabled until preflight passes. If preflight reports warnings, the user must explicitly acknowledge them before running. Preflight shows ready status, blockers, warnings, estimated output storage, free disk space, files to process, completed files, skipped files, retry files, manifest path, execution mode, and max workers.
+
+When `batch_manifest.json` exists, Mission Control exposes Resume Batch. Completed files are skipped by default and failed files can be retried with the current shared settings.
