@@ -1231,7 +1231,7 @@ class BatchPage(MissionPage):
         preflight.addWidget(self.preflight_text)
 
         run_section = self.add_section("2. Run Batch")
-        self.run_button = QPushButton("Run Selected Files Sequentially")
+        self.run_button = QPushButton("Run Selected Files")
         self.run_button.setMinimumHeight(40)
         self.run_button.clicked.connect(self.run_batch)
         self.run_button.setEnabled(False)
@@ -1582,7 +1582,7 @@ class BatchPage(MissionPage):
             self.file_list.addItem(row)
         self.failed_paths = []
         self.retry_failed_button.setEnabled(False)
-        self.status_label.setText("Status: Failed files are queued for retry. Click Run Selected Files Sequentially.")
+        self.status_label.setText("Status: Failed files are queued for retry. Click Run Selected Files.")
         self._refresh_footprint_label()
 
     def open_batch_output_folder(self) -> None:
@@ -1745,9 +1745,7 @@ class SettingsPage(MissionPage):
         browse = QPushButton("Browse")
         browse.clicked.connect(self.browse_default_output_folder)
         folder_row.addWidget(browse)
-        self.logging_enabled = QCheckBox("Enable workflow logging when implemented")
         form.addRow("Default output folder", folder_row)
-        form.addRow("Logging", self.logging_enabled)
         defaults.addLayout(form)
         apply_button = QPushButton("Use This Folder")
         apply_button.clicked.connect(self.emit_default_output_folder)

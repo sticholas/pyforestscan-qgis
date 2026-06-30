@@ -1,0 +1,29 @@
+# Known Limitations
+
+This document records current limitations for the internal release candidate. It is user-facing and should stay honest: limitations are not failures, but they must be visible before scientific interpretation or wider deployment.
+
+## Scientific Processing
+
+- Product generation depends on the installed PyForestScan, PDAL, GDAL, rasterio, and numpy versions in the active QGIS Python environment.
+- CHM, Canopy Cover, PAD, PAI, FHD, and Rumple summary are implemented for single datasets, but outputs still require visual QA in QGIS before interpretation.
+- PAD is a multi-band height-bin raster. Mission Control loads it as an RGB 5/3/2 composite when enough bands exist; users may need to inspect individual bands manually.
+- Rumple currently writes a CSV summary rather than a raster layer.
+- Polygon summaries, mosaicking, cataloging, folder monitoring, and project files are not implemented.
+
+## Batch Processing
+
+- Sequential mode is the safest default.
+- Parallel Safe mode runs inside QGIS with bounded workers and guardrails; users should start with two workers.
+- Cancellation and pause are checked between files, not during a native PyForestScan/PDAL product calculation.
+- Batch output loading into QGIS is off by default to avoid overwhelming a project with many layers.
+- External Worker mode is disabled because QGIS GUI Python launched application windows during validation. It must remain future-only until a true headless launcher is proven.
+
+## User Experience
+
+- Mission Control manages internal JSON/CSV/HTML files automatically, but raw files remain visible under technical details for reproducibility.
+- The Dataset footprint preview is a rectangular extent from inspected bounds, not an exact point-cloud coverage polygon.
+- The Scientific Advisor uses deterministic, documented rules and configurable thresholds. It is guidance, not a substitute for scientific review.
+
+## Release Scope
+
+This internal release is intended for controlled QGIS testing, workflow validation, and scientific QA. It is not yet a public QGIS Plugin Repository release candidate.

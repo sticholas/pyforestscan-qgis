@@ -9,10 +9,12 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Changed
 
+- Audited and simplified the plugin for internal release readiness, including stale release-facing documentation cleanup, Settings page simplification, and clearer Batch run controls.
 - Disabled unsafe External Worker batch mode in Mission Control and core guardrails after validation showed QGIS GUI Python could launch application windows; Parallel Safe mode now supports up to 6 workers with confirmation and stronger preflight recommendations.
 
 ### Added
 
+- Internal release checklist, known limitations, manual QA script, product audit, and release-readiness regression tests.
 - Experimental external worker research scaffold with worker job/result JSON files and subprocess entrypoint, retained behind disabled-by-default guardrails after unsafe QGIS GUI launcher behavior was found.
 - Batch preflight and resume reliability with required preflight gating, disk-space checks, output conflict detection, READY environment validation, durable batch manifests, per-file job ids, checkpointed summaries after every file, skip-completed resume behavior, and retry-failed controls.
 - Safe parallel batch execution framework with Sequential default, guarded Parallel safe mode, max worker validation, Qt worker-thread execution, per-file status updates, cancel/skip summaries, and QGIS-free executor tests.

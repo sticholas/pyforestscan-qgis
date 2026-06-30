@@ -53,38 +53,38 @@ Confirm the following in QGIS:
 
 1. `Plugins` > `Manage and Install Plugins...` lists `PyForestScan`.
 2. The plugin can be enabled without Python console errors.
-3. Mission Control opens as a dockable panel, or can be opened from the PyForestScan toolbar/menu action.
-4. Mission Control navigation switches between Home, Environment, Dataset, Planning, Processing, Results, and Settings.
+3. Mission Control opens as a large floating window and can be reopened from the PyForestScan toolbar/menu action.
+4. Mission Control navigation switches between Home, Environment, Dataset, Scientific Advisor, Planning, Processing, Batch, Results, and Settings.
 5. The Environment page Refresh button displays dependency status rows.
-6. The Dataset page can choose a small LAS/LAZ/COPC/EPT dataset and display an in-memory summary without writing outputs.
-7. The Planning page can build an in-memory plan from the latest Dataset summary.
-8. The Processing page shows the Phase 7 placeholder.
-9. The Results page can choose and open an existing JSON, CSV, or HTML report.
-10. `Processing` > `Toolbox` shows a `PyForestScan` provider.
-11. The provider contains:
+6. The Dataset page can choose a small LAS/LAZ/COPC/EPT dataset, write Dataset Explorer reports, and show the spatial preview.
+7. The Scientific Advisor shows a concise readiness summary after Dataset Explorer runs.
+8. The Planning page can build a Product Planner report from the active Dataset report.
+9. The Processing page can run selected implemented products from the active Product Plan.
+10. The Batch page shows Sequential and Parallel Safe execution modes; External Worker mode is not selectable.
+11. The Results page shows friendly output links before technical run files.
+12. `Processing` > `Toolbox` shows a `PyForestScan` provider.
+13. The provider contains:
    - `Environment Check`
    - `Dataset Explorer`
    - `Product Planner`
    - `Forest Metrics Pack`
-12. Run `Environment Check`.
-13. Confirm the Processing log shows a readable PASS/FAIL/WARNING report.
-14. Confirm missing dependencies are reported as FAIL or WARNING instead of
+14. Run `Environment Check`.
+15. Confirm the Processing log shows a readable PASS/FAIL/WARNING report.
+16. Confirm missing dependencies are reported as FAIL or WARNING instead of
    crashing QGIS.
-15. Run `Dataset Explorer` on a small LAS, LAZ, COPC, or local `ept.json` dataset.
-16. Confirm JSON, CSV, and HTML reports are written.
-17. Confirm the CSV summary is added to the QGIS project as a table when possible.
-18. Run `Product Planner` with the Dataset Explorer JSON report.
-19. Select one or more desired products, an output folder, grid resolution, and
+17. Run `Dataset Explorer` on a small LAS, LAZ, COPC, or local `ept.json` dataset.
+18. Confirm JSON, CSV, and HTML reports are written.
+19. Confirm the CSV summary is added to the QGIS project as a table when possible.
+20. Run `Product Planner` with the Dataset Explorer JSON report.
+21. Select one or more desired products, an output folder, grid resolution, and
    optional height bin size.
-20. Confirm `product_plan.json`, `product_plan.csv`, and `product_plan.html` are
+22. Confirm `product_plan.json`, `product_plan.csv`, and `product_plan.html` are
    written in the selected output folder.
-21. Confirm the plan reports include product readiness, warnings, and estimated
-   output paths, but no rasters are created.
-22. Confirm `Forest Metrics Pack` still reports `Not yet implemented.` and does
+23. Confirm the plan reports include product readiness, warnings, and estimated
+   output paths, but no rasters are created by Product Planner itself.
+24. Confirm `Forest Metrics Pack` still reports `Not yet implemented.` and does
    not create scientific outputs.
 
 ## Scope Boundary
 
-This workflow verifies plugin loading, provider registration, package layout,
-environment diagnostics, and Dataset Explorer report generation. It does not
-validate CHM generation, raster creation, or scientific output correctness.
+This workflow verifies plugin loading, provider registration, package layout, environment diagnostics, Dataset Explorer, Product Planner, Mission Control, and basic processing entry points. Scientific output correctness still requires the full manual QA script and review in QGIS.

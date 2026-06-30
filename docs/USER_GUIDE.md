@@ -113,7 +113,7 @@ Supported products are reported as planning statuses, not generated outputs:
   review is needed.
 - `Unavailable`: required information is missing from the inspected dataset.
 
-Phase 5 reports feasibility for:
+Dataset Explorer reports feasibility for:
 
 - Canopy Height Model (CHM)
 - Plant Area Index (PAI)
@@ -376,11 +376,7 @@ overall job is failed while successful product outputs remain recorded.
 
 ## Knowledge Engine
 
-Phase 16A adds a core deterministic Knowledge Engine foundation. It is not yet a
-Mission Control page and does not change processing behavior. Future UI phases
-can use it to explain dataset suitability, product choices, parameter starting
-points, scientific caveats, and relevant QGIS tools. Its threshold-based advice
-is configurable and explicitly marks calibration needs.
+The deterministic Knowledge Engine powers the Scientific Advisor page. It explains dataset suitability, product choices, parameter starting points, scientific caveats, and relevant QGIS tools. Its threshold-based advice is configurable, marks calibration needs explicitly, and is guidance rather than a substitute for scientific review.
 
 
 ### Batch Preflight And Resume

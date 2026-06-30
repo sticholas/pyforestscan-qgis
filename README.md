@@ -1,96 +1,57 @@
 # PyForestScan QGIS Plugin
 
-PyForestScan QGIS is the planned professional QGIS Processing interface for
-PyForestScan, an open-source Python library for generating forest structural
-products from airborne lidar data.
+PyForestScan QGIS is a professional QGIS interface for PyForestScan, an open-source Python library for generating forest structural products from airborne lidar data. The plugin does not reimplement PyForestScan; it guides users through inspection, planning, processing, review, and batch operations while delegating scientific computation through the adapter layer.
 
-This repository is the QGIS plugin home. It does not reimplement PyForestScan.
-The plugin will guide users through lidar product generation while delegating
-scientific computation to PyForestScan as the engine.
+## Current Status
 
-## Project Status
+The project is preparing for a stable internal release. Current implemented workflows include:
 
-Phase 5: Dataset Explorer workflow.
+- Mission Control guided desktop workflow
+- Environment Check
+- Dataset Explorer with JSON, CSV, and HTML reports
+- Dataset footprint preview
+- Scientific Advisor recommendations
+- Product Planner
+- Single-dataset processing for CHM, Canopy Cover, PAD, PAI, FHD, and Rumple summary
+- Batch folder-to-products workflow with preflight, manifest, resume, retry, and guarded Parallel Safe mode
+- QGIS result loading and product-aware raster styling
 
-This repository contains the project governance foundation, QGIS Processing
-provider scaffold, environment validation, packaging helpers, dependency
-documentation, adapter layer, and the first complete user workflow: Dataset
-Explorer, Product Planner, and Mission Control. Dataset Explorer inspects lidar
-datasets and writes JSON, CSV, and HTML inspection reports. Product Planner turns
-those inspection reports into product generation plans. Mission Control provides
-a dockable guided operating environment for these workflows. Scientific
-PyForestScan product generation is still intentionally not implemented.
+External Worker mode is disabled. Sequential batch processing remains the safest path, and Parallel Safe mode is available with preflight guardrails.
 
-## Long-Term Goals
+## Product Outputs
 
-The plugin is intended to support:
+Implemented output defaults are:
 
-- Canopy Height Models (CHM)
-- Plant Area Index (PAI)
-- Plant Area Density (PAD)
-- Foliage Height Diversity (FHD)
-- Canopy cover
-- Rumple index
-- Forest structural complexity metrics
-- Batch processing
-- Polygon summaries
-- Publication-quality outputs
+| Product | Default output | Notes |
+| --- | --- | --- |
+| CHM | `chm.tif` | Single-band GeoTIFF. |
+| Canopy Cover | `canopy_cover.tif` | Single-band GeoTIFF. |
+| PAD | `pad.tif` | Multi-band GeoTIFF; default QGIS display uses RGB bands 5/3/2 when available. |
+| PAI | `pai.tif` | Single-band GeoTIFF. |
+| FHD | `fhd.tif` | Single-band GeoTIFF. |
+| Rumple | `rumple_summary.csv` | CSV summary table. |
 
 ## Repository Layout
 
-- `pyforestscan_qgis/`: Future QGIS plugin package.
-- `pyforestscan_qgis/algorithms/`: Future QGIS Processing algorithms.
-- `pyforestscan_qgis/core/`: Future plugin domain services and validation.
-- `pyforestscan_qgis/processing/`: Future Processing provider integration.
-- `pyforestscan_qgis/resources/`: Future QGIS resources.
-- `pyforestscan_qgis/styles/`: Future QGIS style files and render presets.
-- `pyforestscan_qgis/icons/`: Future plugin and algorithm icons.
-- `tests/`: Future automated tests.
-- `sample_data/`: Small documented test and tutorial data only.
-- `scripts/`: Development and release helper scripts.
-- `docs/`: Architecture, roadmap, strategy, testing, and release documentation.
-
-Each directory contains a README explaining its purpose so empty folders are not
-ambiguous.
+- `pyforestscan_qgis/`: QGIS plugin package.
+- `pyforestscan_qgis/algorithms/`: QGIS Processing algorithms for Environment Check, Dataset Explorer, Product Planner, and current placeholder toolbox entries.
+- `pyforestscan_qgis/core/`: QGIS-free domain services, adapter, planning, pipeline, jobs, batch, and knowledge modules.
+- `pyforestscan_qgis/ui/`: Mission Control and QGIS integration helpers.
+- `pyforestscan_qgis/worker/`: disabled external-worker research scaffold, not user-facing.
+- `tests/`: plain-Python unit tests that do not require QGIS.
+- `scripts/`: packaging and validation helpers.
+- `docs/`: architecture, user, development, testing, and release documentation.
 
 ## Documentation Entry Points
 
-- [Project Vision](docs/PROJECT_VISION.md)
-- [Product Requirements](docs/PRODUCT_REQUIREMENTS.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Roadmap](docs/PLUGIN_ROADMAP.md)
-- [Dependency Strategy](docs/DEPENDENCY_STRATEGY.md)
-- [Installation Strategy](docs/INSTALLATION_STRATEGY.md)
-- [Windows QGIS Dependencies](docs/development/WINDOWS_QGIS_DEPENDENCIES.md)
-- [Testing Strategy](docs/TESTING_STRATEGY.md)
-- [User Experience](docs/USER_EXPERIENCE.md)
 - [User Guide](docs/USER_GUIDE.md)
-- [Knowledge Engine](docs/development/KNOWLEDGE_ENGINE.md)
-- [Scientific Advisor](docs/knowledge/SCIENTIFIC_ADVISOR.md)
 - [Mission Control](docs/ui/MISSION_CONTROL.md)
-
-## Mission Control
-
-Mission Control is the dockable graphical operating environment for PyForestScan
-QGIS. It coordinates Environment, Dataset, Planning, Processing, Results, and
-Settings pages while Processing Toolbox algorithms remain available for advanced
-users.
-
-## Dataset Explorer
-
-Dataset Explorer is the first functional workflow. It validates and inspects LAS,
-LAZ, COPC, and local EPT datasets, reports warnings and product feasibility, and
-writes JSON, CSV, and HTML reports. The CSV report is automatically added to the
-active QGIS project as a table when possible.
-
-This workflow stops after inspection; it does not create CHMs or other scientific
-products.
-
-## Product Planner
-
-Product Planner reads a Dataset Explorer JSON report, validates selected future
-products, estimates output names, and writes product plan JSON, CSV, and HTML
-reports. It does not create rasters or run PyForestScan calculations.
+- [Known Limitations](docs/KNOWN_LIMITATIONS.md)
+- [Internal Release Checklist](docs/releases/INTERNAL_RELEASE_CHECKLIST.md)
+- [Manual QA Script](docs/development/MANUAL_QA_SCRIPT.md)
+- [Batch Processing](docs/development/BATCH_PROCESSING.md)
+- [External Workers](docs/development/EXTERNAL_WORKERS.md)
+- [Architecture](docs/ARCHITECTURE.md)
 
 ## Local QGIS Testing
 
@@ -98,7 +59,7 @@ Build and validate a local QGIS plugin ZIP with:
 
 ```bash
 python3 scripts/package_plugin.py
-python3 scripts/validate_plugin_package.py
+python3 scripts/validate_plugin_package.py dist/pyforestscan_qgis.zip
 ```
 
 Install `dist/pyforestscan_qgis.zip` through QGIS Plugin Manager using `Install from ZIP`. See [QGIS Local Testing](docs/development/QGIS_LOCAL_TESTING.md).
@@ -106,4 +67,3 @@ Install `dist/pyforestscan_qgis.zip` through QGIS Plugin Manager using `Install 
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE).
-

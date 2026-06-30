@@ -47,7 +47,7 @@ flowchart TD
   QGIS.
 - Results: view friendly Dataset Report, Product Plan, Job Summary, Output
   Folder, and Products links first, with raw paths under Run files and logs.
-- Settings: default output folder, logging placeholder, and future preferences.
+- Settings: default output folder for Mission Control runs.
 
 ## UI Architecture
 
@@ -137,7 +137,7 @@ Batch v2 keeps the default workflow focused on the choices users need: input fol
 
 ## Batch Execution Modes
 
-Batch defaults to Sequential. Parallel safe mode is explicit, capped at four workers, and defaults to two workers. Large workloads show warnings and require confirmation before parallel execution starts. The Batch page starts execution in a Qt worker thread so the Mission Control window remains responsive where practical. Generated output loading remains off by default.
+Batch defaults to Sequential. Parallel Safe mode is explicit, capped at six workers, and defaults to two workers. Values above two and larger workloads show warnings and require confirmation before parallel execution starts. The Batch page starts execution in a Qt worker thread so the Mission Control window remains responsive where practical. Generated output loading remains off by default.
 
 
 ## Batch Preflight And Resume UI
@@ -149,4 +149,4 @@ When `batch_manifest.json` exists, Mission Control exposes Resume Batch. Complet
 
 ## External Worker Mode
 
-The Batch page includes External worker mode for higher-throughput local processing. Mission Control writes worker job JSON files, starts bounded external Python worker processes, and reads worker result JSON files to update file status, manifest, summaries, and results. External mode must be selected explicitly, remains subject to preflight, and keeps QGIS output loading disabled unless the user opts in.
+External Worker mode is disabled and is not selectable in Mission Control. Manual validation showed that QGIS GUI Python can launch full QGIS application windows instead of headless jobs. The preserved external-worker code is future research only and is blocked by core guardrails unless an explicit developer flag is set outside normal use.
