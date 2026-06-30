@@ -16,7 +16,7 @@ Implemented:
 - Batch JSON, CSV, and HTML summaries.
 - Continue-on-error by default, with optional stop-on-error.
 - Pause after the current file, cancel remaining files, and retry failed files from the UI.
-- Max workers setting for Parallel safe mode, capped at 1-4 and defaulting to 2.
+- Max workers setting for Parallel safe mode, capped at 1-6 and defaulting to 2.
 - Guardrails that block Parallel safe mode for larger workloads unless the user explicitly confirms.
 - Optional output loading into QGIS, disabled by default for batch safety.
 - Result filtering for all, completed, failed, and skipped files.
@@ -25,7 +25,7 @@ Implemented:
 Not implemented yet:
 
 - Unbounded parallel workers.
-- Process-based or external-subprocess workers.
+- User-accessible process-based or external-subprocess workers. Phase 17F disables the experimental implementation until a true headless launcher is proven.
 - Folder monitoring.
 - Batch project files.
 - Per-file parameter overrides.
@@ -121,7 +121,7 @@ Phase 17C keeps Sequential as the default and adds guarded Parallel safe mode. M
 
 ## Parallel Safe Mode
 
-Parallel safe mode is opt-in. The user must choose it explicitly and can set max workers from 1 to 4. The default is 2. Values above 2 show strong warnings because multiple PDAL/PyForestScan jobs can increase memory, CPU, and disk pressure. If the selected workload is large, the executor blocks Parallel safe mode until the user confirms that they have reviewed the warnings.
+Parallel safe mode is opt-in. The user must choose it explicitly and can set max workers from 1 to 6. The default is 2. Values above 2 show strong warnings because multiple PDAL/PyForestScan jobs can increase memory, CPU, and disk pressure. If the selected workload is large, the executor blocks Parallel safe mode until the user confirms that they have reviewed the warnings. Preflight recommends a conservative worker count based on file count and file/product workload.
 
 The current implementation uses background Qt execution plus bounded Python worker threads rather than subprocesses. This is a conservative framework step: it protects the QGIS UI thread and provides a clear fallback to Sequential mode, while leaving process-based external workers for a future phase after platform-specific QGIS Python invocation is tested.
 
@@ -151,6 +151,6 @@ Disk-space estimates are conservative placeholders based on selected file count 
 
 ## External Worker Mode
 
-Phase 17E adds External worker mode as a third execution mode beside Sequential and Parallel safe mode. External worker mode writes one job spec JSON per file under `worker_jobs/`, launches a separate Python process for each active worker, and reads one result JSON per file from `worker_results/`. The QGIS process remains the orchestrator and updates the batch manifest and summaries from worker result files.
+External worker mode is disabled in normal Mission Control use. Phase 17E proved the basic job-spec/result-file architecture, but manual validation showed that using QGIS GUI Python as the worker launcher can open multiple QGIS application windows instead of running headless jobs. That behavior is unsafe for users and can destabilize a desktop session.
 
-External worker mode is explicit and disabled by default. The worker count remains conservative: 2 by default, up to 6 only when preflight passes and the user confirms the resource risk. Worker readiness is checked during preflight with `python -m pyforestscan_qgis.worker.run_job --check`.
+The code is retained only as isolated developer research scaffolding. The executor and preflight layer block external mode unless the `PYFORESTSCAN_QGIS_ENABLE_EXTERNAL_WORKERS` developer flag is set. Do not set that flag for normal processing. QGIS GUI executables must never be used as worker Python. Future work must identify and validate a true headless Python launcher before external workers can return to the UI.

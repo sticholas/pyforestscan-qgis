@@ -1,8 +1,20 @@
 # External Worker Batch Execution
 
-Phase 17E adds External worker mode for batch processing. The goal is to increase throughput without running heavy per-file PyForestScan work inside the QGIS UI process.
+External worker mode is disabled as of Phase 17F. Phase 17E added a research implementation for batch subprocess workers, but manual validation showed that using QGIS GUI Python can launch full QGIS application windows instead of headless jobs. That is unsafe and must not be exposed to users.
 
-## Execution Model
+## Current Status
+
+External workers are not available from Mission Control and are blocked by core guardrails. The only way to reach the preserved code is an explicit developer research flag:
+
+```text
+PYFORESTSCAN_QGIS_ENABLE_EXTERNAL_WORKERS=1
+```
+
+Do not set this flag for production use or ordinary QGIS testing. It exists only so future maintainers can continue controlled launcher research. A valid future implementation must prove that the worker Python is truly headless and cannot open QGIS GUI windows.
+
+QGIS GUI executables must never be used as worker Python.
+
+## Research Execution Model
 
 ```mermaid
 flowchart TD
@@ -60,14 +72,13 @@ Inside QGIS, this uses the Python executable available to the running process. O
 
 ## Safety Defaults
 
-- External worker mode is not the default.
-- Sequential mode remains the default.
-- External worker max workers defaults to 2 through the shared Batch control.
-- External mode allows up to 6 workers only with preflight and user confirmation.
-- Generated output loading into QGIS remains off by default.
-- Failed or crashed workers become failed file records and should not crash QGIS.
-- Batch manifest and summaries are checkpointed after every worker result.
+- External worker mode is disabled in Mission Control.
+- Core execution refuses external mode unless the developer flag is set.
+- Preflight reports external mode as a blocker before running readiness commands.
+- Sequential mode remains the safest default.
+- Parallel Safe mode remains the supported faster local option.
+- Generated output loading into QGIS remains off by default for batch processing.
 
 ## Limitations
 
-External workers are local subprocesses only. This phase does not implement network/distributed workers, cluster/HPC scheduling, or remote storage orchestration. Cancellation stops launching new jobs and asks active worker processes to terminate; it cannot guarantee immediate interruption inside a native PDAL/PyForestScan operation.
+The preserved external-worker code is local subprocess research only. It is not production functionality and does not implement network/distributed workers, cluster/HPC scheduling, or remote storage orchestration. Before external workers can be enabled again, the project needs a documented headless launcher, QGIS/OSGeo4W dependency validation, cancellation behavior validation, and manual testing that confirms no GUI windows are spawned.

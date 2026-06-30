@@ -9,8 +9,9 @@ from pathlib import Path
 
 from pyforestscan_qgis.core.batch import BatchProductSettings, BatchRequest, batch_run_context
 from pyforestscan_qgis.core.batch_manifest import completed_dataset_paths, create_manifest, load_manifest, update_manifest_item, write_manifest
-from pyforestscan_qgis.core.batch_preflight import run_batch_preflight
+from pyforestscan_qgis.core.batch_preflight import recommend_batch_workers, run_batch_preflight
 from pyforestscan_qgis.core.batch_runner import BatchRunner
+from pyforestscan_qgis.core.external_worker import EXTERNAL_WORKER_MODE
 from pyforestscan_qgis.core.types import ProductType
 
 
@@ -86,6 +87,21 @@ class BatchReliabilityTests(unittest.TestCase):
             self.assertTrue(report.ready)
             self.assertTrue(any("Large batch" in item for item in report.warnings))
             self.assertTrue(any("Parallel safe mode" in item for item in report.warnings))
+
+
+    def test_preflight_blocks_external_worker_mode_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            request = self._request(Path(tmp), execution_mode=EXTERNAL_WORKER_MODE, max_workers=2, confirm_large_parallel=True)
+            report = run_batch_preflight(request, adapter=ReadyAdapter(), disk_usage_provider=lambda _path: (1000, 100, 10**12))  # type: ignore[arg-type]
+
+            self.assertFalse(report.ready)
+            self.assertTrue(any("External worker mode is disabled" in item for item in report.blockers))
+
+    def test_recommended_worker_count_logic_is_conservative(self) -> None:
+        self.assertEqual(1, recommend_batch_workers(1, 1, "parallel_safe"))
+        self.assertEqual(3, recommend_batch_workers(3, 3, "parallel_safe"))
+        self.assertEqual(2, recommend_batch_workers(12, 12, "parallel_safe"))
+        self.assertEqual(2, recommend_batch_workers(4, 40, "parallel_safe"))
 
     def test_preflight_blocks_missing_input_and_not_ready_environment(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

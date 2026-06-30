@@ -42,7 +42,6 @@ from qgis.PyQt.QtWidgets import (
 from ..core.adapter import PyForestScanAdapter
 from ..core.batch import BatchProductSettings, BatchRequest, discover_lidar_files
 from ..core.batch_executor import PARALLEL_SAFE_MODE, SEQUENTIAL_MODE, BatchExecutor
-from ..core.external_worker import EXTERNAL_WORKER_MODE
 from ..core.batch_preflight import BatchPreflightReport, run_batch_preflight
 from ..core.batch_runner import BatchExecutionError
 from ..core.dataset_report import (
@@ -1178,7 +1177,6 @@ class BatchPage(MissionPage):
         self.execution_mode_combo = QComboBox()
         self.execution_mode_combo.addItem("Sequential", SEQUENTIAL_MODE)
         self.execution_mode_combo.addItem("Parallel safe mode", PARALLEL_SAFE_MODE)
-        self.execution_mode_combo.addItem("External worker mode", EXTERNAL_WORKER_MODE)
         self.execution_mode_combo.currentIndexChanged.connect(lambda _index: self._refresh_footprint_label())
         self.max_workers_spin = QSpinBox()
         self.max_workers_spin.setMinimum(1)
@@ -1187,6 +1185,11 @@ class BatchPage(MissionPage):
         self.max_workers_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
         settings_form.addRow("Execution mode", self.execution_mode_combo)
         settings_form.addRow("Max workers", self.max_workers_spin)
+        mode_help = _body_label(
+            "Sequential is safest. Parallel Safe is faster but still runs inside QGIS and is capped. "
+            "External Worker is disabled until a true headless Python launcher is proven."
+        )
+        products.addWidget(mode_help)
         self.stop_on_error_check = QCheckBox("Stop batch when a file fails")
         self.load_outputs_check = QCheckBox("Load generated outputs into QGIS")
         self.load_outputs_check.setToolTip("Off by default for batches so QGIS is not overwhelmed by many layers.")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -15,10 +16,20 @@ from .batch import BatchItemResult, BatchProductSettings, batch_run_context
 from .types import ProductType
 
 EXTERNAL_WORKER_MODE = "external_worker"
+EXTERNAL_WORKER_ENABLE_ENV = "PYFORESTSCAN_QGIS_ENABLE_EXTERNAL_WORKERS"
+EXTERNAL_WORKER_DISABLED_MESSAGE = (
+    "External worker mode is disabled because QGIS GUI Python launched application windows during validation. "
+    "It may only be used for developer research after a true headless Python launcher is proven."
+)
 WORKER_JOBS_DIR = "worker_jobs"
 WORKER_RESULTS_DIR = "worker_results"
 DEFAULT_WORKER_TIMEOUT_SECONDS = 60 * 60 * 6
 MAX_EXTERNAL_WORKERS = 6
+
+
+def external_workers_enabled() -> bool:
+    """Return whether experimental external workers are explicitly enabled."""
+    return os.environ.get(EXTERNAL_WORKER_ENABLE_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass(frozen=True)

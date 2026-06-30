@@ -241,7 +241,7 @@ Each selected dataset receives its own run folder inside that batch folder, with
 
 Generated outputs are not loaded into QGIS by default during batch processing. Enable Load generated outputs into QGIS only when the batch is small enough that adding many layers will not clutter or slow the project.
 
-Parallel safe mode defaults to two workers and allows one to four workers. Values above two can increase memory, disk, and PDAL/PyForestScan pressure. Large workloads require confirmation before parallel execution starts. Batch summaries report total files, completed, failed, skipped, total output count, and observed output storage. Batch processing reuses Dataset Explorer, Product Planner, JobManager, Pipeline, and Adapter services. It does not use separate scientific processing code. Batch v1 is sequential and may keep QGIS busy during large runs; parallel/background execution is reserved for a later phase.
+Parallel safe mode defaults to two workers and allows one to six workers. Values above two can increase memory, disk, and PDAL/PyForestScan pressure and require explicit warning acknowledgement. Large workloads require confirmation before parallel execution starts. Batch summaries report total files, completed, failed, skipped, total output count, and observed output storage. Batch processing reuses Dataset Explorer, Product Planner, JobManager, Pipeline, and Adapter services. It does not use separate scientific processing code.
 
 ## Product Job Execution
 
@@ -392,4 +392,4 @@ Each batch writes `batch_manifest.json` in the batch folder before processing st
 
 ### External Worker Mode
 
-External worker mode can process multiple files through separate local Python worker processes. Use it only after Preflight reports the worker environment is ready. Start with 2 workers. Increase worker count only when files are small enough and the machine has enough RAM, CPU, and disk bandwidth. If a worker crashes, QGIS should remain open and the failed file is recorded in the batch results.
+External worker mode is disabled. Manual validation showed that QGIS GUI Python can open multiple QGIS application windows instead of headless worker jobs. Use Sequential for safest execution or Parallel Safe for bounded in-process speedups. External workers will remain unavailable until a true headless Python launcher is proven.

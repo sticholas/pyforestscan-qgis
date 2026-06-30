@@ -16,11 +16,21 @@ from .batch import BatchItemResult, BatchRequest, BatchResult, batch_run_context
 from .batch_results import write_batch_summaries
 from .batch_manifest import MANIFEST_NAME, create_manifest, load_manifest, update_manifest_item, write_manifest
 from .batch_runner import BatchControlCallback, BatchExecutionError, BatchJobCallback, BatchProgressCallback, BatchRunner
-from .external_worker import EXTERNAL_WORKER_MODE, MAX_EXTERNAL_WORKERS, build_worker_job_spec, load_worker_result, worker_result_to_batch_item, worker_run_command, write_worker_job_spec
+from .external_worker import (
+    EXTERNAL_WORKER_DISABLED_MESSAGE,
+    EXTERNAL_WORKER_MODE,
+    MAX_EXTERNAL_WORKERS,
+    build_worker_job_spec,
+    external_workers_enabled,
+    load_worker_result,
+    worker_result_to_batch_item,
+    worker_run_command,
+    write_worker_job_spec,
+)
 
 SEQUENTIAL_MODE = "sequential"
 PARALLEL_SAFE_MODE = "parallel_safe"
-MAX_SAFE_WORKERS = 4
+MAX_SAFE_WORKERS = 6
 DEFAULT_PARALLEL_WORKERS = 2
 LARGE_FILE_COUNT = 10
 LARGE_WORKLOAD_SCORE = 30
@@ -62,13 +72,23 @@ class BatchExecutor:
         """Validate worker limits and return conservative execution guardrails."""
         mode = request.settings.execution_mode
         workers = request.settings.max_workers
+        if mode not in {SEQUENTIAL_MODE, PARALLEL_SAFE_MODE, EXTERNAL_WORKER_MODE}:
+            raise BatchExecutionError("Batch execution mode must be Sequential, Parallel safe mode, or External worker mode.")
         max_allowed = MAX_EXTERNAL_WORKERS if mode == EXTERNAL_WORKER_MODE else MAX_SAFE_WORKERS
         if workers < 1 or workers > max_allowed:
             raise BatchExecutionError(f"Max workers must be between 1 and {max_allowed} for this execution mode.")
-        if mode not in {SEQUENTIAL_MODE, PARALLEL_SAFE_MODE, EXTERNAL_WORKER_MODE}:
-            raise BatchExecutionError("Batch execution mode must be Sequential, Parallel safe mode, or External worker mode.")
         workload_score = len(request.datasets) * max(1, len(request.settings.products))
         warnings: list[str] = []
+        if mode == EXTERNAL_WORKER_MODE and not external_workers_enabled():
+            return BatchGuardrailReport(
+                requested_mode=mode,
+                effective_mode=SEQUENTIAL_MODE,
+                max_workers=workers,
+                workload_score=workload_score,
+                warnings=(EXTERNAL_WORKER_DISABLED_MESSAGE,),
+                blocked=True,
+                reason=EXTERNAL_WORKER_DISABLED_MESSAGE,
+            )
         if workers > DEFAULT_PARALLEL_WORKERS:
             warnings.append("More than 2 workers can increase memory, PDAL, and disk pressure.")
         if mode == EXTERNAL_WORKER_MODE:
@@ -107,6 +127,8 @@ class BatchExecutor:
         if guardrail.blocked:
             raise BatchExecutionError(guardrail.reason or "Parallel safe mode is blocked by guardrails.")
         if guardrail.is_external:
+            if not external_workers_enabled():
+                raise BatchExecutionError(EXTERNAL_WORKER_DISABLED_MESSAGE)
             return self._run_external(request, guardrail, item_callback, control_callback)
         if not guardrail.is_parallel:
             return BatchRunner(
@@ -125,6 +147,8 @@ class BatchExecutor:
         control_callback: BatchControlCallback | None,
     ) -> BatchResult:
         """Run batch datasets through external worker subprocesses."""
+        if not external_workers_enabled():
+            raise BatchExecutionError(EXTERNAL_WORKER_DISABLED_MESSAGE)
         started_at = datetime.now(timezone.utc).isoformat()
         batch_folder = request.batch_folder or create_batch_folder(request.output_folder)
         manifest_path = batch_folder / MANIFEST_NAME

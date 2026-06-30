@@ -43,10 +43,21 @@ class BatchExecutorTests(unittest.TestCase):
             ),
         )
 
-    def test_worker_limit_validation(self) -> None:
+    def test_parallel_worker_limit_allows_six_with_confirmation(self) -> None:
+        """Parallel safe mode can be increased to six workers after confirmation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            request = self._request(Path(tmp), mode=PARALLEL_SAFE_MODE, workers=6, confirm=True)
+            executor = BatchExecutor(adapter_factory=FailingAdapter)  # type: ignore[arg-type]
+
+            report = executor.guardrails(request)
+
+            self.assertEqual(6, report.max_workers)
+            self.assertTrue(report.is_parallel)
+
+    def test_parallel_worker_limit_rejects_above_six(self) -> None:
         """Worker counts outside the safe range are rejected."""
         with tempfile.TemporaryDirectory() as tmp:
-            request = self._request(Path(tmp), workers=5)
+            request = self._request(Path(tmp), mode=PARALLEL_SAFE_MODE, workers=7, confirm=True)
             executor = BatchExecutor(adapter_factory=FailingAdapter)  # type: ignore[arg-type]
 
             with self.assertRaises(BatchExecutionError):
