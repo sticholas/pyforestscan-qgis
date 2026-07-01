@@ -1,4 +1,4 @@
-"""Advanced Voxel Statistic Processing algorithm."""
+"""Voxel Statistic Processing algorithm."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ class AdvancedVoxelStatAlgorithm(AdvancedPyForestScanAlgorithm):
 
     def displayName(self) -> str:
         """Return the Processing display name."""
-        return self.tr("Advanced Voxel Statistic")
+        return self.tr("Voxel Statistic")
 
     def shortHelpString(self) -> str:
         """Return Processing help text."""
@@ -60,9 +60,9 @@ class AdvancedVoxelStatAlgorithm(AdvancedPyForestScanAlgorithm):
             z_index_max=self._optional_int(parameters, self.Z_INDEX_MAX, context),
         )
         request = build_voxel_stat_request(params)
-        result = run_adapter_call(feedback, "Advanced Voxel Statistic", lambda: PyForestScanAdapter().create_voxel_stat(request))
+        result = run_adapter_call(feedback, "Voxel Statistic", lambda: PyForestScanAdapter().create_voxel_stat(request))
         load_raster_if_requested(result.output_path, "voxel_stat_geotiff", context, feedback, add)
-        return self.push_result(feedback, result.output_path, "Advanced Voxel Statistic")
+        return self.push_result(feedback, result.output_path, "Voxel Statistic")
 
     def _optional_int(self, parameters: dict[str, Any], name: str, context: QgsProcessingContext) -> int | None:
         value = parameters.get(name)

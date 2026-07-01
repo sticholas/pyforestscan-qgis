@@ -29,7 +29,7 @@ class NormalizeHagAlgorithm(AdvancedPyForestScanAlgorithm):
         return "normalize_height_above_ground"
 
     def displayName(self) -> str:
-        return self.tr("Generate Height Above Ground / Normalize Heights")
+        return self.tr("Normalize Heights")
 
     def shortHelpString(self) -> str:
         return self.tr("Reads lidar with PyForestScan handlers.read_lidar(..., hag=True) or DTM-backed HAG and writes LAS/LAZ only when a supported output is provided. It does not fake unsupported normalized outputs.")

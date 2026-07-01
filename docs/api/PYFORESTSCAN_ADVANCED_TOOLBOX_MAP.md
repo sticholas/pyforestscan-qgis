@@ -1,15 +1,15 @@
 # PyForestScan Advanced Toolbox Map
 
-The Advanced Toolbox is the expert surface for PyForestScan capabilities. Guided Mission Control remains simplified and unchanged.
+The QGIS Processing Toolbox is the expert surface for PyForestScan capabilities. Guided Mission Control remains simplified and unchanged. Phase 20E removes the redundant `Advanced` prefix from visible tool names and groups.
 
 ## QGIS Toolbox Groups
 
 | Group | Algorithms | Purpose |
 | --- | --- | --- |
-| `PyForestScan / Advanced / Input / I/O` | Generate Height Above Ground / Normalize Heights | Expert `read_lidar` HAG, DTM-backed HAG, bounds/thinning/crop/reproject, optional LAS/LAZ write. |
-| `PyForestScan / Advanced / Preprocessing / Filters` | Advanced Point Cloud Preprocess / Filters | Public PyForestScan filters plus `write_las`: outlier cleaning, full SMRF ground classification, ground filtering, PointSourceId filtering, HAG, HAG range, Poisson, voxel downsample. |
-| `PyForestScan / Advanced / Terrain` | Advanced DTM | Ground selection/classification and `generate_dtm`; DTM GeoTIFF with NoData. |
-| `PyForestScan / Advanced / Metrics` | Advanced CHM, PAD, PAI, Canopy Cover, FHD, Rumple, Point Density, Voxel Statistic | Expert metric generation with product-specific PyForestScan parameters. |
+| `PyForestScan / Input / I/O` | Normalize Heights | Expert `read_lidar` HAG, DTM-backed HAG, bounds/thinning/crop/reproject, optional LAS/LAZ write. |
+| `PyForestScan / Preprocessing / Filters` | Preprocess Point Cloud | Public PyForestScan filters plus `write_las`: outlier cleaning, full SMRF ground classification, ground filtering, PointSourceId filtering, HAG, HAG range, Poisson, voxel downsample. |
+| `PyForestScan / Terrain` | Generate DTM | Ground selection/classification and `generate_dtm`; DTM GeoTIFF with NoData. |
+| `PyForestScan / Metrics` | CHM, PAD, PAI, Canopy Cover, FHD, Rumple, Point Density, Voxel Statistic | Expert metric generation with product-specific PyForestScan parameters. |
 
 ## Adapter Path
 
@@ -28,15 +28,15 @@ Algorithm classes never import PyForestScan directly. They parse QGIS parameters
 
 | Tool | Primary PyForestScan functions | Outputs |
 | --- | --- | --- |
-| Advanced CHM | `read_lidar`, `calculate_chm`, `create_geotiff` | GeoTIFF |
-| Advanced PAD | `read_lidar`, `assign_voxels`, `calculate_pad` | Multi-band GeoTIFF |
-| Advanced PAI | `assign_voxels`, `calculate_pad`, `calculate_pai`, `create_geotiff` | GeoTIFF |
-| Advanced Canopy Cover | `assign_voxels`, `calculate_pad`, `calculate_canopy_cover`, `create_geotiff` | GeoTIFF |
-| Advanced FHD | `assign_voxels`, `calculate_fhd`, `create_geotiff` | GeoTIFF |
-| Advanced Rumple | `calculate_chm`, `calculate_rumple` | CSV scalar summary |
-| Advanced Point Density | `assign_voxels`, `calculate_point_density`, `create_geotiff` | GeoTIFF |
-| Advanced Voxel Statistic | `calculate_voxel_stat`, `create_geotiff` | GeoTIFF |
-| Advanced DTM | `classify_ground_points`, `filter_select_ground`, `generate_dtm`, `create_geotiff` | GeoTIFF |
+| CHM | `read_lidar`, `calculate_chm`, `create_geotiff` | GeoTIFF |
+| PAD | `read_lidar`, `assign_voxels`, `calculate_pad` | Multi-band GeoTIFF |
+| PAI | `assign_voxels`, `calculate_pad`, `calculate_pai`, `create_geotiff` | GeoTIFF |
+| Canopy Cover | `assign_voxels`, `calculate_pad`, `calculate_canopy_cover`, `create_geotiff` | GeoTIFF |
+| FHD | `assign_voxels`, `calculate_fhd`, `create_geotiff` | GeoTIFF |
+| Rumple | `calculate_chm`, `calculate_rumple` | CSV scalar summary |
+| Point Density | `assign_voxels`, `calculate_point_density`, `create_geotiff` | GeoTIFF |
+| Voxel Statistic | `calculate_voxel_stat`, `create_geotiff` | GeoTIFF |
+| Generate DTM | `classify_ground_points`, `filter_select_ground`, `generate_dtm`, `create_geotiff` | GeoTIFF |
 | HAG / Normalize | `read_lidar`, `write_las` | Optional LAS/LAZ |
 | Point Cloud Preprocess / Filters | `remove_outliers_and_clean`, `classify_ground_points`, `filter_ground`, `filter_select_ground`, `filter_pointsourceid`, `add_height_above_ground`, `filter_hag`, `downsample_poisson`, `downsample_voxel`, `write_las` | LAS/LAZ |
 

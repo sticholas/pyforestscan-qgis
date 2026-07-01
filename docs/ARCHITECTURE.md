@@ -203,7 +203,7 @@ Phase 20A adds a second user path for expert users:
 
 ```mermaid
 flowchart LR
-    A["QGIS Processing Toolbox"] --> B["PyForestScan / Advanced algorithms"]
+    A["QGIS Processing Toolbox"] --> B["PyForestScan expert Processing algorithms"]
     B --> C["core.advanced_processing request builders"]
     C --> D["PyForestScanAdapter"]
     D --> E["PyForestScan public API"]

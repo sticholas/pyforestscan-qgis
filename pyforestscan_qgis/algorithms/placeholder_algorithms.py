@@ -133,6 +133,14 @@ class EnvironmentCheckAlgorithm(PyForestScanAlgorithm):
         """Return the Processing display name."""
         return self.tr("Environment Check")
 
+    def group(self) -> str:
+        """Return the Processing group display name."""
+        return self.tr("PyForestScan / Diagnostics")
+
+    def groupId(self) -> str:
+        """Return the stable Processing group identifier."""
+        return "pyforestscan_diagnostics"
+
     def shortHelpString(self) -> str:
         """Return Processing help text for environment diagnostics."""
         return self.tr(

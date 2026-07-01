@@ -1,6 +1,6 @@
 # Advanced Processing Toolbox
 
-Phase 20A adds expert-oriented Processing Toolbox algorithms under `PyForestScan / Advanced`. Guided Mission Control remains the default workflow and is not cluttered with advanced controls.
+The Processing Toolbox exposes expert-oriented PyForestScan tools under workflow groups such as `PyForestScan / Diagnostics`, `PyForestScan / Input / I/O`, `PyForestScan / Preprocessing / Filters`, `PyForestScan / Terrain`, and `PyForestScan / Metrics`. Guided Mission Control remains the default workflow and is not cluttered with expert controls.
 
 ## Architecture
 
@@ -15,18 +15,18 @@ flowchart LR
 
 Processing algorithm classes do not import PyForestScan. They parse QGIS parameters, build typed request objects, call the adapter, and optionally load/style outputs.
 
-## QGIS Advanced Groups
+## QGIS Processing Groups
 
-Advanced algorithms are grouped in QGIS as `Input / I/O`, `Preprocessing / Filters`, `Terrain`, and `Metrics` so expert users can follow the PyForestScan workflow order without cluttering Mission Control.
+Expert algorithms are grouped in QGIS as `Input / I/O`, `Preprocessing / Filters`, `Terrain`, and `Metrics` so expert users can follow the PyForestScan workflow order without cluttering Mission Control.
 
 ## Algorithms
 
 ## Phase 20B Coverage Additions
 
-Phase 20B added Advanced DTM and Advanced Point Cloud Preprocess / Filters, and expanded HAG/Normalize with read-time bounds, thinning radius, and crop polygon options. Phase 20C added exact `calculate.py` parameter parity for Point Density and Voxel Statistic. Phase 20D adds a full documentation/source inventory and closes safe filter-parameter gaps including full SMRF classification parameters, PointSourceId filtering, outlier `remove`, and HAG method `auto`. The full scrape inventory lives in `docs/api/PYFORESTSCAN_FULL_DOCS_INVENTORY.md`; the detailed parity matrix lives in `docs/api/PYFORESTSCAN_FUNCTION_PARAMETER_PARITY.md`.
+Phase 20B added Generate DTM and Preprocess Point Cloud, and expanded HAG/Normalize with read-time bounds, thinning radius, and crop polygon options. Phase 20C added exact `calculate.py` parameter parity for Point Density and Voxel Statistic. Phase 20D adds a full documentation/source inventory and closes safe filter-parameter gaps including full SMRF classification parameters, PointSourceId filtering, outlier `remove`, and HAG method `auto`. The full scrape inventory lives in `docs/api/PYFORESTSCAN_FULL_DOCS_INVENTORY.md`; the detailed parity matrix lives in `docs/api/PYFORESTSCAN_FUNCTION_PARAMETER_PARITY.md`.
 
 
-### Advanced CHM
+### CHM
 
 Parameters:
 
@@ -42,7 +42,7 @@ Parameters:
 
 Adapter call: `create_chm(ChmRequest(...))`.
 
-### Advanced PAD
+### PAD
 
 Parameters:
 
@@ -58,7 +58,7 @@ Parameters:
 
 Adapter call: `create_pad(PadRequest(...))`. PAD is written as a multi-band GeoTIFF and uses the existing QGIS PAD RGB 5/3/2 styling when loaded.
 
-### Advanced PAI
+### PAI
 
 Parameters:
 
@@ -76,7 +76,7 @@ Parameters:
 
 Adapter call: `create_pai(PaiRequest(...))`.
 
-### Advanced Canopy Cover
+### Canopy Cover
 
 Parameters:
 
@@ -95,7 +95,7 @@ Parameters:
 
 Adapter call: `create_canopy_cover(CanopyCoverRequest(...))`.
 
-### Advanced FHD
+### FHD
 
 Parameters:
 
@@ -111,7 +111,7 @@ Parameters:
 
 Adapter call: `create_fhd(FhdRequest(...))`.
 
-### Advanced Rumple
+### Rumple
 
 Parameters:
 
@@ -128,7 +128,7 @@ Parameters:
 
 Adapter call: `create_rumple(RumpleRequest(...))`. Rumple is CSV because PyForestScan returns a scalar index.
 
-### Advanced DTM
+### Generate DTM
 
 Parameters:
 
@@ -142,7 +142,7 @@ Parameters:
 
 Adapter call: `generate_dtm(DtmRequest(...))`. This workflow expects usable ground points. If the source is not already ground-classified, enable the classify-ground option and manually QA the result.
 
-### Advanced Point Density
+### Point Density
 
 Parameters:
 
@@ -158,7 +158,7 @@ Parameters:
 
 Adapter call: `create_point_density(PointDensityRequest(...))`. The adapter reads HAG-enabled points, assigns voxels, calls `calculate_point_density`, and writes the returned 2D array as a GeoTIFF. If `cell_area` is omitted, the adapter uses X resolution multiplied by Y resolution when area-normalizing.
 
-### Advanced Voxel Statistic
+### Voxel Statistic
 
 Parameters:
 
@@ -175,7 +175,7 @@ Parameters:
 
 Adapter call: `create_voxel_stat(VoxelStatRequest(...))`. The adapter validates that the requested dimension exists in the loaded point array and maps the optional index controls to PyForestScan's `z_index_range` tuple.
 
-### Advanced Point Cloud Preprocess / Filters
+### Preprocess Point Cloud
 
 Parameters:
 
@@ -194,7 +194,7 @@ Parameters:
 
 Adapter call: `preprocess_point_cloud(PointCloudPreprocessRequest(...))`. This is the expert surface for PyForestScan filter wrappers and writes a real LAS/LAZ output via `write_las`.
 
-### Generate Height Above Ground / Normalize Heights
+### Normalize Heights
 
 Parameters:
 
@@ -211,17 +211,17 @@ Adapter call: `normalize_heights(HagNormalizationRequest(...))`. If an output pa
 ## Manual QGIS Test Checklist
 
 1. Install the packaged plugin ZIP into QGIS.
-2. Open Processing Toolbox and confirm a `PyForestScan / Advanced` group appears.
-3. Run Advanced CHM on a small known dataset and confirm the GeoTIFF loads with grayscale styling.
-4. Run Advanced PAD and confirm the output is a multi-band GeoTIFF loaded as PAD RGB 5/3/2 when enough bands exist.
-5. Run Advanced PAI with a minimum height and optional maximum height; confirm a single-band GeoTIFF is written.
-6. Run Advanced Canopy Cover with threshold and `k`; confirm values display as grayscale.
-7. Run Advanced FHD and confirm output CRS/extent align with the input.
-8. Run Advanced Rumple and confirm a CSV table is written and optionally loaded.
+2. Open Processing Toolbox and confirm `PyForestScan / Diagnostics`, `PyForestScan / Input / I/O`, `PyForestScan / Preprocessing / Filters`, `PyForestScan / Terrain`, and `PyForestScan / Metrics` groups appear.
+3. Run CHM on a small known dataset and confirm the GeoTIFF loads with grayscale styling.
+4. Run PAD and confirm the output is a multi-band GeoTIFF loaded as PAD RGB 5/3/2 when enough bands exist.
+5. Run PAI with a minimum height and optional maximum height; confirm a single-band GeoTIFF is written.
+6. Run Canopy Cover with threshold and `k`; confirm values display as grayscale.
+7. Run FHD and confirm output CRS/extent align with the input.
+8. Run Rumple and confirm a CSV table is written and optionally loaded.
 9. Run HAG/Normalize without output and confirm it reports the in-memory limitation.
 10. Run HAG/Normalize with a LAS/LAZ output on a small dataset and confirm the output is written.
-11. Run Advanced Point Density with `per_area` off and on; confirm a single-band GeoTIFF is written.
-12. Run Advanced Voxel Statistic for a known dimension such as `Intensity` or `HeightAboveGround`; confirm invalid dimensions fail clearly.
+11. Run Point Density with `per_area` off and on; confirm a single-band GeoTIFF is written.
+12. Run Voxel Statistic for a known dimension such as `Intensity` or `HeightAboveGround`; confirm invalid dimensions fail clearly.
 13. Reopen Mission Control and confirm guided single-file and batch workflows still work.
 
 ## Limitations

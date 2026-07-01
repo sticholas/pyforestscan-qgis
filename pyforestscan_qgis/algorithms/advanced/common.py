@@ -46,11 +46,11 @@ class AdvancedPyForestScanAlgorithm(QgsProcessingAlgorithm):
 
     def group(self) -> str:
         """Return the Processing group display name."""
-        return self.tr(f"PyForestScan / Advanced / {self.ADVANCED_GROUP}")
+        return self.tr(f"PyForestScan / {self.ADVANCED_GROUP}")
 
     def groupId(self) -> str:
         """Return the stable Processing group identifier."""
-        return "pyforestscan_advanced_" + self.ADVANCED_GROUP.lower().replace(" / ", "_").replace(" ", "_")
+        return "pyforestscan_" + self.ADVANCED_GROUP.lower().replace(" / ", "_").replace(" ", "_")
 
     def icon(self) -> QIcon:
         """Return the provider icon."""

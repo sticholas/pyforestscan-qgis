@@ -1,4 +1,4 @@
-"""Advanced CHM Processing algorithm."""
+"""CHM Processing algorithm."""
 
 from __future__ import annotations
 
@@ -22,10 +22,10 @@ class AdvancedChmAlgorithm(AdvancedPyForestScanAlgorithm):
         return "advanced_chm"
 
     def displayName(self) -> str:
-        return self.tr("Advanced CHM")
+        return self.tr("CHM")
 
     def shortHelpString(self) -> str:
-        return self.tr("Advanced CHM exposes explicit X/Y resolution and interpolation options while routing all PyForestScan calls through the adapter.")
+        return self.tr("CHM exposes explicit X/Y resolution and interpolation options while routing all PyForestScan calls through the adapter.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         self.add_input_dataset(); self.add_crs(); self.add_xy_resolution(); self.add_geotiff_output("Output CHM GeoTIFF")
@@ -38,6 +38,6 @@ class AdvancedChmAlgorithm(AdvancedPyForestScanAlgorithm):
         dataset, crs, output, xres, yres, add = self.common_values(parameters, context)
         params = AdvancedChmParameters(dataset, output, crs, xres, yres, add, self.interpolation_value(parameters, self.INTERPOLATION, context), self.parameterAsBool(parameters, self.INTERP_VALID_REGION, context), self.parameterAsBool(parameters, self.CLEAN_EDGES, context))
         request = build_chm_request(params)
-        result = run_adapter_call(feedback, "Advanced CHM", lambda: PyForestScanAdapter().create_chm(request))
+        result = run_adapter_call(feedback, "CHM", lambda: PyForestScanAdapter().create_chm(request))
         load_raster_if_requested(result.output_path, "chm_geotiff", context, feedback, add)
-        return self.push_result(feedback, result.output_path, "Advanced CHM")
+        return self.push_result(feedback, result.output_path, "CHM")

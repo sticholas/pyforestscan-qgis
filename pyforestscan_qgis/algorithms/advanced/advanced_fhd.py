@@ -1,4 +1,4 @@
-"""Advanced FHD Processing algorithm."""
+"""FHD Processing algorithm."""
 
 from __future__ import annotations
 
@@ -18,10 +18,10 @@ class AdvancedFhdAlgorithm(AdvancedPyForestScanAlgorithm):
         return "advanced_fhd"
 
     def displayName(self) -> str:
-        return self.tr("Advanced FHD")
+        return self.tr("FHD")
 
     def shortHelpString(self) -> str:
-        return self.tr("Advanced FHD uses assign_voxels and calculate_fhd through the adapter with explicit height range controls.")
+        return self.tr("FHD uses assign_voxels and calculate_fhd through the adapter with explicit height range controls.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         self.add_input_dataset(); self.add_crs(); self.add_xy_resolution(); add_voxel_parameters(self, include_beer=False, min_default=0.0); self.add_geotiff_output("Output FHD GeoTIFF")
@@ -31,6 +31,6 @@ class AdvancedFhdAlgorithm(AdvancedPyForestScanAlgorithm):
         dataset, crs, output, xres, yres, add = self.common_values(parameters, context)
         params = AdvancedVoxelParameters(dataset, output, crs, xres, yres, add, self.parameterAsDouble(parameters, "VOXEL_HEIGHT", context), self.parameterAsDouble(parameters, "MIN_HEIGHT", context), self.optional_double(parameters, "MAX_HEIGHT", context), 1.0, True)
         request = build_fhd_request(params)
-        result = run_adapter_call(feedback, "Advanced FHD", lambda: PyForestScanAdapter().create_fhd(request))
+        result = run_adapter_call(feedback, "FHD", lambda: PyForestScanAdapter().create_fhd(request))
         load_raster_if_requested(result.output_path, "fhd_geotiff", context, feedback, add)
-        return self.push_result(feedback, result.output_path, "Advanced FHD")
+        return self.push_result(feedback, result.output_path, "FHD")

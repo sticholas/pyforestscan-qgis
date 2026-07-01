@@ -16,7 +16,7 @@ The project is preparing for a stable internal release. Current implemented work
 - Batch folder-to-products workflow with preflight, manifest, resume, retry, and guarded Parallel Safe mode
 - Local Workspace foundation with session, timeline, history, recent items, notes, and version metadata
 - QGIS result loading and product-aware raster styling
-- Advanced Processing Toolbox with expert CHM, PAD, PAI, Canopy Cover, FHD, Rumple, Point Density, Voxel Statistic, HAG/normalization, DTM, and point-cloud preprocessing/filter controls
+- Processing Toolbox expert surface with CHM, PAD, PAI, Canopy Cover, FHD, Rumple, Point Density, Voxel Statistic, HAG/normalization, DTM, and point-cloud preprocessing/filter controls
 
 External Worker mode is disabled. Sequential batch processing remains the safest path, and Parallel Safe mode is available with preflight guardrails.
 
@@ -36,7 +36,7 @@ Implemented output defaults are:
 ## Repository Layout
 
 - `pyforestscan_qgis/`: QGIS plugin package.
-- `pyforestscan_qgis/algorithms/`: QGIS Processing algorithms for Environment Check, Dataset Explorer, Product Planner, and current placeholder toolbox entries.
+- `pyforestscan_qgis/algorithms/`: QGIS Processing algorithms. Mission Control owns guided Dataset Explorer and Product Planner workflows; the toolbox now registers Diagnostics and expert PyForestScan tools.
 - `pyforestscan_qgis/core/`: QGIS-free domain services, adapter, planning, pipeline, jobs, batch, workspace, and knowledge modules.
 - `pyforestscan_qgis/ui/`: Mission Control and QGIS integration helpers.
 - `pyforestscan_qgis/worker/`: disabled external-worker research scaffold, not user-facing.
@@ -59,6 +59,9 @@ Implemented output defaults are:
 - [PyForestScan API Coverage Matrix](docs/api/PYFORESTSCAN_API_COVERAGE_MATRIX.md)
 - [PyForestScan Exact Parameter Matrix](docs/api/PYFORESTSCAN_EXACT_PARAMETER_MATRIX.md)
 - [PyForestScan Full Docs Inventory](docs/api/PYFORESTSCAN_FULL_DOCS_INVENTORY.md)
+- [PyForestScan Full Site Crawl](docs/api/PYFORESTSCAN_FULL_SITE_CRAWL.md)
+- [PyForestScan Usage and Examples Audit](docs/api/PYFORESTSCAN_USAGE_EXAMPLES_AUDIT.md)
+- [PyForestScan Source / Docs Difference Audit](docs/api/PYFORESTSCAN_SOURCE_DOCS_DIFF.md)
 - [PyForestScan Function Parameter Parity](docs/api/PYFORESTSCAN_FUNCTION_PARAMETER_PARITY.md)
 
 ## Local QGIS Testing

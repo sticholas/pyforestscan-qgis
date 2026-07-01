@@ -18,12 +18,7 @@ from .algorithms.advanced import (
     NormalizeHagAlgorithm,
     PointCloudPreprocessAlgorithm,
 )
-from .algorithms.placeholder_algorithms import (
-    DatasetExplorerAlgorithm,
-    EnvironmentCheckAlgorithm,
-    ForestMetricsPackAlgorithm,
-    ProductPlannerAlgorithm,
-)
+from .algorithms.placeholder_algorithms import EnvironmentCheckAlgorithm
 from .resources import plugin_icon
 
 
@@ -52,9 +47,6 @@ class PyForestScanProvider(QgsProcessingProvider):
     def loadAlgorithms(self) -> None:
         """Register all Processing algorithms owned by this provider."""
         self.addAlgorithm(EnvironmentCheckAlgorithm())
-        self.addAlgorithm(DatasetExplorerAlgorithm())
-        self.addAlgorithm(ProductPlannerAlgorithm())
-        self.addAlgorithm(ForestMetricsPackAlgorithm())
         self.addAlgorithm(AdvancedChmAlgorithm())
         self.addAlgorithm(AdvancedPadAlgorithm())
         self.addAlgorithm(AdvancedPaiAlgorithm())

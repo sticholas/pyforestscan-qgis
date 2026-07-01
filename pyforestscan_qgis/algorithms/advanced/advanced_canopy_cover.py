@@ -1,4 +1,4 @@
-"""Advanced Canopy Cover Processing algorithm."""
+"""Canopy Cover Processing algorithm."""
 
 from __future__ import annotations
 
@@ -20,10 +20,10 @@ class AdvancedCanopyCoverAlgorithm(AdvancedPyForestScanAlgorithm):
         return "advanced_canopy_cover"
 
     def displayName(self) -> str:
-        return self.tr("Advanced Canopy Cover")
+        return self.tr("Canopy Cover")
 
     def shortHelpString(self) -> str:
-        return self.tr("Advanced Canopy Cover computes PAD internally and applies calculate_canopy_cover with explicit min/max height and k.")
+        return self.tr("Canopy Cover computes PAD internally and applies calculate_canopy_cover with explicit min/max height and k.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         self.add_input_dataset(); self.add_crs(); self.add_xy_resolution(); add_voxel_parameters(self, include_beer=True, min_default=2.0)
@@ -35,6 +35,6 @@ class AdvancedCanopyCoverAlgorithm(AdvancedPyForestScanAlgorithm):
         dataset, crs, output, xres, yres, add = self.common_values(parameters, context)
         params = AdvancedCanopyCoverParameters(dataset, output, crs, xres, yres, add, self.parameterAsDouble(parameters, "VOXEL_HEIGHT", context), self.parameterAsDouble(parameters, "MIN_HEIGHT", context), self.optional_double(parameters, "MAX_HEIGHT", context), self.parameterAsDouble(parameters, "BEER_LAMBERT_CONSTANT", context), self.parameterAsBool(parameters, "DROP_GROUND", context), self.parameterAsDouble(parameters, self.EXTINCTION_COEFFICIENT, context))
         request = build_canopy_cover_request(params)
-        result = run_adapter_call(feedback, "Advanced Canopy Cover", lambda: PyForestScanAdapter().create_canopy_cover(request))
+        result = run_adapter_call(feedback, "Canopy Cover", lambda: PyForestScanAdapter().create_canopy_cover(request))
         load_raster_if_requested(result.output_path, "canopy_cover_geotiff", context, feedback, add)
-        return self.push_result(feedback, result.output_path, "Advanced Canopy Cover")
+        return self.push_result(feedback, result.output_path, "Canopy Cover")

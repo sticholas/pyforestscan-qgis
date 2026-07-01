@@ -56,13 +56,13 @@ PAI, FHD, and Rumple summary processing.
 
 ## Advanced Processing Toolbox
 
-Expert users can run advanced PyForestScan algorithms from QGIS Processing Toolbox under `PyForestScan / Advanced`. These tools expose explicit X/Y resolution, interpolation, voxel, height-range, Beer-Lambert, canopy-cover, rumple, and HAG/normalization controls. Mission Control remains the recommended guided workflow for normal use.
+Expert users can run advanced PyForestScan algorithms from QGIS Processing Toolbox under the `PyForestScan / Input / I/O`, `PyForestScan / Preprocessing / Filters`, `PyForestScan / Terrain`, and `PyForestScan / Metrics` groups. These tools expose explicit X/Y resolution, interpolation, voxel, height-range, Beer-Lambert, canopy-cover, rumple, and HAG/normalization controls. Mission Control remains the recommended guided workflow for normal use.
 
 Advanced raster outputs use the same loading/styling rules as Mission Control: CHM, Canopy Cover, PAI, and FHD load as grayscale when possible, while PAD loads as the documented RGB 5/3/2 composite when enough bands exist. Rumple writes a CSV summary because PyForestScan returns a scalar value.
 
 The HAG/Normalize tool reads lidar with PyForestScan HAG support and can optionally write LAS/LAZ through PyForestScan `write_las`. It also exposes expert read options such as bounds, thinning radius, and crop polygon/WKT. It does not invent unsupported normalized output formats.
 
-Advanced DTM creates a GeoTIFF from ground-classified points. Advanced Point Density writes a single-band GeoTIFF from `calculate_point_density` with explicit `per_area` and optional `cell_area` controls. Advanced Voxel Statistic writes a single-band GeoTIFF from `calculate_voxel_stat` with exact `dimension`, `stat`, and optional `z_index_range` controls. Advanced Point Cloud Preprocess / Filters writes LAS/LAZ after selected PyForestScan filter steps such as outlier cleaning, full SMRF ground classification, ground filtering, PointSourceId filtering, HAG, HAG range filtering, Poisson thinning, and voxel-grid downsampling.
+Generate DTM creates a GeoTIFF from ground-classified points. Point Density writes a single-band GeoTIFF from `calculate_point_density` with explicit `per_area` and optional `cell_area` controls. Voxel Statistic writes a single-band GeoTIFF from `calculate_voxel_stat` with exact `dimension`, `stat`, and optional `z_index_range` controls. Preprocess Point Cloud writes LAS/LAZ after selected PyForestScan filter steps such as outlier cleaning, full SMRF ground classification, ground filtering, PointSourceId filtering, HAG, HAG range filtering, Poisson thinning, and voxel-grid downsampling.
 
 ## Dataset Explorer
 

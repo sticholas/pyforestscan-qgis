@@ -1,4 +1,4 @@
-"""Advanced Rumple Processing algorithm."""
+"""Rumple Processing algorithm."""
 
 from __future__ import annotations
 
@@ -23,10 +23,10 @@ class AdvancedRumpleAlgorithm(AdvancedPyForestScanAlgorithm):
         return "advanced_rumple"
 
     def displayName(self) -> str:
-        return self.tr("Advanced Rumple")
+        return self.tr("Rumple")
 
     def shortHelpString(self) -> str:
-        return self.tr("Advanced Rumple computes an internal CHM through the adapter and writes the scalar rumple index as CSV.")
+        return self.tr("Rumple computes an internal CHM through the adapter and writes the scalar rumple index as CSV.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         self.add_input_dataset(); self.add_crs(); self.add_xy_resolution(); self.add_csv_output("Output rumple CSV summary")
@@ -40,6 +40,6 @@ class AdvancedRumpleAlgorithm(AdvancedPyForestScanAlgorithm):
         dataset, crs, output, xres, yres, add = self.common_values(parameters, context)
         params = AdvancedRumpleParameters(dataset, output, crs, xres, yres, self.interpolation_value(parameters, self.INTERPOLATION, context), self.parameterAsBool(parameters, self.INTERP_VALID_REGION, context), self.parameterAsBool(parameters, self.CLEAN_EDGES, context), self.optional_double(parameters, self.MIN_HEIGHT, context), add)
         request = build_rumple_request(params)
-        result = run_adapter_call(feedback, "Advanced Rumple", lambda: PyForestScanAdapter().create_rumple(request))
+        result = run_adapter_call(feedback, "Rumple", lambda: PyForestScanAdapter().create_rumple(request))
         load_csv_if_requested(result.output_path, context, feedback, add, "PyForestScan Rumple Summary")
-        return self.push_result(feedback, result.output_path, "Advanced Rumple")
+        return self.push_result(feedback, result.output_path, "Rumple")

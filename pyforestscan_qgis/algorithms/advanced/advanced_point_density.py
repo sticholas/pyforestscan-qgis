@@ -1,4 +1,4 @@
-"""Advanced Point Density Processing algorithm."""
+"""Point Density Processing algorithm."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ class AdvancedPointDensityAlgorithm(AdvancedPyForestScanAlgorithm):
 
     def displayName(self) -> str:
         """Return the Processing display name."""
-        return self.tr("Advanced Point Density")
+        return self.tr("Point Density")
 
     def shortHelpString(self) -> str:
         """Return Processing help text."""
@@ -54,6 +54,6 @@ class AdvancedPointDensityAlgorithm(AdvancedPyForestScanAlgorithm):
             cell_area=self.optional_double(parameters, self.CELL_AREA, context),
         )
         request = build_point_density_request(params)
-        result = run_adapter_call(feedback, "Advanced Point Density", lambda: PyForestScanAdapter().create_point_density(request))
+        result = run_adapter_call(feedback, "Point Density", lambda: PyForestScanAdapter().create_point_density(request))
         load_raster_if_requested(result.output_path, "point_density_geotiff", context, feedback, add)
-        return self.push_result(feedback, result.output_path, "Advanced Point Density")
+        return self.push_result(feedback, result.output_path, "Point Density")

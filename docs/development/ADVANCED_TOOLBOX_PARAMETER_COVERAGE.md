@@ -4,17 +4,17 @@ This document maps Advanced Toolbox algorithms to PyForestScan functions and par
 
 | Algorithm | PyForestScan functions | Safe parameters exposed | Deferred parameters/workflows |
 | --- | --- | --- | --- |
-| Advanced CHM | `read_lidar(hag=True)`, `calculate_chm`, `create_geotiff` | CRS, output, X/Y resolution, interpolation, valid-region interpolation, edge cleaning, add to project | Product-level crop/bounds, nodata |
-| Advanced PAD | `read_lidar(hag=True)`, `assign_voxels`, `calculate_pad` | CRS, output, X/Y resolution, voxel height, Beer-Lambert constant, drop ground, add to project | Product-level crop/bounds, per-band metadata |
-| Advanced PAI | `assign_voxels`, `calculate_pad`, `calculate_pai` | CRS, output, X/Y resolution, voxel height, min/max height, internal PAD Beer-Lambert/drop-ground | Product-level crop/bounds, nodata |
-| Advanced Canopy Cover | `assign_voxels`, `calculate_pad`, `calculate_canopy_cover` | CRS, output, X/Y resolution, voxel height, min/max height, k, internal PAD Beer-Lambert/drop-ground | Product-level crop/bounds, nodata |
-| Advanced FHD | `assign_voxels`, `calculate_fhd` | CRS, output, X/Y resolution, voxel height, min/max height | Product-level crop/bounds, nodata |
-| Advanced Rumple | `calculate_chm`, `calculate_rumple` | CRS, CSV output, X/Y CHM resolution, CHM interpolation, valid-region interpolation, edge cleaning, min height | Optional internal CHM export |
-| Generate Height Above Ground / Normalize Heights | `read_lidar`, `write_las` | CRS, HAG/HAG DTM, DTM path, reproject, bounds, thinning radius, crop polygon/WKT, LAS/LAZ output, compression | In-memory output visualization, vector-layer polygon selection |
-| Advanced DTM | `read_lidar`, optional `classify_ground_points`, `filter_select_ground`, `generate_dtm`, `create_geotiff` | CRS, DTM resolution, optional classify ground, nodata, add to project | DTM smoothing/QA workflows, product-level DTM reuse |
-| Advanced Point Density | `read_lidar(hag=True)`, `assign_voxels`, `calculate_point_density`, `create_geotiff` | CRS, output, X/Y resolution, voxel height, `per_area`, `cell_area`, add to project | Product-level crop/bounds, density classification QA dashboards |
-| Advanced Voxel Statistic | `read_lidar(hag=True)`, `calculate_voxel_stat`, `create_geotiff` | CRS, output, X/Y resolution, voxel height, `dimension`, `stat`, `z_index_range`, add to project | Product-level crop/bounds, batch statistic catalogs |
-| Advanced Point Cloud Preprocess / Filters | `remove_outliers_and_clean`, `classify_ground_points`, `filter_ground`, `filter_select_ground`, `filter_pointsourceid`, `add_height_above_ground`, `filter_hag`, `downsample_poisson`, `downsample_voxel`, `write_las` | Outlier mean/multiplier/remove, full SMRF parameters, ground action, PointSourceId list, HAG method/DTM, HAG range, thinning, voxel downsample, compression | Process summaries, standalone filter-only in-memory outputs |
+| CHM | `read_lidar(hag=True)`, `calculate_chm`, `create_geotiff` | CRS, output, X/Y resolution, interpolation, valid-region interpolation, edge cleaning, add to project | Product-level crop/bounds, nodata |
+| PAD | `read_lidar(hag=True)`, `assign_voxels`, `calculate_pad` | CRS, output, X/Y resolution, voxel height, Beer-Lambert constant, drop ground, add to project | Product-level crop/bounds, per-band metadata |
+| PAI | `assign_voxels`, `calculate_pad`, `calculate_pai` | CRS, output, X/Y resolution, voxel height, min/max height, internal PAD Beer-Lambert/drop-ground | Product-level crop/bounds, nodata |
+| Canopy Cover | `assign_voxels`, `calculate_pad`, `calculate_canopy_cover` | CRS, output, X/Y resolution, voxel height, min/max height, k, internal PAD Beer-Lambert/drop-ground | Product-level crop/bounds, nodata |
+| FHD | `assign_voxels`, `calculate_fhd` | CRS, output, X/Y resolution, voxel height, min/max height | Product-level crop/bounds, nodata |
+| Rumple | `calculate_chm`, `calculate_rumple` | CRS, CSV output, X/Y CHM resolution, CHM interpolation, valid-region interpolation, edge cleaning, min height | Optional internal CHM export |
+| Normalize Heights | `read_lidar`, `write_las` | CRS, HAG/HAG DTM, DTM path, reproject, bounds, thinning radius, crop polygon/WKT, LAS/LAZ output, compression | In-memory output visualization, vector-layer polygon selection |
+| Generate DTM | `read_lidar`, optional `classify_ground_points`, `filter_select_ground`, `generate_dtm`, `create_geotiff` | CRS, DTM resolution, optional classify ground, nodata, add to project | DTM smoothing/QA workflows, product-level DTM reuse |
+| Point Density | `read_lidar(hag=True)`, `assign_voxels`, `calculate_point_density`, `create_geotiff` | CRS, output, X/Y resolution, voxel height, `per_area`, `cell_area`, add to project | Product-level crop/bounds, density classification QA dashboards |
+| Voxel Statistic | `read_lidar(hag=True)`, `calculate_voxel_stat`, `create_geotiff` | CRS, output, X/Y resolution, voxel height, `dimension`, `stat`, `z_index_range`, add to project | Product-level crop/bounds, batch statistic catalogs |
+| Preprocess Point Cloud | `remove_outliers_and_clean`, `classify_ground_points`, `filter_ground`, `filter_select_ground`, `filter_pointsourceid`, `add_height_above_ground`, `filter_hag`, `downsample_poisson`, `downsample_voxel`, `write_las` | Outlier mean/multiplier/remove, full SMRF parameters, ground action, PointSourceId list, HAG method/DTM, HAG range, thinning, voxel downsample, compression | Process summaries, standalone filter-only in-memory outputs |
 
 ## Validation Policy
 
