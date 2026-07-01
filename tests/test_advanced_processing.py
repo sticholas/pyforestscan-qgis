@@ -33,6 +33,7 @@ from pyforestscan_qgis.core.advanced_processing import (
     build_rumple_request,
     build_voxel_stat_request,
     parse_bounds_text,
+    parse_integer_list,
 )
 from pyforestscan_qgis.core.exceptions import ProcessingError
 from pyforestscan_qgis.core.types import (
@@ -135,6 +136,12 @@ class AdvancedProcessingTests(unittest.TestCase):
         self.assertEqual(((1.0, 2.0), (3.0, 4.0), (5.0, 6.0)), parse_bounds_text("1,2,3,4,5,6"))
         with self.assertRaises(ProcessingError):
             parse_bounds_text("1,2,3")
+
+    def test_parse_integer_list_validates_pointsource_ids(self) -> None:
+        self.assertEqual((1, 2, 7), parse_integer_list("1, 2,7", label="PointSourceId"))
+        self.assertEqual((), parse_integer_list("", label="PointSourceId"))
+        with self.assertRaises(ProcessingError):
+            parse_integer_list("1, two", label="PointSourceId")
 
     def test_dtm_and_preprocess_request_builders(self) -> None:
         dtm = build_dtm_request(
@@ -429,6 +436,99 @@ class AdvancedProcessingTests(unittest.TestCase):
             self.assertTrue(result.output_path.exists())
 
         self.assertEqual(["classify_ground_points", "filter_select_ground", "generate_dtm:5.0", "create_geotiff:-999.0"], calls)
+
+    def test_preprocess_request_maps_full_filter_parameters(self) -> None:
+        request = build_point_cloud_preprocess_request(
+            AdvancedPointCloudPreprocessParameters(
+                input_path="plot.laz",
+                output_path=Path("clean.laz"),
+                crs="EPSG:32610",
+                remove_outliers=True,
+                outlier_mean_k=12,
+                outlier_multiplier=2.5,
+                outlier_remove=True,
+                classify_ground=True,
+                smrf_ignore_class="Classification[7:7]",
+                smrf_cell=2.0,
+                smrf_cut=0.1,
+                smrf_returns="last,only",
+                smrf_scalar=1.5,
+                smrf_slope=0.2,
+                smrf_threshold=0.6,
+                smrf_window=20.0,
+                filter_pointsourceid=True,
+                pointsource_ids_text="1,3,5",
+                add_hag=True,
+                hag_method=None,
+                compress=False,
+            )
+        )
+
+        self.assertTrue(request.outlier_remove)
+        self.assertEqual(2.0, request.smrf_cell)
+        self.assertEqual((1, 3, 5), request.pointsource_ids)
+        self.assertIsNone(request.hag_method)
+        self.assertFalse(request.compress)
+
+    def test_adapter_preprocess_passes_exact_filter_kwargs(self) -> None:
+        calls: dict[str, object] = {}
+        point_array = np.array([(0.0, 0.0, 1.0, 2.0, 2, 1)], dtype=[("X", "f8"), ("Y", "f8"), ("Z", "f8"), ("HeightAboveGround", "f8"), ("Classification", "u1"), ("PointSourceId", "u2")])
+        fake_handlers = types.ModuleType("pyforestscan.handlers")
+        fake_filters = types.ModuleType("pyforestscan.filters")
+        fake_handlers.read_lidar = lambda *args, **kwargs: [point_array]  # type: ignore[attr-defined]
+
+        def remove_outliers_and_clean(arrays, **kwargs):
+            calls["remove_outliers_and_clean"] = kwargs
+            return arrays
+
+        def classify_ground_points(arrays, **kwargs):
+            calls["classify_ground_points"] = kwargs
+            return arrays
+
+        def filter_pointsourceid(arrays, pointsource_ids):
+            calls["filter_pointsourceid"] = pointsource_ids
+            return arrays
+
+        def add_height_above_ground(arrays, **kwargs):
+            calls["add_height_above_ground"] = kwargs
+            return arrays
+
+        fake_filters.remove_outliers_and_clean = remove_outliers_and_clean  # type: ignore[attr-defined]
+        fake_filters.classify_ground_points = classify_ground_points  # type: ignore[attr-defined]
+        fake_filters.filter_pointsourceid = filter_pointsourceid  # type: ignore[attr-defined]
+        fake_filters.add_height_above_ground = add_height_above_ground  # type: ignore[attr-defined]
+        fake_handlers.write_las = lambda arrays, output_file, srs=None, compress=True: Path(output_file).write_text("fake", encoding="utf-8")  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(sys.modules, {"pyforestscan.handlers": fake_handlers, "pyforestscan.filters": fake_filters}):
+            PyForestScanAdapter().preprocess_point_cloud(
+                PointCloudPreprocessRequest(
+                    input_path="plot.laz",
+                    output_path=Path(temp_dir) / "clean.laz",
+                    crs="EPSG:32610",
+                    remove_outliers=True,
+                    outlier_mean_k=12,
+                    outlier_multiplier=2.5,
+                    outlier_remove=True,
+                    classify_ground=True,
+                    smrf_cell=2.0,
+                    smrf_cut=0.1,
+                    smrf_returns="last,only",
+                    smrf_scalar=1.5,
+                    smrf_slope=0.2,
+                    smrf_threshold=0.6,
+                    smrf_window=20.0,
+                    filter_pointsourceid=True,
+                    pointsource_ids=(1, 3),
+                    add_hag=True,
+                    hag_method=None,
+                    compress=True,
+                )
+            )
+
+        self.assertEqual({"mean_k": 12, "multiplier": 2.5, "remove": True}, calls["remove_outliers_and_clean"])
+        self.assertEqual(2.0, calls["classify_ground_points"]["cell"])
+        self.assertEqual((1, 3), calls["filter_pointsourceid"])
+        self.assertIsNone(calls["add_height_above_ground"]["method"])
 
     def test_adapter_preprocess_point_cloud_maps_filter_sequence(self) -> None:
         calls: list[str] = []

@@ -31,6 +31,7 @@ from ...ui.raster_styling import apply_generated_raster_renderer, layer_display_
 class AdvancedPyForestScanAlgorithm(QgsProcessingAlgorithm):
     """Base class for Advanced Processing Toolbox algorithms."""
 
+    ADVANCED_GROUP = "Metrics"
     INPUT_DATASET = "INPUT_DATASET"
     CRS = "CRS"
     X_RESOLUTION = "X_RESOLUTION"
@@ -45,11 +46,11 @@ class AdvancedPyForestScanAlgorithm(QgsProcessingAlgorithm):
 
     def group(self) -> str:
         """Return the Processing group display name."""
-        return self.tr("PyForestScan / Advanced")
+        return self.tr(f"PyForestScan / Advanced / {self.ADVANCED_GROUP}")
 
     def groupId(self) -> str:
         """Return the stable Processing group identifier."""
-        return "pyforestscan_advanced"
+        return "pyforestscan_advanced_" + self.ADVANCED_GROUP.lower().replace(" / ", "_").replace(" ", "_")
 
     def icon(self) -> QIcon:
         """Return the provider icon."""

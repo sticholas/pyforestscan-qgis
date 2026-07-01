@@ -15,15 +15,19 @@ Phase 20B compared Phase 20A Advanced Toolbox coverage against the full official
 - Added Advanced Voxel Statistic using `calculate_voxel_stat`, `dimension`, the documented `stat` enum, and optional `z_index_range`.
 - Added `docs/api/PYFORESTSCAN_EXACT_PARAMETER_MATRIX.md` as the parameter-by-parameter source for Advanced Toolbox parity.
 
+## Gaps Closed In Phase 20D
+
+- Added full SMRF `classify_ground_points` parameters to Advanced Point Cloud Preprocess / Filters.
+- Added `filter_pointsourceid` with comma-separated PointSourceId parsing.
+- Added `remove_outliers_and_clean(remove=...)` and HAG method `auto` mapping.
+
 ## Remaining Deferred Items
 
 | Area | Deferred capability | Reason |
 | --- | --- | --- |
 | Tiled EPT processing | `process_with_tiles` | Needs adapter wrapper for cancellation, progress, output naming, tile summaries, and avoiding `print`/`tqdm` UX inside QGIS. |
-| PointSourceId filtering | `filter_pointsourceid` | Needs robust multi-ID input UX and QA datasets. |
 | Product-level clipping | Bounds/polygon options on CHM/PAD/PAI/FHD/cover/rumple | HAG/read utility exposes low-level crop; product crop should use a consistent QGIS vector/bounds UX. |
 | Visualization helpers | `plot_2d`, `plot_metric`, `plot_pad` | QGIS has native map canvas, raster symbology, histograms, profiles, layouts, and layer styling. |
-| Deep SMRF tuning | Full `classify_ground_points` parameter surface if present | Current docs emphasize wrapper use; exposing all tuning needs scientific guidance and QA. |
 
 ## Product Decision
 

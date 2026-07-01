@@ -58,6 +58,8 @@ Implemented output defaults are:
 - [Advanced Processing Toolbox](docs/development/ADVANCED_PROCESSING_TOOLBOX.md)
 - [PyForestScan API Coverage Matrix](docs/api/PYFORESTSCAN_API_COVERAGE_MATRIX.md)
 - [PyForestScan Exact Parameter Matrix](docs/api/PYFORESTSCAN_EXACT_PARAMETER_MATRIX.md)
+- [PyForestScan Full Docs Inventory](docs/api/PYFORESTSCAN_FULL_DOCS_INVENTORY.md)
+- [PyForestScan Function Parameter Parity](docs/api/PYFORESTSCAN_FUNCTION_PARAMETER_PARITY.md)
 
 ## Local QGIS Testing
 

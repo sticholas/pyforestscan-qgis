@@ -790,10 +790,25 @@ class PyForestScanAdapter:
                 raise ProcessingError("PyForestScan returned no point data for preprocessing.")
             self._progress.update(20, "Point cloud loaded")
             if request.remove_outliers:
-                arrays = filters.remove_outliers_and_clean(arrays, mean_k=request.outlier_mean_k, multiplier=request.outlier_multiplier)
+                arrays = filters.remove_outliers_and_clean(
+                    arrays,
+                    mean_k=request.outlier_mean_k,
+                    multiplier=request.outlier_multiplier,
+                    remove=request.outlier_remove,
+                )
                 operations.append("remove_outliers_and_clean")
             if request.classify_ground:
-                arrays = filters.classify_ground_points(arrays)
+                arrays = filters.classify_ground_points(
+                    arrays,
+                    ignore_class=request.smrf_ignore_class,
+                    cell=request.smrf_cell,
+                    cut=request.smrf_cut,
+                    returns=request.smrf_returns,
+                    scalar=request.smrf_scalar,
+                    slope=request.smrf_slope,
+                    threshold=request.smrf_threshold,
+                    window=request.smrf_window,
+                )
                 operations.append("classify_ground_points")
             if request.ground_action == "remove_ground":
                 arrays = filters.filter_ground(arrays)
@@ -801,6 +816,9 @@ class PyForestScanAdapter:
             elif request.ground_action == "select_ground":
                 arrays = filters.filter_select_ground(arrays)
                 operations.append("filter_select_ground")
+            if request.filter_pointsourceid:
+                arrays = filters.filter_pointsourceid(arrays, request.pointsource_ids)
+                operations.append("filter_pointsourceid")
             if request.add_hag:
                 arrays = filters.add_height_above_ground(
                     arrays,

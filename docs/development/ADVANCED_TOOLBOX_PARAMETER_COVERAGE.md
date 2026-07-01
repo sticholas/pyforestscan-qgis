@@ -1,6 +1,6 @@
 # Advanced Toolbox Parameter Coverage
 
-This document maps Advanced Toolbox algorithms to PyForestScan functions and parameters. The exact `calculate.py` parameter-by-parameter matrix is maintained in `docs/api/PYFORESTSCAN_EXACT_PARAMETER_MATRIX.md`.
+This document maps Advanced Toolbox algorithms to PyForestScan functions and parameters. The Phase 20D full inventory is maintained in `docs/api/PYFORESTSCAN_FULL_DOCS_INVENTORY.md`; the function-level parameter matrix is maintained in `docs/api/PYFORESTSCAN_FUNCTION_PARAMETER_PARITY.md`.
 
 | Algorithm | PyForestScan functions | Safe parameters exposed | Deferred parameters/workflows |
 | --- | --- | --- | --- |
@@ -14,7 +14,7 @@ This document maps Advanced Toolbox algorithms to PyForestScan functions and par
 | Advanced DTM | `read_lidar`, optional `classify_ground_points`, `filter_select_ground`, `generate_dtm`, `create_geotiff` | CRS, DTM resolution, optional classify ground, nodata, add to project | DTM smoothing/QA workflows, product-level DTM reuse |
 | Advanced Point Density | `read_lidar(hag=True)`, `assign_voxels`, `calculate_point_density`, `create_geotiff` | CRS, output, X/Y resolution, voxel height, `per_area`, `cell_area`, add to project | Product-level crop/bounds, density classification QA dashboards |
 | Advanced Voxel Statistic | `read_lidar(hag=True)`, `calculate_voxel_stat`, `create_geotiff` | CRS, output, X/Y resolution, voxel height, `dimension`, `stat`, `z_index_range`, add to project | Product-level crop/bounds, batch statistic catalogs |
-| Advanced Point Cloud Preprocess / Filters | `remove_outliers_and_clean`, `classify_ground_points`, `filter_ground`, `filter_select_ground`, `add_height_above_ground`, `filter_hag`, `downsample_poisson`, `downsample_voxel`, `write_las` | Outlier mean/multiplier, classify ground, ground action, HAG method/DTM, HAG range, thinning, voxel downsample, compression | PointSourceId filter, full SMRF tuning, process summaries |
+| Advanced Point Cloud Preprocess / Filters | `remove_outliers_and_clean`, `classify_ground_points`, `filter_ground`, `filter_select_ground`, `filter_pointsourceid`, `add_height_above_ground`, `filter_hag`, `downsample_poisson`, `downsample_voxel`, `write_las` | Outlier mean/multiplier/remove, full SMRF parameters, ground action, PointSourceId list, HAG method/DTM, HAG range, thinning, voxel downsample, compression | Process summaries, standalone filter-only in-memory outputs |
 
 ## Validation Policy
 

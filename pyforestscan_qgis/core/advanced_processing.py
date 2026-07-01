@@ -146,10 +146,21 @@ class AdvancedPointCloudPreprocessParameters:
     remove_outliers: bool = False
     outlier_mean_k: int = 8
     outlier_multiplier: float = 3.0
+    outlier_remove: bool = False
     classify_ground: bool = False
+    smrf_ignore_class: str = "Classification[7:7]"
+    smrf_cell: float = 1.0
+    smrf_cut: float = 0.0
+    smrf_returns: str = "last,only"
+    smrf_scalar: float = 1.25
+    smrf_slope: float = 0.15
+    smrf_threshold: float = 0.5
+    smrf_window: float = 18.0
     ground_action: str = "none"
+    filter_pointsourceid: bool = False
+    pointsource_ids_text: str = ""
     add_hag: bool = False
-    hag_method: str = "delaunay"
+    hag_method: str | None = None
     dtm_path: Path | None = None
     filter_hag: bool = False
     hag_lower_limit: float = 0.0
@@ -367,21 +378,57 @@ def build_point_cloud_preprocess_request(params: AdvancedPointCloudPreprocessPar
         raise ProcessingError("Outlier mean_k must be greater than zero.")
     if params.outlier_multiplier <= 0:
         raise ProcessingError("Outlier multiplier must be greater than zero.")
+    if params.smrf_cell <= 0:
+        raise ProcessingError("SMRF cell must be greater than zero.")
+    if params.smrf_scalar <= 0:
+        raise ProcessingError("SMRF scalar must be greater than zero.")
+    if params.smrf_slope < 0:
+        raise ProcessingError("SMRF slope must be zero or greater.")
+    if params.smrf_threshold <= 0:
+        raise ProcessingError("SMRF threshold must be greater than zero.")
+    if params.smrf_window <= 0:
+        raise ProcessingError("SMRF window must be greater than zero.")
+    pointsource_ids = parse_integer_list(params.pointsource_ids_text, label="PointSourceId")
+    if params.filter_pointsourceid and not pointsource_ids:
+        raise ProcessingError("PointSourceId filtering requires at least one ID.")
     if params.thin_radius is not None and params.thin_radius <= 0:
         raise ProcessingError("Poisson thinning radius must be greater than zero.")
     if params.voxelgrid_cell is not None and params.voxelgrid_cell <= 0:
         raise ProcessingError("Voxel-grid cell size must be greater than zero.")
     if params.hag_upper_limit is not None and params.hag_upper_limit <= params.hag_lower_limit:
         raise ProcessingError("HAG upper limit must be greater than lower limit.")
-    if params.hag_method not in {"delaunay", "dtm"}:
-        raise ProcessingError("HAG method must be delaunay or dtm.")
+    if params.hag_method not in {None, "delaunay", "dtm"}:
+        raise ProcessingError("HAG method must be auto, delaunay, or dtm.")
     if params.hag_method == "dtm" and params.add_hag and params.dtm_path is None:
         raise ProcessingError("DTM HAG preprocessing requires a DTM path.")
     if params.ground_action not in {"none", "remove_ground", "select_ground"}:
         raise ProcessingError("Ground action must be none, remove_ground, or select_ground.")
     if params.voxelgrid_mode not in {"first", "last", "center", "nearest"}:
         raise ProcessingError("Voxel-grid mode must be first, last, center, or nearest.")
-    return PointCloudPreprocessRequest(**params.__dict__)
+    values = dict(params.__dict__)
+    values.pop("pointsource_ids_text")
+    values["pointsource_ids"] = pointsource_ids
+    return PointCloudPreprocessRequest(**values)
+
+
+def parse_integer_list(values_text: str, *, label: str = "value") -> tuple[int, ...]:
+    """Parse a comma-separated integer list for expert filter parameters."""
+    text = values_text.strip()
+    if not text:
+        return ()
+    values: list[int] = []
+    for raw_item in text.split(","):
+        item = raw_item.strip()
+        if not item:
+            continue
+        try:
+            value = int(item)
+        except ValueError as exc:
+            raise ProcessingError(f"{label} list contains a non-integer value: {item}") from exc
+        if value < 0:
+            raise ProcessingError(f"{label} values must be zero or greater.")
+        values.append(value)
+    return tuple(values)
 
 
 def parse_bounds_text(bounds_text: str) -> tuple[tuple[float, float], ...] | None:

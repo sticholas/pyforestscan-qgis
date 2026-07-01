@@ -62,7 +62,7 @@ Advanced raster outputs use the same loading/styling rules as Mission Control: C
 
 The HAG/Normalize tool reads lidar with PyForestScan HAG support and can optionally write LAS/LAZ through PyForestScan `write_las`. It also exposes expert read options such as bounds, thinning radius, and crop polygon/WKT. It does not invent unsupported normalized output formats.
 
-Advanced DTM creates a GeoTIFF from ground-classified points. Advanced Point Density writes a single-band GeoTIFF from `calculate_point_density` with explicit `per_area` and optional `cell_area` controls. Advanced Voxel Statistic writes a single-band GeoTIFF from `calculate_voxel_stat` with exact `dimension`, `stat`, and optional `z_index_range` controls. Advanced Point Cloud Preprocess / Filters writes LAS/LAZ after selected PyForestScan filter steps such as outlier cleaning, ground classification, ground filtering, HAG, HAG range filtering, Poisson thinning, and voxel-grid downsampling.
+Advanced DTM creates a GeoTIFF from ground-classified points. Advanced Point Density writes a single-band GeoTIFF from `calculate_point_density` with explicit `per_area` and optional `cell_area` controls. Advanced Voxel Statistic writes a single-band GeoTIFF from `calculate_voxel_stat` with exact `dimension`, `stat`, and optional `z_index_range` controls. Advanced Point Cloud Preprocess / Filters writes LAS/LAZ after selected PyForestScan filter steps such as outlier cleaning, full SMRF ground classification, ground filtering, PointSourceId filtering, HAG, HAG range filtering, Poisson thinning, and voxel-grid downsampling.
 
 ## Dataset Explorer
 

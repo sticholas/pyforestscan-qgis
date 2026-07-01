@@ -15,11 +15,15 @@ flowchart LR
 
 Processing algorithm classes do not import PyForestScan. They parse QGIS parameters, build typed request objects, call the adapter, and optionally load/style outputs.
 
+## QGIS Advanced Groups
+
+Advanced algorithms are grouped in QGIS as `Input / I/O`, `Preprocessing / Filters`, `Terrain`, and `Metrics` so expert users can follow the PyForestScan workflow order without cluttering Mission Control.
+
 ## Algorithms
 
 ## Phase 20B Coverage Additions
 
-Phase 20B added Advanced DTM and Advanced Point Cloud Preprocess / Filters, and expanded HAG/Normalize with read-time bounds, thinning radius, and crop polygon options. Phase 20C adds exact `calculate.py` parameter parity for Point Density and Voxel Statistic. The full coverage audit lives in `docs/api/PYFORESTSCAN_API_COVERAGE_MATRIX.md`; the exact parameter matrix lives in `docs/api/PYFORESTSCAN_EXACT_PARAMETER_MATRIX.md`.
+Phase 20B added Advanced DTM and Advanced Point Cloud Preprocess / Filters, and expanded HAG/Normalize with read-time bounds, thinning radius, and crop polygon options. Phase 20C added exact `calculate.py` parameter parity for Point Density and Voxel Statistic. Phase 20D adds a full documentation/source inventory and closes safe filter-parameter gaps including full SMRF classification parameters, PointSourceId filtering, outlier `remove`, and HAG method `auto`. The full scrape inventory lives in `docs/api/PYFORESTSCAN_FULL_DOCS_INVENTORY.md`; the detailed parity matrix lives in `docs/api/PYFORESTSCAN_FUNCTION_PARAMETER_PARITY.md`.
 
 
 ### Advanced CHM
@@ -225,4 +229,5 @@ Adapter call: `normalize_heights(HagNormalizationRequest(...))`. If an output pa
 - Advanced algorithms are synchronous Processing algorithms. Very large datasets should still be tested carefully.
 - No Mission Control controls were added for these expert options.
 - HAG point-cloud rewriting depends on PyForestScan/PDAL preserving expected dimensions and metadata.
+- Full SMRF and filter parameters are exposed for experts; users should document scientific rationale for non-default settings in project notes or reports.
 - Advanced algorithms do not provide tiling, multiprocessing, or external workers.

@@ -16,6 +16,8 @@ from .common import AdvancedPyForestScanAlgorithm, load_raster_if_requested, run
 class AdvancedDtmAlgorithm(AdvancedPyForestScanAlgorithm):
     """Generate a DTM GeoTIFF from ground-classified lidar points."""
 
+    ADVANCED_GROUP = "Terrain"
+
     RESOLUTION = "RESOLUTION"
     CLASSIFY_GROUND = "CLASSIFY_GROUND"
     NODATA = "NODATA"

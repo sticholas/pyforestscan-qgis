@@ -29,12 +29,12 @@ Sources reviewed: official usage pages for importing/preprocessing/writing, DTM,
 | Function | Parameters/defaults | Return type | Plugin status | Where implemented | Missing/deferred parameters | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | `add_height_above_ground` | `existing_points`, `method=None`, `dtm=None` | list of arrays | Implemented | Advanced Point Cloud Preprocess | None | HAG/Normalize also supports read-time HAG. |
-| `classify_ground_points` | documented SMRF/classification wrapper | arrays | Implemented | Advanced DTM optional step; Advanced Point Cloud Preprocess | Deep SMRF tuning parameters deferred | Current UI exposes safe on/off only. |
-| `remove_outliers_and_clean` | `arrays`, `mean_k=8`, `multiplier=3.0`, `remove=False` | arrays | Partially implemented | Advanced Point Cloud Preprocess | `remove` flag not exposed | Function docs note future rename; plugin keeps conservative default behavior. |
+| `classify_ground_points` | SMRF wrapper with `ignore_class`, `cell`, `cut`, `returns`, `scalar`, `slope`, `threshold`, `window` | arrays | Implemented | Advanced DTM optional default step; Advanced Point Cloud Preprocess exposes full parameters | None for preprocess tool | Phase 20D closes full SMRF parameter parity. |
+| `remove_outliers_and_clean` | `arrays`, `mean_k=8`, `multiplier=3.0`, `remove=False` | arrays | Implemented | Advanced Point Cloud Preprocess | None | Phase 20D exposes `remove`. |
 | `filter_ground` | `arrays` | arrays | Implemented | Advanced Point Cloud Preprocess | None | Removes classification 2. |
 | `filter_select_ground` | `arrays` | arrays | Implemented | Advanced DTM; Advanced Point Cloud Preprocess | None | Selects classification 2. |
 | `filter_hag` | `arrays`, `lower_limit=0`, `upper_limit=None` | arrays | Implemented | Advanced Point Cloud Preprocess | None | Requires HAG dimension. |
-| `filter_pointsourceid` | `arrays`, `pointsource_ids` | arrays | Deferred | None | All parameters | Needs UI for one/many IDs and QA on datasets with PointSourceId. |
+| `filter_pointsourceid` | `arrays`, `pointsource_ids` | arrays | Implemented | Advanced Point Cloud Preprocess | None | Phase 20D exposes comma-separated PointSourceId values. |
 | `downsample_poisson` | `arrays`, `thin_radius` | arrays | Implemented | Advanced Point Cloud Preprocess | None | Exposed as optional Poisson thinning radius. |
 | `downsample_voxel` | `arrays`, `cell`, `mode` | arrays | Implemented | Advanced Point Cloud Preprocess | None | Exposes safe documented modes in UI. |
 

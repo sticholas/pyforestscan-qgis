@@ -15,6 +15,8 @@ from .common import AdvancedPyForestScanAlgorithm, LAS_FILTER, run_adapter_call
 class NormalizeHagAlgorithm(AdvancedPyForestScanAlgorithm):
     """Read lidar with HeightAboveGround and optionally write a normalized LAS/LAZ."""
 
+    ADVANCED_GROUP = "Input / I/O"
+
     USE_DTM = "USE_DTM"
     DTM = "DTM"
     REPROJECT = "REPROJECT"
