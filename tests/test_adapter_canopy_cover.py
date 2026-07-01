@@ -33,7 +33,7 @@ class AdapterCanopyCoverTests(unittest.TestCase):
             calls["assign"] = (arr, voxel_resolution)
             return np.ones((1, 1, 4), dtype="f8"), [0.0, 1.0, 0.0, 1.0]
 
-        def calculate_pad(voxel_returns, voxel_height=1.0):
+        def calculate_pad(voxel_returns, voxel_height=1.0, beer_lambert_constant=1.0, drop_ground=True):
             calls["pad"] = (voxel_returns, voxel_height)
             return np.ones((1, 1, 4), dtype="f8")
 

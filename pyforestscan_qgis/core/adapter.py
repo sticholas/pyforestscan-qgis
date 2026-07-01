@@ -33,6 +33,8 @@ from .types import (
     LogRecord,
     FhdRequest,
     FhdResult,
+    HagNormalizationRequest,
+    HagNormalizationResult,
     PadRequest,
     PadResult,
     PaiRequest,
@@ -243,7 +245,9 @@ class PyForestScanAdapter:
         processing failures into plugin-owned ``ProcessingError`` exceptions.
         """
         if request.grid_resolution <= 0:
-            raise ProcessingError("CHM grid resolution must be greater than zero.")
+            raise ProcessingError("CHM X resolution must be greater than zero.")
+        if request.y_resolution is not None and request.y_resolution <= 0:
+            raise ProcessingError("CHM Y resolution must be greater than zero.")
         if not request.crs:
             raise ProcessingError("CHM generation requires a dataset CRS.")
         output_path = Path(request.output_path)
@@ -265,7 +269,7 @@ class PyForestScanAdapter:
                 raise ProcessingError(f"CHM input is missing required dimensions: {', '.join(missing)}")
             chm, extent = pyforestscan.calculate_chm(
                 point_array,
-                (request.grid_resolution, request.grid_resolution),
+                _xy_resolution(request.grid_resolution, request.y_resolution),
                 interpolation=request.interpolation,
                 interp_valid_region=request.interp_valid_region,
                 interp_clean_edges=request.interp_clean_edges,
@@ -293,7 +297,9 @@ class PyForestScanAdapter:
     def create_pad(self, request: PadRequest) -> PadResult:
         """Generate PAD as a height-binned multi-band GeoTIFF."""
         if request.grid_resolution <= 0:
-            raise ProcessingError("PAD grid resolution must be greater than zero.")
+            raise ProcessingError("PAD X resolution must be greater than zero.")
+        if request.y_resolution is not None and request.y_resolution <= 0:
+            raise ProcessingError("PAD Y resolution must be greater than zero.")
         if request.voxel_height <= 0:
             raise ProcessingError("PAD voxel height must be greater than zero.")
         if request.beer_lambert_constant <= 0:
@@ -309,7 +315,7 @@ class PyForestScanAdapter:
             point_array = self._read_hag_point_array(request.input_path, request.crs, "PAD")
             voxel_returns, extent = pyforestscan.assign_voxels(
                 point_array,
-                (request.grid_resolution, request.grid_resolution, request.voxel_height),
+                (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height),
             )
             self._progress.update(50, "Voxel returns calculated")
             pad = pyforestscan.calculate_pad(
@@ -341,7 +347,9 @@ class PyForestScanAdapter:
     def create_pai(self, request: PaiRequest) -> PaiResult:
         """Generate a PAI GeoTIFF through PyForestScan."""
         if request.grid_resolution <= 0:
-            raise ProcessingError("PAI grid resolution must be greater than zero.")
+            raise ProcessingError("PAI X resolution must be greater than zero.")
+        if request.y_resolution is not None and request.y_resolution <= 0:
+            raise ProcessingError("PAI Y resolution must be greater than zero.")
         if request.voxel_height <= 0:
             raise ProcessingError("PAI voxel height must be greater than zero.")
         if request.min_height < 0:
@@ -360,10 +368,15 @@ class PyForestScanAdapter:
             point_array = self._read_hag_point_array(request.input_path, request.crs, "PAI")
             voxel_returns, extent = pyforestscan.assign_voxels(
                 point_array,
-                (request.grid_resolution, request.grid_resolution, request.voxel_height),
+                (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height),
             )
             self._progress.update(45, "Voxel returns calculated")
-            pad = pyforestscan.calculate_pad(voxel_returns, voxel_height=request.voxel_height)
+            pad = pyforestscan.calculate_pad(
+                voxel_returns,
+                voxel_height=request.voxel_height,
+                beer_lambert_constant=request.beer_lambert_constant,
+                drop_ground=request.drop_ground,
+            )
             self._progress.update(65, "Internal PAD prerequisite calculated")
             pai = pyforestscan.calculate_pai(
                 pad,
@@ -393,7 +406,9 @@ class PyForestScanAdapter:
     def create_fhd(self, request: FhdRequest) -> FhdResult:
         """Generate FHD as a single-band GeoTIFF through PyForestScan."""
         if request.grid_resolution <= 0:
-            raise ProcessingError("FHD grid resolution must be greater than zero.")
+            raise ProcessingError("FHD X resolution must be greater than zero.")
+        if request.y_resolution is not None and request.y_resolution <= 0:
+            raise ProcessingError("FHD Y resolution must be greater than zero.")
         if request.voxel_height <= 0:
             raise ProcessingError("FHD voxel height must be greater than zero.")
         if request.min_height < 0:
@@ -412,7 +427,7 @@ class PyForestScanAdapter:
             point_array = self._read_hag_point_array(request.input_path, request.crs, "FHD")
             voxel_returns, extent = pyforestscan.assign_voxels(
                 point_array,
-                (request.grid_resolution, request.grid_resolution, request.voxel_height),
+                (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height),
             )
             self._progress.update(50, "Voxel returns calculated")
             fhd = pyforestscan.calculate_fhd(
@@ -443,7 +458,9 @@ class PyForestScanAdapter:
     def create_rumple(self, request: RumpleRequest) -> RumpleResult:
         """Generate scalar rumple index and write a CSV summary."""
         if request.grid_resolution <= 0:
-            raise ProcessingError("Rumple grid resolution must be greater than zero.")
+            raise ProcessingError("Rumple X resolution must be greater than zero.")
+        if request.y_resolution is not None and request.y_resolution <= 0:
+            raise ProcessingError("Rumple Y resolution must be greater than zero.")
         if request.min_height is not None and request.min_height < 0:
             raise ProcessingError("Rumple minimum height must be zero or greater.")
         if not request.crs:
@@ -457,7 +474,7 @@ class PyForestScanAdapter:
             point_array = self._read_hag_point_array(request.input_path, request.crs, "rumple")
             chm, extent = pyforestscan.calculate_chm(
                 point_array,
-                (request.grid_resolution, request.grid_resolution),
+                _xy_resolution(request.grid_resolution, request.y_resolution),
                 interpolation=request.interpolation,
                 interp_valid_region=request.interp_valid_region,
                 interp_clean_edges=request.interp_clean_edges,
@@ -465,7 +482,7 @@ class PyForestScanAdapter:
             self._progress.update(65, "Internal CHM prerequisite calculated")
             rumple_index = float(pyforestscan.calculate_rumple(
                 chm,
-                (request.grid_resolution, request.grid_resolution),
+                _xy_resolution(request.grid_resolution, request.y_resolution),
                 min_height=request.min_height,
             ))
             self._progress.update(85, "Rumple index calculated")
@@ -494,13 +511,19 @@ class PyForestScanAdapter:
         expose PAD as a product in this phase.
         """
         if request.grid_resolution <= 0:
-            raise ProcessingError("Canopy cover grid resolution must be greater than zero.")
+            raise ProcessingError("Canopy cover X resolution must be greater than zero.")
+        if request.y_resolution is not None and request.y_resolution <= 0:
+            raise ProcessingError("Canopy cover Y resolution must be greater than zero.")
         if request.voxel_height <= 0:
             raise ProcessingError("Canopy cover voxel height must be greater than zero.")
         if request.canopy_height_threshold < 0:
             raise ProcessingError("Canopy cover height threshold must be zero or greater.")
         if request.extinction_coefficient < 0:
             raise ProcessingError("Canopy cover extinction coefficient must be zero or greater.")
+        if request.beer_lambert_constant <= 0:
+            raise ProcessingError("Canopy cover Beer-Lambert constant must be greater than zero.")
+        if request.max_height is not None and request.max_height <= request.canopy_height_threshold:
+            raise ProcessingError("Canopy cover maximum height must be greater than the minimum height threshold.")
         if not request.crs:
             raise ProcessingError("Canopy cover generation requires a dataset CRS.")
         output_path = Path(request.output_path)
@@ -513,15 +536,21 @@ class PyForestScanAdapter:
             point_array = self._read_hag_point_array(request.input_path, request.crs, "canopy cover")
             voxel_returns, extent = pyforestscan.assign_voxels(
                 point_array,
-                (request.grid_resolution, request.grid_resolution, request.voxel_height),
+                (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height),
             )
             self._progress.update(45, "Voxel returns calculated")
-            pad = pyforestscan.calculate_pad(voxel_returns, voxel_height=request.voxel_height)
+            pad = pyforestscan.calculate_pad(
+                voxel_returns,
+                voxel_height=request.voxel_height,
+                beer_lambert_constant=request.beer_lambert_constant,
+                drop_ground=request.drop_ground,
+            )
             self._progress.update(65, "Internal PAD prerequisite calculated")
             canopy_cover = pyforestscan.calculate_canopy_cover(
                 pad,
                 request.voxel_height,
                 min_height=request.canopy_height_threshold,
+                max_height=request.max_height,
                 k=request.extinction_coefficient,
             )
             self._progress.update(80, "Canopy cover array calculated")
@@ -543,6 +572,58 @@ class PyForestScanAdapter:
             self._progress.fail("Canopy cover generation failed")
             raise ProcessingError(f"Canopy cover generation failed: {exc}") from exc
 
+
+
+    def normalize_heights(self, request: HagNormalizationRequest) -> HagNormalizationResult:
+        """Read lidar with HeightAboveGround and optionally write LAS/LAZ output.
+
+        PyForestScan exposes HAG through ``handlers.read_lidar(..., hag=True)`` and
+        a generic ``handlers.write_las`` writer. The adapter uses that public path
+        when an output point-cloud path is supplied; otherwise it reports the
+        point count and limitation without inventing a normalized output.
+        """
+        if not request.crs:
+            raise ProcessingError("Height normalization requires a dataset CRS.")
+        if request.use_dtm and request.dtm_path is None:
+            raise ProcessingError("DTM-backed HAG requires a DTM raster path.")
+        if request.output_path is not None:
+            _validate_las_output_path(Path(request.output_path))
+        self._progress.start("Reading lidar with HeightAboveGround")
+        self._log(LogLevel.INFO, "Starting HAG normalization", input=str(request.input_path))
+        try:
+            handlers = _import_required("pyforestscan.handlers", ProcessingError)
+            point_cloud = handlers.read_lidar(
+                str(request.input_path),
+                request.crs,
+                hag=not request.use_dtm,
+                hag_dtm=request.use_dtm,
+                dtm=str(request.dtm_path) if request.dtm_path is not None else None,
+                reproject=request.reproject,
+            )
+            if point_cloud is None:
+                raise ProcessingError("PyForestScan returned no point data for HAG normalization.")
+            point_count = _point_count_from_point_cloud(point_cloud)
+            self._progress.update(70, "Point cloud read with HAG")
+            output_path = Path(request.output_path) if request.output_path is not None else None
+            if output_path is not None:
+                handlers.write_las(point_cloud, str(output_path), srs=request.crs, compress=request.compress)
+                _validate_created_output(output_path)
+                self._progress.complete("HAG-enabled point cloud written")
+                return HagNormalizationResult(output_path=output_path, point_count=point_count, crs=request.crs, written=True)
+            self._progress.complete("HAG available in memory")
+            return HagNormalizationResult(
+                output_path=None,
+                point_count=point_count,
+                crs=request.crs,
+                written=False,
+                limitation="PyForestScan HAG is primarily an in-memory read option; provide LAS/LAZ output to rewrite a point cloud via handlers.write_las.",
+            )
+        except ProcessingError:
+            self._progress.fail("HAG normalization failed")
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            self._progress.fail("HAG normalization failed")
+            raise ProcessingError(f"HAG normalization failed: {exc}") from exc
 
     def _read_hag_point_array(self, input_path: Path | str, crs: str, product_label: str) -> object:
         """Read lidar with HeightAboveGround and return one structured point array."""
@@ -671,6 +752,42 @@ class PyForestScanAdapter:
                 LogContextItem(key=str(key), value=value) for key, value in context.items()
             )
             self._log_sink(LogRecord(level=level, message=message, context=typed_context))
+
+
+def _xy_resolution(x_resolution: float, y_resolution: float | None) -> tuple[float, float]:
+    """Return explicit X/Y resolution while preserving guided-mode defaults."""
+    return (float(x_resolution), float(y_resolution if y_resolution is not None else x_resolution))
+
+
+def _point_count_from_point_cloud(point_cloud: object) -> int | None:
+    """Return the total point count from a PyForestScan read_lidar result."""
+    if isinstance(point_cloud, (list, tuple)):
+        return sum(int(getattr(array, "size", len(array) if hasattr(array, "__len__") else 0)) for array in point_cloud)
+    size = getattr(point_cloud, "size", None)
+    if size is not None:
+        return int(size)
+    if hasattr(point_cloud, "__len__"):
+        return int(len(point_cloud))
+    return None
+
+
+def _validate_las_output_path(output_path: Path) -> None:
+    """Validate that a LAS/LAZ point-cloud output path can be written."""
+    if output_path.suffix.lower() not in {".las", ".laz"}:
+        raise ProcessingError("Height normalization output must end with .las or .laz.")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if not output_path.parent.is_dir():
+        raise ProcessingError(f"Output folder is not available: {output_path.parent}")
+    probe = output_path.parent / f".{output_path.name}.write-test"
+    try:
+        probe.write_text("", encoding="utf-8")
+    except OSError as exc:
+        raise ProcessingError(f"Output folder is not writable: {output_path.parent}") from exc
+    finally:
+        try:
+            probe.unlink()
+        except OSError:
+            pass
 
 
 def _write_rumple_csv(output_path: Path, rumple_index: float, request: RumpleRequest, spatial_extent: object) -> None:

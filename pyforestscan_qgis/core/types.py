@@ -27,6 +27,7 @@ class ProductType(str, Enum):
     RUMPLE = "rumple"
     POINT_DENSITY = "point_density"
     VOXEL_STAT = "voxel_stat"
+    HAG = "hag"
 
 
 class LogLevel(str, Enum):
@@ -146,6 +147,7 @@ class ChmRequest:
     interpolation: str | None = "linear"
     interp_valid_region: bool = False
     interp_clean_edges: bool = False
+    y_resolution: float | None = None
 
 
 @dataclass(frozen=True)
@@ -169,6 +171,10 @@ class CanopyCoverRequest:
     crs: str
     voxel_height: float = 1.0
     extinction_coefficient: float = 0.5
+    max_height: float | None = None
+    beer_lambert_constant: float = 1.0
+    drop_ground: bool = True
+    y_resolution: float | None = None
 
 
 @dataclass(frozen=True)
@@ -193,6 +199,7 @@ class PadRequest:
     crs: str
     beer_lambert_constant: float = 1.0
     drop_ground: bool = True
+    y_resolution: float | None = None
 
 
 @dataclass(frozen=True)
@@ -218,6 +225,9 @@ class PaiRequest:
     crs: str
     min_height: float = 1.0
     max_height: float | None = None
+    beer_lambert_constant: float = 1.0
+    drop_ground: bool = True
+    y_resolution: float | None = None
 
 
 @dataclass(frozen=True)
@@ -242,6 +252,7 @@ class FhdRequest:
     crs: str
     min_height: float = 0.0
     max_height: float | None = None
+    y_resolution: float | None = None
 
 
 @dataclass(frozen=True)
@@ -267,6 +278,7 @@ class RumpleRequest:
     interpolation: str | None = "linear"
     interp_valid_region: bool = False
     interp_clean_edges: bool = False
+    y_resolution: float | None = None
 
 
 @dataclass(frozen=True)
@@ -278,6 +290,30 @@ class RumpleResult:
     spatial_extent: tuple[float, float, float, float]
     grid_resolution: float
     crs: str
+
+
+@dataclass(frozen=True)
+class HagNormalizationRequest:
+    """Adapter request for HAG-enabled point-cloud reading and optional LAS/LAZ export."""
+
+    input_path: Path | str
+    crs: str
+    output_path: Path | None = None
+    use_dtm: bool = False
+    dtm_path: Path | None = None
+    reproject: bool = False
+    compress: bool = True
+
+
+@dataclass(frozen=True)
+class HagNormalizationResult:
+    """Adapter result for HAG-enabled point-cloud handling."""
+
+    output_path: Path | None
+    point_count: int | None
+    crs: str
+    written: bool
+    limitation: str | None = None
 
 
 @dataclass(frozen=True)

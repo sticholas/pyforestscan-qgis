@@ -5,6 +5,15 @@ from __future__ import annotations
 from qgis.core import QgsProcessingProvider
 from qgis.PyQt.QtGui import QIcon
 
+from .algorithms.advanced import (
+    AdvancedCanopyCoverAlgorithm,
+    AdvancedChmAlgorithm,
+    AdvancedFhdAlgorithm,
+    AdvancedPadAlgorithm,
+    AdvancedPaiAlgorithm,
+    AdvancedRumpleAlgorithm,
+    NormalizeHagAlgorithm,
+)
 from .algorithms.placeholder_algorithms import (
     DatasetExplorerAlgorithm,
     EnvironmentCheckAlgorithm,
@@ -42,4 +51,11 @@ class PyForestScanProvider(QgsProcessingProvider):
         self.addAlgorithm(DatasetExplorerAlgorithm())
         self.addAlgorithm(ProductPlannerAlgorithm())
         self.addAlgorithm(ForestMetricsPackAlgorithm())
+        self.addAlgorithm(AdvancedChmAlgorithm())
+        self.addAlgorithm(AdvancedPadAlgorithm())
+        self.addAlgorithm(AdvancedPaiAlgorithm())
+        self.addAlgorithm(AdvancedCanopyCoverAlgorithm())
+        self.addAlgorithm(AdvancedFhdAlgorithm())
+        self.addAlgorithm(AdvancedRumpleAlgorithm())
+        self.addAlgorithm(NormalizeHagAlgorithm())
 

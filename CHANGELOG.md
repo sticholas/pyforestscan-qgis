@@ -14,6 +14,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Advanced Processing Toolbox group with expert CHM, PAD, PAI, Canopy Cover, FHD, Rumple, and Height Above Ground/Normalize algorithms routed through adapter-backed request builders.
 - Workspace Welcome and Resume UI with Continue Last Workspace, Start New Workspace, Recent Workspaces, workspace status, timeline viewer, notes editor, reset action, Home dashboard workspace state, and QGIS-free display helper tests.
 - Local Workspace foundation with `.pyforestscan/` workspace folders, typed workspace/session/state/history/timeline/notes/version models, Mission Control session restore, and QGIS-free workspace tests.
 - Internal release checklist, known limitations, manual QA script, product audit, and release-readiness regression tests.

@@ -54,6 +54,14 @@ This guide describes current user-facing PyForestScan QGIS workflows: Dataset
 Explorer, Product Planner, Mission Control run folders, CHM, Canopy Cover, PAD,
 PAI, FHD, and Rumple summary processing.
 
+## Advanced Processing Toolbox
+
+Expert users can run advanced PyForestScan algorithms from QGIS Processing Toolbox under `PyForestScan / Advanced`. These tools expose explicit X/Y resolution, interpolation, voxel, height-range, Beer-Lambert, canopy-cover, rumple, and HAG/normalization controls. Mission Control remains the recommended guided workflow for normal use.
+
+Advanced raster outputs use the same loading/styling rules as Mission Control: CHM, Canopy Cover, PAI, and FHD load as grayscale when possible, while PAD loads as the documented RGB 5/3/2 composite when enough bands exist. Rumple writes a CSV summary because PyForestScan returns a scalar value.
+
+The HAG/Normalize tool reads lidar with PyForestScan HAG support and can optionally write LAS/LAZ through PyForestScan `write_las`. It does not invent unsupported normalized output formats.
+
 ## Dataset Explorer
 
 Dataset Explorer is an inspection and planning workflow. It validates a lidar

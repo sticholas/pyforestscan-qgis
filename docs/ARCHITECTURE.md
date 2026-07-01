@@ -195,3 +195,18 @@ flowchart TD
 ```
 
 Workspaces are not QGIS projects, databases, cloud sync folders, or user accounts. Future UI can build a Welcome page, Resume workflow, Notes editor, and Timeline viewer on top of this local contract.
+
+
+## Advanced Processing Toolbox
+
+Phase 20A adds a second user path for expert users:
+
+```mermaid
+flowchart LR
+    A["QGIS Processing Toolbox"] --> B["PyForestScan / Advanced algorithms"]
+    B --> C["core.advanced_processing request builders"]
+    C --> D["PyForestScanAdapter"]
+    D --> E["PyForestScan public API"]
+```
+
+Guided Mode remains `Mission Control -> JobManager -> Pipeline -> Adapter -> PyForestScan`. Advanced Mode is `Processing Toolbox -> Advanced Algorithms -> Adapter -> PyForestScan`. Processing algorithm classes do not call PyForestScan directly and do not add controls to Mission Control.
