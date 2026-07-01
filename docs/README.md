@@ -1,28 +1,77 @@
-# Documentation
+# Documentation Index
 
-This directory contains project-level documentation for architecture, product
-direction, development practices, testing, and releases.
+This documentation is organized for users, scientists, developers, maintainers, and release reviewers.
 
-Primary documents live at the top level of `docs/`. Supporting material is
-grouped into focused subdirectories:
+## Getting Started
 
-- `architecture/`: Architecture notes and diagrams.
-- `adr/`: Architecture decision records.
-- `development/`: Developer setup and workflow notes.
-- `releases/`: Release process documentation.
-- `testing/`: Testing guidance and future fixtures policy.
+- [Getting Started Overview](getting-started/README.md)
+- [Installation Strategy](INSTALLATION_STRATEGY.md)
+- [Windows QGIS Dependencies](development/WINDOWS_QGIS_DEPENDENCIES.md)
+- [QGIS Local Testing](development/QGIS_LOCAL_TESTING.md)
 
 ## User Documentation
 
-- [User Guide](USER_GUIDE.md)
-
-## Examples
-
-- [Dataset Explorer Example Outputs](examples/DATASET_EXPLORER_EXAMPLE.md)
-- [Product Planner Example Outputs](examples/PRODUCT_PLANNER_EXAMPLE.md)
-
-## UI Documentation
-
+- [User Guide](user-guide/README.md)
 - [Mission Control](ui/MISSION_CONTROL.md)
-- [Mission Control User Workflow](ui/USER_WORKFLOW.md)
-- [Mission Control Screen Flow](ui/SCREEN_FLOW.md)
+- [Screen Flow](ui/SCREEN_FLOW.md)
+- [Run Folder Workflow](ui/USER_WORKFLOW.md)
+- [Known Limitations](KNOWN_LIMITATIONS.md)
+
+## Scientific Methods
+
+- [Scientific Methods Index](scientific-methods/README.md)
+- [Canopy Height Model](scientific-methods/CHM.md)
+- [Plant Area Density](scientific-methods/PAD.md)
+- [Plant Area Index](scientific-methods/PAI.md)
+- [Canopy Cover](scientific-methods/CANOPY_COVER.md)
+- [Foliage Height Diversity](scientific-methods/FHD.md)
+- [Rumple Index](scientific-methods/RUMPLE.md)
+- [Point Density](scientific-methods/POINT_DENSITY.md)
+- [Voxel Statistic](scientific-methods/VOXEL_STATISTIC.md)
+- [Digital Terrain Model](scientific-methods/DTM.md)
+- [Height Above Ground](scientific-methods/HEIGHT_ABOVE_GROUND.md)
+- [Scientific Advisor](knowledge/SCIENTIFIC_ADVISOR.md)
+
+## Architecture
+
+- [Architecture Overview](architecture/README.md)
+- [Current Architecture](ARCHITECTURE.md)
+- [Architecture Decision Records](adr/README.md)
+- [Dependency Strategy](DEPENDENCY_STRATEGY.md)
+- [Output Products](OUTPUT_PRODUCTS.md)
+
+## Developer Documentation
+
+- [Developer Guide](developer/README.md)
+- [Processing Toolbox Expert Tools](development/ADVANCED_PROCESSING_TOOLBOX.md)
+- [Adapter Design](development/ADAPTER_DESIGN.md)
+- [Pipeline Framework](development/PIPELINE_FRAMEWORK.md)
+- [Job Execution](development/JOB_EXECUTION.md)
+- [Batch Processing](development/BATCH_PROCESSING.md)
+- [Workspace Architecture](development/WORKSPACE_ARCHITECTURE.md)
+- [Testing Strategy](TESTING_STRATEGY.md)
+
+## PyForestScan API Audits
+
+- [API Audit Index](api/README.md)
+- [Full API Surface](api/PYFORESTSCAN_FULL_API_SURFACE.md)
+- [Function Parameter Parity](api/PYFORESTSCAN_FUNCTION_PARAMETER_PARITY.md)
+- [Deferred Features](api/PYFORESTSCAN_DEFERRED_FEATURES.md)
+
+## Releases
+
+- [Release Documentation](releases/README.md)
+- [Internal Release Checklist](releases/INTERNAL_RELEASE_CHECKLIST.md)
+- [Packaging](releases/PACKAGING.md)
+- [Manual QA Script](development/MANUAL_QA_SCRIPT.md)
+
+## Archive
+
+- [Phase History Archive](archive/phase-history/README.md)
+
+## Repository Governance
+
+- [Contributing](../CONTRIBUTING.md)
+- [Security](../SECURITY.md)
+- [Code of Conduct](../CODE_OF_CONDUCT.md)
+- [Citation](../CITATION.cff)

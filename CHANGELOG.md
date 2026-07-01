@@ -9,6 +9,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Changed
 
+- Matured repository documentation for internal release readiness with a professional README, master documentation index, scientific-method pages, current architecture/output docs, GitHub issue and PR templates, citation guidance, release audit report, and Markdown link checking.
 - Audited and simplified the plugin for internal release readiness, including stale release-facing documentation cleanup, Settings page simplification, and clearer Batch run controls.
 - Disabled unsafe External Worker batch mode in Mission Control and core guardrails after validation showed QGIS GUI Python could launch application windows; Parallel Safe mode now supports up to 6 workers with confirmation and stronger preflight recommendations.
 

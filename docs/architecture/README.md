@@ -1,8 +1,13 @@
-# Architecture Notes
+# Architecture Documentation
 
-This directory is reserved for architecture diagrams, deeper component notes,
-and design documents that support the main architecture overview.
+Start with the current [Architecture](../ARCHITECTURE.md) document. It describes the runtime model, layer boundaries, workflows, workspace persistence, batch architecture, and QGIS integration rules.
 
-The canonical high-level architecture document is
-`docs/ARCHITECTURE.md`. Durable decisions belong in `docs/adr/`.
+Architecture decision records are maintained in [docs/adr](../adr/README.md). ADRs preserve historical decisions; the main architecture document describes the current product state.
 
+Related developer documents:
+
+- [Adapter Design](../development/ADAPTER_DESIGN.md)
+- [Pipeline Framework](../development/PIPELINE_FRAMEWORK.md)
+- [Batch Processing](../development/BATCH_PROCESSING.md)
+- [Workspace Architecture](../development/WORKSPACE_ARCHITECTURE.md)
+- [Advanced Processing Toolbox](../development/ADVANCED_PROCESSING_TOOLBOX.md)

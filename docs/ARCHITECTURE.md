@@ -1,212 +1,144 @@
 # Architecture
 
-PyForestScan QGIS is structured as a thin QGIS-facing application layer around
-PyForestScan.
+PyForestScan QGIS is a QGIS Processing plugin and Mission Control application for generating forest-structure products with PyForestScan. The plugin owns the user experience, orchestration, validation, reports, workspaces, and QGIS integration. PyForestScan remains the scientific computation engine.
+
+## Current Runtime Model
+
+```mermaid
+flowchart TD
+    A["QGIS plugin loader"] --> B["Plugin lifecycle and Processing provider"]
+    B --> C["Mission Control UI"]
+    B --> D["QGIS Processing Toolbox algorithms"]
+    C --> E["Core services"]
+    D --> E
+    E --> F["Job Manager and Pipeline Registry"]
+    F --> G["PyForestScan Adapter"]
+    G --> H["PyForestScan 0.4.x"]
+    G --> I["PDAL / GDAL / rasterio / numpy"]
+    E --> J["Workspace and run-folder files"]
+    C --> K["QGIS layer loading, styling, map canvas actions"]
+```
+
+The plugin has two supported user surfaces:
+
+- **Guided Mode:** Mission Control guides single-dataset and batch workflows through workspace state, Dataset Explorer, Product Planner, Scientific Advisor, Job Manager, Pipeline, Adapter, and PyForestScan.
+- **Expert Mode:** QGIS Processing Toolbox algorithms expose advanced PyForestScan controls for experienced users while preserving the adapter boundary.
+
+External worker batch execution is disabled. Sequential and bounded Parallel Safe batch execution remain available.
 
 ## Architectural Boundaries
 
-- QGIS Plugin Layer: plugin loading, metadata, resources, Processing provider
-  registration, and QGIS UI integration.
-- Processing Layer: QGIS Processing algorithm classes, parameters, outputs,
-  feedback, cancellation, and context handling.
-- Core Layer: plugin-owned validation, dependency checks, configuration,
-  output naming, metadata writing, and adapter interfaces.
-- PyForestScan Engine: external scientific computation library.
+| Layer | Owns | Must Not Own |
+| --- | --- | --- |
+| QGIS plugin lifecycle | `metadata.txt`, plugin registration, Processing provider registration, resources | Scientific processing decisions |
+| Mission Control UI | User workflows, state presentation, QGIS actions, layer styling, report links | Direct PyForestScan or PDAL calls |
+| Processing algorithms | QGIS parameters, feedback, result handoff | Business logic or direct scientific calls |
+| Core services | Validation, planning, jobs, pipelines, reports, batch orchestration, workspaces, knowledge recommendations | QGIS imports unless explicitly isolated in UI integration |
+| Adapter | Stable plugin-owned interface to PyForestScan and scientific dependencies | QGIS UI behavior |
+| PyForestScan | Scientific calculations | Plugin state, UI, QGIS layer loading |
 
-
-## Adapter Boundary
-
-Phase 4 establishes `pyforestscan_qgis/core/adapter.py` as the only supported
-route from future QGIS Processing algorithms into PyForestScan, PDAL, and related
-scientific dependencies. The adapter owns environment checks, dataset validation,
-metadata inspection, progress snapshots, structured logging, and plugin-owned
-exceptions.
-
-Processing algorithms should depend on immutable value objects from
-`pyforestscan_qgis/core/types.py` and configuration objects from
-`pyforestscan_qgis/core/config.py`. They should not import PyForestScan, PDAL,
-rasterio, GDAL, or numpy directly unless an ADR explicitly changes this rule.
-
-Current Phase 4 adapter capabilities are limited to validation and inspection.
-Scientific product creation remains intentionally unimplemented.
-
-```mermaid
-flowchart TD
-    A["QGIS Processing algorithms"] --> B["PyForestScanAdapter"]
-    B --> C["Plugin-owned config, types, exceptions"]
-    B --> D["Environment validation"]
-    B --> E["Dataset validation and inspection"]
-    E --> F["EPT metadata or PDAL reader inspection"]
-    B -."future phases".-> G["PyForestScan public API"]
-    G -."future outputs".-> H["Adapter-managed products"]
-```
-
-
-## Dataset Explorer Workflow
-
-Phase 5 adds the first complete user workflow while preserving the established
-architecture. `DatasetExplorerAlgorithm` is a QGIS Processing shell that delegates
-validation and inspection to `PyForestScanAdapter`, then delegates report
-modeling and rendering to `pyforestscan_qgis/core/dataset_report.py`.
-
-The workflow deliberately stops after inspection. It writes JSON, CSV, and HTML
-planning outputs and reports product feasibility, but it does not call
-PyForestScan calculation functions or create scientific products.
-
-```mermaid
-flowchart TD
-    A["QGIS Dataset Explorer algorithm"] --> B["PyForestScanAdapter"]
-    B --> C["DatasetValidationResult"]
-    B --> D["DatasetInspection"]
-    D --> E["DatasetExplorerReport"]
-    E --> F["JSON report"]
-    E --> G["CSV table"]
-    E --> H["HTML report"]
-    E --> I["Processing feedback"]
-```
-
-
-## Product Planner Workflow
-
-Phase 6 adds `ProductPlannerAlgorithm` as a second guided workflow. The algorithm
-reads the JSON produced by Dataset Explorer and delegates validation, estimates,
-and report rendering to `pyforestscan_qgis/core/product_plan.py`.
-
-Product Planner is still non-scientific. It estimates future output names and
-planning metadata only; it does not call PyForestScan calculations, create
-rasters, or mutate point-cloud data.
-
-```mermaid
-flowchart TD
-    A["Dataset Explorer JSON"] --> B["ProductPlannerAlgorithm"]
-    B --> C["load_dataset_explorer_json"]
-    C --> D["build_product_plan"]
-    D --> E["ProductPlannerReport"]
-    E --> F["product_plan.json"]
-    E --> G["product_plan.csv"]
-    E --> H["product_plan.html"]
-```
-
-
-## Mission Control UI
-
-Phase 7A introduces Mission Control as a dockable QGIS interface. Mission Control
-coordinates current workflows through the adapter and core report/planner
-modules. It does not directly import or call PyForestScan.
-
-```mermaid
-flowchart TD
-    A["Mission Control dock"] --> B["Environment page"]
-    A --> C["Dataset page"]
-    A --> D["Planning page"]
-    B --> E["PyForestScanAdapter.check_environment"]
-    C --> F["PyForestScanAdapter.inspect_dataset"]
-    F --> G["DatasetExplorerReport"]
-    D --> H["ProductPlannerReport"]
-```
-
-## Dependency Direction
-
-Processing algorithms may depend on plugin core services. Core services may
-depend on stable public APIs from PyForestScan once functional work begins.
-PyForestScan must not depend on the plugin.
-
-## Planned Package Layout
-
-- `pyforestscan_qgis/processing/`: provider registration and Processing glue.
-- `pyforestscan_qgis/algorithms/`: individual algorithm definitions.
-- `pyforestscan_qgis/core/`: validation, dependency strategy, output metadata,
-  and adapter boundaries.
-- `pyforestscan_qgis/resources/`: QGIS resources and static assets.
-- `pyforestscan_qgis/styles/`: QML styles and symbology presets.
-- `pyforestscan_qgis/icons/`: icons for plugin and algorithms.
-
-## Design Rules
-
-- Keep PyForestScan calls behind small adapter functions or services.
-- Keep algorithm classes focused on QGIS parameter and result handling.
-- Prefer explicit parameter schemas over implicit defaults.
-- Use QGIS feedback and cancellation APIs for long-running tasks.
-- Treat output metadata as part of the product, not an afterthought.
-
-
-
-## Processing Pipeline Framework
-
-Phase 9A adds a core pipeline orchestration layer between `JobManager` and future
-adapter-backed scientific processing. `PipelineRegistry` maps planned products
-to validation-first `Pipeline` definitions. `JobManager` executes these pipelines
-in dry-run or processing mode and records `PipelineResult` objects in the job summary. Phase 10A enables CHM-only processing through the adapter.
-
-Only validation stages execute. Normalize Heights, Clip, Generate Product, and
-Export are registered as future steps and raise `NotImplementedError` if called
-directly.
-
-```mermaid
-flowchart TD
-    A["Mission Control / future Processing algorithms"] --> B["JobManager"]
-    B --> C["PipelineRegistry"]
-    C --> D["Validation pipeline steps"]
-    D -."future".-> E["Adapter scientific methods"]
-    E -."future".-> F["PyForestScan public API"]
-```
-
-
-## Knowledge Engine
-
-Phase 16A adds `pyforestscan_qgis/core/knowledge/` as a deterministic
-recommendation layer. It consumes Dataset Explorer JSON facts and returns a typed
-`RecommendationReport` with dataset score, confidence, product recommendations,
-parameter suggestions, warnings, scientific notes, QGIS tool suggestions, and the
-thresholds used.
-
-The Knowledge Engine is core-only and QGIS-free. It does not call PyForestScan,
-does not alter product calculations, and does not invent hidden scientific
-defaults. Configurable thresholds carry rationale and calibration flags so
-uncertain guidance remains transparent.
-
-```mermaid
-flowchart TD
-    A["Dataset Explorer Report"] --> B["Knowledge diagnostics"]
-    B --> C["DatasetFacts"]
-    C --> D["Deterministic rule registry"]
-    D --> E["RecommendationReport"]
-    E -."future UI".-> F["Mission Control guidance"]
-```
-
-
-## Workspace Foundation
-
-Phase 19A adds `pyforestscan_qgis/core/workspace/` as a local persistence boundary for analysis state. A Workspace exists under an output root in `.pyforestscan/` and stores typed JSON/Markdown files for workspace identity, session, state, timeline, history, recent items, notes, and format version.
-
-The Workspace layer is QGIS-free. Mission Control uses `WorkspaceManager` to restore lightweight session context on open and auto-save after major operations. The existing `RunContext` API moved into `core/workspace/run_context.py` and remains re-exported from `core.workspace` for compatibility.
-
-```mermaid
-flowchart TD
-    A["Mission Control"] --> B["WorkspaceManager"]
-    B --> C["<output_folder>/.pyforestscan"]
-    C --> D["workspace.json"]
-    C --> E["session.json"]
-    C --> F["timeline.json"]
-    C --> G["history.json"]
-    C --> H["notes.md"]
-    A --> I["RunContext"]
-    I --> J["pyforestscan_runs/<run>"]
-```
-
-Workspaces are not QGIS projects, databases, cloud sync folders, or user accounts. Future UI can build a Welcome page, Resume workflow, Notes editor, and Timeline viewer on top of this local contract.
-
-
-## Advanced Processing Toolbox
-
-Phase 20A adds a second user path for expert users:
+The dependency direction is intentionally one-way:
 
 ```mermaid
 flowchart LR
-    A["QGIS Processing Toolbox"] --> B["PyForestScan expert Processing algorithms"]
-    B --> C["core.advanced_processing request builders"]
-    C --> D["PyForestScanAdapter"]
-    D --> E["PyForestScan public API"]
+    A["UI and Processing"] --> B["Core services"]
+    B --> C["Adapter"]
+    C --> D["PyForestScan and geospatial dependencies"]
 ```
 
-Guided Mode remains `Mission Control -> JobManager -> Pipeline -> Adapter -> PyForestScan`. Advanced Mode is `Processing Toolbox -> Advanced Algorithms -> Adapter -> PyForestScan`. Processing algorithm classes do not call PyForestScan directly and do not add controls to Mission Control.
+## Guided Workflow
+
+```mermaid
+flowchart TD
+    A["Select LiDAR dataset and output folder"] --> B["Create or resume Workspace"]
+    B --> C["Create timestamped run folder"]
+    C --> D["Dataset Explorer inspection"]
+    D --> E["Scientific Advisor recommendations"]
+    E --> F["Product Planner"]
+    F --> G["Job Manager"]
+    G --> H["Pipeline Registry"]
+    H --> I["Adapter product methods"]
+    I --> J["PyForestScan calculations"]
+    J --> K["Outputs, reports, layer styling"]
+    K --> L["Workspace timeline and results"]
+```
+
+Mission Control hides internal JSON handoff files by default. Advanced run files, logs, manifests, and diagnostic reports remain available under technical details.
+
+## Run Folder Contract
+
+For a single dataset, Mission Control writes outputs under the selected output root:
+
+```text
+<output_root>/
+  pyforestscan_runs/
+    <YYYYMMDD_HHMMSS_datasetstem>/
+      reports/
+      tables/
+      outputs/
+      logs/
+      temp/
+```
+
+The run folder is the reproducibility boundary for one processing attempt. It contains Dataset Explorer reports, Product Planner reports, product outputs, job summaries, and final run reports. It is not a QGIS project file and is not a database.
+
+## Workspace Persistence
+
+Workspaces are local folders under `.pyforestscan/` in a user-selected output root. They store JSON and Markdown state for:
+
+- Workspace identity and session status.
+- Recent runs and output links.
+- Timeline events.
+- User notes in `notes.md`.
+- Lightweight resume context.
+
+Workspace files are local persistence only. The plugin does not create accounts, use cloud sync, or manipulate QGIS project files as part of the workspace model.
+
+## Batch Architecture
+
+```mermaid
+flowchart TD
+    A["Batch page"] --> B["Discover files"]
+    B --> C["Preflight"]
+    C --> D["Batch manifest"]
+    D --> E{"Execution mode"}
+    E --> F["Sequential executor"]
+    E --> G["Parallel Safe executor"]
+    F --> H["Per-file Job Manager"]
+    G --> H
+    H --> I["Run folder per dataset"]
+    I --> J["Checkpoint summary after each file"]
+```
+
+Batch processing creates one run folder per input file and writes `batch_manifest.json`, `batch_summary.json`, `batch_summary.csv`, and `batch_summary.html`. Preflight checks must run before execution. Completed files are skipped by default on resume, failed files can be retried, and output loading into QGIS is opt-in to avoid overwhelming a desktop session.
+
+## Pipeline and Product Execution
+
+Product execution is registered through the Pipeline Registry. Validation stages run before product stages, and product stages call the adapter rather than PyForestScan directly.
+
+Implemented product paths include CHM, Canopy Cover, PAD, PAI, FHD, Rumple summary, Point Density, Voxel Statistics, DTM, and Height Above Ground workflows where exposed by Guided or Advanced Mode. Product-specific details live in [Scientific Methods](scientific-methods/README.md).
+
+## Scientific Advisor
+
+The Scientific Advisor uses deterministic Knowledge Engine rules from `pyforestscan_qgis/core/knowledge/`. It consumes inspected dataset facts and returns transparent recommendations, warnings, product suggestions, parameter notes, and QGIS next actions. Scientific thresholds are configurable and documented when calibration or literature review is still needed. There is no AI/LLM component.
+
+## QGIS Integration
+
+QGIS-specific code is kept in UI or Processing integration modules. This includes:
+
+- Mission Control windows and page layouts.
+- Adding footprint layers and zooming the map canvas.
+- Loading product rasters and tables.
+- Applying default raster styling and PAD RGB band visualization.
+- Opening folders, reports, or QGIS panels where safe.
+
+Core services and knowledge modules should remain importable in plain Python tests without QGIS.
+
+## Design Rules
+
+- Preserve `Mission Control -> JobManager -> Pipeline -> Adapter -> PyForestScan` for guided scientific processing.
+- Preserve `Processing Toolbox -> Algorithm -> Request Builder -> Adapter -> PyForestScan` for expert algorithms.
+- Keep PyForestScan calls behind adapter methods and request builders.
+- Keep JSON, CSV, HTML, GeoTIFF, LAS/LAZ, and workspace file contracts documented.
+- Treat outputs, reports, provenance, and error messages as part of the scientific product.
+- Do not expose unsafe external worker execution until a true headless launcher is proven.

@@ -1,7 +1,9 @@
-# Release Notes
+# Release Documentation
 
-This directory will contain release checklists, compatibility matrices, and QGIS
-Plugin Repository packaging notes.
+Release documentation describes how to package, validate, and evaluate PyForestScan QGIS for internal or public distribution.
 
-The project changelog lives at the repository root in `CHANGELOG.md`.
+- [Packaging](PACKAGING.md)
+- [Internal Release Checklist](INTERNAL_RELEASE_CHECKLIST.md)
+- [Repository Release Audit](REPOSITORY_RELEASE_AUDIT.md)
 
+The project changelog lives at [CHANGELOG.md](../../CHANGELOG.md). Known limitations are tracked in [docs/KNOWN_LIMITATIONS.md](../KNOWN_LIMITATIONS.md).
