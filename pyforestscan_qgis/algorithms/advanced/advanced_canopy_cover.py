@@ -23,11 +23,11 @@ class AdvancedCanopyCoverAlgorithm(AdvancedPyForestScanAlgorithm):
         return self.tr("Canopy Cover")
 
     def shortHelpString(self) -> str:
-        return self.tr("Canopy Cover computes PAD internally and applies calculate_canopy_cover with explicit min/max height and k.")
+        return self.tr("Creates a canopy-cover GeoTIFF from internally calculated PAD using PyForestScan calculate_canopy_cover. Use it to estimate cover above a height threshold. Key parameters are voxel_height, min_height, max_height, k, beer_lambert_constant, and drop_ground. Confirm the height threshold and extinction coefficient are appropriate for the study.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         self.add_input_dataset(); self.add_crs(); self.add_xy_resolution(); add_voxel_parameters(self, include_beer=True, min_default=2.0)
-        self.addParameter(QgsProcessingParameterNumber(self.EXTINCTION_COEFFICIENT, self.tr("Extinction coefficient k"), type=QgsProcessingParameterNumber.Double, defaultValue=0.5, minValue=0.0))
+        self.addParameter(QgsProcessingParameterNumber(self.EXTINCTION_COEFFICIENT, self.tr("k / extinction coefficient"), type=QgsProcessingParameterNumber.Double, defaultValue=0.5, minValue=0.0))
         self.add_geotiff_output("Output canopy cover GeoTIFF")
         self.addOutput(QgsProcessingOutputString(self.OUTPUT_MESSAGE, self.tr("Status message")))
 

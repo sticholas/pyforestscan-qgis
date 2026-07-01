@@ -21,7 +21,7 @@ class AdvancedPaiAlgorithm(AdvancedPyForestScanAlgorithm):
         return self.tr("PAI")
 
     def shortHelpString(self) -> str:
-        return self.tr("PAI computes PAD as an internal prerequisite, then integrates PAI over the selected height range.")
+        return self.tr("Creates a Plant Area Index GeoTIFF by calculating PAD internally and integrating over min_height to max_height. Use it for area-integrated canopy structure. Key parameters are voxel_height, min_height, max_height, beer_lambert_constant, and drop_ground. Confirm the selected height range matches the study design.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         self.add_input_dataset(); self.add_crs(); self.add_xy_resolution(); add_voxel_parameters(self, include_beer=True, min_default=1.0); self.add_geotiff_output("Output PAI GeoTIFF")

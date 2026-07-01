@@ -26,7 +26,7 @@ class AdvancedRumpleAlgorithm(AdvancedPyForestScanAlgorithm):
         return self.tr("Rumple")
 
     def shortHelpString(self) -> str:
-        return self.tr("Rumple computes an internal CHM through the adapter and writes the scalar rumple index as CSV.")
+        return self.tr("Calculates a scalar Rumple Index from an internally generated CHM and writes a CSV summary. Use it for whole-dataset canopy surface complexity. Key parameters are CHM resolution, interpolation, edge handling, and optional min_height. The output is a table, not a raster.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         self.add_input_dataset(); self.add_crs(); self.add_xy_resolution(); self.add_csv_output("Output rumple CSV summary")

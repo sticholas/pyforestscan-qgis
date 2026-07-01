@@ -19,8 +19,7 @@ workflows:
 - Settings: choose a default output folder for Mission Control runs.
 
 Mission Control creates a timestamped run folder and manages internal JSON/CSV
-files automatically. Processing Toolbox algorithms remain available for advanced
-users who want explicit file paths.
+files automatically. Processing Toolbox tools remain available for expert users who want explicit file paths and PyForestScan parameter controls.
 
 # User Guide
 
@@ -54,11 +53,11 @@ This guide describes current user-facing PyForestScan QGIS workflows: Dataset
 Explorer, Product Planner, Mission Control run folders, CHM, Canopy Cover, PAD,
 PAI, FHD, and Rumple summary processing.
 
-## Advanced Processing Toolbox
+## Processing Toolbox Expert Tools
 
-Expert users can run advanced PyForestScan algorithms from QGIS Processing Toolbox under the `PyForestScan / Input / I/O`, `PyForestScan / Preprocessing / Filters`, `PyForestScan / Terrain`, and `PyForestScan / Metrics` groups. These tools expose explicit X/Y resolution, interpolation, voxel, height-range, Beer-Lambert, canopy-cover, rumple, and HAG/normalization controls. Mission Control remains the recommended guided workflow for normal use.
+Expert users can run PyForestScan tools from QGIS Processing Toolbox under the `PyForestScan / Diagnostics`, `PyForestScan / Input / I/O`, `PyForestScan / Preprocessing / Filters`, `PyForestScan / Terrain`, and `PyForestScan / Metrics` groups. These tools expose explicit X/Y resolution, interpolation, voxel, height-range, Beer-Lambert, canopy-cover, rumple, and HAG/normalization controls. Mission Control remains the recommended guided workflow for normal use.
 
-Advanced raster outputs use the same loading/styling rules as Mission Control: CHM, Canopy Cover, PAI, and FHD load as grayscale when possible, while PAD loads as the documented RGB 5/3/2 composite when enough bands exist. Rumple writes a CSV summary because PyForestScan returns a scalar value.
+Toolbox raster outputs use the same loading/styling rules as Mission Control: CHM, Canopy Cover, PAI, and FHD load as grayscale when possible, while PAD loads as the documented RGB 5/3/2 composite when enough bands exist. Rumple writes a CSV summary because PyForestScan returns a scalar value.
 
 The HAG/Normalize tool reads lidar with PyForestScan HAG support and can optionally write LAS/LAZ through PyForestScan `write_las`. It also exposes expert read options such as bounds, thinning radius, and crop polygon/WKT. It does not invent unsupported normalized output formats.
 
@@ -68,10 +67,9 @@ Generate DTM creates a GeoTIFF from ground-classified points. Point Density writ
 
 Dataset Explorer is an inspection and planning workflow. It validates a lidar
 dataset, inspects metadata and point structure through the adapter layer, and
-writes reports that explain which future PyForestScan products appear feasible.
+writes reports that explain which PyForestScan products are supported or need review for the selected dataset.
 
-It does not generate CHM, PAI, PAD, FHD, canopy cover, rumple, rasters, vectors,
-or PyForestScan scientific products.
+It does not create product rasters; it prepares the inspection evidence used by planning, the Scientific Advisor, and processing.
 
 ### Supported Inputs
 
@@ -84,11 +82,11 @@ or PyForestScan scientific products.
 
 ```mermaid
 flowchart TD
-    A["Choose LAS, LAZ, COPC, or EPT"] --> B["Dataset Explorer Processing algorithm"]
+    A["Choose LAS, LAZ, COPC, or EPT"] --> B["Mission Control Dataset Explorer"]
     B --> C["PyForestScanAdapter.validate_dataset"]
     C --> D["PyForestScanAdapter.inspect_dataset"]
     D --> E["Typed DatasetExplorerReport"]
-    E --> F["Processing feedback"]
+    E --> F["Mission Control summary"]
     E --> G["JSON report"]
     E --> H["CSV summary loaded as QGIS table"]
     E --> I["HTML browser report"]
@@ -96,16 +94,14 @@ flowchart TD
 
 ### Outputs
 
-Dataset Explorer produces three files. The CSV and HTML paths are optional in the
-Processing dialog; when left blank, they are generated automatically beside the
-JSON report.
+Dataset Explorer produces three files. CSV and HTML reports are generated automatically in the active run folder.
 
 | Output | Description |
 | --- | --- |
 | JSON report | Structured machine-readable report containing dataset metadata, geometry, point statistics, warnings, product feasibility, and recommended actions. |
 | CSV summary | Long-form table with `section`, `name`, `value`, `status`, and `message` columns. The plugin attempts to add this CSV to the active QGIS project as a table. |
 | HTML report | Professional browser-readable report with dataset metadata, bounds, charts, warnings, supported products, and recommended next actions. |
-| Processing feedback | In-dialog summary, warnings, and product feasibility messages. |
+| Mission Control summary | In-dialog summary, warnings, and product feasibility messages. |
 
 ### Warnings
 
@@ -126,8 +122,7 @@ Dataset Explorer reports planning warnings for:
 
 Supported products are reported as planning statuses, not generated outputs:
 
-- `Available`: the inspected dataset already exposes enough evidence for a
-  future product workflow.
+- `Available`: the inspected dataset already exposes enough evidence for the product workflow.
 - `Warning`: the product appears feasible, but required preparation or metadata
   review is needed.
 - `Unavailable`: required information is missing from the inspected dataset.
@@ -148,7 +143,7 @@ Screenshots will be captured during QGIS release testing and stored under
 
 - Dataset Explorer in the QGIS Processing Toolbox.
 - Dataset Explorer parameter dialog.
-- Processing feedback report.
+- Mission Control summary report.
 - CSV summary loaded as a QGIS table.
 - HTML report opened in a browser.
 
@@ -192,8 +187,7 @@ sections so the default view stays focused.
 ## Product Planner
 
 Product Planner is a planning workflow that reads a Dataset Explorer JSON report
-and helps users decide which products should be generated in a future processing
-phase. Mission Control groups Planning controls into Dataset, Output, Product
+and helps users decide which products to generate for the active dataset. Mission Control groups Planning controls into Dataset, Output, Product
 Selection, Shared Parameters, and Run Summary sections by default. Product-
 specific settings are available under Advanced Product Settings when users need
 to override filenames, CHM interpolation, edge handling, or canopy-cover
@@ -207,7 +201,7 @@ It does not run PyForestScan calculations and does not create rasters.
 
 - Dataset Explorer JSON report.
 - Desired products: CHM, PAI, PAD, FHD, Canopy Cover, and Rumple.
-- Output folder for the plan and future products.
+- Output folder for the plan and generated products.
 - Grid resolution.
 - CHM interpolation method.
 - CHM valid-region interpolation toggle.
@@ -220,9 +214,9 @@ It does not run PyForestScan calculations and does not create rasters.
 
 ```mermaid
 flowchart TD
-    A["Dataset Explorer JSON"] --> B["Product Planner Processing algorithm"]
+    A["Dataset Explorer JSON"] --> B["Mission Control Product Planner"]
     B --> C["Validate requested products"]
-    C --> D["Estimate future outputs"]
+    C --> D["Plan output files"]
     D --> E["ProductPlannerReport"]
     E --> F["Product plan JSON"]
     E --> G["Product plan CSV"]
@@ -236,7 +230,7 @@ Product Planner writes these files inside the selected output folder:
 | Output | Description |
 | --- | --- |
 | `product_plan.json` | Structured plan with requested products, readiness status, warnings, estimates, planned output paths, and `processing_executed: false`. |
-| `product_plan.csv` | Long-form table for review, audit, and future automation. |
+| `product_plan.csv` | Long-form table for review, audit, and repeatable processing. |
 | `product_plan.html` | Browser-readable planning report with requested products, warnings, estimated outputs, and next actions. |
 
 ### Product Statuses

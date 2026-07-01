@@ -29,13 +29,13 @@ class AdvancedDtmAlgorithm(AdvancedPyForestScanAlgorithm):
         return self.tr("Generate DTM")
 
     def shortHelpString(self) -> str:
-        return self.tr("Generates a Digital Terrain Model from ground points using PyForestScan generate_dtm through the adapter.")
+        return self.tr("Creates a Digital Terrain Model GeoTIFF from ground-classified points using PyForestScan generate_dtm. Use it when ground class 2 is present or enable ground classification first. Key parameters are DTM resolution, optional ground classification, and NoData value. Inspect terrain artifacts before using the DTM for normalization.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         self.add_input_dataset(); self.add_crs()
-        self.addParameter(QgsProcessingParameterNumber(self.RESOLUTION, self.tr("DTM resolution"), type=QgsProcessingParameterNumber.Double, defaultValue=2.0, minValue=0.01))
-        self.addParameter(QgsProcessingParameterBoolean(self.CLASSIFY_GROUND, self.tr("Classify ground before DTM"), defaultValue=False))
-        self.addParameter(QgsProcessingParameterNumber(self.NODATA, self.tr("NoData value"), type=QgsProcessingParameterNumber.Double, defaultValue=-9999.0))
+        self.addParameter(QgsProcessingParameterNumber(self.RESOLUTION, self.tr("resolution (map units)"), type=QgsProcessingParameterNumber.Double, defaultValue=2.0, minValue=0.01))
+        self.addParameter(QgsProcessingParameterBoolean(self.CLASSIFY_GROUND, self.tr("classify ground before DTM"), defaultValue=False))
+        self.addParameter(QgsProcessingParameterNumber(self.NODATA, self.tr("nodata"), type=QgsProcessingParameterNumber.Double, defaultValue=-9999.0))
         self.add_geotiff_output("Output DTM GeoTIFF")
         self.addOutput(QgsProcessingOutputString(self.OUTPUT_MESSAGE, self.tr("Status message")))
 

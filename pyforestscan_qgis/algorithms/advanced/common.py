@@ -29,7 +29,7 @@ from ...ui.raster_styling import apply_generated_raster_renderer, layer_display_
 
 
 class AdvancedPyForestScanAlgorithm(QgsProcessingAlgorithm):
-    """Base class for Advanced Processing Toolbox algorithms."""
+    """Base class for expert Processing Toolbox algorithms."""
 
     ADVANCED_GROUP = "Metrics"
     INPUT_DATASET = "INPUT_DATASET"
@@ -65,7 +65,7 @@ class AdvancedPyForestScanAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterFile(
                 self.INPUT_DATASET,
-                self.tr("Input lidar dataset"),
+                self.tr("Input LiDAR dataset (LAS, LAZ, COPC, or EPT)"),
                 behavior=QgsProcessingParameterFile.File,
                 fileFilter=self.tr(POINT_CLOUD_FILTER),
             )
@@ -73,14 +73,14 @@ class AdvancedPyForestScanAlgorithm(QgsProcessingAlgorithm):
 
     def add_crs(self) -> None:
         """Add common CRS parameter."""
-        self.addParameter(QgsProcessingParameterCrs(self.CRS, self.tr("Dataset CRS"), defaultValue="EPSG:4326"))
+        self.addParameter(QgsProcessingParameterCrs(self.CRS, self.tr("Dataset CRS / SRS"), defaultValue="EPSG:4326"))
 
     def add_xy_resolution(self, default: float = 1.0) -> None:
         """Add X/Y raster resolution parameters."""
         self.addParameter(
             QgsProcessingParameterNumber(
                 self.X_RESOLUTION,
-                self.tr("X resolution"),
+                self.tr("X resolution (map units)"),
                 type=QgsProcessingParameterNumber.Double,
                 defaultValue=default,
                 minValue=0.01,
@@ -89,7 +89,7 @@ class AdvancedPyForestScanAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterNumber(
                 self.Y_RESOLUTION,
-                self.tr("Y resolution"),
+                self.tr("Y resolution (map units)"),
                 type=QgsProcessingParameterNumber.Double,
                 defaultValue=default,
                 minValue=0.01,
@@ -158,7 +158,7 @@ def add_voxel_parameters(algorithm: AdvancedPyForestScanAlgorithm, *, include_be
     algorithm.addParameter(
         QgsProcessingParameterNumber(
             "VOXEL_HEIGHT",
-            algorithm.tr("Voxel height / height bin size"),
+            algorithm.tr("voxel_height / height bin size (map units)"),
             type=QgsProcessingParameterNumber.Double,
             defaultValue=1.0,
             minValue=0.01,
@@ -167,7 +167,7 @@ def add_voxel_parameters(algorithm: AdvancedPyForestScanAlgorithm, *, include_be
     algorithm.addParameter(
         QgsProcessingParameterNumber(
             "MIN_HEIGHT",
-            algorithm.tr("Minimum height"),
+            algorithm.tr("min_height (map units)"),
             type=QgsProcessingParameterNumber.Double,
             defaultValue=min_default,
             minValue=0.0,
@@ -176,7 +176,7 @@ def add_voxel_parameters(algorithm: AdvancedPyForestScanAlgorithm, *, include_be
     algorithm.addParameter(
         QgsProcessingParameterNumber(
             "MAX_HEIGHT",
-            algorithm.tr("Optional maximum height"),
+            algorithm.tr("max_height (map units, optional)"),
             type=QgsProcessingParameterNumber.Double,
             defaultValue=None,
             minValue=0.0,
@@ -187,13 +187,13 @@ def add_voxel_parameters(algorithm: AdvancedPyForestScanAlgorithm, *, include_be
         algorithm.addParameter(
             QgsProcessingParameterNumber(
                 "BEER_LAMBERT_CONSTANT",
-                algorithm.tr("Beer-Lambert constant"),
+                algorithm.tr("beer_lambert_constant"),
                 type=QgsProcessingParameterNumber.Double,
                 defaultValue=1.0,
                 minValue=0.000001,
             )
         )
-        algorithm.addParameter(QgsProcessingParameterBoolean("DROP_GROUND", algorithm.tr("Drop ground bin"), defaultValue=True))
+        algorithm.addParameter(QgsProcessingParameterBoolean("DROP_GROUND", algorithm.tr("drop_ground"), defaultValue=True))
 
 
 def load_raster_if_requested(path: Path, result_type: str, context: QgsProcessingContext, feedback: QgsProcessingFeedback, add_to_project: bool) -> None:

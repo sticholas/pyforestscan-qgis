@@ -21,7 +21,7 @@ class AdvancedPadAlgorithm(AdvancedPyForestScanAlgorithm):
         return self.tr("PAD")
 
     def shortHelpString(self) -> str:
-        return self.tr("PAD uses assign_voxels and calculate_pad through the adapter and writes a multi-band GeoTIFF.")
+        return self.tr("Creates a Plant Area Density multi-band GeoTIFF from voxelized LiDAR returns. Use it to inspect vertical canopy structure by height bin. Key parameters are X/Y resolution, voxel_height, beer_lambert_constant, and drop_ground. PAD bands represent vertical bins; review band mapping in QGIS symbology.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         self.add_input_dataset(); self.add_crs(); self.add_xy_resolution(); add_voxel_parameters(self, include_beer=True, min_default=0.0); self.add_geotiff_output("Output PAD multi-band GeoTIFF")

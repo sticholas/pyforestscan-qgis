@@ -28,7 +28,7 @@ class AdvancedPointDensityAlgorithm(AdvancedPyForestScanAlgorithm):
 
     def shortHelpString(self) -> str:
         """Return Processing help text."""
-        return self.tr("Calculates point density from PyForestScan assign_voxels and calculate_point_density with explicit per_area and cell_area parameters.")
+        return self.tr("Creates a point-density GeoTIFF by voxelizing LiDAR returns and summing returns by X/Y column. Use it to QA sampling support before interpreting structural metrics. Key parameters are voxel_height, per_area, and cell_area. If cell_area is blank, the adapter uses X resolution multiplied by Y resolution.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         """Register Processing parameters."""

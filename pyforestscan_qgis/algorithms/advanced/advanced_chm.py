@@ -25,7 +25,7 @@ class AdvancedChmAlgorithm(AdvancedPyForestScanAlgorithm):
         return self.tr("CHM")
 
     def shortHelpString(self) -> str:
-        return self.tr("CHM exposes explicit X/Y resolution and interpolation options while routing all PyForestScan calls through the adapter.")
+        return self.tr("Creates a Canopy Height Model GeoTIFF from a LiDAR dataset using PyForestScan calculate_chm. Use it when the dataset has reliable height-above-ground support. Key parameters are X/Y resolution, interpolation, valid-region interpolation, and edge cleaning. Verify CRS, extent, and height values in QGIS before interpretation.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         self.add_input_dataset(); self.add_crs(); self.add_xy_resolution(); self.add_geotiff_output("Output CHM GeoTIFF")

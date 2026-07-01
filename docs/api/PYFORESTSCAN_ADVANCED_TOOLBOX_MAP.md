@@ -15,7 +15,7 @@ The QGIS Processing Toolbox is the expert surface for PyForestScan capabilities.
 
 ```mermaid
 flowchart LR
-    A["QGIS Processing parameter dialog"] --> B["Advanced algorithm class"]
+    A["QGIS Processing parameter dialog"] --> B["Processing algorithm class"]
     B --> C["core.advanced_processing request builder"]
     C --> D["Typed adapter request"]
     D --> E["PyForestScanAdapter"]
@@ -37,8 +37,8 @@ Algorithm classes never import PyForestScan directly. They parse QGIS parameters
 | Point Density | `assign_voxels`, `calculate_point_density`, `create_geotiff` | GeoTIFF |
 | Voxel Statistic | `calculate_voxel_stat`, `create_geotiff` | GeoTIFF |
 | Generate DTM | `classify_ground_points`, `filter_select_ground`, `generate_dtm`, `create_geotiff` | GeoTIFF |
-| HAG / Normalize | `read_lidar`, `write_las` | Optional LAS/LAZ |
-| Point Cloud Preprocess / Filters | `remove_outliers_and_clean`, `classify_ground_points`, `filter_ground`, `filter_select_ground`, `filter_pointsourceid`, `add_height_above_ground`, `filter_hag`, `downsample_poisson`, `downsample_voxel`, `write_las` | LAS/LAZ |
+| Normalize Heights | `read_lidar`, `write_las` | Optional LAS/LAZ |
+| Preprocess Point Cloud | `remove_outliers_and_clean`, `classify_ground_points`, `filter_ground`, `filter_select_ground`, `filter_pointsourceid`, `add_height_above_ground`, `filter_hag`, `downsample_poisson`, `downsample_voxel`, `write_las` | LAS/LAZ |
 
 ## Deferred Tool Families
 

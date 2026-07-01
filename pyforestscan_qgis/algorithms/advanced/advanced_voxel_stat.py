@@ -30,7 +30,7 @@ class AdvancedVoxelStatAlgorithm(AdvancedPyForestScanAlgorithm):
 
     def shortHelpString(self) -> str:
         """Return Processing help text."""
-        return self.tr("Calculates a statistic for a point-cloud dimension using PyForestScan calculate_voxel_stat. Supported stat values are mean, sum, count, min, max, median, and std.")
+        return self.tr("Creates a GeoTIFF summarizing one point-cloud dimension with PyForestScan calculate_voxel_stat. Use it for expert QA or custom raster metrics. Choose an existing dimension, a stat value, voxel resolutions, and optional z_index_range. The tool fails clearly if the selected dimension is missing.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         """Register Processing parameters."""

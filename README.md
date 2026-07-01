@@ -55,7 +55,7 @@ Implemented output defaults are:
 - [Batch Processing](docs/development/BATCH_PROCESSING.md)
 - [External Workers](docs/development/EXTERNAL_WORKERS.md)
 - [Architecture](docs/ARCHITECTURE.md)
-- [Advanced Processing Toolbox](docs/development/ADVANCED_PROCESSING_TOOLBOX.md)
+- [Processing Toolbox Expert Tools](docs/development/ADVANCED_PROCESSING_TOOLBOX.md)
 - [PyForestScan API Coverage Matrix](docs/api/PYFORESTSCAN_API_COVERAGE_MATRIX.md)
 - [PyForestScan Exact Parameter Matrix](docs/api/PYFORESTSCAN_EXACT_PARAMETER_MATRIX.md)
 - [PyForestScan Full Docs Inventory](docs/api/PYFORESTSCAN_FULL_DOCS_INVENTORY.md)

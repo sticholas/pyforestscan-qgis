@@ -21,7 +21,7 @@ class AdvancedFhdAlgorithm(AdvancedPyForestScanAlgorithm):
         return self.tr("FHD")
 
     def shortHelpString(self) -> str:
-        return self.tr("FHD uses assign_voxels and calculate_fhd through the adapter with explicit height range controls.")
+        return self.tr("Creates a Foliage Height Diversity GeoTIFF from voxelized LiDAR returns. Use it to summarize vertical distribution diversity within a height range. Key parameters are X/Y resolution, voxel_height, min_height, and max_height. Review low-density areas before interpreting diversity values.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         self.add_input_dataset(); self.add_crs(); self.add_xy_resolution(); add_voxel_parameters(self, include_beer=False, min_default=0.0); self.add_geotiff_output("Output FHD GeoTIFF")

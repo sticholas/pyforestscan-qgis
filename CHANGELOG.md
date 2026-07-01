@@ -14,6 +14,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Phase 20F parameter and language polish with clearer Processing help strings, unit-aware parameter labels, current plugin metadata, user-guide cleanup, audit artifact, and naming/metadata regression tests.
 - Phase 20E full PyForestScan site rescrape, usage/examples audit, source/docs diff, Processing Toolbox reorganization, Diagnostics group, clean tool names, and hidden legacy guided toolbox entries.
 - Phase 20D full PyForestScan documentation/source inventory, function parameter parity matrix, Advanced Toolbox map, deferred feature registry, grouped Advanced Toolbox labels, full SMRF filter controls, PointSourceId filtering, outlier `remove`, and HAG auto method mapping.
 - Phase 20C exact Advanced Toolbox parameter parity with a parameter-by-parameter PyForestScan calculate matrix plus Advanced Point Density and Advanced Voxel Statistic algorithms.

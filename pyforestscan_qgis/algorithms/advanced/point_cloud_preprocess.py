@@ -54,7 +54,7 @@ class PointCloudPreprocessAlgorithm(AdvancedPyForestScanAlgorithm):
         return self.tr("Preprocess Point Cloud")
 
     def shortHelpString(self) -> str:
-        return self.tr("Runs selected PyForestScan filter functions through the adapter and writes LAS/LAZ output.")
+        return self.tr("Applies selected PyForestScan filters in a documented order and writes LAS/LAZ output. Use it for expert preprocessing before metric generation. Operations run in this order: remove_outliers_and_clean, classify_ground_points, ground filter/select, filter_pointsourceid, add_height_above_ground, filter_hag, downsample_poisson, downsample_voxel, write_las. Review outputs before using them for products.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         self.add_input_dataset(); self.add_crs()
@@ -65,7 +65,7 @@ class PointCloudPreprocessAlgorithm(AdvancedPyForestScanAlgorithm):
         self.addParameter(QgsProcessingParameterBoolean(self.OUTLIER_REMOVE, self.tr("remove"), defaultValue=False))
         self.addParameter(QgsProcessingParameterBoolean(self.CLASSIFY_GROUND, self.tr("Classify ground points"), defaultValue=False))
         self.addParameter(QgsProcessingParameterString(self.SMRF_IGNORE_CLASS, self.tr("ignore_class"), defaultValue="Classification[7:7]"))
-        self.addParameter(QgsProcessingParameterNumber(self.SMRF_CELL, self.tr("cell"), type=QgsProcessingParameterNumber.Double, defaultValue=1.0, minValue=0.01))
+        self.addParameter(QgsProcessingParameterNumber(self.SMRF_CELL, self.tr("SMRF cell"), type=QgsProcessingParameterNumber.Double, defaultValue=1.0, minValue=0.01))
         self.addParameter(QgsProcessingParameterNumber(self.SMRF_CUT, self.tr("cut"), type=QgsProcessingParameterNumber.Double, defaultValue=0.0))
         self.addParameter(QgsProcessingParameterString(self.SMRF_RETURNS, self.tr("returns"), defaultValue="last,only"))
         self.addParameter(QgsProcessingParameterNumber(self.SMRF_SCALAR, self.tr("scalar"), type=QgsProcessingParameterNumber.Double, defaultValue=1.25, minValue=0.01))
@@ -76,14 +76,14 @@ class PointCloudPreprocessAlgorithm(AdvancedPyForestScanAlgorithm):
         self.addParameter(QgsProcessingParameterBoolean(self.FILTER_POINTSOURCEID, self.tr("Filter PointSourceId"), defaultValue=False))
         self.addParameter(QgsProcessingParameterString(self.POINTSOURCE_IDS, self.tr("pointsource_ids"), defaultValue=""))
         self.addParameter(QgsProcessingParameterBoolean(self.ADD_HAG, self.tr("Add HeightAboveGround"), defaultValue=False))
-        self.addParameter(QgsProcessingParameterEnum(self.HAG_METHOD, self.tr("method"), options=list(self.HAG_OPTIONS), defaultValue=0))
-        self.addParameter(QgsProcessingParameterFile(self.DTM, self.tr("dtm"), behavior=QgsProcessingParameterFile.File, fileFilter=self.tr("GeoTIFF files (*.tif *.tiff);;All files (*.*)"), optional=True))
+        self.addParameter(QgsProcessingParameterEnum(self.HAG_METHOD, self.tr("HAG method"), options=list(self.HAG_OPTIONS), defaultValue=0))
+        self.addParameter(QgsProcessingParameterFile(self.DTM, self.tr("DTM GeoTIFF"), behavior=QgsProcessingParameterFile.File, fileFilter=self.tr("GeoTIFF files (*.tif *.tiff);;All files (*.*)"), optional=True))
         self.addParameter(QgsProcessingParameterBoolean(self.FILTER_HAG, self.tr("Filter by HeightAboveGround range"), defaultValue=False))
         self.addParameter(QgsProcessingParameterNumber(self.HAG_LOWER, self.tr("lower_limit"), type=QgsProcessingParameterNumber.Double, defaultValue=0.0))
         self.addParameter(QgsProcessingParameterNumber(self.HAG_UPPER, self.tr("upper_limit"), type=QgsProcessingParameterNumber.Double, defaultValue=None, optional=True))
         self.addParameter(QgsProcessingParameterNumber(self.THIN_RADIUS, self.tr("thin_radius"), type=QgsProcessingParameterNumber.Double, defaultValue=None, minValue=0.0, optional=True))
-        self.addParameter(QgsProcessingParameterNumber(self.VOXELGRID_CELL, self.tr("cell"), type=QgsProcessingParameterNumber.Double, defaultValue=None, minValue=0.0, optional=True))
-        self.addParameter(QgsProcessingParameterEnum(self.VOXELGRID_MODE, self.tr("mode"), options=list(self.VOXELGRID_OPTIONS), defaultValue=0))
+        self.addParameter(QgsProcessingParameterNumber(self.VOXELGRID_CELL, self.tr("voxel downsample cell"), type=QgsProcessingParameterNumber.Double, defaultValue=None, minValue=0.0, optional=True))
+        self.addParameter(QgsProcessingParameterEnum(self.VOXELGRID_MODE, self.tr("voxel downsample mode"), options=list(self.VOXELGRID_OPTIONS), defaultValue=0))
         self.addParameter(QgsProcessingParameterBoolean(self.COMPRESS, self.tr("compress"), defaultValue=True))
         self.addOutput(QgsProcessingOutputString(self.OUTPUT_MESSAGE, self.tr("Status message")))
 

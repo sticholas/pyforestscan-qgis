@@ -16,7 +16,7 @@ This document records current limitations for the internal release candidate. It
 - Parallel Safe mode runs inside QGIS with bounded workers and guardrails; users should start with two workers.
 - Cancellation and pause are checked between files, not during a native PyForestScan/PDAL product calculation.
 - Batch output loading into QGIS is off by default to avoid overwhelming a project with many layers.
-- External Worker mode is disabled because QGIS GUI Python launched application windows during validation. It must remain future-only until a true headless launcher is proven.
+- External Worker mode is disabled because QGIS GUI Python launched application windows during validation. It remains disabled until a true headless launcher is proven.
 
 ## User Experience
 
@@ -26,4 +26,4 @@ This document records current limitations for the internal release candidate. It
 
 ## Release Scope
 
-This internal release is intended for controlled QGIS testing, workflow validation, and scientific QA. It is not yet a public QGIS Plugin Repository release candidate.
+This internal release is intended for controlled QGIS testing, workflow validation, and scientific QA. It is not a public QGIS Plugin Repository release candidate.

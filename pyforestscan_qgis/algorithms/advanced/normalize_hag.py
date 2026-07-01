@@ -32,18 +32,18 @@ class NormalizeHagAlgorithm(AdvancedPyForestScanAlgorithm):
         return self.tr("Normalize Heights")
 
     def shortHelpString(self) -> str:
-        return self.tr("Reads lidar with PyForestScan handlers.read_lidar(..., hag=True) or DTM-backed HAG and writes LAS/LAZ only when a supported output is provided. It does not fake unsupported normalized outputs.")
+        return self.tr("Reads a LiDAR dataset with HeightAboveGround using PyForestScan read_lidar and optionally writes LAS/LAZ with write_las. Use it to create a reusable HAG-enabled point cloud or verify HAG read options. Key parameters are CRS/SRS, DTM-backed HAG, bounds, thinning radius, crop polygon, reproject, output path, and compress.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
         self.add_input_dataset(); self.add_crs()
         self.addParameter(QgsProcessingParameterBoolean(self.USE_DTM, self.tr("Use DTM-backed HAG"), defaultValue=False))
-        self.addParameter(QgsProcessingParameterFile(self.DTM, self.tr("Optional DTM GeoTIFF"), behavior=QgsProcessingParameterFile.File, fileFilter=self.tr("GeoTIFF files (*.tif *.tiff);;All files (*.*)"), optional=True))
+        self.addParameter(QgsProcessingParameterFile(self.DTM, self.tr("DTM GeoTIFF for HAG"), behavior=QgsProcessingParameterFile.File, fileFilter=self.tr("GeoTIFF files (*.tif *.tiff);;All files (*.*)"), optional=True))
         self.addParameter(QgsProcessingParameterBoolean(self.REPROJECT, self.tr("Reproject to CRS while reading"), defaultValue=False))
-        self.addParameter(QgsProcessingParameterString(self.BOUNDS, self.tr("Optional bounds xmin,xmax,ymin,ymax[,zmin,zmax]"), defaultValue="", optional=True))
-        self.addParameter(QgsProcessingParameterNumber(self.THIN_RADIUS, self.tr("Optional thinning radius"), type=QgsProcessingParameterNumber.Double, defaultValue=None, minValue=0.0, optional=True))
-        self.addParameter(QgsProcessingParameterString(self.CROP_POLYGON, self.tr("Optional crop polygon WKT or file path"), defaultValue="", optional=True, multiLine=True))
-        self.addParameter(QgsProcessingParameterFileDestination(self.OUTPUT, self.tr("Optional normalized LAS/LAZ output"), fileFilter=self.tr(LAS_FILTER), optional=True))
-        self.addParameter(QgsProcessingParameterBoolean(self.COMPRESS, self.tr("Write compressed LAZ"), defaultValue=True))
+        self.addParameter(QgsProcessingParameterString(self.BOUNDS, self.tr("bounds xmin,xmax,ymin,ymax[,zmin,zmax]"), defaultValue="", optional=True))
+        self.addParameter(QgsProcessingParameterNumber(self.THIN_RADIUS, self.tr("thin_radius"), type=QgsProcessingParameterNumber.Double, defaultValue=None, minValue=0.0, optional=True))
+        self.addParameter(QgsProcessingParameterString(self.CROP_POLYGON, self.tr("crop polygon WKT or file path"), defaultValue="", optional=True, multiLine=True))
+        self.addParameter(QgsProcessingParameterFileDestination(self.OUTPUT, self.tr("Normalized LAS/LAZ output"), fileFilter=self.tr(LAS_FILTER), optional=True))
+        self.addParameter(QgsProcessingParameterBoolean(self.COMPRESS, self.tr("compress"), defaultValue=True))
         self.addOutput(QgsProcessingOutputString(self.OUTPUT_MESSAGE, self.tr("Status message")))
         self.addOutput(QgsProcessingOutputString(self.OUTPUT, self.tr("Normalized point-cloud output path")))
 

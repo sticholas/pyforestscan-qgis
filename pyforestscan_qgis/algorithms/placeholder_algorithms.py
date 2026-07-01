@@ -1,7 +1,8 @@
 """Processing algorithms for the PyForestScan provider.
 
-Phase 2 implements the Environment Check algorithm. Scientific algorithms remain
-safe placeholders until later phases introduce PyForestScan-backed runners.
+Environment Check remains registered in the Processing Toolbox. The guided
+Dataset Explorer and Product Planner classes are retained for compatibility with
+older imports, but Mission Control owns those user workflows.
 """
 
 from __future__ import annotations
@@ -89,14 +90,14 @@ class PyForestScanAlgorithm(QgsProcessingAlgorithm):
 
 
 class PlaceholderAlgorithm(PyForestScanAlgorithm):
-    """Base class for future scientific algorithms that are not implemented yet."""
+    """Base class for unregistered compatibility algorithms."""
 
     def shortHelpString(self) -> str:
-        """Return Processing help text for Phase 1/2 placeholders."""
+        """Return Processing help text for unregistered compatibility algorithms."""
         return self.tr(
-            "This algorithm is reserved for a future PyForestScan workflow. "
-            "It reports 'Not yet implemented.' and performs no PyForestScan, "
-            "lidar, or PDAL computation."
+            "This compatibility algorithm is not registered in the current "
+            "Processing Toolbox. Use Mission Control or the expert PyForestScan "
+            "toolbox groups for active workflows."
         )
 
     def createInstance(self) -> "PlaceholderAlgorithm":
@@ -109,7 +110,7 @@ class PlaceholderAlgorithm(PyForestScanAlgorithm):
         context: QgsProcessingContext,
         feedback: QgsProcessingFeedback,
     ) -> dict[str, str]:
-        """Report placeholder status and return a successful Processing result."""
+        """Report compatibility status and return a successful Processing result."""
         if feedback.isCanceled():
             raise QgsProcessingException(self.tr("Processing was canceled."))
 
@@ -502,7 +503,7 @@ class ProductPlannerAlgorithm(PyForestScanAlgorithm):
         """Return Processing help text for Product Planner."""
         return self.tr(
             "Reads a Dataset Explorer JSON report and creates JSON, CSV, and "
-            "HTML planning reports for selected future PyForestScan products. "
+            "HTML planning reports for selected PyForestScan products. "
             "This algorithm does not run PyForestScan calculations or create rasters."
         )
 
@@ -532,7 +533,7 @@ class ProductPlannerAlgorithm(PyForestScanAlgorithm):
         self.addParameter(
             QgsProcessingParameterFolderDestination(
                 self.OUTPUT_FOLDER,
-                self.tr("Output folder for plan and future products"),
+                self.tr("Output folder for plan and generated products"),
             )
         )
         self.addParameter(
@@ -691,7 +692,7 @@ class ProductPlannerAlgorithm(PyForestScanAlgorithm):
 
 
 class ForestMetricsPackAlgorithm(PlaceholderAlgorithm):
-    """Placeholder for future forest structural metric product generation."""
+    """Unregistered compatibility shell for legacy forest-metric toolbox entries."""
 
     INPUT_LIDAR = "INPUT_LIDAR"
     SUMMARY_POLYGONS = "SUMMARY_POLYGONS"
