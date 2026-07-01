@@ -10,9 +10,11 @@ from .exceptions import ProcessingError
 from .types import (
     CanopyCoverRequest,
     ChmRequest,
+    DtmRequest,
     FhdRequest,
     HagNormalizationRequest,
     PadRequest,
+    PointCloudPreprocessRequest,
     PaiRequest,
     ProductType,
     RumpleRequest,
@@ -92,6 +94,46 @@ class AdvancedHagParameters:
     use_dtm: bool = False
     dtm_path: Path | None = None
     reproject: bool = False
+    compress: bool = True
+    bounds_text: str = ""
+    thin_radius: float | None = None
+    crop_polygon: str = ""
+
+
+@dataclass(frozen=True)
+class AdvancedDtmParameters:
+    """Advanced DTM generation parameters."""
+
+    input_path: Path | str
+    output_path: Path
+    crs: str
+    resolution: float = 2.0
+    classify_ground: bool = False
+    nodata: float = -9999.0
+    add_to_project: bool = True
+
+
+@dataclass(frozen=True)
+class AdvancedPointCloudPreprocessParameters:
+    """Advanced point-cloud preprocessing parameters."""
+
+    input_path: Path | str
+    output_path: Path
+    crs: str
+    remove_outliers: bool = False
+    outlier_mean_k: int = 8
+    outlier_multiplier: float = 3.0
+    classify_ground: bool = False
+    ground_action: str = "none"
+    add_hag: bool = False
+    hag_method: str = "delaunay"
+    dtm_path: Path | None = None
+    filter_hag: bool = False
+    hag_lower_limit: float = 0.0
+    hag_upper_limit: float | None = None
+    thin_radius: float | None = None
+    voxelgrid_cell: float | None = None
+    voxelgrid_mode: str = "first"
     compress: bool = True
 
 
@@ -218,7 +260,75 @@ def build_hag_request(params: AdvancedHagParameters) -> HagNormalizationRequest:
         dtm_path=params.dtm_path,
         reproject=params.reproject,
         compress=params.compress,
+        bounds=parse_bounds_text(params.bounds_text),
+        thin_radius=params.thin_radius,
+        crop_polygon=params.crop_polygon.strip() or None,
     )
+
+
+def build_dtm_request(params: AdvancedDtmParameters) -> DtmRequest:
+    """Validate DTM parameters and return an adapter request."""
+    if params.resolution <= 0:
+        raise ProcessingError("DTM resolution must be greater than zero.")
+    if not params.crs.strip():
+        raise ProcessingError("DTM requires a CRS string such as EPSG:32610.")
+    if params.output_path.suffix.lower() not in {".tif", ".tiff"}:
+        raise ProcessingError("DTM output must be a GeoTIFF path ending in .tif or .tiff.")
+    return DtmRequest(
+        input_path=params.input_path,
+        output_path=params.output_path,
+        crs=params.crs,
+        resolution=params.resolution,
+        classify_ground=params.classify_ground,
+        nodata=params.nodata,
+    )
+
+
+def build_point_cloud_preprocess_request(params: AdvancedPointCloudPreprocessParameters) -> PointCloudPreprocessRequest:
+    """Validate point-cloud preprocessing parameters and return an adapter request."""
+    if not params.crs.strip():
+        raise ProcessingError("Point-cloud preprocessing requires a CRS string such as EPSG:32610.")
+    if params.output_path.suffix.lower() not in {".las", ".laz"}:
+        raise ProcessingError("Point-cloud preprocessing output must end with .las or .laz.")
+    if params.outlier_mean_k <= 0:
+        raise ProcessingError("Outlier mean_k must be greater than zero.")
+    if params.outlier_multiplier <= 0:
+        raise ProcessingError("Outlier multiplier must be greater than zero.")
+    if params.thin_radius is not None and params.thin_radius <= 0:
+        raise ProcessingError("Poisson thinning radius must be greater than zero.")
+    if params.voxelgrid_cell is not None and params.voxelgrid_cell <= 0:
+        raise ProcessingError("Voxel-grid cell size must be greater than zero.")
+    if params.hag_upper_limit is not None and params.hag_upper_limit <= params.hag_lower_limit:
+        raise ProcessingError("HAG upper limit must be greater than lower limit.")
+    if params.hag_method not in {"delaunay", "dtm"}:
+        raise ProcessingError("HAG method must be delaunay or dtm.")
+    if params.hag_method == "dtm" and params.add_hag and params.dtm_path is None:
+        raise ProcessingError("DTM HAG preprocessing requires a DTM path.")
+    if params.ground_action not in {"none", "remove_ground", "select_ground"}:
+        raise ProcessingError("Ground action must be none, remove_ground, or select_ground.")
+    if params.voxelgrid_mode not in {"first", "last", "center", "nearest"}:
+        raise ProcessingError("Voxel-grid mode must be first, last, center, or nearest.")
+    return PointCloudPreprocessRequest(**params.__dict__)
+
+
+def parse_bounds_text(bounds_text: str) -> tuple[tuple[float, float], ...] | None:
+    """Parse xmin,xmax,ymin,ymax[,zmin,zmax] into PyForestScan read_lidar bounds."""
+    text = bounds_text.strip()
+    if not text:
+        return None
+    parts = [float(item.strip()) for item in text.split(",") if item.strip()]
+    if len(parts) not in {4, 6}:
+        raise ProcessingError("Bounds must contain xmin,xmax,ymin,ymax or xmin,xmax,ymin,ymax,zmin,zmax.")
+    xmin, xmax, ymin, ymax = parts[:4]
+    if xmax <= xmin or ymax <= ymin:
+        raise ProcessingError("Bounds maximum values must be greater than minimum values.")
+    bounds: tuple[tuple[float, float], ...] = ((xmin, xmax), (ymin, ymax))
+    if len(parts) == 6:
+        zmin, zmax = parts[4:]
+        if zmax <= zmin:
+            raise ProcessingError("Z bounds maximum must be greater than minimum.")
+        bounds = bounds + ((zmin, zmax),)
+    return bounds
 
 
 def result_type_for_product(product: ProductType) -> str:
@@ -229,6 +339,7 @@ def result_type_for_product(product: ProductType) -> str:
         ProductType.PAI: "pai_geotiff",
         ProductType.CANOPY_COVER: "canopy_cover_geotiff",
         ProductType.FHD: "fhd_geotiff",
+        ProductType.DTM: "dtm_geotiff",
     }.get(product, "table")
 
 

@@ -16,6 +16,10 @@ flowchart LR
 Processing algorithm classes do not import PyForestScan. They parse QGIS parameters, build typed request objects, call the adapter, and optionally load/style outputs.
 
 ## Algorithms
+## Phase 20B Coverage Additions
+
+Phase 20B adds Advanced DTM and Advanced Point Cloud Preprocess / Filters, and expands HAG/Normalize with read-time bounds, thinning radius, and crop polygon options. The full coverage audit lives in `docs/api/PYFORESTSCAN_API_COVERAGE_MATRIX.md`.
+
 
 ### Advanced CHM
 
@@ -118,6 +122,39 @@ Parameters:
 - Add CSV to project as table
 
 Adapter call: `create_rumple(RumpleRequest(...))`. Rumple is CSV because PyForestScan returns a scalar index.
+
+### Advanced DTM
+
+Parameters:
+
+- Input LAS/LAZ/COPC/EPT
+- Dataset CRS
+- Output DTM GeoTIFF
+- DTM resolution
+- Optional ground classification before DTM
+- NoData value
+- Add output to project
+
+Adapter call: `generate_dtm(DtmRequest(...))`. This workflow expects usable ground points. If the source is not already ground-classified, enable the classify-ground option and manually QA the result.
+
+### Advanced Point Cloud Preprocess / Filters
+
+Parameters:
+
+- Input LAS/LAZ/COPC/EPT
+- Dataset CRS
+- Output LAS/LAZ
+- Remove outliers and clean, with `mean_k` and multiplier
+- Classify ground points
+- Ground action: none, remove ground, select ground
+- Add HeightAboveGround with Delaunay or DTM method
+- Optional DTM GeoTIFF
+- Filter by HAG range
+- Optional Poisson thinning radius
+- Optional voxel-grid downsampling cell and mode
+- Output compression
+
+Adapter call: `preprocess_point_cloud(PointCloudPreprocessRequest(...))`. This is the expert surface for PyForestScan filter wrappers and writes a real LAS/LAZ output via `write_las`.
 
 ### Generate Height Above Ground / Normalize Heights
 

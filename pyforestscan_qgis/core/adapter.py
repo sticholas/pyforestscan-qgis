@@ -28,6 +28,8 @@ from .types import (
     DatasetInspection,
     DatasetSource,
     DatasetValidationResult,
+    DtmRequest,
+    DtmResult,
     LogContextItem,
     LogLevel,
     LogRecord,
@@ -37,6 +39,8 @@ from .types import (
     HagNormalizationResult,
     PadRequest,
     PadResult,
+    PointCloudPreprocessRequest,
+    PointCloudPreprocessResult,
     PaiRequest,
     PaiResult,
     RumpleRequest,
@@ -595,9 +599,13 @@ class PyForestScanAdapter:
             point_cloud = handlers.read_lidar(
                 str(request.input_path),
                 request.crs,
+                bounds=request.bounds,
+                thin_radius=request.thin_radius,
                 hag=not request.use_dtm,
                 hag_dtm=request.use_dtm,
                 dtm=str(request.dtm_path) if request.dtm_path is not None else None,
+                crop_poly=bool(request.crop_polygon),
+                poly=request.crop_polygon,
                 reproject=request.reproject,
             )
             if point_cloud is None:
@@ -624,6 +632,102 @@ class PyForestScanAdapter:
         except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
             self._progress.fail("HAG normalization failed")
             raise ProcessingError(f"HAG normalization failed: {exc}") from exc
+
+
+    def generate_dtm(self, request: DtmRequest) -> DtmResult:
+        """Generate a DTM GeoTIFF from ground-classified lidar points."""
+        if request.resolution <= 0:
+            raise ProcessingError("DTM resolution must be greater than zero.")
+        if not request.crs:
+            raise ProcessingError("DTM generation requires a dataset CRS.")
+        output_path = Path(request.output_path)
+        _validate_output_path(output_path)
+        self._progress.start("Reading lidar for DTM")
+        self._log(LogLevel.INFO, "Starting DTM generation", input=str(request.input_path), output=str(output_path))
+        try:
+            pyforestscan = _import_required("pyforestscan", ProcessingError)
+            handlers = _import_required("pyforestscan.handlers", ProcessingError)
+            filters = _import_required("pyforestscan.filters", ProcessingError)
+            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, hag=False)
+            if point_cloud is None:
+                raise ProcessingError("PyForestScan returned no point data for DTM generation.")
+            self._progress.update(30, "Point cloud loaded")
+            arrays = filters.classify_ground_points(point_cloud) if request.classify_ground else point_cloud
+            ground_arrays = filters.filter_select_ground(arrays)
+            ground_points = _merge_point_cloud_arrays(ground_arrays)
+            self._progress.update(60, "Ground points selected")
+            dtm, extent = pyforestscan.generate_dtm(ground_points, resolution=request.resolution)
+            self._progress.update(80, "DTM array calculated")
+            handlers.create_geotiff(dtm, str(output_path), request.crs, extent, nodata=request.nodata)
+            _validate_created_output(output_path)
+            self._progress.complete("DTM GeoTIFF created")
+            return DtmResult(output_path=output_path, spatial_extent=tuple(float(value) for value in extent), resolution=request.resolution, crs=request.crs)
+        except ProcessingError:
+            self._progress.fail("DTM generation failed")
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            self._progress.fail("DTM generation failed")
+            raise ProcessingError(f"DTM generation failed: {exc}") from exc
+
+    def preprocess_point_cloud(self, request: PointCloudPreprocessRequest) -> PointCloudPreprocessResult:
+        """Run safe PyForestScan filter/preprocess steps and write LAS/LAZ."""
+        if not request.crs:
+            raise ProcessingError("Point-cloud preprocessing requires a dataset CRS.")
+        output_path = Path(request.output_path)
+        _validate_las_output_path(output_path)
+        operations: list[str] = []
+        self._progress.start("Reading lidar for preprocessing")
+        try:
+            handlers = _import_required("pyforestscan.handlers", ProcessingError)
+            filters = _import_required("pyforestscan.filters", ProcessingError)
+            arrays = handlers.read_lidar(str(request.input_path), request.crs, hag=False)
+            if arrays is None:
+                raise ProcessingError("PyForestScan returned no point data for preprocessing.")
+            self._progress.update(20, "Point cloud loaded")
+            if request.remove_outliers:
+                arrays = filters.remove_outliers_and_clean(arrays, mean_k=request.outlier_mean_k, multiplier=request.outlier_multiplier)
+                operations.append("remove_outliers_and_clean")
+            if request.classify_ground:
+                arrays = filters.classify_ground_points(arrays)
+                operations.append("classify_ground_points")
+            if request.ground_action == "remove_ground":
+                arrays = filters.filter_ground(arrays)
+                operations.append("filter_ground")
+            elif request.ground_action == "select_ground":
+                arrays = filters.filter_select_ground(arrays)
+                operations.append("filter_select_ground")
+            if request.add_hag:
+                arrays = filters.add_height_above_ground(
+                    arrays,
+                    method=request.hag_method,
+                    dtm=str(request.dtm_path) if request.dtm_path is not None else None,
+                )
+                operations.append("add_height_above_ground")
+            if request.filter_hag:
+                arrays = filters.filter_hag(arrays, lower_limit=request.hag_lower_limit, upper_limit=request.hag_upper_limit)
+                operations.append("filter_hag")
+            if request.thin_radius is not None:
+                arrays = filters.downsample_poisson(arrays, request.thin_radius)
+                operations.append("downsample_poisson")
+            if request.voxelgrid_cell is not None:
+                arrays = filters.downsample_voxel(arrays, request.voxelgrid_cell, request.voxelgrid_mode)
+                operations.append("downsample_voxel")
+            self._progress.update(75, "Filters applied")
+            handlers.write_las(arrays, str(output_path), srs=request.crs, compress=request.compress)
+            _validate_created_output(output_path)
+            self._progress.complete("Preprocessed point cloud written")
+            return PointCloudPreprocessResult(
+                output_path=output_path,
+                point_count=_point_count_from_point_cloud(arrays),
+                crs=request.crs,
+                operations=tuple(operations),
+            )
+        except ProcessingError:
+            self._progress.fail("Point-cloud preprocessing failed")
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            self._progress.fail("Point-cloud preprocessing failed")
+            raise ProcessingError(f"Point-cloud preprocessing failed: {exc}") from exc
 
     def _read_hag_point_array(self, input_path: Path | str, crs: str, product_label: str) -> object:
         """Read lidar with HeightAboveGround and return one structured point array."""

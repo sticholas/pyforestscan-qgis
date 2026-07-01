@@ -16,6 +16,7 @@ The project is preparing for a stable internal release. Current implemented work
 - Batch folder-to-products workflow with preflight, manifest, resume, retry, and guarded Parallel Safe mode
 - Local Workspace foundation with session, timeline, history, recent items, notes, and version metadata
 - QGIS result loading and product-aware raster styling
+- Advanced Processing Toolbox with expert CHM, PAD, PAI, Canopy Cover, FHD, Rumple, HAG/normalization, DTM, and point-cloud preprocessing/filter controls
 
 External Worker mode is disabled. Sequential batch processing remains the safest path, and Parallel Safe mode is available with preflight guardrails.
 
@@ -54,6 +55,8 @@ Implemented output defaults are:
 - [Batch Processing](docs/development/BATCH_PROCESSING.md)
 - [External Workers](docs/development/EXTERNAL_WORKERS.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Advanced Processing Toolbox](docs/development/ADVANCED_PROCESSING_TOOLBOX.md)
+- [PyForestScan API Coverage Matrix](docs/api/PYFORESTSCAN_API_COVERAGE_MATRIX.md)
 
 ## Local QGIS Testing
 

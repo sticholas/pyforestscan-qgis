@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from qgis.core import QgsProcessingContext, QgsProcessingException, QgsProcessingFeedback, QgsProcessingOutputString, QgsProcessingParameterBoolean, QgsProcessingParameterFile, QgsProcessingParameterFileDestination
+from qgis.core import QgsProcessingContext, QgsProcessingException, QgsProcessingFeedback, QgsProcessingOutputString, QgsProcessingParameterBoolean, QgsProcessingParameterFile, QgsProcessingParameterFileDestination, QgsProcessingParameterNumber, QgsProcessingParameterString
 
 from ...core.adapter import PyForestScanAdapter
 from ...core.advanced_processing import AdvancedHagParameters, build_hag_request
@@ -19,6 +19,9 @@ class NormalizeHagAlgorithm(AdvancedPyForestScanAlgorithm):
     DTM = "DTM"
     REPROJECT = "REPROJECT"
     COMPRESS = "COMPRESS"
+    BOUNDS = "BOUNDS"
+    THIN_RADIUS = "THIN_RADIUS"
+    CROP_POLYGON = "CROP_POLYGON"
 
     def name(self) -> str:
         return "normalize_height_above_ground"
@@ -34,6 +37,9 @@ class NormalizeHagAlgorithm(AdvancedPyForestScanAlgorithm):
         self.addParameter(QgsProcessingParameterBoolean(self.USE_DTM, self.tr("Use DTM-backed HAG"), defaultValue=False))
         self.addParameter(QgsProcessingParameterFile(self.DTM, self.tr("Optional DTM GeoTIFF"), behavior=QgsProcessingParameterFile.File, fileFilter=self.tr("GeoTIFF files (*.tif *.tiff);;All files (*.*)"), optional=True))
         self.addParameter(QgsProcessingParameterBoolean(self.REPROJECT, self.tr("Reproject to CRS while reading"), defaultValue=False))
+        self.addParameter(QgsProcessingParameterString(self.BOUNDS, self.tr("Optional bounds xmin,xmax,ymin,ymax[,zmin,zmax]"), defaultValue="", optional=True))
+        self.addParameter(QgsProcessingParameterNumber(self.THIN_RADIUS, self.tr("Optional thinning radius"), type=QgsProcessingParameterNumber.Double, defaultValue=None, minValue=0.0, optional=True))
+        self.addParameter(QgsProcessingParameterString(self.CROP_POLYGON, self.tr("Optional crop polygon WKT or file path"), defaultValue="", optional=True, multiLine=True))
         self.addParameter(QgsProcessingParameterFileDestination(self.OUTPUT, self.tr("Optional normalized LAS/LAZ output"), fileFilter=self.tr(LAS_FILTER), optional=True))
         self.addParameter(QgsProcessingParameterBoolean(self.COMPRESS, self.tr("Write compressed LAZ"), defaultValue=True))
         self.addOutput(QgsProcessingOutputString(self.OUTPUT_MESSAGE, self.tr("Status message")))
@@ -53,6 +59,9 @@ class NormalizeHagAlgorithm(AdvancedPyForestScanAlgorithm):
             dtm_path=Path(dtm_text) if dtm_text else None,
             reproject=self.parameterAsBool(parameters, self.REPROJECT, context),
             compress=self.parameterAsBool(parameters, self.COMPRESS, context),
+            bounds_text=self.parameterAsString(parameters, self.BOUNDS, context),
+            thin_radius=self.optional_double(parameters, self.THIN_RADIUS, context),
+            crop_polygon=self.parameterAsString(parameters, self.CROP_POLYGON, context),
         )
         request = build_hag_request(params)
         result = run_adapter_call(feedback, "Height Above Ground", lambda: PyForestScanAdapter().normalize_heights(request))

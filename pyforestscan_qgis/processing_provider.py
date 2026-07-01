@@ -8,11 +8,13 @@ from qgis.PyQt.QtGui import QIcon
 from .algorithms.advanced import (
     AdvancedCanopyCoverAlgorithm,
     AdvancedChmAlgorithm,
+    AdvancedDtmAlgorithm,
     AdvancedFhdAlgorithm,
     AdvancedPadAlgorithm,
     AdvancedPaiAlgorithm,
     AdvancedRumpleAlgorithm,
     NormalizeHagAlgorithm,
+    PointCloudPreprocessAlgorithm,
 )
 from .algorithms.placeholder_algorithms import (
     DatasetExplorerAlgorithm,
@@ -58,4 +60,6 @@ class PyForestScanProvider(QgsProcessingProvider):
         self.addAlgorithm(AdvancedFhdAlgorithm())
         self.addAlgorithm(AdvancedRumpleAlgorithm())
         self.addAlgorithm(NormalizeHagAlgorithm())
+        self.addAlgorithm(AdvancedDtmAlgorithm())
+        self.addAlgorithm(PointCloudPreprocessAlgorithm())
 

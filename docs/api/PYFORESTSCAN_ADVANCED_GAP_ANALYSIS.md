@@ -1,0 +1,35 @@
+# PyForestScan Advanced Gap Analysis
+
+Phase 20B compared Phase 20A Advanced Toolbox coverage against the full official PyForestScan documentation.
+
+## Gaps Closed In Phase 20B
+
+- Added Advanced DTM using `filter_select_ground`, optional `classify_ground_points`, `generate_dtm`, and `create_geotiff`.
+- Added Advanced Point Cloud Preprocess / Filters using safe public filter wrappers and `write_las`.
+- Expanded HAG/Normalize to expose `read_lidar` bounds, thinning radius, crop polygon, DTM-backed HAG, reprojection, and LAS/LAZ writing.
+- Added QGIS-free builders and tests for DTM, preprocessing, HAG options, and bounds parsing.
+
+## Remaining Deferred Items
+
+| Area | Deferred capability | Reason |
+| --- | --- | --- |
+| Tiled EPT processing | `process_with_tiles` | Needs adapter wrapper for cancellation, progress, output naming, tile summaries, and avoiding `print`/`tqdm` UX inside QGIS. |
+| Point density | `calculate_point_density` | Useful QA product but not yet designed as a named output/report. |
+| Voxel statistics | `calculate_voxel_stat` | Needs UI for dimension/stat/z-range, raster naming, and validation against available dimensions. |
+| PointSourceId filtering | `filter_pointsourceid` | Needs robust multi-ID input UX and QA datasets. |
+| Product-level clipping | Bounds/polygon options on CHM/PAD/PAI/FHD/cover/rumple | HAG/read utility exposes low-level crop; product crop should use a consistent QGIS vector/bounds UX. |
+| Visualization helpers | `plot_2d`, `plot_metric`, `plot_pad` | QGIS has native map canvas, raster symbology, histograms, profiles, layouts, and layer styling. |
+| Deep SMRF tuning | Full `classify_ground_points` parameter surface if present | Current docs emphasize wrapper use; exposing all tuning needs scientific guidance and QA. |
+
+## Product Decision
+
+Mission Control remains simple and guided. Advanced Toolbox is the expert surface for lower-level controls. No new advanced controls were added to Mission Control.
+
+## HAG / Normalization Decision
+
+PyForestScan supports HAG during read and after in-memory filtering. The plugin exposes both paths:
+
+- HAG/Normalize: direct `read_lidar` HAG options and optional LAS/LAZ output.
+- Point Cloud Preprocess: filter-chain HAG via `add_height_above_ground`.
+
+The plugin does not claim to create a special normalized format beyond LAS/LAZ writing through PyForestScan `write_las`.

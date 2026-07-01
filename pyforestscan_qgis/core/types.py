@@ -28,6 +28,8 @@ class ProductType(str, Enum):
     POINT_DENSITY = "point_density"
     VOXEL_STAT = "voxel_stat"
     HAG = "hag"
+    DTM = "dtm"
+    POINT_CLOUD_PREPROCESS = "point_cloud_preprocess"
 
 
 class LogLevel(str, Enum):
@@ -303,6 +305,9 @@ class HagNormalizationRequest:
     dtm_path: Path | None = None
     reproject: bool = False
     compress: bool = True
+    bounds: tuple[tuple[float, float], ...] | None = None
+    thin_radius: float | None = None
+    crop_polygon: str | None = None
 
 
 @dataclass(frozen=True)
@@ -314,6 +319,62 @@ class HagNormalizationResult:
     crs: str
     written: bool
     limitation: str | None = None
+
+
+@dataclass(frozen=True)
+class DtmRequest:
+    """Adapter request for DTM generation from ground-classified points."""
+
+    input_path: Path | str
+    output_path: Path
+    crs: str
+    resolution: float = 2.0
+    classify_ground: bool = False
+    nodata: float = -9999.0
+
+
+@dataclass(frozen=True)
+class DtmResult:
+    """Adapter result for a generated DTM GeoTIFF."""
+
+    output_path: Path
+    spatial_extent: tuple[float, float, float, float]
+    resolution: float
+    crs: str
+
+
+@dataclass(frozen=True)
+class PointCloudPreprocessRequest:
+    """Adapter request for safe point-cloud filter/preprocess workflows."""
+
+    input_path: Path | str
+    output_path: Path
+    crs: str
+    remove_outliers: bool = False
+    outlier_mean_k: int = 8
+    outlier_multiplier: float = 3.0
+    classify_ground: bool = False
+    ground_action: str = "none"
+    add_hag: bool = False
+    hag_method: str = "delaunay"
+    dtm_path: Path | None = None
+    filter_hag: bool = False
+    hag_lower_limit: float = 0.0
+    hag_upper_limit: float | None = None
+    thin_radius: float | None = None
+    voxelgrid_cell: float | None = None
+    voxelgrid_mode: str = "first"
+    compress: bool = True
+
+
+@dataclass(frozen=True)
+class PointCloudPreprocessResult:
+    """Adapter result for a written preprocessed point cloud."""
+
+    output_path: Path
+    point_count: int | None
+    crs: str
+    operations: tuple[str, ...]
 
 
 @dataclass(frozen=True)

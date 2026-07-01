@@ -14,6 +14,7 @@ RASTER_RESULT_TYPES = frozenset(
         "pad_geotiff",
         "pai_geotiff",
         "fhd_geotiff",
+        "dtm_geotiff",
     }
 )
 
@@ -61,6 +62,7 @@ def layer_display_name(result_type: str, dataset_stem: str | None) -> str:
         "pad_geotiff": "PAD RGB 5-3-2",
         "pai_geotiff": "PAI",
         "fhd_geotiff": "FHD",
+        "dtm_geotiff": "DTM",
     }.get(result_type, "Raster")
     if dataset_stem:
         return f"PyForestScan {product} - {dataset_stem}"

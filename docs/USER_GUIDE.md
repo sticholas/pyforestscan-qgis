@@ -60,7 +60,9 @@ Expert users can run advanced PyForestScan algorithms from QGIS Processing Toolb
 
 Advanced raster outputs use the same loading/styling rules as Mission Control: CHM, Canopy Cover, PAI, and FHD load as grayscale when possible, while PAD loads as the documented RGB 5/3/2 composite when enough bands exist. Rumple writes a CSV summary because PyForestScan returns a scalar value.
 
-The HAG/Normalize tool reads lidar with PyForestScan HAG support and can optionally write LAS/LAZ through PyForestScan `write_las`. It does not invent unsupported normalized output formats.
+The HAG/Normalize tool reads lidar with PyForestScan HAG support and can optionally write LAS/LAZ through PyForestScan `write_las`. It also exposes expert read options such as bounds, thinning radius, and crop polygon/WKT. It does not invent unsupported normalized output formats.
+
+Advanced DTM creates a GeoTIFF from ground-classified points. Advanced Point Cloud Preprocess / Filters writes LAS/LAZ after selected PyForestScan filter steps such as outlier cleaning, ground classification, ground filtering, HAG, HAG range filtering, Poisson thinning, and voxel-grid downsampling.
 
 ## Dataset Explorer
 
