@@ -11,8 +11,10 @@ from .algorithms.advanced import (
     AdvancedDtmAlgorithm,
     AdvancedFhdAlgorithm,
     AdvancedPadAlgorithm,
+    AdvancedPointDensityAlgorithm,
     AdvancedPaiAlgorithm,
     AdvancedRumpleAlgorithm,
+    AdvancedVoxelStatAlgorithm,
     NormalizeHagAlgorithm,
     PointCloudPreprocessAlgorithm,
 )
@@ -59,6 +61,8 @@ class PyForestScanProvider(QgsProcessingProvider):
         self.addAlgorithm(AdvancedCanopyCoverAlgorithm())
         self.addAlgorithm(AdvancedFhdAlgorithm())
         self.addAlgorithm(AdvancedRumpleAlgorithm())
+        self.addAlgorithm(AdvancedPointDensityAlgorithm())
+        self.addAlgorithm(AdvancedVoxelStatAlgorithm())
         self.addAlgorithm(NormalizeHagAlgorithm())
         self.addAlgorithm(AdvancedDtmAlgorithm())
         self.addAlgorithm(PointCloudPreprocessAlgorithm())

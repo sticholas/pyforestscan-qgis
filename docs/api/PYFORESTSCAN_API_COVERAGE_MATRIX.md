@@ -20,8 +20,8 @@ Sources reviewed: official usage pages for importing/preprocessing/writing, DTM,
 | `calculate_canopy_cover` | `pad`, `voxel_height`, `min_height=2.0`, `max_height=None`, `k=0.5` | 2D `ndarray` | Implemented | `create_canopy_cover`, Advanced Canopy Cover | None | Advanced exposes threshold, max height, k, and internal PAD settings. |
 | `calculate_fhd` | `voxel_returns`, `voxel_height=1.0`, `min_height=0.0`, `max_height=None` | 2D `ndarray` | Implemented | `create_fhd`, Advanced FHD | None | Advanced exposes height range. |
 | `calculate_rumple` | `chm`, `cell_resolution`, `min_height=None` | scalar `float` | Implemented | `create_rumple`, Advanced Rumple | None | Output is CSV summary, not raster. |
-| `calculate_point_density` | `voxel_returns`, `per_area=False`, `cell_area=None` | 2D `ndarray` | Deferred | None | All parameters | Useful QA product, but not a requested scientific output yet. |
-| `calculate_voxel_stat` | `arr`, `voxel_resolution`, `dimension`, `stat`, `z_index_range=None` | 2D `ndarray` | Deferred | None | All parameters | Powerful expert metric; needs output naming/stat validation design. |
+| `calculate_point_density` | `voxel_returns`, `per_area=False`, `cell_area=None` | 2D `ndarray` | Implemented | `PyForestScanAdapter.create_point_density`, Advanced Point Density | None | Phase 20C exposes exact `per_area` and `cell_area` controls. |
+| `calculate_voxel_stat` | `arr`, `voxel_resolution`, `dimension`, `stat`, `z_index_range=None` | 2D `ndarray` | Implemented | `PyForestScanAdapter.create_voxel_stat`, Advanced Voxel Statistic | None | Phase 20C exposes `dimension`, documented `stat` values, and optional `z_index_range`. |
 | `generate_dtm` | `ground_points`, `resolution=2.0` | `(ndarray, extent)` | Implemented | `PyForestScanAdapter.generate_dtm`, Advanced DTM | None | Advanced DTM can optionally classify ground first. |
 
 ## Filters Module

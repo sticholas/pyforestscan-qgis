@@ -16,9 +16,10 @@ flowchart LR
 Processing algorithm classes do not import PyForestScan. They parse QGIS parameters, build typed request objects, call the adapter, and optionally load/style outputs.
 
 ## Algorithms
+
 ## Phase 20B Coverage Additions
 
-Phase 20B adds Advanced DTM and Advanced Point Cloud Preprocess / Filters, and expands HAG/Normalize with read-time bounds, thinning radius, and crop polygon options. The full coverage audit lives in `docs/api/PYFORESTSCAN_API_COVERAGE_MATRIX.md`.
+Phase 20B added Advanced DTM and Advanced Point Cloud Preprocess / Filters, and expanded HAG/Normalize with read-time bounds, thinning radius, and crop polygon options. Phase 20C adds exact `calculate.py` parameter parity for Point Density and Voxel Statistic. The full coverage audit lives in `docs/api/PYFORESTSCAN_API_COVERAGE_MATRIX.md`; the exact parameter matrix lives in `docs/api/PYFORESTSCAN_EXACT_PARAMETER_MATRIX.md`.
 
 
 ### Advanced CHM
@@ -137,6 +138,39 @@ Parameters:
 
 Adapter call: `generate_dtm(DtmRequest(...))`. This workflow expects usable ground points. If the source is not already ground-classified, enable the classify-ground option and manually QA the result.
 
+### Advanced Point Density
+
+Parameters:
+
+- Input LAS/LAZ/COPC/EPT
+- Dataset CRS
+- Output Point Density GeoTIFF
+- X resolution
+- Y resolution
+- `voxel_resolution Z / voxel height`
+- `per_area`
+- Optional `cell_area`
+- Add output to project
+
+Adapter call: `create_point_density(PointDensityRequest(...))`. The adapter reads HAG-enabled points, assigns voxels, calls `calculate_point_density`, and writes the returned 2D array as a GeoTIFF. If `cell_area` is omitted, the adapter uses X resolution multiplied by Y resolution when area-normalizing.
+
+### Advanced Voxel Statistic
+
+Parameters:
+
+- Input LAS/LAZ/COPC/EPT
+- Dataset CRS
+- Output Voxel Statistic GeoTIFF
+- X resolution
+- Y resolution
+- `voxel_resolution Z / voxel height`
+- `dimension`
+- `stat`: `mean`, `sum`, `count`, `min`, `max`, `median`, `std`
+- Optional `z_index_range` minimum and maximum indexes
+- Add output to project
+
+Adapter call: `create_voxel_stat(VoxelStatRequest(...))`. The adapter validates that the requested dimension exists in the loaded point array and maps the optional index controls to PyForestScan's `z_index_range` tuple.
+
 ### Advanced Point Cloud Preprocess / Filters
 
 Parameters:
@@ -182,7 +216,9 @@ Adapter call: `normalize_heights(HagNormalizationRequest(...))`. If an output pa
 8. Run Advanced Rumple and confirm a CSV table is written and optionally loaded.
 9. Run HAG/Normalize without output and confirm it reports the in-memory limitation.
 10. Run HAG/Normalize with a LAS/LAZ output on a small dataset and confirm the output is written.
-11. Reopen Mission Control and confirm guided single-file and batch workflows still work.
+11. Run Advanced Point Density with `per_area` off and on; confirm a single-band GeoTIFF is written.
+12. Run Advanced Voxel Statistic for a known dimension such as `Intensity` or `HeightAboveGround`; confirm invalid dimensions fail clearly.
+13. Reopen Mission Control and confirm guided single-file and batch workflows still work.
 
 ## Limitations
 

@@ -14,6 +14,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Phase 20C exact Advanced Toolbox parameter parity with a parameter-by-parameter PyForestScan calculate matrix plus Advanced Point Density and Advanced Voxel Statistic algorithms.
 - Phase 20B API coverage audit with Advanced DTM, Advanced Point Cloud Preprocess / Filters, expanded HAG read options, full PyForestScan coverage matrix, gap analysis, and parameter coverage docs.
 - Advanced Processing Toolbox group with expert CHM, PAD, PAI, Canopy Cover, FHD, Rumple, and Height Above Ground/Normalize algorithms routed through adapter-backed request builders.
 - Workspace Welcome and Resume UI with Continue Last Workspace, Start New Workspace, Recent Workspaces, workspace status, timeline viewer, notes editor, reset action, Home dashboard workspace state, and QGIS-free display helper tests.

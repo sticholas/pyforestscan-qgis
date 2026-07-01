@@ -18,8 +18,10 @@ from pyforestscan_qgis.core.advanced_processing import (
     AdvancedDtmParameters,
     AdvancedHagParameters,
     AdvancedPointCloudPreprocessParameters,
+    AdvancedPointDensityParameters,
     AdvancedRumpleParameters,
     AdvancedVoxelParameters,
+    AdvancedVoxelStatParameters,
     build_canopy_cover_request,
     build_chm_request,
     build_dtm_request,
@@ -27,11 +29,20 @@ from pyforestscan_qgis.core.advanced_processing import (
     build_pad_request,
     build_pai_request,
     build_point_cloud_preprocess_request,
+    build_point_density_request,
     build_rumple_request,
+    build_voxel_stat_request,
     parse_bounds_text,
 )
 from pyforestscan_qgis.core.exceptions import ProcessingError
-from pyforestscan_qgis.core.types import DtmRequest, HagNormalizationRequest, PaiRequest, PointCloudPreprocessRequest
+from pyforestscan_qgis.core.types import (
+    DtmRequest,
+    HagNormalizationRequest,
+    PaiRequest,
+    PointCloudPreprocessRequest,
+    PointDensityRequest,
+    VoxelStatRequest,
+)
 
 
 class AdvancedProcessingTests(unittest.TestCase):
@@ -176,6 +187,71 @@ class AdvancedProcessingTests(unittest.TestCase):
         self.assertEqual(0.5, request.thin_radius)
         self.assertTrue(request.crop_polygon)
 
+    def test_point_density_request_maps_exact_calculate_parameters(self) -> None:
+        request = build_point_density_request(
+            AdvancedPointDensityParameters(
+                input_path="plot.laz",
+                output_path=Path("point_density.tif"),
+                crs="EPSG:32610",
+                x_resolution=2.0,
+                y_resolution=4.0,
+                voxel_height=1.5,
+                per_area=True,
+                cell_area=8.0,
+            )
+        )
+
+        self.assertIsInstance(request, PointDensityRequest)
+        self.assertEqual(1.5, request.voxel_height)
+        self.assertTrue(request.per_area)
+        self.assertEqual(8.0, request.cell_area)
+        self.assertEqual(4.0, request.y_resolution)
+
+    def test_voxel_stat_request_maps_dimension_stat_and_z_index_range(self) -> None:
+        request = build_voxel_stat_request(
+            AdvancedVoxelStatParameters(
+                input_path="plot.laz",
+                output_path=Path("voxel_stat.tif"),
+                crs="EPSG:32610",
+                x_resolution=2.0,
+                y_resolution=2.0,
+                voxel_height=1.0,
+                dimension="Intensity",
+                stat="median",
+                z_index_min=1,
+                z_index_max=4,
+            )
+        )
+
+        self.assertIsInstance(request, VoxelStatRequest)
+        self.assertEqual("Intensity", request.dimension)
+        self.assertEqual("median", request.stat)
+        self.assertEqual((1, 4), request.z_index_range)
+
+    def test_voxel_stat_rejects_invalid_stat_and_partial_z_range(self) -> None:
+        with self.assertRaises(ProcessingError):
+            build_voxel_stat_request(
+                AdvancedVoxelStatParameters(
+                    input_path="plot.laz",
+                    output_path=Path("voxel_stat.tif"),
+                    crs="EPSG:32610",
+                    x_resolution=1.0,
+                    y_resolution=1.0,
+                    stat="mode",
+                )
+            )
+        with self.assertRaises(ProcessingError):
+            build_voxel_stat_request(
+                AdvancedVoxelStatParameters(
+                    input_path="plot.laz",
+                    output_path=Path("voxel_stat.tif"),
+                    crs="EPSG:32610",
+                    x_resolution=1.0,
+                    y_resolution=1.0,
+                    z_index_min=1,
+                )
+            )
+
     def test_adapter_pai_mapping_uses_explicit_y_resolution_and_beer_lambert(self) -> None:
         calls: dict[str, object] = {}
         point_array = np.array(
@@ -229,6 +305,87 @@ class AdvancedProcessingTests(unittest.TestCase):
         self.assertEqual((2.0, 3.0, 1.5), calls["voxel_resolution"])
         self.assertEqual((1.5, 0.7, False), calls["pad_args"])
         self.assertEqual((1.5, 2.0, 10.0), calls["pai_args"])
+
+    def test_adapter_point_density_mapping_uses_exact_calculate_parameters(self) -> None:
+        calls: dict[str, object] = {}
+        point_array = np.array(
+            [(0.0, 0.0, 1.0), (1.0, 1.0, 3.0)],
+            dtype=[("X", "f8"), ("Y", "f8"), ("HeightAboveGround", "f8")],
+        )
+        fake_pyforestscan = types.ModuleType("pyforestscan")
+        fake_handlers = types.ModuleType("pyforestscan.handlers")
+        fake_handlers.read_lidar = lambda input_path, crs, hag=True: [point_array]  # type: ignore[attr-defined]
+
+        def assign_voxels(arr, voxel_resolution):
+            calls["voxel_resolution"] = voxel_resolution
+            return np.ones((2, 2, 2), dtype="f8"), [0.0, 2.0, 0.0, 2.0]
+
+        def calculate_point_density(voxels, per_area=False, cell_area=None):
+            calls["density_args"] = (per_area, cell_area)
+            return np.ones((2, 2), dtype="f8")
+
+        def create_geotiff(layer, output_file, crs, spatial_extent):
+            Path(output_file).write_text("fake", encoding="utf-8")
+
+        fake_pyforestscan.assign_voxels = assign_voxels  # type: ignore[attr-defined]
+        fake_pyforestscan.calculate_point_density = calculate_point_density  # type: ignore[attr-defined]
+        fake_handlers.create_geotiff = create_geotiff  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(sys.modules, {"pyforestscan": fake_pyforestscan, "pyforestscan.handlers": fake_handlers}):
+            result = PyForestScanAdapter().create_point_density(
+                PointDensityRequest(
+                    input_path="plot.laz",
+                    output_path=Path(temp_dir) / "density.tif",
+                    grid_resolution=2.0,
+                    y_resolution=3.0,
+                    voxel_height=1.5,
+                    crs="EPSG:32610",
+                    per_area=True,
+                    cell_area=6.0,
+                )
+            )
+            self.assertTrue(result.output_path.exists())
+
+        self.assertEqual((2.0, 3.0, 1.5), calls["voxel_resolution"])
+        self.assertEqual((True, 6.0), calls["density_args"])
+
+    def test_adapter_voxel_stat_mapping_uses_exact_calculate_parameters(self) -> None:
+        calls: dict[str, object] = {}
+        point_array = np.array(
+            [(0.0, 0.0, 1.0, 10.0), (1.0, 1.0, 3.0, 12.0)],
+            dtype=[("X", "f8"), ("Y", "f8"), ("HeightAboveGround", "f8"), ("Intensity", "f8")],
+        )
+        fake_pyforestscan = types.ModuleType("pyforestscan")
+        fake_handlers = types.ModuleType("pyforestscan.handlers")
+        fake_handlers.read_lidar = lambda input_path, crs, hag=True: [point_array]  # type: ignore[attr-defined]
+
+        def calculate_voxel_stat(arr, voxel_resolution, dimension, stat, z_index_range=None):
+            calls["voxel_stat_args"] = (voxel_resolution, dimension, stat, z_index_range)
+            return np.ones((2, 2), dtype="f8"), [0.0, 2.0, 0.0, 2.0]
+
+        def create_geotiff(layer, output_file, crs, spatial_extent):
+            Path(output_file).write_text("fake", encoding="utf-8")
+
+        fake_pyforestscan.calculate_voxel_stat = calculate_voxel_stat  # type: ignore[attr-defined]
+        fake_handlers.create_geotiff = create_geotiff  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(sys.modules, {"pyforestscan": fake_pyforestscan, "pyforestscan.handlers": fake_handlers}):
+            result = PyForestScanAdapter().create_voxel_stat(
+                VoxelStatRequest(
+                    input_path="plot.laz",
+                    output_path=Path(temp_dir) / "voxel_stat.tif",
+                    grid_resolution=2.0,
+                    y_resolution=3.0,
+                    voxel_height=1.5,
+                    crs="EPSG:32610",
+                    dimension="Intensity",
+                    stat="std",
+                    z_index_range=(1, 4),
+                )
+            )
+            self.assertTrue(result.output_path.exists())
+
+        self.assertEqual(((2.0, 3.0, 1.5), "Intensity", "std", (1, 4)), calls["voxel_stat_args"])
 
     def test_adapter_hag_without_output_reports_limitation(self) -> None:
         point_array = np.array([(0.0, 0.0, 1.0)], dtype=[("X", "f8"), ("Y", "f8"), ("HeightAboveGround", "f8")])

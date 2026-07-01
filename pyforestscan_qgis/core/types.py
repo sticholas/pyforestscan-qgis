@@ -344,6 +344,59 @@ class DtmResult:
 
 
 @dataclass(frozen=True)
+class PointDensityRequest:
+    """Adapter request for point-density raster generation."""
+
+    input_path: Path | str
+    output_path: Path
+    grid_resolution: float
+    voxel_height: float
+    crs: str
+    per_area: bool = False
+    cell_area: float | None = None
+    y_resolution: float | None = None
+
+
+@dataclass(frozen=True)
+class PointDensityResult:
+    """Adapter result for a point-density GeoTIFF."""
+
+    output_path: Path
+    spatial_extent: tuple[float, float, float, float]
+    grid_resolution: float
+    voxel_height: float
+    crs: str
+
+
+@dataclass(frozen=True)
+class VoxelStatRequest:
+    """Adapter request for voxel-statistic raster generation."""
+
+    input_path: Path | str
+    output_path: Path
+    grid_resolution: float
+    voxel_height: float
+    crs: str
+    dimension: str
+    stat: str
+    z_index_range: tuple[int, int] | None = None
+    y_resolution: float | None = None
+
+
+@dataclass(frozen=True)
+class VoxelStatResult:
+    """Adapter result for a voxel-statistic GeoTIFF."""
+
+    output_path: Path
+    spatial_extent: tuple[float, float, float, float]
+    grid_resolution: float
+    voxel_height: float
+    dimension: str
+    stat: str
+    crs: str
+
+
+@dataclass(frozen=True)
 class PointCloudPreprocessRequest:
     """Adapter request for safe point-cloud filter/preprocess workflows."""
 

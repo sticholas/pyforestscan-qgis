@@ -1,6 +1,6 @@
 # PyForestScan Advanced Gap Analysis
 
-Phase 20B compared Phase 20A Advanced Toolbox coverage against the full official PyForestScan documentation.
+Phase 20B compared Phase 20A Advanced Toolbox coverage against the full official PyForestScan documentation. Phase 20C then closed exact `calculate.py` parameter parity gaps for point density and voxel statistics.
 
 ## Gaps Closed In Phase 20B
 
@@ -9,13 +9,17 @@ Phase 20B compared Phase 20A Advanced Toolbox coverage against the full official
 - Expanded HAG/Normalize to expose `read_lidar` bounds, thinning radius, crop polygon, DTM-backed HAG, reprojection, and LAS/LAZ writing.
 - Added QGIS-free builders and tests for DTM, preprocessing, HAG options, and bounds parsing.
 
+## Gaps Closed In Phase 20C
+
+- Added Advanced Point Density using `assign_voxels`, `calculate_point_density`, `per_area`, and `cell_area`.
+- Added Advanced Voxel Statistic using `calculate_voxel_stat`, `dimension`, the documented `stat` enum, and optional `z_index_range`.
+- Added `docs/api/PYFORESTSCAN_EXACT_PARAMETER_MATRIX.md` as the parameter-by-parameter source for Advanced Toolbox parity.
+
 ## Remaining Deferred Items
 
 | Area | Deferred capability | Reason |
 | --- | --- | --- |
 | Tiled EPT processing | `process_with_tiles` | Needs adapter wrapper for cancellation, progress, output naming, tile summaries, and avoiding `print`/`tqdm` UX inside QGIS. |
-| Point density | `calculate_point_density` | Useful QA product but not yet designed as a named output/report. |
-| Voxel statistics | `calculate_voxel_stat` | Needs UI for dimension/stat/z-range, raster naming, and validation against available dimensions. |
 | PointSourceId filtering | `filter_pointsourceid` | Needs robust multi-ID input UX and QA datasets. |
 | Product-level clipping | Bounds/polygon options on CHM/PAD/PAI/FHD/cover/rumple | HAG/read utility exposes low-level crop; product crop should use a consistent QGIS vector/bounds UX. |
 | Visualization helpers | `plot_2d`, `plot_metric`, `plot_pad` | QGIS has native map canvas, raster symbology, histograms, profiles, layouts, and layer styling. |

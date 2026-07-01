@@ -41,10 +41,14 @@ from .types import (
     PadResult,
     PointCloudPreprocessRequest,
     PointCloudPreprocessResult,
+    PointDensityRequest,
+    PointDensityResult,
     PaiRequest,
     PaiResult,
     RumpleRequest,
     RumpleResult,
+    VoxelStatRequest,
+    VoxelStatResult,
     ProductRequest,
     ProductResult,
     ProductType,
@@ -295,8 +299,6 @@ class PyForestScanAdapter:
         except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
             self._progress.fail("CHM generation failed")
             raise ProcessingError(f"CHM generation failed: {exc}") from exc
-
-
 
     def create_pad(self, request: PadRequest) -> PadResult:
         """Generate PAD as a height-binned multi-band GeoTIFF."""
@@ -576,6 +578,109 @@ class PyForestScanAdapter:
             self._progress.fail("Canopy cover generation failed")
             raise ProcessingError(f"Canopy cover generation failed: {exc}") from exc
 
+    def create_point_density(self, request: PointDensityRequest) -> PointDensityResult:
+        """Generate a point-density GeoTIFF through PyForestScan calculate_point_density."""
+        if request.grid_resolution <= 0:
+            raise ProcessingError("Point Density X resolution must be greater than zero.")
+        if request.y_resolution is not None and request.y_resolution <= 0:
+            raise ProcessingError("Point Density Y resolution must be greater than zero.")
+        if request.voxel_height <= 0:
+            raise ProcessingError("Point Density voxel_height must be greater than zero.")
+        if request.cell_area is not None and request.cell_area <= 0:
+            raise ProcessingError("Point Density cell_area must be greater than zero when provided.")
+        if not request.crs:
+            raise ProcessingError("Point Density generation requires a dataset CRS.")
+        output_path = Path(request.output_path)
+        _validate_output_path(output_path)
+        self._progress.start("Reading lidar for point density")
+        self._log(LogLevel.INFO, "Starting point density generation", input=str(request.input_path), output=str(output_path))
+        try:
+            pyforestscan = _import_required("pyforestscan", ProcessingError)
+            handlers = _import_required("pyforestscan.handlers", ProcessingError)
+            point_array = self._read_hag_point_array(request.input_path, request.crs, "point density")
+            x_resolution, y_resolution = _xy_resolution(request.grid_resolution, request.y_resolution)
+            voxel_returns, extent = pyforestscan.assign_voxels(point_array, (x_resolution, y_resolution, request.voxel_height))
+            self._progress.update(55, "Voxel returns calculated")
+            cell_area = request.cell_area if request.cell_area is not None else x_resolution * y_resolution
+            point_density = pyforestscan.calculate_point_density(
+                voxel_returns,
+                per_area=request.per_area,
+                cell_area=cell_area,
+            )
+            self._progress.update(80, "Point density array calculated")
+            handlers.create_geotiff(point_density, str(output_path), request.crs, extent)
+            _validate_created_output(output_path)
+            self._progress.complete("Point Density GeoTIFF created")
+            return PointDensityResult(
+                output_path=output_path,
+                spatial_extent=tuple(float(value) for value in extent),
+                grid_resolution=request.grid_resolution,
+                voxel_height=request.voxel_height,
+                crs=request.crs,
+            )
+        except ProcessingError:
+            self._progress.fail("Point Density generation failed")
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            self._progress.fail("Point Density generation failed")
+            raise ProcessingError(f"Point Density generation failed: {exc}") from exc
+
+    def create_voxel_stat(self, request: VoxelStatRequest) -> VoxelStatResult:
+        """Generate a voxel-statistic GeoTIFF through PyForestScan calculate_voxel_stat."""
+        if request.grid_resolution <= 0:
+            raise ProcessingError("Voxel Statistic X resolution must be greater than zero.")
+        if request.y_resolution is not None and request.y_resolution <= 0:
+            raise ProcessingError("Voxel Statistic Y resolution must be greater than zero.")
+        if request.voxel_height <= 0:
+            raise ProcessingError("Voxel Statistic voxel_resolution Z / voxel height must be greater than zero.")
+        if not request.dimension.strip():
+            raise ProcessingError("Voxel Statistic dimension is required.")
+        if request.stat not in {"mean", "sum", "count", "min", "max", "median", "std"}:
+            raise ProcessingError("Voxel Statistic stat must be one of: mean, sum, count, min, max, median, std.")
+        if request.z_index_range is not None:
+            start, stop = request.z_index_range
+            if start < 0 or stop <= start:
+                raise ProcessingError("Voxel Statistic z_index_range must be an increasing pair of non-negative indexes.")
+        if not request.crs:
+            raise ProcessingError("Voxel Statistic generation requires a dataset CRS.")
+        output_path = Path(request.output_path)
+        _validate_output_path(output_path)
+        self._progress.start("Reading lidar for voxel statistic")
+        self._log(LogLevel.INFO, "Starting voxel statistic generation", input=str(request.input_path), output=str(output_path))
+        try:
+            pyforestscan = _import_required("pyforestscan", ProcessingError)
+            handlers = _import_required("pyforestscan.handlers", ProcessingError)
+            point_array = self._read_hag_point_array(request.input_path, request.crs, "voxel statistic")
+            names = getattr(point_array.dtype, "names", ()) or ()
+            if request.dimension not in names:
+                raise ProcessingError(f"Voxel Statistic input is missing requested dimension: {request.dimension}")
+            voxel_resolution = (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height)
+            voxel_stat, extent = pyforestscan.calculate_voxel_stat(
+                point_array,
+                voxel_resolution,
+                request.dimension,
+                request.stat,
+                z_index_range=request.z_index_range,
+            )
+            self._progress.update(80, "Voxel statistic array calculated")
+            handlers.create_geotiff(voxel_stat, str(output_path), request.crs, extent)
+            _validate_created_output(output_path)
+            self._progress.complete("Voxel Statistic GeoTIFF created")
+            return VoxelStatResult(
+                output_path=output_path,
+                spatial_extent=tuple(float(value) for value in extent),
+                grid_resolution=request.grid_resolution,
+                voxel_height=request.voxel_height,
+                dimension=request.dimension,
+                stat=request.stat,
+                crs=request.crs,
+            )
+        except ProcessingError:
+            self._progress.fail("Voxel Statistic generation failed")
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            self._progress.fail("Voxel Statistic generation failed")
+            raise ProcessingError(f"Voxel Statistic generation failed: {exc}") from exc
 
 
     def normalize_heights(self, request: HagNormalizationRequest) -> HagNormalizationResult:

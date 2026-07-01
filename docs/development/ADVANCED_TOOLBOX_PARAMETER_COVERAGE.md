@@ -1,6 +1,6 @@
 # Advanced Toolbox Parameter Coverage
 
-This document maps Advanced Toolbox algorithms to PyForestScan functions and parameters.
+This document maps Advanced Toolbox algorithms to PyForestScan functions and parameters. The exact `calculate.py` parameter-by-parameter matrix is maintained in `docs/api/PYFORESTSCAN_EXACT_PARAMETER_MATRIX.md`.
 
 | Algorithm | PyForestScan functions | Safe parameters exposed | Deferred parameters/workflows |
 | --- | --- | --- | --- |
@@ -12,6 +12,8 @@ This document maps Advanced Toolbox algorithms to PyForestScan functions and par
 | Advanced Rumple | `calculate_chm`, `calculate_rumple` | CRS, CSV output, X/Y CHM resolution, CHM interpolation, valid-region interpolation, edge cleaning, min height | Optional internal CHM export |
 | Generate Height Above Ground / Normalize Heights | `read_lidar`, `write_las` | CRS, HAG/HAG DTM, DTM path, reproject, bounds, thinning radius, crop polygon/WKT, LAS/LAZ output, compression | In-memory output visualization, vector-layer polygon selection |
 | Advanced DTM | `read_lidar`, optional `classify_ground_points`, `filter_select_ground`, `generate_dtm`, `create_geotiff` | CRS, DTM resolution, optional classify ground, nodata, add to project | DTM smoothing/QA workflows, product-level DTM reuse |
+| Advanced Point Density | `read_lidar(hag=True)`, `assign_voxels`, `calculate_point_density`, `create_geotiff` | CRS, output, X/Y resolution, voxel height, `per_area`, `cell_area`, add to project | Product-level crop/bounds, density classification QA dashboards |
+| Advanced Voxel Statistic | `read_lidar(hag=True)`, `calculate_voxel_stat`, `create_geotiff` | CRS, output, X/Y resolution, voxel height, `dimension`, `stat`, `z_index_range`, add to project | Product-level crop/bounds, batch statistic catalogs |
 | Advanced Point Cloud Preprocess / Filters | `remove_outliers_and_clean`, `classify_ground_points`, `filter_ground`, `filter_select_ground`, `add_height_above_ground`, `filter_hag`, `downsample_poisson`, `downsample_voxel`, `write_las` | Outlier mean/multiplier, classify ground, ground action, HAG method/DTM, HAG range, thinning, voxel downsample, compression | PointSourceId filter, full SMRF tuning, process summaries |
 
 ## Validation Policy

@@ -15,14 +15,17 @@ from .types import (
     HagNormalizationRequest,
     PadRequest,
     PointCloudPreprocessRequest,
+    PointDensityRequest,
     PaiRequest,
     ProductType,
     RumpleRequest,
+    VoxelStatRequest,
 )
 
 Interpolation = Literal["none", "nearest", "linear", "cubic"]
 
 VALID_INTERPOLATION = ("none", "nearest", "linear", "cubic")
+VALID_VOXEL_STATS = ("mean", "sum", "count", "min", "max", "median", "std")
 POINT_CLOUD_FILTER = "Point cloud datasets (*.las *.laz *.copc *.copc.laz *ept.json);;All files (*.*)"
 GEOTIFF_FILTER = "GeoTIFF files (*.tif *.tiff)"
 CSV_FILTER = "CSV files (*.csv)"
@@ -111,6 +114,26 @@ class AdvancedDtmParameters:
     classify_ground: bool = False
     nodata: float = -9999.0
     add_to_project: bool = True
+
+
+@dataclass(frozen=True)
+class AdvancedPointDensityParameters(AdvancedRasterParameters):
+    """Advanced point-density parameters exposed through Processing Toolbox."""
+
+    voxel_height: float = 1.0
+    per_area: bool = False
+    cell_area: float | None = None
+
+
+@dataclass(frozen=True)
+class AdvancedVoxelStatParameters(AdvancedRasterParameters):
+    """Advanced voxel-statistic parameters exposed through Processing Toolbox."""
+
+    voxel_height: float = 1.0
+    dimension: str = "HeightAboveGround"
+    stat: str = "mean"
+    z_index_min: int | None = None
+    z_index_max: int | None = None
 
 
 @dataclass(frozen=True)
@@ -284,6 +307,56 @@ def build_dtm_request(params: AdvancedDtmParameters) -> DtmRequest:
     )
 
 
+def build_point_density_request(params: AdvancedPointDensityParameters) -> PointDensityRequest:
+    """Validate point-density parameters and return an adapter request."""
+    _validate_raster_params(params, product="Point Density")
+    if params.voxel_height <= 0:
+        raise ProcessingError("Point Density voxel_height must be greater than zero.")
+    if params.cell_area is not None and params.cell_area <= 0:
+        raise ProcessingError("Point Density cell_area must be greater than zero when provided.")
+    return PointDensityRequest(
+        input_path=params.input_path,
+        output_path=params.output_path,
+        grid_resolution=params.x_resolution,
+        y_resolution=params.y_resolution,
+        voxel_height=params.voxel_height,
+        crs=params.crs,
+        per_area=params.per_area,
+        cell_area=params.cell_area,
+    )
+
+
+def build_voxel_stat_request(params: AdvancedVoxelStatParameters) -> VoxelStatRequest:
+    """Validate voxel-statistic parameters and return an adapter request."""
+    _validate_raster_params(params, product="Voxel Statistic")
+    if params.voxel_height <= 0:
+        raise ProcessingError("Voxel Statistic voxel_resolution Z / voxel height must be greater than zero.")
+    if not params.dimension.strip():
+        raise ProcessingError("Voxel Statistic dimension is required.")
+    if params.stat not in VALID_VOXEL_STATS:
+        raise ProcessingError(f"Voxel Statistic stat must be one of: {', '.join(VALID_VOXEL_STATS)}.")
+    z_index_range: tuple[int, int] | None = None
+    if params.z_index_min is not None or params.z_index_max is not None:
+        if params.z_index_min is None or params.z_index_max is None:
+            raise ProcessingError("Voxel Statistic z_index_range requires both minimum and maximum indexes.")
+        if params.z_index_min < 0 or params.z_index_max < 0:
+            raise ProcessingError("Voxel Statistic z_index_range indexes must be zero or greater.")
+        if params.z_index_max <= params.z_index_min:
+            raise ProcessingError("Voxel Statistic z_index_range maximum must be greater than minimum.")
+        z_index_range = (params.z_index_min, params.z_index_max)
+    return VoxelStatRequest(
+        input_path=params.input_path,
+        output_path=params.output_path,
+        grid_resolution=params.x_resolution,
+        y_resolution=params.y_resolution,
+        voxel_height=params.voxel_height,
+        crs=params.crs,
+        dimension=params.dimension.strip(),
+        stat=params.stat,
+        z_index_range=z_index_range,
+    )
+
+
 def build_point_cloud_preprocess_request(params: AdvancedPointCloudPreprocessParameters) -> PointCloudPreprocessRequest:
     """Validate point-cloud preprocessing parameters and return an adapter request."""
     if not params.crs.strip():
@@ -340,6 +413,8 @@ def result_type_for_product(product: ProductType) -> str:
         ProductType.CANOPY_COVER: "canopy_cover_geotiff",
         ProductType.FHD: "fhd_geotiff",
         ProductType.DTM: "dtm_geotiff",
+        ProductType.POINT_DENSITY: "point_density_geotiff",
+        ProductType.VOXEL_STAT: "voxel_stat_geotiff",
     }.get(product, "table")
 
 
