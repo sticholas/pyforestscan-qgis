@@ -40,6 +40,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..core.adapter import PyForestScanAdapter
+from ..core.backend import BackendService
 from ..core.batch import BatchProductSettings, BatchRequest, discover_lidar_files
 from ..core.batch_executor import PARALLEL_SAFE_MODE, SEQUENTIAL_MODE, BatchExecutor
 from ..core.batch_preflight import BatchPreflightReport, run_batch_preflight
@@ -1962,6 +1963,56 @@ class SettingsPage(MissionPage):
         workspace_form.addRow("Recent item limit", self.maximum_recent_items_spin)
         workspace.addLayout(workspace_form)
 
+        backend = self.add_section("PyForestScan Backend Manager")
+        backend.addWidget(_body_label("Backend installation is planned. Current phase provides detection, verification, and architecture only."))
+        self.backend_service = BackendService()
+        self.backend_status_label = _body_label("Backend Status: Unknown")
+        self.backend_location_label = _body_label("Backend Location: Unknown")
+        self.backend_environment_label = _body_label("Environment Location: Unknown")
+        self.backend_python_label = _body_label("Python Version: Not detected")
+        self.backend_pdal_label = _body_label("PDAL Version: Not detected")
+        self.backend_dependency_label = _body_label("Dependency summary: Not verified")
+        for label in (
+            self.backend_status_label,
+            self.backend_location_label,
+            self.backend_environment_label,
+            self.backend_python_label,
+            self.backend_pdal_label,
+            self.backend_dependency_label,
+        ):
+            backend.addWidget(label)
+
+        backend_buttons = QHBoxLayout()
+        self.verify_backend_button = QPushButton("Verify Backend")
+        self.verify_backend_button.clicked.connect(self.verify_backend)
+        self.install_backend_button = QPushButton("Install Backend (Planned)")
+        self.install_backend_button.setEnabled(False)
+        self.repair_backend_button = QPushButton("Repair (Planned)")
+        self.repair_backend_button.setEnabled(False)
+        self.update_backend_button = QPushButton("Update (Planned)")
+        self.update_backend_button.setEnabled(False)
+        self.open_backend_folder_button = QPushButton("Open Backend Folder")
+        self.open_backend_folder_button.clicked.connect(self.open_backend_folder)
+        self.view_backend_logs_button = QPushButton("View Logs")
+        self.view_backend_logs_button.clicked.connect(self.view_backend_logs)
+        for button in (
+            self.verify_backend_button,
+            self.install_backend_button,
+            self.repair_backend_button,
+            self.update_backend_button,
+            self.open_backend_folder_button,
+            self.view_backend_logs_button,
+        ):
+            backend_buttons.addWidget(button)
+        backend_buttons.addStretch(1)
+        backend.addLayout(backend_buttons)
+
+        self.backend_details = QTextEdit()
+        self.backend_details.setReadOnly(True)
+        self.backend_details.setMinimumHeight(180)
+        self.backend_details.setPlainText("Click Verify Backend to detect the planned user-local backend location and dependency state.")
+        backend.addWidget(self.backend_details)
+        self.refresh_backend_summary()
 
     def set_workspace_session(self, session: WorkspaceSession) -> None:
         """Display persisted workspace session preferences."""
@@ -2002,9 +2053,65 @@ class SettingsPage(MissionPage):
         value = self.default_output_folder.text().strip()
         self.defaultOutputFolderChanged.emit(Path(value) if value else None)
 
+    def refresh_backend_summary(self) -> None:
+        """Display backend path and detected state without running dependency commands."""
+        state = self.backend_service.detect_backend()
+        paths = self.backend_service.paths
+        registry = self.backend_service.get_registry()
+        self.backend_status_label.setText(f"Backend Status: {state.status.value}")
+        self.backend_location_label.setText(f"Backend Location: {paths.backend_root}")
+        self.backend_environment_label.setText(f"Environment Location: {paths.environment_path}")
+        required_count = len(registry.required_dependencies())
+        total_count = len(registry.dependencies)
+        self.backend_dependency_label.setText(f"Dependency summary: {required_count} required, {total_count - required_count} optional/future")
+        self.backend_details.setPlainText(
+            f"{state.message}\n\n"
+            "Install Backend, Repair, and Update are intentionally disabled in this phase. "
+            "PBM will not modify QGIS Python, the QGIS install directory, or user environment variables."
+        )
+
+    def verify_backend(self) -> None:
+        """Run safe PBM verification and display dependency results."""
+        result = self.backend_service.verify_backend()
+        self.backend_status_label.setText(f"Backend Status: {result.status.value}")
+        python_dependency = _find_backend_dependency(result, "python")
+        pdal_dependency = _find_backend_dependency(result, "pdal")
+        self.backend_python_label.setText(f"Python Version: {python_dependency.detected_version if python_dependency and python_dependency.detected_version else 'Not detected'}")
+        self.backend_pdal_label.setText(f"PDAL Version: {pdal_dependency.detected_version if pdal_dependency and pdal_dependency.detected_version else 'Not detected'}")
+        required = result.registry.required_dependencies()
+        verified_required = sum(1 for dependency in required if dependency.verification_status.value == "pass")
+        self.backend_dependency_label.setText(f"Dependency summary: {verified_required}/{len(required)} required dependencies verified")
+        self.backend_details.setPlainText(self.backend_service.format_verification_report(result))
+
+    def open_backend_folder(self) -> None:
+        """Open the backend folder if it already exists, otherwise show the planned path."""
+        folder = self.backend_service.open_backend_folder_path()
+        if folder.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+        else:
+            self.backend_details.setPlainText(
+                f"Backend folder does not exist yet: {folder}\n\n"
+                "Installation is planned for a future phase and will create this user-local directory without modifying QGIS."
+            )
+
+    def view_backend_logs(self) -> None:
+        """Display recent PBM log lines if logs exist."""
+        logs = self.backend_service.get_logs()
+        lines = []
+        for operation, entries in logs.items():
+            lines.append(f"[{operation}]")
+            lines.extend(entries or ("No log entries.",))
+            lines.append("")
+        self.backend_details.setPlainText("\n".join(lines).strip())
 
 
 
+def _find_backend_dependency(result: object, name: str):
+    """Return one backend dependency from a verification result by name."""
+    for dependency in result.registry.dependencies:
+        if dependency.name == name:
+            return dependency
+    return None
 
 
 def _format_preflight_report(report: BatchPreflightReport) -> str:

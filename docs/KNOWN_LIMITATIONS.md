@@ -27,3 +27,8 @@ This document records current limitations for the internal release candidate. It
 ## Release Scope
 
 This internal release is intended for controlled QGIS testing, workflow validation, and scientific QA. It is not a public QGIS Plugin Repository release candidate.
+
+
+## PyForestScan Backend Manager
+
+The PyForestScan Backend Manager is a foundation only. It detects planned paths, verifies existing backend files when present, and exposes disabled planned install/repair/update actions. It does not download Micromamba, create environments, install dependencies, or route processing through a managed backend yet.

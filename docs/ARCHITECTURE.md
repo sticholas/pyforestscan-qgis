@@ -134,6 +134,24 @@ QGIS-specific code is kept in UI or Processing integration modules. This include
 
 Core services and knowledge modules should remain importable in plain Python tests without QGIS.
 
+## PyForestScan Backend Manager
+
+The PyForestScan Backend Manager (PBM) is a new core subsystem for future user-local dependency management. It resolves platform-specific backend paths, stores typed backend configuration, maintains a dependency registry, verifies existing backend files, and exposes planned installer operations through a service facade.
+
+PBM does not currently install dependencies, modify QGIS Python, replace existing processing execution, or run PyForestScan jobs. It prepares the boundary for a future managed backend located under the user profile rather than the QGIS installation.
+
+```mermaid
+flowchart TD
+    A["Mission Control Settings"] --> B["BackendService"]
+    B --> C["Backend paths"]
+    B --> D["Dependency registry"]
+    B --> E["Verification"]
+    E --> F["Existing backend files only"]
+    B -."future install".-> G["User-local micromamba environment"]
+```
+
+See [PBM Architecture](backend/PBM_ARCHITECTURE.md) for details.
+
 ## Design Rules
 
 - Preserve `Mission Control -> JobManager -> Pipeline -> Adapter -> PyForestScan` for guided scientific processing.

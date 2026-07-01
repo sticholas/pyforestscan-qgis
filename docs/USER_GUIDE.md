@@ -402,3 +402,10 @@ Each batch writes `batch_manifest.json` in the batch folder before processing st
 ### External Worker Mode
 
 External worker mode is disabled. Manual validation showed that QGIS GUI Python can open multiple QGIS application windows instead of headless worker jobs. Use Sequential for safest execution or Parallel Safe for bounded in-process speedups. External workers will remain unavailable until a true headless Python launcher is proven.
+
+
+## PyForestScan Backend Manager
+
+Mission Control Settings includes a PyForestScan Backend Manager section. In the current release it can show the planned backend location, verify whether backend files already exist, summarize dependency state, and display logs if present. Install Backend, Repair, and Update are intentionally disabled and marked planned.
+
+PBM does not install anything yet. Continue using the documented QGIS dependency workflow until a later release enables managed backend installation. PBM will not modify QGIS Python, QGIS install folders, or system environment variables in this phase.

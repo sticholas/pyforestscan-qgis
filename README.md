@@ -15,6 +15,7 @@ PyForestScan remains the scientific engine. This repository provides the QGIS ap
 - **Batch processing** with preflight checks, manifests, resume/retry, checkpointed summaries, sequential mode, and guarded Parallel Safe mode.
 - **Workspace state** with recent workspaces, notes, timeline, run history, and local `.pyforestscan/` metadata.
 - **Expert Processing Toolbox** grouped by Diagnostics, Input / I/O, Preprocessing / Filters, Terrain, and Metrics.
+- **PyForestScan Backend Manager** foundation for future user-local dependency installation, currently detection and verification only.
 
 External Worker mode is disabled. It is preserved as research code only and is blocked from normal use.
 
@@ -108,6 +109,7 @@ Key entry points:
 - [Architecture](docs/architecture/README.md)
 - [Developer Guide](docs/developer/README.md)
 - [PyForestScan API Audit](docs/api/README.md)
+- [PyForestScan Backend Manager](docs/backend/PBM_ARCHITECTURE.md)
 - [Release Checklist](docs/releases/INTERNAL_RELEASE_CHECKLIST.md)
 - [Known Limitations](docs/KNOWN_LIMITATIONS.md)
 
