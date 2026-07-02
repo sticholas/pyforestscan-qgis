@@ -33,7 +33,7 @@ def build_micromamba_bootstrap_plan(paths: BackendPaths) -> MicromambaBootstrapP
         target_executable=paths.micromamba_executable,
         download_cache_path=paths.downloads_dir / artifact,
         artifact_name=artifact,
-        source_note="Future installer will use a pinned micromamba bootstrap source with checksum verification. No download occurs in Phase 22B.",
+        source_note="Installer preview uses a pinned micromamba bootstrap source strategy; real download requires the Phase 22C developer guard.",
         verification_steps=(
             "Verify downloaded artifact checksum before extraction.",
             "Verify micromamba executable exists at the user-local backend path.",

@@ -17,7 +17,7 @@ class BackendChannel:
 
 
 def default_backend_channels() -> tuple[BackendChannel, ...]:
-    """Return the initial package-channel policy for Phase 22B dry runs."""
+    """Return the initial package-channel policy for PBM installer planning."""
     return (
         BackendChannel(
             name="conda-forge",

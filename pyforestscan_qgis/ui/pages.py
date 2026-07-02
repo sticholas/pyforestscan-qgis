@@ -1994,8 +1994,13 @@ class SettingsPage(MissionPage):
         self.verify_qgis_button.clicked.connect(self.verify_qgis_compatibility)
         self.preview_install_plan_button = QPushButton("Preview Install Plan")
         self.preview_install_plan_button.clicked.connect(self.preview_install_plan)
-        self.install_backend_button = QPushButton("Install Backend (Planned)")
-        self.install_backend_button.setEnabled(False)
+        if self.backend_service.backend_install_enabled():
+            self.install_backend_button = QPushButton("Install Backend Experimental")
+            self.install_backend_button.setEnabled(True)
+            self.install_backend_button.clicked.connect(self.install_backend_experimental)
+        else:
+            self.install_backend_button = QPushButton("Install Backend (Planned)")
+            self.install_backend_button.setEnabled(False)
         self.repair_backend_button = QPushButton("Repair (Planned)")
         self.repair_backend_button.setEnabled(False)
         self.update_backend_button = QPushButton("Update (Planned)")
@@ -2078,10 +2083,12 @@ class SettingsPage(MissionPage):
         total_count = len(registry.dependencies)
         self.backend_dependency_label.setText(f"Dependency summary: {required_count} required, {total_count - required_count} optional/future")
         self.qgis_compatibility_label.setText(f"QGIS Compatibility: {compatibility.summary()}")
-        self.backend_install_readiness_label.setText(f"Install readiness: dry-run preview for {len(plan.required_package_names())} packages; install disabled")
+        readiness = "experimental installer enabled" if self.backend_service.backend_install_enabled() else "install disabled"
+        self.backend_install_readiness_label.setText(f"Install readiness: dry-run preview for {len(plan.required_package_names())} packages; {readiness}")
         self.backend_details.setPlainText(
             f"{state.message}\n\n"
-            "Installation is not enabled yet. Preview Install Plan shows where the backend would be installed, which packages would be used, and which checks would run. "
+            "Installation is not enabled for normal users. Preview Install Plan shows where the backend would be installed, which packages would be used, and which checks would run. "
+            "If PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1 is set, the experimental installer is available for development testing only. "
             "PBM will not modify QGIS Python, the QGIS install directory, or user environment variables."
         )
 
@@ -2107,8 +2114,21 @@ class SettingsPage(MissionPage):
     def preview_install_plan(self) -> None:
         """Display the dry-run backend installation plan."""
         plan = self.backend_service.preview_install_plan()
-        self.backend_install_readiness_label.setText(f"Install readiness: dry-run preview for {len(plan.required_package_names())} packages; install disabled")
+        readiness = "experimental installer enabled" if self.backend_service.backend_install_enabled() else "install disabled"
+        self.backend_install_readiness_label.setText(f"Install readiness: dry-run preview for {len(plan.required_package_names())} packages; {readiness}")
         self.backend_details.setPlainText(self.backend_service.format_install_plan(plan))
+
+    def install_backend_experimental(self) -> None:
+        """Run the developer-only backend installer when the hard guard is enabled."""
+        result = self.backend_service.install_backend()
+        self.backend_status_label.setText(f"Backend Status: {result.status.value}")
+        self.backend_details.setPlainText(
+            "Experimental installer. Use only for development testing.\n\n"
+            f"Operation: {result.operation}\n"
+            f"Success: {result.success}\n"
+            f"Modified user-local backend files: {result.modified_system}\n"
+            f"Message: {result.message}"
+        )
 
     def open_backend_folder(self) -> None:
         """Open the backend folder if it already exists, otherwise show the planned path."""

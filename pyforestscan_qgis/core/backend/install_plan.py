@@ -55,7 +55,7 @@ def create_backend_install_plan(paths: BackendPaths | None = None, registry: Bac
     warnings = list(bootstrap_plan.warnings)
     if paths_value.platform is BackendPlatform.UNKNOWN:
         warnings.append("Backend platform is unknown; installation cannot be enabled until path and artifact policies are defined.")
-    warnings.append("Installation is not enabled in Phase 22B. This plan is preview-only and performs no downloads or installs.")
+    warnings.append("Installation is disabled for normal users. Real installer mechanics require PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1 for development testing.")
 
     return BackendInstallPlan(
         backend_root=paths_value.backend_root,
@@ -87,7 +87,7 @@ def create_backend_install_plan(paths: BackendPaths | None = None, registry: Bac
             BackendInstallStep("Repair path", "Repair remains a planned operation until controlled installer work begins."),
         ),
         offline_install_notes=(
-            "Offline install is a placeholder in Phase 22B.",
+            "Offline install remains a future placeholder after Phase 22C.",
             "Future design may accept a pre-downloaded micromamba artifact, package cache, and lock/spec file.",
             "Offline artifacts must still pass checksum and version verification before activation.",
         ),
@@ -99,7 +99,7 @@ def format_install_plan(plan: BackendInstallPlan) -> str:
     """Format the dry-run install plan for Mission Control."""
     lines = [
         "PyForestScan Backend Install Plan (Dry Run)",
-        "Installation is not enabled yet. No downloads, installs, QGIS Python changes, or environment-variable changes occur.",
+        "Installation is disabled for normal users. Developer-only installs require PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1; PBM does not modify QGIS Python or environment variables.",
         "",
         f"Platform: {plan.platform.value}",
         f"Backend root: {plan.backend_root}",

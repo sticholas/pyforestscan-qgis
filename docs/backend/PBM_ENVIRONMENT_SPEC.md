@@ -1,6 +1,21 @@
 # PBM Environment Spec
 
-Phase 22B defines the initial dry-run environment specification for the future managed PyForestScan backend.
+Phase 22C adds backend environment spec files for the future managed PyForestScan backend.
+
+## Spec Files
+
+The repository now includes:
+
+```text
+backend_specs/
+  environment.yml
+  environment.windows.yml
+  environment.linux.yml
+  environment.macos.yml
+  pins.md
+```
+
+The packaging script includes these files inside the plugin ZIP under `pyforestscan_qgis/backend_specs/` so the developer-only installer can locate them from an installed plugin.
 
 ## Required Packages
 
@@ -16,16 +31,17 @@ The initial environment spec is registry-driven and includes:
 | `rasterio` | Raster IO used by product workflows. |
 | `numpy` | Numeric array dependency. |
 
-Micromamba is handled by the bootstrap plan, not as an environment package.
+Micromamba is handled by the bootstrap policy, not as an environment package.
 
-## Channels
+## Pinning Strategy
 
-The dry-run channel policy is:
+Phase 22C uses conservative ranges rather than final production lock files:
 
-- `conda-forge`: primary planned channel for Python, PDAL, GDAL, rasterio, numpy, and compatible geospatial binaries.
-- `pypi-placeholder`: placeholder for PyForestScan if a conda-compatible package is unavailable in a future installer phase.
+- Python: `>=3.12,<3.13`.
+- PDAL/GDAL/rasterio/numpy: conda-forge geospatial stack with conservative lower bounds.
+- PyForestScan: `pyforestscan>=0.4` through pip until package-source validation is complete.
 
-Exact version pins and lock files are deferred to Phase 22C after controlled installer validation.
+Exact lock files and platform-specific final pins are deferred until controlled installer validation succeeds on Windows, Linux, and macOS.
 
 ## Separation From QGIS
 

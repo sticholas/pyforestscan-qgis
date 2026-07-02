@@ -1,12 +1,15 @@
 """PyForestScan Backend Manager core package.
 
 PBM is the plugin-owned architecture for managing a future isolated backend
-runtime. Phase 22B provides path resolution, registry models, detection,
-verification, dry-run install planning, and compatibility checks only; it does
-not download or install dependencies.
+runtime. Phase 22C adds a developer-only controlled installer prototype with
+staging and rollback; general user installation remains disabled.
 """
 
+from .checksums import ChecksumPolicy, ChecksumResult, verify_checksum
+from .downloads import DownloadResult, download_file, download_path
 from .install_plan import BackendInstallPlan, BackendInstallStep, create_backend_install_plan, format_install_plan
+from .installer import BACKEND_INSTALL_ENABLE_ENV, BackendInstaller, backend_install_enabled
+from .micromamba import MicromambaBootstrapPolicy, micromamba_bootstrap_policy, micromamba_source_url
 from .models import (
     BackendConfig,
     BackendDependency,
@@ -23,10 +26,12 @@ from .registry import default_backend_registry
 from .service import BackendService
 
 __all__ = [
+    "BACKEND_INSTALL_ENABLE_ENV",
     "BackendConfig",
     "BackendDependency",
     "BackendInstallPlan",
     "BackendInstallStep",
+    "BackendInstaller",
     "BackendLogEntry",
     "BackendOperationResult",
     "BackendPaths",
@@ -36,8 +41,18 @@ __all__ = [
     "BackendState",
     "BackendStatus",
     "BackendVerificationResult",
+    "ChecksumPolicy",
+    "ChecksumResult",
+    "DownloadResult",
+    "MicromambaBootstrapPolicy",
+    "backend_install_enabled",
     "create_backend_install_plan",
     "default_backend_registry",
+    "download_file",
+    "download_path",
     "format_install_plan",
+    "micromamba_bootstrap_policy",
+    "micromamba_source_url",
     "resolve_backend_paths",
+    "verify_checksum",
 ]

@@ -1,6 +1,6 @@
 # PBM Install Plan
 
-Phase 22B adds a dry-run installation plan for the PyForestScan Backend Manager (PBM). It prepares the future installer design without downloading Micromamba, creating environments, installing packages, modifying QGIS Python, or changing user environment variables.
+Phase 22B added a dry-run installation plan for the PyForestScan Backend Manager (PBM). Phase 22C keeps that preview for normal users and adds developer-only installer mechanics behind `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1`.
 
 ## Planned Backend Layout
 
@@ -20,11 +20,11 @@ The dry-run plan reports these paths:
 - Download cache path.
 - Logs and verification report locations.
 
-No folders are created by the preview.
+No folders are created by the preview. Developer-only installation uses staging and rollback below the same user-local backend root.
 
 ## Estimated Future Steps
 
-The Phase 22B planner describes future installer work only:
+The plan describes normal-user preview steps and the developer-only installer sequence:
 
 1. Prepare user-local backend folders.
 2. Download a pinned Micromamba bootstrap artifact.
@@ -34,7 +34,7 @@ The Phase 22B planner describes future installer work only:
 6. Write backend configuration and registry state.
 7. Run backend verification.
 
-These steps are displayed as planned actions. They are not executed in Phase 22B.
+These steps are displayed as planned actions for normal users. They may execute only in developer mode with `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1`.
 
 ## Verification Plan
 
@@ -57,4 +57,4 @@ The dry-run plan records repair requirements for the future installer:
 
 ## Offline Placeholder
 
-Offline installation is only a placeholder in Phase 22B. A later design may accept pre-downloaded Micromamba artifacts, package caches, and lock/spec files, but every artifact must still pass checksum and version verification before activation.
+Offline installation remains a placeholder after Phase 22C. A later design may accept pre-downloaded Micromamba artifacts, package caches, and lock/spec files, but every artifact must still pass checksum and version verification before activation.

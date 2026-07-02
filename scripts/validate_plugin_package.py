@@ -20,6 +20,11 @@ REQUIRED_FILES = {
     f"{PLUGIN_DIR_NAME}/provider.py",
     f"{PLUGIN_DIR_NAME}/processing_provider.py",
     f"{PLUGIN_DIR_NAME}/icons/pyforestscan.svg",
+    f"{PLUGIN_DIR_NAME}/backend_specs/environment.yml",
+    f"{PLUGIN_DIR_NAME}/backend_specs/environment.windows.yml",
+    f"{PLUGIN_DIR_NAME}/backend_specs/environment.linux.yml",
+    f"{PLUGIN_DIR_NAME}/backend_specs/environment.macos.yml",
+    f"{PLUGIN_DIR_NAME}/backend_specs/pins.md",
 }
 
 FORBIDDEN_PARTS = {".git", "__pycache__"}

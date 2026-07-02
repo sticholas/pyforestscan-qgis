@@ -1,6 +1,6 @@
 # PBM Installation Workflow
 
-This page describes the target installation workflow. Phase 22B does not implement installation; it only previews the future plan.
+This page describes the target installation workflow. Phase 22C implements a controlled developer-only installer prototype; normal user installation remains disabled.
 
 ## Target User Workflow
 
@@ -23,16 +23,19 @@ sequenceDiagram
     QGIS->>User: Tools are ready
 ```
 
-## Phase 22B Behavior
+## Phase 22C Behavior
 
 - Detect planned backend paths.
 - Detect whether `backend.json`, micromamba, backend environment, and backend Python exist.
 - Run version commands only when executables already exist.
 - Run Python import checks only when backend Python already exists.
 - Return planned-operation results for install, repair, update, and remove.
-- Preview the future install plan without creating folders, downloading artifacts, or installing packages.
+- Preview the future install plan for normal users.
+- Refuse real install actions unless `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1` is set.
+- In developer mode, use `downloads/`, `staging/`, `env/`, and `logs/` below the user-local backend root.
+- Roll back staging files on failed download, checksum, extraction, environment creation, or verification.
 - Report QGIS compatibility for current QGIS 3.x and defensive QGIS 4.x readiness.
-- Show clear UI text that installation is planned, not active.
+- Show clear UI text that installation is planned for users and experimental for developers.
 
 ## Future Installer Requirements
 

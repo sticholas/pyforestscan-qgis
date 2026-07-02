@@ -16,7 +16,9 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
 
         self.assertIn('QPushButton("Install Backend (Planned)")', source)
         self.assertIn("self.install_backend_button.setEnabled(False)", source)
-        self.assertNotIn("self.install_backend_button.clicked.connect", source)
+        self.assertIn("backend_install_enabled", source)
+        self.assertIn('QPushButton("Install Backend Experimental")', source)
+        self.assertIn("self.install_backend_button.clicked.connect(self.install_backend_experimental)", source)
 
     def test_phase_22b_preview_and_compatibility_buttons_are_present(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
@@ -25,7 +27,7 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
         self.assertIn('QPushButton("Verify QGIS Compatibility")', source)
         self.assertIn("preview_install_plan", source)
         self.assertIn("verify_qgis_compatibility", source)
-        self.assertIn("Installation is not enabled yet", source)
+        self.assertIn("Installation is not enabled for normal users", source)
 
 
 if __name__ == "__main__":

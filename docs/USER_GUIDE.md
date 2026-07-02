@@ -406,8 +406,10 @@ External worker mode is disabled. Manual validation showed that QGIS GUI Python 
 
 ## PyForestScan Backend Manager
 
-Mission Control Settings includes a PyForestScan Backend Manager section. In the current release it can show the planned backend location, verify whether backend files already exist, summarize dependency state, report QGIS compatibility, display logs if present, and preview the future install plan. Install Backend, Repair, and Update are intentionally disabled and marked planned.
+Mission Control Settings includes a PyForestScan Backend Manager section. It can show the planned backend location, verify whether backend files already exist, summarize dependency state, report QGIS compatibility, display logs if present, and preview the install plan.
 
-Preview Install Plan shows where the user-local backend would be installed, which packages would be included, which platform was detected, warnings, verification steps, rollback/repair notes, and offline-install placeholders. It is a dry run only.
+For normal users, Install Backend remains disabled and marked planned. The controlled installer prototype is available only for development testing when `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1` is set before launching QGIS. When that flag is present, Mission Control labels the button `Install Backend Experimental` and warns that it is not a production installer.
 
-PBM does not install anything yet. Continue using the documented QGIS dependency workflow until a later release enables managed backend installation. PBM will not modify QGIS Python, QGIS install folders, system Python, global user site-packages, or user environment variables in this phase. QGIS 3.x is the supported target. QGIS 4.x compatibility checks are defensive and must be tested when QGIS 4.x is available.
+Preview Install Plan shows where the user-local backend would be installed, which packages would be included, which platform was detected, warnings, verification steps, rollback/repair notes, and offline-install placeholders. The installer prototype uses staging and rollback under the user-local PBM backend root.
+
+PBM will not modify QGIS Python, QGIS install folders, system Python, global user site-packages, or user environment variables. QGIS 3.x is the supported target. QGIS 4.x compatibility checks are defensive and must be tested when QGIS 4.x is available.

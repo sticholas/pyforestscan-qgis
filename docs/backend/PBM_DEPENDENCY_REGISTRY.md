@@ -17,7 +17,7 @@ PBM uses a registry-driven model so backend dependencies can evolve without hard
 
 ## Future Optional Modules
 
-The initial registry also reserves optional entries for WhiteboxTools, Open3D, PyTorch, ONNX Runtime, Segment Anything, CloudCompare CLI, Entwine, and Potree Converter. These are not installed or required in Phase 22A.
+The initial registry also reserves optional entries for WhiteboxTools, Open3D, PyTorch, ONNX Runtime, Segment Anything, CloudCompare CLI, Entwine, and Potree Converter. These are not installed or required in Phase 22C.
 
 ## Dependency Fields
 

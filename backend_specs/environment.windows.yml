@@ -1,0 +1,13 @@
+name: pyforestscan-backend
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.12,<3.13
+  - pdal>=2.6
+  - python-pdal
+  - gdal>=3.8
+  - rasterio>=1.3
+  - numpy>=2.0
+  - pip
+  - pip:
+      - pyforestscan>=0.4

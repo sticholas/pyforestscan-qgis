@@ -5,7 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from .config import load_backend_config, planned_backend_config
+from .checksums import ChecksumResult
+from .downloads import DownloadResult
 from .install_plan import BackendInstallPlan, create_backend_install_plan, format_install_plan
+from .installer import BACKEND_INSTALL_ENABLE_ENV, BackendInstaller, backend_install_enabled
 from .logging import read_backend_log, write_backend_log_entry
 from .models import BackendOperationResult, BackendRegistry, BackendState, BackendStatus, BackendVerificationResult
 from .paths import BackendPaths, resolve_backend_paths
@@ -15,7 +18,7 @@ from .verification import format_verification_result, verify_backend
 
 
 class BackendService:
-    """Detect, verify, and preview the planned user-local PyForestScan backend."""
+    """Detect, verify, preview, and guard the user-local PyForestScan backend."""
 
     def __init__(self, paths: BackendPaths | None = None, registry: BackendRegistry | None = None) -> None:
         """Create a backend service using resolved paths and registry data."""
@@ -41,20 +44,60 @@ class BackendService:
         """Format the dry-run install plan for UI display."""
         return format_install_plan(plan or self.preview_install_plan())
 
+    def backend_install_enabled(self) -> bool:
+        """Return whether the developer-only installer flag is enabled."""
+        return backend_install_enabled()
+
+    def installer(self) -> BackendInstaller:
+        """Return a controlled installer bound to current paths."""
+        return BackendInstaller(self.paths)
+
+    def plan_install(self) -> BackendOperationResult:
+        """Return developer installer readiness without modifying files."""
+        return self.installer().plan_install()
+
+    def download_micromamba(self) -> DownloadResult:
+        """Download Micromamba through the developer-only installer path."""
+        return self.installer().download_micromamba()
+
+    def verify_micromamba_download(self) -> ChecksumResult:
+        """Verify the Micromamba download checksum."""
+        return self.installer().verify_micromamba_download()
+
+    def extract_micromamba(self) -> BackendOperationResult:
+        """Extract Micromamba through the developer-only installer path."""
+        return self.installer().extract_micromamba()
+
+    def create_environment(self) -> BackendOperationResult:
+        """Create the managed backend environment through the developer-only installer path."""
+        return self.installer().create_environment()
+
+    def verify_environment(self) -> BackendVerificationResult:
+        """Verify the staged backend environment."""
+        return self.installer().verify_environment()
+
+    def write_backend_config(self) -> BackendOperationResult:
+        """Write backend config through the developer-only installer path."""
+        return self.installer().write_backend_config()
+
+    def rollback_failed_install(self) -> BackendOperationResult:
+        """Rollback staging through the installer path."""
+        return self.installer().rollback_failed_install()
+
     def install_backend(self) -> BackendOperationResult:
-        """Return a planned-operation result; no installation occurs in Phase 22B."""
-        return self._planned_operation("install", BackendStatus.NOT_INSTALLED)
+        """Run the developer-only installer when explicitly enabled."""
+        return self.installer().install_backend()
 
     def repair_backend(self) -> BackendOperationResult:
-        """Return a planned-operation result; no repair occurs in Phase 22B."""
+        """Return a planned-operation result; no repair occurs in Phase 22C."""
         return self._planned_operation("repair", self.detect_backend().status)
 
     def update_backend(self) -> BackendOperationResult:
-        """Return a planned-operation result; no update occurs in Phase 22B."""
+        """Return a planned-operation result; no update occurs in Phase 22C."""
         return self._planned_operation("update", self.detect_backend().status)
 
     def remove_backend(self) -> BackendOperationResult:
-        """Return a planned-operation result; no removal occurs in Phase 22B."""
+        """Return a planned-operation result; no removal occurs in Phase 22C."""
         return self._planned_operation("remove", self.detect_backend().status)
 
     def open_backend_folder_path(self) -> Path:
@@ -101,7 +144,7 @@ class BackendService:
             operation="run_backend_python",
             status=self.detect_backend().status,
             success=False,
-            message="Backend Python execution is planned but disabled in Phase 22B.",
+            message="Backend Python execution is planned but disabled in Phase 22C.",
             modified_system=False,
         )
 
@@ -112,7 +155,7 @@ class BackendService:
             operation="run_pdal_pipeline",
             status=self.detect_backend().status,
             success=False,
-            message=f"Backend PDAL execution is planned but disabled in Phase 22B.{detail}",
+            message=f"Backend PDAL execution is planned but disabled in Phase 22C.{detail}",
             modified_system=False,
         )
 
@@ -125,6 +168,6 @@ class BackendService:
             operation=operation,
             status=status,
             success=False,
-            message="Backend installation is planned. Phase 22B provides dry-run install planning, compatibility checks, and verification scaffolding only.",
+            message=f"Backend {operation} is planned. Phase 22C keeps real install mechanics behind {BACKEND_INSTALL_ENABLE_ENV}=1 for development testing only.",
             modified_system=False,
         )

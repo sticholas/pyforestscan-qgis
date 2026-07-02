@@ -2,7 +2,7 @@
 
 The PyForestScan Backend Manager (PBM) is the planned backend dependency management subsystem for PyForestScan QGIS. PBM keeps the plugin lightweight while preparing a user-local backend runtime for PyForestScan, PDAL, GDAL, rasterio, numpy, and future scientific modules.
 
-Phase 22A provided architecture, typed models, path resolution, dependency registry, verification, logs, service boundaries, and Settings UI status. Phase 22B adds dry-run install planning, an environment specification, Micromamba bootstrap placeholders, and QGIS compatibility reporting. PBM still does not download, install, repair, update, remove, alter QGIS Python, change user environment variables, or execute scientific work through the managed backend.
+Phase 22A provided architecture, typed models, path resolution, dependency registry, verification, logs, service boundaries, and Settings UI status. Phase 22B added dry-run install planning, an environment specification, Micromamba bootstrap placeholders, and QGIS compatibility reporting. Phase 22C adds a controlled installer prototype behind a developer-only guard with staging and rollback. Normal user installation remains disabled, and PBM still must not alter QGIS Python, QGIS install folders, global environment variables, or execute scientific work through the managed backend.
 
 ## Goals
 
@@ -31,11 +31,11 @@ flowchart TD
     B --> F["Verification"]
     B --> G["Structured logs"]
     B --> M["QGIS compatibility report"]
-    B --> N["Dry-run install plan"]
+    B --> N["Install plan and guarded installer"]
     F --> H["Existing files only"]
     F --> I["Version commands if executables exist"]
     F --> J["Python imports if backend Python exists"]
-    N -."future".-> K["Installer / repair / update orchestration"]
+    N --> K["Developer-only installer prototype"]
     K -."future".-> L["Micromamba environment"]
 ```
 

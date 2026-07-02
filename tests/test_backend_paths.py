@@ -34,6 +34,11 @@ class BackendPathTests(unittest.TestCase):
         root = default_backend_root(BackendPlatform.MACOS, environ={}, home=Path("/Users/tester"))
         self.assertEqual(root, Path("/Users/tester/Library/Application Support/PyForestScan/backend"))
 
+    def test_phase_22c_downloads_and_staging_locations(self) -> None:
+        paths = resolve_backend_paths(backend_root=Path("/tmp/pfs-backend"), platform=BackendPlatform.LINUX)
+        self.assertEqual(paths.downloads_dir, paths.backend_root / "downloads")
+        self.assertEqual(paths.staging_dir, paths.backend_root / "staging")
+
     def test_resolved_paths_stay_under_backend_root(self) -> None:
         paths = resolve_backend_paths(backend_root=Path("/tmp/pfs-backend"), platform=BackendPlatform.LINUX)
         for path in (
@@ -45,6 +50,7 @@ class BackendPathTests(unittest.TestCase):
             paths.registry_file,
             paths.cache_dir,
             paths.downloads_dir,
+            paths.staging_dir,
             paths.scripts_dir,
         ):
             self.assertTrue(path.is_relative_to(paths.backend_root))

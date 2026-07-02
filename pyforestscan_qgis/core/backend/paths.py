@@ -24,6 +24,7 @@ class BackendPaths:
     registry_file: Path
     cache_dir: Path
     downloads_dir: Path
+    staging_dir: Path
     scripts_dir: Path
     install_log: Path
     verify_log: Path
@@ -73,11 +74,11 @@ def resolve_backend_paths(
     exe_suffix = ".exe" if platform_value is BackendPlatform.WINDOWS else ""
     micromamba = root / "micromamba" / f"micromamba{exe_suffix}"
     environment = root / "env"
-    python_name = "python.exe" if platform_value is BackendPlatform.WINDOWS else "python"
     python_executable = environment / ("python.exe" if platform_value is BackendPlatform.WINDOWS else "bin/python")
     logs_dir = root / "logs"
     cache_dir = root / "cache"
-    downloads_dir = cache_dir / "downloads"
+    downloads_dir = root / "downloads"
+    staging_dir = root / "staging"
     scripts_dir = root / "scripts"
     return BackendPaths(
         platform=platform_value,
@@ -90,6 +91,7 @@ def resolve_backend_paths(
         registry_file=root / "registry.json",
         cache_dir=cache_dir,
         downloads_dir=downloads_dir,
+        staging_dir=staging_dir,
         scripts_dir=scripts_dir,
         install_log=logs_dir / "backend_install.log",
         verify_log=logs_dir / "backend_verify.log",

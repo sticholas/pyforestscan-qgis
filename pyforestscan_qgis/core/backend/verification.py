@@ -53,7 +53,7 @@ def verify_backend(paths: BackendPaths, registry: BackendRegistry | None = None,
     ]
     if not paths.backend_root.exists():
         status = BackendStatus.NOT_INSTALLED
-        summary = "Backend is not installed. Phase 22A can detect and verify only; installation is planned."
+        summary = "Backend is not installed. Normal user installation is disabled; Phase 22C installer mechanics require the developer guard."
     elif required_failures or failures[:5]:
         status = BackendStatus.REPAIR_REQUIRED
         summary = "Backend files are incomplete or required dependencies are missing."

@@ -30,23 +30,27 @@ Implemented scope:
 
 No downloads, installs, environment creation, QGIS Python modification, user environment-variable changes, or backend execution occur.
 
-Remaining design work before Phase 22C:
-
-- Choose the exact Micromamba bootstrap source and checksum verification strategy.
-- Design package lock/spec files.
-- Define exact channels and version pins.
-- Add manual Windows installer proof outside QGIS.
-
 ## Phase 22C: Controlled Installer Prototype
 
-Potential scope:
+Implemented scope:
 
-- Download micromamba to the cache.
-- Verify artifact checksums.
-- Create user-local backend folder structure.
-- Install dependencies into the managed environment.
-- Verify backend readiness.
-- Preserve rollback/repair records.
+- Micromamba source URL policy, archive naming, download helper, checksum verification helper, and retry behavior.
+- Backend environment spec files under `backend_specs/` with conservative ranges and package notes.
+- Developer-only installer guard using `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1`.
+- Staging layout under `<backend_root>/staging/` with rollback on failure.
+- Service methods for planning, downloading, verifying, extracting, environment creation, staged verification, config writing, and rollback.
+- Mission Control Settings button that remains planned/disabled unless the developer flag is present, then shows `Install Backend Experimental`.
+- Package script support for including backend specs in the plugin ZIP.
+- QGIS-free tests with mocked downloads and no real environment creation.
+
+Normal user installation remains disabled.
+
+Remaining design work before broad enablement:
+
+- Add pinned SHA-256 checksums for selected Micromamba artifacts.
+- Validate exact package source strategy for PyForestScan.
+- Generate locked per-platform environment files after real installer tests.
+- Manually test Windows QGIS installation from ZIP with developer flag.
 
 ## Phase 22D: Backend Execution Bridge
 

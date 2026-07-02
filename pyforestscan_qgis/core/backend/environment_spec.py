@@ -53,7 +53,7 @@ class BackendEnvironmentSpec:
 
 
 def build_environment_spec(registry: BackendRegistry | None = None, channels: tuple[str, ...] = ("conda-forge", "pypi-placeholder")) -> BackendEnvironmentSpec:
-    """Build the Phase 22B dry-run environment spec from the dependency registry."""
+    """Build the managed backend environment spec from the dependency registry."""
     registry_value = registry or default_backend_registry()
     dependencies = {dependency.name: dependency for dependency in registry_value.dependencies}
     packages = tuple(BackendEnvironmentPackage.from_dependency(dependencies[name]) for name in _REQUIRED_ENV_PACKAGES if name in dependencies)
@@ -62,7 +62,7 @@ def build_environment_spec(registry: BackendRegistry | None = None, channels: tu
         packages=packages,
         channels=channels,
         notes=(
-            "This is a dry-run specification only; no environment is created in Phase 22B.",
+            "Normal users see this as a preview; Phase 22C developer installs use this spec through staging.",
             "The backend environment is planned under the user-local PBM backend root, separate from QGIS Python.",
             "Exact version pins and lock files are deferred to Phase 22C after installer validation.",
         ),

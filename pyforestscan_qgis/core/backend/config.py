@@ -47,7 +47,7 @@ def load_backend_config(path: Path) -> BackendConfig | None:
 def save_backend_config(config: BackendConfig, path: Path) -> None:
     """Persist backend config to disk.
 
-    This helper is provided for future installation phases. Phase 22A service
+    This helper is used by guarded installer phases. Normal service
     methods do not call it automatically because they must not modify user
     environments.
     """

@@ -21,7 +21,7 @@ def default_backend_registry() -> BackendRegistry:
             source="conda-forge bootstrap artifact",
             executable_name="micromamba",
             verification_command=("--version",),
-            notes="Future phases will download a user-local micromamba binary; Phase 22A only detects it if already present.",
+            notes="Phase 22C can download a user-local micromamba binary only when the developer installer guard is enabled.",
         ),
         BackendDependency(
             name="python",

@@ -15,6 +15,8 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Phase 22C PBM controlled installer prototype with Micromamba bootstrap policy, checksum/download helpers, environment spec files, developer-only install guard, staging/rollback mechanics, package spec inclusion, Settings experimental-install label, documentation, and QGIS-free mocked tests. Normal user installation remains disabled.
+
 - Phase 22B PyForestScan Backend Manager dry-run install planning, registry-driven environment spec, Micromamba bootstrap plan placeholders, QGIS compatibility reporting, Settings page install preview, compatibility docs, and QGIS-free tests. Installation remains disabled and no downloads or environment changes occur.
 - Phase 22A PyForestScan Backend Manager foundation with user-local backend path resolution, typed backend models, dependency registry, safe verification, service placeholders, Settings UI status, PBM documentation, and QGIS-free tests.
 - Phase 20F parameter and language polish with clearer Processing help strings, unit-aware parameter labels, current plugin metadata, user-guide cleanup, audit artifact, and naming/metadata regression tests.

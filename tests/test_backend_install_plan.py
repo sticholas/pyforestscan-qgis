@@ -31,7 +31,7 @@ class BackendInstallPlanTests(unittest.TestCase):
             ("python", "pyforestscan", "pdal", "python-pdal", "gdal", "rasterio", "numpy"),
         )
         self.assertIn("conda-forge", [channel.name for channel in plan.channels])
-        self.assertTrue(any("not enabled" in warning.lower() for warning in plan.warnings))
+        self.assertTrue(any("disabled for normal users" in warning.lower() for warning in plan.warnings))
 
     def test_environment_spec_uses_dependency_registry(self) -> None:
         registry = default_backend_registry()
@@ -67,7 +67,7 @@ class BackendInstallPlanTests(unittest.TestCase):
 
         self.assertEqual(before, after)
         self.assertIn("Dry Run", text)
-        self.assertIn("No downloads", text)
+        self.assertIn("Developer-only installs require", text)
 
     def test_format_install_plan_lists_verification_and_rollback(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

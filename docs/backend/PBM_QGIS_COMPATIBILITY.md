@@ -1,6 +1,6 @@
 # PBM QGIS Compatibility
 
-Phase 22B adds a QGIS compatibility report used by Mission Control Settings and by future PBM installer decisions. The report is defensive: it can run inside QGIS, and the module can also be imported by plain-Python tests without QGIS installed.
+Phase 22B added a QGIS compatibility report used by Mission Control Settings and by future PBM installer decisions. The report is defensive: it can run inside QGIS, and the module can also be imported by plain-Python tests without QGIS installed.
 
 ## Reported Fields
 
