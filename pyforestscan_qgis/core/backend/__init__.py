@@ -8,6 +8,7 @@ structured logs, version checks, and future backend modules. Internal beta insta
 
 from .checksums import ChecksumPolicy, ChecksumResult, verify_checksum
 from .download_manager import CancellationToken, DownloadManager, DownloadRequest, DownloadSource, ManagedDownloadResult
+from .execution import BackendExecutionAvailability, BackendExecutionService, validate_backend_python_executable
 from .downloads import DownloadResult, download_file, download_path
 from .install_plan import BackendInstallPlan, BackendInstallStep, create_backend_install_plan, format_install_plan
 from .installer import BACKEND_INSTALL_ENABLE_ENV, BackendInstallAvailability, BackendInstaller, backend_install_availability, backend_install_enabled
@@ -36,6 +37,8 @@ __all__ = [
     "BACKEND_INSTALL_ENABLE_ENV",
     "BackendConfig",
     "BackendDependency",
+    "BackendExecutionAvailability",
+    "BackendExecutionService",
     "BackendInstallAvailability",
     "BackendInstallPlan",
     "BackendInstallStep",
@@ -80,5 +83,6 @@ __all__ = [
     "micromamba_source_url",
     "plan_backend_repair",
     "resolve_backend_paths",
+    "validate_backend_python_executable",
     "verify_checksum",
 ]

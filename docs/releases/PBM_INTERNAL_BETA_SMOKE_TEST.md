@@ -50,6 +50,16 @@ After install, click **Verify Backend** and confirm:
 - Backend config exists and status is `Ready`.
 - Environment Check reports PBM managed backend readiness.
 
+## Processing Routing Smoke
+
+Confirm Environment Check shows:
+
+- QGIS Python scientific dependencies.
+- PBM backend readiness.
+- Selected execution backend.
+
+When PBM is Ready, CHM, Canopy Cover, PAD, PAI, FHD, Rumple, DTM, Point Density, and Voxel Statistic should report/use the PBM backend execution path. Height Above Ground point-cloud export and Preprocess Point Cloud may still require QGIS Python dependencies until routed.
+
 ## Guided / Advanced / Batch Smoke
 
 Run these with a tiny known-good LAS/LAZ dataset:

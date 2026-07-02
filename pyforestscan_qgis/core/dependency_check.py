@@ -57,6 +57,7 @@ class EnvironmentReport:
 ImportModule = Callable[[str], ModuleType]
 VersionLookup = Callable[[str], str]
 PBMBackendCheck = Callable[[], EnvironmentCheckResult]
+ExecutionBackendCheck = Callable[[], EnvironmentCheckResult]
 
 
 INSTALLATION_GUIDANCE = (
@@ -76,6 +77,7 @@ def collect_environment_report(
     version_lookup: VersionLookup | None = None,
     include_pbm_backend: bool = True,
     pbm_backend_check: PBMBackendCheck | None = None,
+    execution_backend_check: ExecutionBackendCheck | None = None,
 ) -> EnvironmentReport:
     """Collect structured diagnostics for the active runtime environment.
 
@@ -85,6 +87,7 @@ def collect_environment_report(
         version_lookup: Optional package metadata lookup used by tests.
         include_pbm_backend: Include managed-backend readiness diagnostics.
         pbm_backend_check: Optional PBM check override used by tests.
+        execution_backend_check: Optional execution backend check override used by tests.
 
     Returns:
         EnvironmentReport containing individual checks and final readiness.
@@ -108,7 +111,7 @@ def collect_environment_report(
             guidance=(
                 "PyForestScan is missing from QGIS Python. ZIP install is still usable "
                 "for opening Mission Control and diagnostics, but processing cannot run "
-                "until PyForestScan is installed manually or a future PBM backend is enabled."
+                "until PyForestScan is available in QGIS Python or PBM backend execution is selected for this product."
             ),
         ),
         _dependency_check(
@@ -163,6 +166,7 @@ def collect_environment_report(
 
     if include_pbm_backend:
         checks.append((pbm_backend_check or _pbm_backend_status_check)())
+        checks.append((execution_backend_check or _selected_execution_backend_check)())
 
     return build_environment_report(checks)
 
@@ -214,6 +218,34 @@ def format_environment_report(report: EnvironmentReport) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+
+def _selected_execution_backend_check() -> EnvironmentCheckResult:
+    """Report which execution backend the adapter would currently select."""
+    try:
+        from .adapter import PyForestScanAdapter
+
+        backend = PyForestScanAdapter().selected_execution_backend()
+    except Exception as exc:  # noqa: BLE001 - diagnostics must never crash.
+        return EnvironmentCheckResult(
+            name="Selected execution backend",
+            status=CheckStatus.WARNING,
+            message=f"Could not determine selected execution backend: {exc}",
+        )
+    if backend == "pbm_backend":
+        return EnvironmentCheckResult(
+            name="Selected execution backend",
+            status=CheckStatus.PASS,
+            message="PyForestScan Backend Manager will be preferred for routed processing products.",
+            guidance="QGIS will orchestrate jobs and load outputs; heavy routed products run in PBM backend Python.",
+        )
+    return EnvironmentCheckResult(
+        name="Selected execution backend",
+        status=CheckStatus.WARNING,
+        message="QGIS Python will be used for processing unless PBM backend becomes READY.",
+        guidance="Install or repair PBM backend to avoid requiring PyForestScan/PDAL in QGIS Python for routed products.",
+    )
 
 
 def _python_executable_check() -> EnvironmentCheckResult:

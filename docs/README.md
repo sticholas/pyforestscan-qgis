@@ -70,6 +70,8 @@ This documentation is organized for users, scientists, developers, maintainers, 
 - [PBM State Machine](backend/PBM_STATE_MACHINE.md)
 - [PBM Dependency Registry](backend/PBM_DEPENDENCY_REGISTRY.md)
 - [PBM Installation Workflow](backend/PBM_INSTALLATION_WORKFLOW.md)
+- [PBM Processing Execution](backend/PBM_PROCESSING_EXECUTION.md)
+- [PBM Runner Protocol](backend/PBM_RUNNER_PROTOCOL.md)
 - [PBM Implementation Plan](backend/PBM_IMPLEMENTATION_PLAN.md)
 - [PBM Future Modules](backend/PBM_FUTURE_MODULES.md)
 

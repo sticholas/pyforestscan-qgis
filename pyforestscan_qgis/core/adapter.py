@@ -11,7 +11,7 @@ import importlib
 import json
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable as TypingCallable
 from urllib.parse import urlparse
 
 from .config import AdapterConfig, DatasetOpenOptions, InspectionOptions
@@ -63,6 +63,22 @@ POINT_CLOUD_EXTENSIONS = {
     ".laz": DatasetFormat.LAZ,
     ".copc": DatasetFormat.COPC,
     ".copc.laz": DatasetFormat.COPC,
+}
+
+EXECUTION_MODE_AUTO = "auto"
+EXECUTION_MODE_QGIS_PYTHON = "qgis_python"
+EXECUTION_MODE_PBM_BACKEND = "pbm_backend"
+
+PBM_ROUTED_PRODUCTS = {
+    ProductType.CHM,
+    ProductType.PAD,
+    ProductType.PAI,
+    ProductType.FHD,
+    ProductType.CANOPY_COVER,
+    ProductType.RUMPLE,
+    ProductType.POINT_DENSITY,
+    ProductType.VOXEL_STAT,
+    ProductType.DTM,
 }
 
 DEFAULT_PRODUCTS = (
@@ -145,10 +161,14 @@ class PyForestScanAdapter:
         self,
         config: AdapterConfig | None = None,
         log_sink: LogSink | None = None,
+        execution_mode: str = EXECUTION_MODE_AUTO,
+        backend_service_factory: TypingCallable[[], object] | None = None,
     ) -> None:
         """Create an adapter with immutable configuration and optional logging."""
         self.config = config or AdapterConfig()
         self._log_sink = log_sink
+        self.execution_mode = execution_mode
+        self._backend_service_factory = backend_service_factory
         self._progress = AdapterProgress()
         self._open_dataset: DatasetSource | None = None
 
@@ -260,6 +280,9 @@ class PyForestScanAdapter:
             raise ProcessingError("CHM generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.CHM, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for CHM")
         self._log(LogLevel.INFO, "Starting CHM generation", input=str(request.input_path), output=str(output_path))
         try:
@@ -314,6 +337,9 @@ class PyForestScanAdapter:
             raise ProcessingError("PAD generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.PAD, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for PAD")
         self._log(LogLevel.INFO, "Starting PAD generation", input=str(request.input_path), output=str(output_path))
         try:
@@ -366,6 +392,9 @@ class PyForestScanAdapter:
             raise ProcessingError("PAI generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.PAI, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for PAI")
         self._log(LogLevel.INFO, "Starting PAI generation", input=str(request.input_path), output=str(output_path))
         try:
@@ -425,6 +454,9 @@ class PyForestScanAdapter:
             raise ProcessingError("FHD generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.FHD, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for FHD")
         self._log(LogLevel.INFO, "Starting FHD generation", input=str(request.input_path), output=str(output_path))
         try:
@@ -473,6 +505,9 @@ class PyForestScanAdapter:
             raise ProcessingError("Rumple generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_csv_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.RUMPLE, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for rumple")
         self._log(LogLevel.INFO, "Starting rumple generation", input=str(request.input_path), output=str(output_path))
         try:
@@ -534,6 +569,9 @@ class PyForestScanAdapter:
             raise ProcessingError("Canopy cover generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.CANOPY_COVER, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for canopy cover")
         self._log(LogLevel.INFO, "Starting canopy cover generation", input=str(request.input_path), output=str(output_path))
         try:
@@ -592,6 +630,9 @@ class PyForestScanAdapter:
             raise ProcessingError("Point Density generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.POINT_DENSITY, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for point density")
         self._log(LogLevel.INFO, "Starting point density generation", input=str(request.input_path), output=str(output_path))
         try:
@@ -645,6 +686,9 @@ class PyForestScanAdapter:
             raise ProcessingError("Voxel Statistic generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.VOXEL_STAT, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for voxel statistic")
         self._log(LogLevel.INFO, "Starting voxel statistic generation", input=str(request.input_path), output=str(output_path))
         try:
@@ -747,6 +791,9 @@ class PyForestScanAdapter:
             raise ProcessingError("DTM generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.DTM, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for DTM")
         self._log(LogLevel.INFO, "Starting DTM generation", input=str(request.input_path), output=str(output_path))
         try:
@@ -851,6 +898,54 @@ class PyForestScanAdapter:
         except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
             self._progress.fail("Point-cloud preprocessing failed")
             raise ProcessingError(f"Point-cloud preprocessing failed: {exc}") from exc
+
+
+    def selected_execution_backend(self) -> str:
+        """Return the currently selected processing backend label."""
+        if self._can_use_pbm_backend():
+            return EXECUTION_MODE_PBM_BACKEND
+        return EXECUTION_MODE_QGIS_PYTHON
+
+    def _backend_service(self) -> object:
+        if self._backend_service_factory is not None:
+            return self._backend_service_factory()
+        from .backend import BackendService
+
+        return BackendService()
+
+    def _can_use_pbm_backend(self) -> bool:
+        if self.execution_mode == EXECUTION_MODE_QGIS_PYTHON:
+            return False
+        try:
+            service = self._backend_service()
+            availability = service.can_execute_processing()
+            return bool(availability.ready)
+        except Exception:
+            return False
+
+    def _run_pbm_product_if_selected(self, product: ProductType, request: object):
+        if product not in PBM_ROUTED_PRODUCTS or self.execution_mode == EXECUTION_MODE_QGIS_PYTHON:
+            return None
+        service = self._backend_service()
+        try:
+            availability = service.can_execute_processing()
+        except Exception as exc:  # noqa: BLE001 - fall back in auto, fail in forced PBM.
+            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
+                raise ProcessingError(f"PBM backend is not available for {product.value}: {exc}") from exc
+            return None
+        if not availability.ready:
+            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
+                raise ProcessingError(availability.message)
+            return None
+        self._progress.start(f"Running {product.value} through PyForestScan Backend Manager")
+        self._log(LogLevel.INFO, "Running product through PBM backend", product=product.value, backend_python=str(availability.backend_python))
+        try:
+            backend_result = service.run_product(product.value, request)
+        except Exception as exc:  # noqa: BLE001 - convert backend subprocess errors at adapter boundary.
+            self._progress.fail(f"PBM backend {product.value} failed")
+            raise ProcessingError(f"PBM backend {product.value} failed: {exc}") from exc
+        self._progress.complete(f"PBM backend {product.value} complete")
+        return _adapter_result_from_backend(product, request, backend_result)
 
     def _read_hag_point_array(self, input_path: Path | str, crs: str, product_label: str) -> object:
         """Read lidar with HeightAboveGround and return one structured point array."""
@@ -979,6 +1074,33 @@ class PyForestScanAdapter:
                 LogContextItem(key=str(key), value=value) for key, value in context.items()
             )
             self._log_sink(LogRecord(level=level, message=message, context=typed_context))
+
+
+def _adapter_result_from_backend(product: ProductType, request: object, backend_result: object):
+    metrics = getattr(backend_result, "product_metrics", {}) or {}
+    outputs = getattr(backend_result, "outputs", {}) or {}
+    output_path = Path(metrics.get("output_path") or outputs.get("primary") or getattr(request, "output_path"))
+    extent = tuple(float(value) for value in metrics.get("spatial_extent", (0.0, 0.0, 0.0, 0.0)))
+    crs = str(metrics.get("crs") or getattr(request, "crs", ""))
+    if product is ProductType.CHM:
+        return ChmResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), crs)
+    if product is ProductType.PAD:
+        return PadResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), float(metrics.get("voxel_height", getattr(request, "voxel_height"))), int(metrics.get("band_count", 0)), crs)
+    if product is ProductType.PAI:
+        return PaiResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), float(metrics.get("voxel_height", getattr(request, "voxel_height"))), crs)
+    if product is ProductType.FHD:
+        return FhdResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), float(metrics.get("voxel_height", getattr(request, "voxel_height"))), crs)
+    if product is ProductType.RUMPLE:
+        return RumpleResult(output_path, float(metrics.get("rumple_index", 0.0)), extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), crs)
+    if product is ProductType.CANOPY_COVER:
+        return CanopyCoverResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), float(metrics.get("canopy_height_threshold", getattr(request, "canopy_height_threshold"))), crs)
+    if product is ProductType.POINT_DENSITY:
+        return PointDensityResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), float(metrics.get("voxel_height", getattr(request, "voxel_height"))), crs)
+    if product is ProductType.VOXEL_STAT:
+        return VoxelStatResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), float(metrics.get("voxel_height", getattr(request, "voxel_height"))), str(metrics.get("dimension", getattr(request, "dimension"))), str(metrics.get("stat", getattr(request, "stat"))), crs)
+    if product is ProductType.DTM:
+        return DtmResult(output_path, extent, float(metrics.get("resolution", getattr(request, "resolution"))), crs)
+    raise ProcessingError(f"Unsupported PBM backend result product: {product.value}")
 
 
 def _xy_resolution(x_resolution: float, y_resolution: float | None) -> tuple[float, float]:

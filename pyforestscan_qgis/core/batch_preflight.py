@@ -103,8 +103,11 @@ def run_batch_preflight(
         warnings.append(f"Free disk space could not be checked: {exc}")
     try:
         readiness = adapter.check_environment().readiness.value
-        if readiness != "READY":
+        backend = adapter.selected_execution_backend() if hasattr(adapter, "selected_execution_backend") else "qgis_python"
+        if readiness != "READY" and backend != "pbm_backend":
             blockers.append(f"Environment is {readiness}; run Environment Check before batch processing.")
+        elif readiness != "READY" and backend == "pbm_backend":
+            warnings.append("QGIS Python scientific dependencies are not READY, but PBM backend is READY and will be used for routed products.")
     except Exception as exc:  # noqa: BLE001 - preflight reports environment uncertainty.
         warnings.append(f"Environment readiness could not be verified: {exc}")
     workload_score = len(files_to_process) * max(1, len(request.settings.products))

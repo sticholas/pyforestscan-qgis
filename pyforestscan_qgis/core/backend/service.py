@@ -7,9 +7,10 @@ from pathlib import Path
 from .checksums import ChecksumResult
 from .config import load_backend_config, planned_backend_config
 from .downloads import DownloadResult
+from .execution import BackendExecutionAvailability, BackendExecutionService
 from .install_plan import BackendInstallPlan, create_backend_install_plan, format_install_plan
 from .installer import BackendInstallAvailability, BackendInstaller, backend_install_availability, backend_install_enabled
-from .logging import read_backend_log, write_backend_log_entry
+from .logging import backend_log_path, read_backend_log, write_backend_log_entry
 from .manifest import BackendManifest, load_backend_manifest
 from .models import BackendOperationResult, BackendRegistry, BackendState, BackendStatus, BackendVerificationResult
 from .modules import BackendModuleRegistry, default_backend_module_registry
@@ -66,6 +67,34 @@ class BackendService:
     def module_registry(self) -> BackendModuleRegistry:
         """Return future backend module registry placeholders."""
         return default_backend_module_registry()
+
+    def execution_service(self) -> BackendExecutionService:
+        """Return the controlled PBM processing execution service."""
+        return BackendExecutionService(self.paths, verifier=self.verify_backend)
+
+    def can_execute_processing(self) -> BackendExecutionAvailability:
+        """Return whether PBM backend processing can run now."""
+        return self.execution_service().can_execute_processing()
+
+    def verify_runner(self) -> BackendExecutionAvailability:
+        """Verify the PBM backend runner module."""
+        return self.execution_service().verify_runner()
+
+    def write_job_spec(self, product: str, request):
+        """Write a PBM backend job spec for a product request."""
+        return self.execution_service().write_job_spec(product, request)
+
+    def read_job_result(self, result_path: Path):
+        """Read a PBM backend job result."""
+        return self.execution_service().read_job_result(result_path)
+
+    def run_processing_job(self, spec, spec_path: Path | None = None):
+        """Run one PBM backend processing job spec."""
+        return self.execution_service().run_processing_job(spec, spec_path)
+
+    def run_product(self, product: str, request):
+        """Run one product through the PBM backend execution service."""
+        return self.execution_service().run_product(product, request)
 
     def preview_repair_plan(self) -> RepairPlan:
         """Return a non-mutating backend repair plan."""
@@ -157,6 +186,7 @@ class BackendService:
             "repair": read_backend_log(self.paths.repair_log),
             "update": read_backend_log(self.paths.update_log),
             "remove": read_backend_log(self.paths.remove_log),
+            "execute": read_backend_log(backend_log_path("execute", self.paths.logs_dir)),
         }
 
     def get_registry(self) -> BackendRegistry:

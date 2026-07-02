@@ -1193,6 +1193,8 @@ class ProcessingPage(MissionPage):
         self.start_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.log_text.clear()
+        execution_backend = self.job_manager.execution_backend().replace("_", " ")
+        self.log_text.setPlainText(f"Execution backend: {execution_backend}.\n")
         try:
             job = self.job_manager.run_pipeline(
                 Path(plan_path),
@@ -1571,7 +1573,8 @@ class BatchPage(MissionPage):
         self.active_workers = guardrail.max_workers if guardrail.is_parallel else 1
         mode_label = guardrail.effective_mode.replace("_", " ")
         self.worker_status_label.setText(f"Active workers: {self.active_workers} ({mode_label})")
-        self.status_label.setText(f"Status: Running {len(selected)} dataset(s) in {mode_label}.")
+        backend_label = PyForestScanAdapter().selected_execution_backend().replace("_", " ")
+        self.status_label.setText(f"Status: Running {len(selected)} dataset(s) in {mode_label}. Execution backend: {backend_label}.")
         self.batch_thread = QThread(self)
         self.batch_worker = _BatchExecutionWorker(request, self._batch_control_state)
         self.batch_worker.moveToThread(self.batch_thread)

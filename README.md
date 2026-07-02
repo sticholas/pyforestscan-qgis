@@ -81,7 +81,7 @@ python3 scripts/validate_plugin_package.py dist/pyforestscan_qgis.zip
 
 The package script writes both `dist/pyforestscan_qgis-v<version>.zip` and the latest convenience copy `dist/pyforestscan_qgis.zip`. Install either ZIP in QGIS through **Plugins > Manage and Install Plugins > Install from ZIP**.
 
-Before processing, run **PyForestScan / Diagnostics / Environment Check** or the Mission Control Environment page. Windows internal beta builds can install the PBM backend into the user-local PyForestScan folder from Mission Control Settings; PBM does not modify QGIS Python or system Python. Tools that have not been routed through PBM still report QGIS Python dependency requirements clearly.
+Before processing, run **PyForestScan / Diagnostics / Environment Check** or the Mission Control Environment page. Windows internal beta builds can install the PBM backend into the user-local PyForestScan folder from Mission Control Settings; PBM does not modify QGIS Python or system Python. When PBM is Ready, routed products run in PBM backend Python and QGIS loads the resulting files.
 
 ## Internal Release Pipeline
 
@@ -127,6 +127,8 @@ Key entry points:
 - [PBM Install Plan](docs/backend/PBM_INSTALL_PLAN.md)
 - [PBM Manifest](docs/backend/PBM_MANIFEST.md)
 - [PBM Transaction Model](docs/backend/PBM_TRANSACTION_MODEL.md)
+- [PBM Processing Execution](docs/backend/PBM_PROCESSING_EXECUTION.md)
+- [PBM Runner Protocol](docs/backend/PBM_RUNNER_PROTOCOL.md)
 - [QGIS Compatibility Layer](docs/development/QGIS_COMPATIBILITY_LAYER.md)
 - [Release Checklist](docs/releases/INTERNAL_RELEASE_CHECKLIST.md)
 - [PBM Internal Beta Smoke Test](docs/releases/PBM_INTERNAL_BETA_SMOKE_TEST.md)

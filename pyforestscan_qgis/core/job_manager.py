@@ -41,6 +41,11 @@ class JobManager:
         self._jobs: dict[str, JobRecord] = {}
         self._cancel_requested: set[str] = set()
 
+    def execution_backend(self) -> str:
+        """Return the adapter-selected execution backend for processing."""
+        selected = getattr(self._adapter, "selected_execution_backend", None)
+        return selected() if callable(selected) else "qgis_python"
+
     @property
     def jobs(self) -> tuple[JobRecord, ...]:
         """Return known jobs ordered by most recent update."""
@@ -127,7 +132,8 @@ class JobManager:
             if self._is_cancelled(job):
                 return self._finalize_cancelled(job)
 
-            start_message = "Processing pipeline started." if execute_products else "Pipeline dry-run validation started."
+            backend_label = self.execution_backend()
+            start_message = f"Processing pipeline started. Execution backend: {backend_label}." if execute_products else "Pipeline dry-run validation started."
             job = self._transition(job, JobStatus.RUNNING, start_message)
             pipeline_results = []
             total = max(1, len(contexts))
@@ -149,7 +155,7 @@ class JobManager:
 
             finish_progress = "Processing pipeline completed." if execute_products else "Pipeline dry-run completed."
             job = self._progress(job, 100, finish_progress)
-            complete_message = "Processing pipeline completed." if execute_products else "Dry-run pipeline completed without scientific processing."
+            complete_message = f"Processing pipeline completed. Execution backend: {backend_label}." if execute_products else "Dry-run pipeline completed without scientific processing."
             job = self._transition(job, JobStatus.COMPLETED, complete_message)
             return self._write_summary(job)
         except Exception as exc:
