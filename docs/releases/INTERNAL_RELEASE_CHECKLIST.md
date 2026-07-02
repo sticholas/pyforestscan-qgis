@@ -12,7 +12,7 @@ Use this checklist before sharing an internal PyForestScan QGIS build with teste
 
 ## Automated Validation
 
-Run from `/home/lama/pyforestscan-qgis`:
+Run from `/home/milo/repos/pyforestscan-qgis`:
 
 ```bash
 python3 -m unittest discover tests
@@ -20,6 +20,9 @@ python3 -m compileall pyforestscan_qgis
 git diff --check
 python3 scripts/package_plugin.py
 python3 scripts/validate_plugin_package.py dist/pyforestscan_qgis.zip
+python3 scripts/check_docs_links.py
+python3 scripts/validate_release.py
+python3 scripts/prepare_github_release.py --dry-run
 ```
 
 ## Manual QGIS Smoke Test
@@ -37,7 +40,9 @@ python3 scripts/validate_plugin_package.py dist/pyforestscan_qgis.zip
 
 ## Release Artifacts
 
-- `dist/pyforestscan_qgis.zip` package.
+- `dist/pyforestscan_qgis-v0.1.0-beta.1.zip` versioned package.
+- `dist/pyforestscan_qgis.zip` latest convenience package.
+- `dist/release_manifest.json` trace manifest.
 - `CHANGELOG.md` entry.
 - `docs/KNOWN_LIMITATIONS.md`.
 - `docs/development/MANUAL_QA_SCRIPT.md`.

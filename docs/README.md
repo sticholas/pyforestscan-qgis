@@ -85,6 +85,8 @@ This documentation is organized for users, scientists, developers, maintainers, 
 - [Release Documentation](releases/README.md)
 - [Internal Release Checklist](releases/INTERNAL_RELEASE_CHECKLIST.md)
 - [Packaging](releases/PACKAGING.md)
+- [Release Notes Template](releases/RELEASE_NOTES_TEMPLATE.md)
+- [v0.1.0-beta.1 Release Notes](releases/v0.1.0-beta.1.md)
 - [Manual QA Script](development/MANUAL_QA_SCRIPT.md)
 
 ## Archive

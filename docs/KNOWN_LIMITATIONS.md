@@ -26,7 +26,7 @@ This document records current limitations for the internal release candidate. It
 
 ## Release Scope
 
-This internal release is intended for controlled QGIS testing, workflow validation, and scientific QA. It is not a public QGIS Plugin Repository release candidate.
+`v0.1.0-beta.1` is intended for controlled QGIS testing, workflow validation, and scientific QA. It is not a public QGIS Plugin Repository release candidate. Versioned ZIP artifacts are traceable through `dist/release_manifest.json`.
 
 
 ## PyForestScan Backend Manager

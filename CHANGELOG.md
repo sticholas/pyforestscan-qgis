@@ -7,6 +7,12 @@ first public release, changes are tracked under `Unreleased`.
 
 ## Unreleased
 
+No unreleased changes yet.
+
+## 0.1.0-beta.1 - 2026-07-02
+
+Internal beta release target with versioned ZIP packaging, release manifest generation, release validation, release notes, and dry-run GitHub release preparation.
+
 ### Changed
 
 - Matured repository documentation for internal release readiness with a professional README, master documentation index, scientific-method pages, current architecture/output docs, GitHub issue and PR templates, citation guidance, release audit report, and Markdown link checking.

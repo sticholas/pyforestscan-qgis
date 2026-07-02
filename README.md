@@ -79,9 +79,23 @@ python3 scripts/package_plugin.py
 python3 scripts/validate_plugin_package.py dist/pyforestscan_qgis.zip
 ```
 
-Install `dist/pyforestscan_qgis.zip` in QGIS through **Plugins > Manage and Install Plugins > Install from ZIP**.
+The package script writes both `dist/pyforestscan_qgis-v<version>.zip` and the latest convenience copy `dist/pyforestscan_qgis.zip`. Install either ZIP in QGIS through **Plugins > Manage and Install Plugins > Install from ZIP**.
 
 Before processing, run **PyForestScan / Diagnostics / Environment Check** or the Mission Control Environment page. Windows QGIS dependency guidance is documented in [Windows QGIS Dependencies](docs/development/WINDOWS_QGIS_DEPENDENCIES.md).
+
+## Internal Release Pipeline
+
+For internal beta distribution, run:
+
+```bash
+python3 scripts/package_plugin.py
+python3 scripts/validate_plugin_package.py dist/pyforestscan_qgis.zip
+python3 scripts/check_docs_links.py
+python3 scripts/validate_release.py
+python3 scripts/prepare_github_release.py --dry-run
+```
+
+Release packaging produces `dist/release_manifest.json` with the plugin version, commit, branch, ZIP SHA-256, package size, PBM manifest version, backend manifest hash, and validation status. Report issues through the repository issue tracker or the internal testing channel selected for the beta.
 
 ## Screenshots
 

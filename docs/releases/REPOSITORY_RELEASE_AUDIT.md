@@ -56,3 +56,12 @@ The repository has been reorganized around stable product documentation rather t
 - `python3 scripts/validate_plugin_package.py dist/pyforestscan_qgis.zip`
 - `python3 scripts/check_docs_links.py`
 - `git diff --check`
+
+## Phase 23A Release Pipeline Update
+
+The internal beta release pipeline now has a version source in `pyforestscan_qgis/__version__.py`, synchronized `metadata.txt`, versioned ZIP naming, deterministic package member metadata, `dist/release_manifest.json`, release validation guardrails, internal beta release notes, and dry-run GitHub release command generation.
+
+Additional validation commands:
+
+- `python3 scripts/validate_release.py`
+- `python3 scripts/prepare_github_release.py --dry-run`

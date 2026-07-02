@@ -16,6 +16,7 @@ DEFAULT_ZIP_PATH = REPOSITORY_ROOT / "dist" / f"{PLUGIN_DIR_NAME}.zip"
 REQUIRED_FILES = {
     f"{PLUGIN_DIR_NAME}/metadata.txt",
     f"{PLUGIN_DIR_NAME}/__init__.py",
+    f"{PLUGIN_DIR_NAME}/__version__.py",
     f"{PLUGIN_DIR_NAME}/plugin.py",
     f"{PLUGIN_DIR_NAME}/provider.py",
     f"{PLUGIN_DIR_NAME}/processing_provider.py",

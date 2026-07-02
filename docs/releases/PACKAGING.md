@@ -9,6 +9,7 @@ Expected ZIP layout:
 pyforestscan_qgis/
   metadata.txt
   __init__.py
+  __version__.py
   plugin.py
   provider.py
   processing_provider.py
@@ -30,18 +31,22 @@ python3 scripts/package_plugin.py
 The script writes:
 
 ```text
+dist/pyforestscan_qgis-v0.1.0-beta.1.zip
 dist/pyforestscan_qgis.zip
+dist/release_manifest.json
 ```
 
-The package includes only the plugin folder. It excludes repository-only files,
-Git metadata, Python bytecode, and cache directories.
+The package includes only the plugin folder plus packaged backend specs and `backend_manifest.json`. It excludes repository-only files, tests, Git metadata, Python bytecode, and cache directories. The versioned ZIP is the release artifact; `dist/pyforestscan_qgis.zip` is a latest convenience copy.
 
 ## Validate the Package
 
 Run:
 
 ```bash
-python3 scripts/validate_plugin_package.py
+python3 scripts/validate_plugin_package.py dist/pyforestscan_qgis.zip
+python3 scripts/check_docs_links.py
+python3 scripts/validate_release.py
+python3 scripts/prepare_github_release.py --dry-run
 ```
 
 The validation script checks that:
