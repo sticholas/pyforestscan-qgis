@@ -1,6 +1,6 @@
 # PBM Install Plan
 
-Phase 22B added a dry-run installation plan for the PyForestScan Backend Manager (PBM). Phase 22C keeps that preview for normal users and adds developer-only installer mechanics behind `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1`.
+Phase 22D keeps the dry-run installation preview for normal users and makes it manifest-driven. Developer-only installer execution remains behind `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1`.
 
 ## Planned Backend Layout
 
@@ -30,7 +30,7 @@ The plan describes normal-user preview steps and the developer-only installer se
 2. Download a pinned Micromamba bootstrap artifact.
 3. Verify artifact checksums before use.
 4. Create the managed backend environment.
-5. Install registry-driven required packages.
+5. Install manifest-driven required packages.
 6. Write backend configuration and registry state.
 7. Run backend verification.
 
@@ -53,8 +53,8 @@ The dry-run plan records repair requirements for the future installer:
 - Avoid deleting a known-good backend until replacement verification passes.
 - Use staging directories for create/repair operations.
 - Mark failed installs as repair-required and preserve logs.
-- Keep repair disabled until controlled installer work begins.
+- Keep repair execution disabled until public installer activation is approved.
 
 ## Offline Placeholder
 
-Offline installation remains a placeholder after Phase 22C. A later design may accept pre-downloaded Micromamba artifacts, package caches, and lock/spec files, but every artifact must still pass checksum and version verification before activation.
+Offline installation remains a placeholder after Phase 22D. A later design may accept pre-downloaded Micromamba artifacts, package caches, and lock/spec files, but every artifact must still pass checksum and version verification before activation.

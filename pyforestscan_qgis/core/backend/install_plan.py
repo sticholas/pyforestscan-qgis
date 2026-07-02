@@ -8,6 +8,7 @@ from pathlib import Path
 from .bootstrap import MicromambaBootstrapPlan, build_micromamba_bootstrap_plan
 from .channels import BackendChannel, default_backend_channels, format_channels
 from .environment_spec import BackendEnvironmentSpec, build_environment_spec
+from .manifest import BackendManifest, BackendManifestError, load_backend_manifest
 from .models import BackendPlatform, BackendRegistry
 from .paths import BackendPaths, resolve_backend_paths
 from .registry import default_backend_registry
@@ -39,22 +40,33 @@ class BackendInstallPlan:
     offline_install_notes: tuple[str, ...]
     warnings: tuple[str, ...]
     dry_run_only: bool = True
+    backend_version: str = "unknown"
+    environment_version: str = "unknown"
+    manifest_schema_version: int = 0
 
     def required_package_names(self) -> tuple[str, ...]:
         """Return required backend package names in planned install order."""
         return self.environment_spec.package_names()
 
 
-def create_backend_install_plan(paths: BackendPaths | None = None, registry: BackendRegistry | None = None) -> BackendInstallPlan:
+def create_backend_install_plan(paths: BackendPaths | None = None, registry: BackendRegistry | None = None, manifest: BackendManifest | None = None) -> BackendInstallPlan:
     """Create a dry-run PBM install plan without touching the filesystem."""
     paths_value = paths or resolve_backend_paths()
-    registry_value = registry or default_backend_registry()
-    channels = default_backend_channels()
-    environment_spec = build_environment_spec(registry_value, channels=tuple(channel.name for channel in channels))
+    warnings: list[str] = []
+    manifest_value: BackendManifest | None = manifest
+    try:
+        manifest_value = manifest_value or load_backend_manifest()
+    except BackendManifestError as exc:
+        warnings.append(str(exc))
+    registry_value = registry or (manifest_value.registry() if manifest_value is not None else default_backend_registry())
+    channels = _channels_from_manifest(manifest_value) if manifest_value is not None else default_backend_channels()
+    environment_spec = build_environment_spec(registry_value, channels=tuple(channel.name for channel in channels), manifest=manifest_value)
     bootstrap_plan = build_micromamba_bootstrap_plan(paths_value)
-    warnings = list(bootstrap_plan.warnings)
+    warnings.extend(bootstrap_plan.warnings)
     if paths_value.platform is BackendPlatform.UNKNOWN:
         warnings.append("Backend platform is unknown; installation cannot be enabled until path and artifact policies are defined.")
+    if manifest_value is not None and not manifest_value.micromamba_artifact().sha256_for(paths_value.platform):
+        warnings.append("Manifest does not yet pin a SHA-256 hash for this platform; public installation must remain disabled.")
     warnings.append("Installation is disabled for normal users. Real installer mechanics require PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1 for development testing.")
 
     return BackendInstallPlan(
@@ -66,32 +78,39 @@ def create_backend_install_plan(paths: BackendPaths | None = None, registry: Bac
         environment_spec=environment_spec,
         bootstrap_plan=bootstrap_plan,
         estimated_steps=(
-            BackendInstallStep("Prepare user-local backend folders", f"Would create {paths_value.backend_root} and child cache/log/env folders.", modifies_files=True),
-            BackendInstallStep("Download micromamba bootstrap", f"Would download {bootstrap_plan.artifact_name} to {bootstrap_plan.download_cache_path}.", modifies_files=True),
-            BackendInstallStep("Verify micromamba artifact", "Would verify checksum and executable metadata before use."),
-            BackendInstallStep("Create managed environment", f"Would create environment at {paths_value.environment_path} using registry-driven packages.", modifies_files=True),
-            BackendInstallStep("Install required packages", ", ".join(environment_spec.package_names()), modifies_files=True),
-            BackendInstallStep("Write backend config", f"Would write backend.json and registry.json under {paths_value.backend_root}.", modifies_files=True),
+            BackendInstallStep("Prepare transaction", f"Create staging, downloads, and logs under {paths_value.backend_root}.", modifies_files=True),
+            BackendInstallStep("DOWNLOAD", f"Download {bootstrap_plan.artifact_name} to {bootstrap_plan.download_cache_path} with resume/retry support.", modifies_files=True),
+            BackendInstallStep("VERIFY", "Verify artifact checksum and manifest policy before extraction."),
+            BackendInstallStep("EXTRACT", f"Extract Micromamba into staging before activation at {paths_value.micromamba_executable}.", modifies_files=True),
+            BackendInstallStep("CREATE ENVIRONMENT", f"Create managed environment at {paths_value.environment_path} from backend_manifest.json.", modifies_files=True),
+            BackendInstallStep("INSTALL PACKAGES", ", ".join(environment_spec.package_names()), modifies_files=True),
+            BackendInstallStep("VERIFY PACKAGES", "Verify Python, PyForestScan, PDAL, GDAL, rasterio, and numpy inside the managed backend."),
+            BackendInstallStep("WRITE CONFIG", f"Write backend.json only after verification succeeds at {paths_value.config_file}.", modifies_files=True),
+            BackendInstallStep("PROMOTE BACKEND", "Promote staged files only after verification succeeds.", modifies_files=True),
+            BackendInstallStep("READY", "Mark backend ready for future managed execution."),
         ),
         verification_steps=(
             BackendInstallStep("Verify backend Python", f"Run {paths_value.python_executable} --version."),
             BackendInstallStep("Verify PyForestScan import", "Import pyforestscan inside the managed backend Python."),
             BackendInstallStep("Verify PDAL", "Run pdal --version and import python-pdal."),
             BackendInstallStep("Verify raster stack", "Import osgeo.gdal, rasterio, and numpy from the managed backend Python."),
-            BackendInstallStep("Record verification report", f"Would write verification results to {paths_value.verify_log}.", modifies_files=True),
+            BackendInstallStep("Record verification report", f"Write verification results to {paths_value.verify_log}.", modifies_files=True),
         ),
         rollback_steps=(
-            BackendInstallStep("Preserve existing backend", "Future installer must avoid deleting a known-good backend until replacement verification passes."),
-            BackendInstallStep("Use staging directories", "Future installer should create or repair in a staging area before activation."),
-            BackendInstallStep("Rollback failed install", "If verification fails, mark backend repair-required and preserve logs for diagnosis."),
-            BackendInstallStep("Repair path", "Repair remains a planned operation until controlled installer work begins."),
+            BackendInstallStep("Transactional staging", "Build downloads, extracted executable, and environment in staging before activation."),
+            BackendInstallStep("Automatic rollback", "If any stage fails or is cancelled, remove staging and preserve logs."),
+            BackendInstallStep("Repair plan", "Detect missing executables, broken environments, corrupt config, corrupt manifest, and missing Python."),
+            BackendInstallStep("Known-good preservation", "A future upgrade path must preserve a working backend until replacement verification passes."),
         ),
         offline_install_notes=(
-            "Offline install remains a future placeholder after Phase 22C.",
-            "Future design may accept a pre-downloaded micromamba artifact, package cache, and lock/spec file.",
-            "Offline artifacts must still pass checksum and version verification before activation.",
+            "Offline install remains a planned mode for pre-fetched artifacts and package caches.",
+            "Offline artifacts must still match backend_manifest.json hashes and package versions.",
+            "No installer path modifies QGIS Python, QGIS install directories, or user environment variables.",
         ),
         warnings=tuple(warnings),
+        backend_version=manifest_value.backend_version if manifest_value is not None else "unknown",
+        environment_version=manifest_value.environment_version if manifest_value is not None else "unknown",
+        manifest_schema_version=manifest_value.schema_version if manifest_value is not None else 0,
     )
 
 
@@ -101,6 +120,9 @@ def format_install_plan(plan: BackendInstallPlan) -> str:
         "PyForestScan Backend Install Plan (Dry Run)",
         "Installation is disabled for normal users. Developer-only installs require PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1; PBM does not modify QGIS Python or environment variables.",
         "",
+        f"Manifest schema: {plan.manifest_schema_version}",
+        f"Backend version: {plan.backend_version}",
+        f"Environment version: {plan.environment_version}",
         f"Platform: {plan.platform.value}",
         f"Backend root: {plan.backend_root}",
         f"Micromamba location: {plan.micromamba_location}",
@@ -112,7 +134,7 @@ def format_install_plan(plan: BackendInstallPlan) -> str:
         "Required packages:",
         *[f"- {package.name} {package.version_spec} ({package.source})" for package in plan.environment_spec.packages],
         "",
-        "Estimated install steps:",
+        "Transaction stages:",
         *[f"- {step.title}: {step.detail}" for step in plan.estimated_steps],
         "",
         "Verification steps after install:",
@@ -128,3 +150,14 @@ def format_install_plan(plan: BackendInstallPlan) -> str:
         lines.extend(("", "Warnings:"))
         lines.extend(f"- {warning}" for warning in plan.warnings)
     return "\n".join(lines)
+
+
+def _channels_from_manifest(manifest: BackendManifest | None) -> tuple[BackendChannel, ...]:
+    if manifest is None:
+        return default_backend_channels()
+    channels = []
+    for channel in sorted(manifest.channels, key=lambda item: item.priority):
+        manager = "pip" if channel.name.lower() in {"pypi", "pypi-placeholder"} else "conda"
+        url = "https://pypi.org/simple" if manager == "pip" else f"https://conda.anaconda.org/{channel.name}"
+        channels.append(BackendChannel(channel.name, url, channel.priority, manager, channel.notes))
+    return tuple(channels)

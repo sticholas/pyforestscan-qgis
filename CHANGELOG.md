@@ -15,6 +15,8 @@ first public release, changes are tracked under `Unreleased`.
 
 ### Added
 
+- Phase 22D PBM production backend installation engine architecture with backend manifest, resumable download manager, transaction stages, rollback verification, repair planning, backend version manager, structured operation logs, future module registry, professional Settings backend controls, documentation, and QGIS-free tests. Public one-click installation remains disabled.
+
 - Phase 22C PBM controlled installer prototype with Micromamba bootstrap policy, checksum/download helpers, environment spec files, developer-only install guard, staging/rollback mechanics, package spec inclusion, Settings experimental-install label, documentation, and QGIS-free mocked tests. Normal user installation remains disabled.
 
 - Phase 22B PyForestScan Backend Manager dry-run install planning, registry-driven environment spec, Micromamba bootstrap plan placeholders, QGIS compatibility reporting, Settings page install preview, compatibility docs, and QGIS-free tests. Installation remains disabled and no downloads or environment changes occur.

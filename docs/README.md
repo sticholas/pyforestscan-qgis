@@ -56,6 +56,12 @@ This documentation is organized for users, scientists, developers, maintainers, 
 
 - [PBM Architecture](backend/PBM_ARCHITECTURE.md)
 - [PBM Install Plan](backend/PBM_INSTALL_PLAN.md)
+- [PBM Transaction Model](backend/PBM_TRANSACTION_MODEL.md)
+- [PBM Manifest](backend/PBM_MANIFEST.md)
+- [PBM Download Manager](backend/PBM_DOWNLOAD_MANAGER.md)
+- [PBM Versioning](backend/PBM_VERSIONING.md)
+- [PBM Repair Engine](backend/PBM_REPAIR_ENGINE.md)
+- [PBM Logging](backend/PBM_LOGGING.md)
 - [PBM Micromamba Bootstrap](backend/PBM_MICROMAMBA_BOOTSTRAP.md)
 - [PBM Installer Safety](backend/PBM_INSTALLER_SAFETY.md)
 - [PBM Rollback](backend/PBM_ROLLBACK.md)

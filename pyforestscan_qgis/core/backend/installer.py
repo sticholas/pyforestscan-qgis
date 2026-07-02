@@ -1,4 +1,4 @@
-"""Controlled PBM installer prototype with developer-only guardrails."""
+"""Guarded PBM installer with transactional production architecture."""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ def staged_backend_paths(paths: BackendPaths) -> BackendPaths:
 
 
 class BackendInstaller:
-    """Developer-only controlled installer prototype."""
+    """Developer-guarded installer operations used by transactional PBM."""
 
     def __init__(
         self,
@@ -228,40 +228,23 @@ class BackendInstaller:
         return BackendOperationResult("rollback_failed_install", BackendStatus.NOT_INSTALLED, True, "No staging directory was present.", False)
 
     def install_backend(self, policy: MicromambaBootstrapPolicy | None = None, spec_file: Path | None = None) -> BackendOperationResult:
-        """Run the controlled installer prototype when explicitly enabled."""
-        disabled = self.require_enabled("install_backend")
-        if disabled:
-            return disabled
-        try:
-            for step in (self.prepare_staging(),):
-                if not step.success:
-                    return step
-            policy_value = policy or micromamba_bootstrap_policy(self.paths)
-            download = self.download_micromamba(policy_value)
-            if not download.success:
-                self.rollback_failed_install()
-                return BackendOperationResult("install_backend", BackendStatus.FAILED, False, download.message, download.path.exists())
-            checksum = self.verify_micromamba_download(policy_value)
-            if not checksum.passed():
-                self.rollback_failed_install()
-                return BackendOperationResult("install_backend", BackendStatus.FAILED, False, checksum.message, True)
-            for step in (self.extract_micromamba(policy_value), self.create_environment(spec_file)):
-                if not step.success:
-                    self.rollback_failed_install()
-                    return BackendOperationResult("install_backend", BackendStatus.FAILED, False, step.message, step.modified_system)
-            verification = self.verify_environment()
-            if not verification.passed():
-                self.rollback_failed_install()
-                return BackendOperationResult("install_backend", BackendStatus.REPAIR_REQUIRED, False, verification.summary, True)
-            for step in (self.promote_staging(), self.write_backend_config(BackendStatus.READY)):
-                if not step.success:
-                    self.rollback_failed_install()
-                    return step
-            self.rollback_failed_install()
-            return BackendOperationResult("install_backend", BackendStatus.READY, True, "Backend installed and verified in the user-local PBM directory.", True)
-        except Exception as exc:  # noqa: BLE001 - rollback is more important than surfacing raw crashes.
-            self.rollback_failed_install()
-            return BackendOperationResult("install_backend", BackendStatus.FAILED, False, f"Backend install failed safely: {exc}", True)
+        """Run the guarded transactional installer when explicitly enabled."""
+        from .logging import write_backend_log_entry
+        from .transaction import BackendInstallTransaction
+
+        def log_stage(stage: str, severity: str, message: str) -> None:
+            write_backend_log_entry(self.paths.install_log, "install", message, level=severity, stage=stage)
+
+        transaction = BackendInstallTransaction(self, logger=log_stage)
+        result = transaction.run(policy=policy, spec_file=spec_file)
+        return BackendOperationResult(
+            operation="install_backend",
+            status=result.status,
+            success=result.success,
+            message=result.message,
+            modified_system=result.modified_system,
+            log_path=self.paths.install_log if self.paths.install_log.exists() else None,
+        )
 
     def _default_runner(self, command: list[str]) -> subprocess.CompletedProcess[str]:
         return subprocess.run(command, check=False, capture_output=True, text=True, timeout=1800)

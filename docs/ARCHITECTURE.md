@@ -46,6 +46,11 @@ flowchart LR
     C --> D["PyForestScan and geospatial dependencies"]
 ```
 
+
+## PyForestScan Backend Manager
+
+PBM is the user-local backend management architecture. Phase 22D keeps public installation disabled while adding production installer components: `backend_manifest.json`, resumable downloads, transaction stages, structured logs, version compatibility checks, repair planning, and declarative future modules. PBM does not install into QGIS Python, modify QGIS folders, or change user environment variables.
+
 ## Guided Workflow
 
 ```mermaid

@@ -245,4 +245,5 @@ class BackendLogEntry:
     level: str
     operation: str
     message: str
+    stage: str = ""
     details: dict[str, str] = field(default_factory=dict)

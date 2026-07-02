@@ -25,6 +25,7 @@ REQUIRED_FILES = {
     f"{PLUGIN_DIR_NAME}/backend_specs/environment.linux.yml",
     f"{PLUGIN_DIR_NAME}/backend_specs/environment.macos.yml",
     f"{PLUGIN_DIR_NAME}/backend_specs/pins.md",
+    f"{PLUGIN_DIR_NAME}/backend_manifest.json",
 }
 
 FORBIDDEN_PARTS = {".git", "__pycache__"}

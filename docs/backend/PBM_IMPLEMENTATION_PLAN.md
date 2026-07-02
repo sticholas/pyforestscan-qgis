@@ -52,7 +52,23 @@ Remaining design work before broad enablement:
 - Generate locked per-platform environment files after real installer tests.
 - Manually test Windows QGIS installation from ZIP with developer flag.
 
-## Phase 22D: Backend Execution Bridge
+## Phase 22D: Production Backend Installation Engine
+
+Implemented scope:
+
+- `backend_manifest.json` as the single source of truth for backend version, environment version, package list, channels, artifact sources, hashes, and plugin compatibility bounds.
+- Production-oriented download manager with provider abstraction, retries, resume support, progress callbacks, checksum verification, cancellation, cache reuse, and partial cleanup.
+- Transactional installer stages with automatic rollback on failure or cancellation.
+- Backend version manager for plugin/backend compatibility and future migration checks.
+- Repair planner for missing executables, missing Python, broken environments, corrupt config, corrupt manifest, and blocked package verification.
+- Structured JSON-lines logs for install, download, verify, repair, update, and remove operations.
+- Declarative future module registry for PDAL, PyTorch, SAM, WhiteboxTools, CloudCompare, and Potree placeholders.
+- Mission Control Settings backend controls for status, compatibility, dependency summary, storage location, install preview, repair planning, logs, advanced details, and developer mode.
+- QGIS-free tests for manifest parsing, download behavior, transaction rollback, repair planning, version mismatch, cancellation, partial downloads, and module registration.
+
+Public one-click backend installation remains disabled until checksums, lock files, platform testing, and upgrade policy are complete.
+
+## Phase 22E: Backend Execution Bridge
 
 Potential scope:
 

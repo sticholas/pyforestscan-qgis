@@ -4,26 +4,35 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .config import load_backend_config, planned_backend_config
 from .checksums import ChecksumResult
+from .config import load_backend_config, planned_backend_config
 from .downloads import DownloadResult
 from .install_plan import BackendInstallPlan, create_backend_install_plan, format_install_plan
 from .installer import BACKEND_INSTALL_ENABLE_ENV, BackendInstaller, backend_install_enabled
 from .logging import read_backend_log, write_backend_log_entry
+from .manifest import BackendManifest, load_backend_manifest
 from .models import BackendOperationResult, BackendRegistry, BackendState, BackendStatus, BackendVerificationResult
+from .modules import BackendModuleRegistry, default_backend_module_registry
 from .paths import BackendPaths, resolve_backend_paths
 from .registry import default_backend_registry
+from .repair import RepairPlan, format_repair_plan, plan_backend_repair
 from .state import detect_backend_state
 from .verification import format_verification_result, verify_backend
+from .version_manager import BackendVersionManager, VersionCompatibilityResult
 
 
 class BackendService:
-    """Detect, verify, preview, and guard the user-local PyForestScan backend."""
+    """Detect, verify, preview, repair-plan, and guard the user-local backend."""
 
-    def __init__(self, paths: BackendPaths | None = None, registry: BackendRegistry | None = None) -> None:
+    def __init__(self, paths: BackendPaths | None = None, registry: BackendRegistry | None = None, plugin_version: str = "0.1.0") -> None:
         """Create a backend service using resolved paths and registry data."""
         self.paths = paths or resolve_backend_paths()
-        self.registry = registry or default_backend_registry()
+        self.plugin_version = plugin_version
+        try:
+            self.manifest = load_backend_manifest()
+        except Exception:  # noqa: BLE001 - Settings must remain usable with a bad packaged manifest.
+            self.manifest = None
+        self.registry = registry or (self.manifest.registry() if self.manifest is not None else default_backend_registry())
 
     def detect_backend(self) -> BackendState:
         """Detect backend installation state without modifying files."""
@@ -33,16 +42,38 @@ class BackendService:
         """Run placeholder-safe backend verification."""
         result = verify_backend(self.paths, self.registry)
         if self.paths.logs_dir.exists():
-            write_backend_log_entry(self.paths.verify_log, "verify", result.summary, details={"status": result.status.value})
+            write_backend_log_entry(self.paths.verify_log, "verify", result.summary, details={"status": result.status.value}, stage="VERIFY")
         return result
 
     def preview_install_plan(self) -> BackendInstallPlan:
         """Return the dry-run backend install plan without modifying files."""
-        return create_backend_install_plan(self.paths, self.registry)
+        return create_backend_install_plan(self.paths, self.registry, self.manifest)
 
     def format_install_plan(self, plan: BackendInstallPlan | None = None) -> str:
         """Format the dry-run install plan for UI display."""
         return format_install_plan(plan or self.preview_install_plan())
+
+    def backend_manifest(self) -> BackendManifest | None:
+        """Return the loaded backend manifest, if valid."""
+        return self.manifest
+
+    def version_compatibility(self) -> VersionCompatibilityResult | None:
+        """Return plugin/backend manifest compatibility, if a manifest is available."""
+        if self.manifest is None:
+            return None
+        return BackendVersionManager(self.plugin_version).check_manifest(self.manifest)
+
+    def module_registry(self) -> BackendModuleRegistry:
+        """Return future backend module registry placeholders."""
+        return default_backend_module_registry()
+
+    def preview_repair_plan(self) -> RepairPlan:
+        """Return a non-mutating backend repair plan."""
+        return plan_backend_repair(self.paths, self.manifest)
+
+    def format_repair_plan(self, plan: RepairPlan | None = None) -> str:
+        """Format repair diagnostics for UI display."""
+        return format_repair_plan(plan or self.preview_repair_plan())
 
     def backend_install_enabled(self) -> bool:
         """Return whether the developer-only installer flag is enabled."""
@@ -85,19 +116,28 @@ class BackendService:
         return self.installer().rollback_failed_install()
 
     def install_backend(self) -> BackendOperationResult:
-        """Run the developer-only installer when explicitly enabled."""
+        """Run the developer-guarded transactional installer when explicitly enabled."""
         return self.installer().install_backend()
 
     def repair_backend(self) -> BackendOperationResult:
-        """Return a planned-operation result; no repair occurs in Phase 22C."""
-        return self._planned_operation("repair", self.detect_backend().status)
+        """Return repair planning; execution remains developer-only."""
+        plan = self.preview_repair_plan()
+        if self.paths.logs_dir.exists():
+            write_backend_log_entry(self.paths.repair_log, "repair", f"Repair plan has {len(plan.issues)} issue(s).", stage="PLAN")
+        return BackendOperationResult(
+            operation="repair",
+            status=plan.status,
+            success=False,
+            message=f"Backend repair execution is planned. {len(plan.issues)} issue(s) detected; execution remains behind {BACKEND_INSTALL_ENABLE_ENV}=1.",
+            modified_system=False,
+        )
 
     def update_backend(self) -> BackendOperationResult:
-        """Return a planned-operation result; no update occurs in Phase 22C."""
+        """Return a planned-operation result; no update occurs in Phase 22D."""
         return self._planned_operation("update", self.detect_backend().status)
 
     def remove_backend(self) -> BackendOperationResult:
-        """Return a planned-operation result; no removal occurs in Phase 22C."""
+        """Return a planned-operation result; no removal occurs in Phase 22D."""
         return self._planned_operation("remove", self.detect_backend().status)
 
     def open_backend_folder_path(self) -> Path:
@@ -108,7 +148,9 @@ class BackendService:
         """Return recent backend log lines by operation."""
         return {
             "install": read_backend_log(self.paths.install_log),
+            "download": read_backend_log(self.paths.download_log),
             "verify": read_backend_log(self.paths.verify_log),
+            "repair": read_backend_log(self.paths.repair_log),
             "update": read_backend_log(self.paths.update_log),
             "remove": read_backend_log(self.paths.remove_log),
         }
@@ -144,7 +186,7 @@ class BackendService:
             operation="run_backend_python",
             status=self.detect_backend().status,
             success=False,
-            message="Backend Python execution is planned but disabled in Phase 22C.",
+            message="Backend Python execution is planned but disabled until PBM public activation is approved.",
             modified_system=False,
         )
 
@@ -155,7 +197,7 @@ class BackendService:
             operation="run_pdal_pipeline",
             status=self.detect_backend().status,
             success=False,
-            message=f"Backend PDAL execution is planned but disabled in Phase 22C.{detail}",
+            message=f"Backend PDAL execution is planned but disabled until PBM public activation is approved.{detail}",
             modified_system=False,
         )
 
@@ -168,6 +210,6 @@ class BackendService:
             operation=operation,
             status=status,
             success=False,
-            message=f"Backend {operation} is planned. Phase 22C keeps real install mechanics behind {BACKEND_INSTALL_ENABLE_ENV}=1 for development testing only.",
+            message=f"Backend {operation} is planned. Phase 22D keeps execution behind {BACKEND_INSTALL_ENABLE_ENV}=1 and public one-click installation remains disabled.",
             modified_system=False,
         )

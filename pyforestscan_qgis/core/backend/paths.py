@@ -27,7 +27,9 @@ class BackendPaths:
     staging_dir: Path
     scripts_dir: Path
     install_log: Path
+    download_log: Path
     verify_log: Path
+    repair_log: Path
     update_log: Path
     remove_log: Path
 
@@ -94,7 +96,9 @@ def resolve_backend_paths(
         staging_dir=staging_dir,
         scripts_dir=scripts_dir,
         install_log=logs_dir / "backend_install.log",
+        download_log=logs_dir / "backend_download.log",
         verify_log=logs_dir / "backend_verify.log",
+        repair_log=logs_dir / "backend_repair.log",
         update_log=logs_dir / "backend_update.log",
         remove_log=logs_dir / "backend_remove.log",
     )

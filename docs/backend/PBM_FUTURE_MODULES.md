@@ -1,24 +1,18 @@
 # PBM Future Modules
 
-PBM is designed to grow beyond the first PyForestScan dependency stack. Future modules should be added as registry entries and implemented behind clear service boundaries.
+Phase 22D adds a declarative module registry so PBM can grow without hardwiring every future dependency into core installer logic.
 
-## Candidate Modules
+Current placeholders:
 
-| Module | Potential Use | Status |
+| Module | Role | Status |
 | --- | --- | --- |
-| WhiteboxTools | Terrain and hydrology utilities | Registry placeholder only. |
-| Open3D | Point-cloud visualization or analysis | Registry placeholder only. |
-| PyTorch | Deep-learning workflows | Registry placeholder only. |
-| ONNX Runtime | Model inference | Registry placeholder only. |
-| Segment Anything | Imagery segmentation experiments | Registry placeholder only. |
-| CloudCompare CLI | Point-cloud utility workflows | Registry placeholder only. |
-| Entwine | EPT generation | Registry placeholder only. |
-| Potree Converter | Web point-cloud visualization outputs | Registry placeholder only. |
+| PDAL Module | Core point-cloud runtime and Python bindings | Declarative placeholder. |
+| PyTorch Module | Future deep-learning workflows | Declarative placeholder. |
+| SAM Module | Future segmentation/model inference workflows | Declarative placeholder. |
+| WhiteboxTools Module | Future terrain and hydrology utilities | Declarative placeholder. |
+| CloudCompare Module | Future point-cloud utility workflows | Declarative placeholder. |
+| Potree Module | Future web point-cloud visualization outputs | Declarative placeholder. |
 
-## Rules For Future Modules
+Each future module should describe dependencies, install routine, verification, repair, and update behavior. Optional modules must remain optional so users who only need core PyForestScan products do not inherit heavyweight stacks.
 
-- Add dependencies to the registry before adding UI.
-- Keep optional modules optional.
-- Document scientific and operational reasons for each module.
-- Do not force heavyweight ML or visualization stacks onto users who only need core PyForestScan products.
-- Keep module-specific verification transparent and testable.
+PBM core should load registered module behavior rather than requiring core changes for every new backend capability.

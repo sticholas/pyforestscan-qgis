@@ -12,6 +12,7 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_DIR_NAME = "pyforestscan_qgis"
 BACKEND_SPECS_DIR_NAME = "backend_specs"
+BACKEND_MANIFEST_FILE_NAME = "backend_manifest.json"
 DEFAULT_DIST_DIR = REPOSITORY_ROOT / "dist"
 DEFAULT_ZIP_PATH = DEFAULT_DIST_DIR / f"{PLUGIN_DIR_NAME}.zip"
 
@@ -60,6 +61,9 @@ def package_plugin(output_path: Path = DEFAULT_ZIP_PATH) -> Path:
         specs_root = REPOSITORY_ROOT / BACKEND_SPECS_DIR_NAME
         if specs_root.is_dir():
             _write_tree_to_archive(archive, specs_root, Path(PLUGIN_DIR_NAME) / BACKEND_SPECS_DIR_NAME)
+        manifest_path = REPOSITORY_ROOT / BACKEND_MANIFEST_FILE_NAME
+        if manifest_path.is_file():
+            archive.write(manifest_path, (Path(PLUGIN_DIR_NAME) / BACKEND_MANIFEST_FILE_NAME).as_posix())
 
     return output_path
 
@@ -92,6 +96,9 @@ def sync_plugin(target_dir: Path | None = None, profile: str = "default") -> Pat
     specs_root = REPOSITORY_ROOT / BACKEND_SPECS_DIR_NAME
     if specs_root.is_dir():
         shutil.copytree(specs_root, destination / BACKEND_SPECS_DIR_NAME, ignore=ignore)
+    manifest_path = REPOSITORY_ROOT / BACKEND_MANIFEST_FILE_NAME
+    if manifest_path.is_file():
+        shutil.copy2(manifest_path, destination / BACKEND_MANIFEST_FILE_NAME)
     return destination
 
 

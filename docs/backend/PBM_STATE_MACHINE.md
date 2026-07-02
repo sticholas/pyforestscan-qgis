@@ -20,7 +20,7 @@ stateDiagram-v2
 
 ## States
 
-| State | Meaning in Phase 22C |
+| State | Meaning in Phase 22D |
 | --- | --- |
 | Not Installed | Backend root or required files are absent. This is expected before PBM installation exists. |
 | Installing | Reserved for future installer orchestration. |
@@ -31,4 +31,4 @@ stateDiagram-v2
 | Removing | Reserved for future removal orchestration. |
 | Failed | Reserved for failed backend operations. |
 
-Phase 22C can report states, verify existing files, preview installation, report QGIS compatibility, and run controlled developer-only installer mechanics when `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1` is set. Repair, update, remove, normal user install, and backend execution remain disabled.
+Phase 22D can report states, verify existing files, preview manifest-driven installation, report QGIS compatibility, plan repairs, write structured logs, and run guarded transactional installer mechanics when `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1` is set. Normal user install, repair execution, update, remove, and backend processing execution remain disabled.

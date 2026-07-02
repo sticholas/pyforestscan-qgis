@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "backend_version": "1.0.0",
+  "environment_version": "2026.07",
+  "micromamba_version": "latest",
+  "python_version": ">=3.12,<3.13",
+  "created_at": "2026-07-02T00:00:00Z",
+  "minimum_plugin_version": "0.1.0",
+  "maximum_plugin_version": null,
+  "supported_plugin_versions": ["0.1.x"],
+  "future_migration_version": "2.0.0",
+  "channels": [
+    {"name": "conda-forge", "priority": 0},
+    {"name": "pypi", "priority": 1, "notes": "Used only for packages not available from conda-forge."}
+  ],
+  "artifacts": {
+    "micromamba": {
+      "version": "latest",
+      "checksum_required": true,
+      "hashes": {
+        "windows": {"sha256": ""},
+        "linux": {"sha256": ""},
+        "macos": {"sha256": ""}
+      },
+      "sources": [
+        {"name": "official-micromamba-api", "url_template": "https://micro.mamba.pm/api/micromamba/{platform_subdir}/{version}", "priority": 0}
+      ],
+      "future_mirrors": []
+    }
+  },
+  "packages": [
+    {"name": "python", "version_spec": ">=3.12,<3.13", "source": "conda-forge", "required": true, "category": "runtime", "executable_name": "python"},
+    {"name": "pyforestscan", "version_spec": ">=0.4", "source": "PyPI", "required": true, "category": "scientific engine", "python_import_name": "pyforestscan"},
+    {"name": "pdal", "version_spec": ">=2.8", "source": "conda-forge", "required": true, "category": "geospatial runtime", "executable_name": "pdal"},
+    {"name": "python-pdal", "version_spec": "compatible with PDAL runtime", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "pdal"},
+    {"name": "gdal", "version_spec": ">=3.8", "source": "conda-forge", "required": true, "category": "python package", "executable_name": "gdalinfo", "python_import_name": "osgeo.gdal"},
+    {"name": "rasterio", "version_spec": ">=1.3", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "rasterio"},
+    {"name": "numpy", "version_spec": ">=2.0", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "numpy"}
+  ],
+  "module_placeholders": ["pdal", "pytorch", "sam", "whiteboxtools", "cloudcompare", "potree"]
+}
