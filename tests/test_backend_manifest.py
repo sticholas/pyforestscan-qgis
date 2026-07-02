@@ -19,11 +19,13 @@ class BackendManifestTests(unittest.TestCase):
         manifest = load_backend_manifest()
 
         self.assertEqual(manifest.schema_version, 1)
-        self.assertEqual(manifest.package_names(), ("python", "pyforestscan", "pdal", "python-pdal", "gdal", "rasterio", "numpy"))
+        self.assertEqual(manifest.package_names(), ("python", "pdal", "python-pdal", "gdal", "rasterio", "numpy", "scipy", "pandas", "shapely", "pyproj", "fiona", "geopandas", "matplotlib", "pyforestscan"))
         versions = {package.name: package.version_spec for package in manifest.required_packages()}
         self.assertEqual(versions["gdal"], ">=3.8,<3.10")
         self.assertEqual(versions["rasterio"], ">=1.3.10,<1.5")
         self.assertEqual(versions["numpy"], ">=1.26,<2.0")
+        self.assertEqual(versions["scipy"], ">=1.11,<1.15")
+        self.assertEqual(versions["matplotlib"], ">=3.8,<3.10")
         self.assertIn("conda-forge", [channel.name for channel in manifest.channels])
         self.assertIn("micromamba", manifest.artifacts)
 

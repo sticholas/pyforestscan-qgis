@@ -43,7 +43,8 @@ After install, PBM expects to verify:
 - Backend Python version.
 - `pyforestscan` import.
 - `pdal --version` and `python-pdal` import.
-- `osgeo.gdal`, `rasterio`, and `numpy` imports.
+- `osgeo.gdal`, `rasterio`, `numpy`, `scipy`, `pandas`, `shapely`, `pyproj`, `fiona`, `geopandas`, and `matplotlib` imports.
+- PyForestScan public module smoke imports for calculate, filters, handlers, process, and visualize.
 - Structured verification report and logs.
 
 ## Rollback And Repair Plan

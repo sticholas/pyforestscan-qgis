@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "backend_version": "1.0.0",
-  "environment_version": "2026.07-rasterio",
+  "environment_version": "2026.07-pyforestscan-runtime",
   "micromamba_version": "latest",
   "python_version": ">=3.12,<3.13",
   "created_at": "2026-07-02T00:00:00Z",
@@ -30,12 +30,19 @@
   },
   "packages": [
     {"name": "python", "version_spec": ">=3.12,<3.13", "source": "conda-forge", "required": true, "category": "runtime", "executable_name": "python"},
-    {"name": "pyforestscan", "version_spec": ">=0.4", "source": "PyPI", "required": true, "category": "scientific engine", "python_import_name": "pyforestscan"},
     {"name": "pdal", "version_spec": ">=2.6,<2.9", "source": "conda-forge", "required": true, "category": "geospatial runtime", "executable_name": "pdal"},
     {"name": "python-pdal", "version_spec": "compatible with PDAL runtime", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "pdal"},
     {"name": "gdal", "version_spec": ">=3.8,<3.10", "source": "conda-forge", "required": true, "category": "python package", "executable_name": "gdalinfo", "python_import_name": "osgeo.gdal"},
     {"name": "rasterio", "version_spec": ">=1.3.10,<1.5", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "rasterio"},
-    {"name": "numpy", "version_spec": ">=1.26,<2.0", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "numpy"}
+    {"name": "numpy", "version_spec": ">=1.26,<2.0", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "numpy"},
+    {"name": "scipy", "version_spec": ">=1.11,<1.15", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "scipy"},
+    {"name": "pandas", "version_spec": ">=2.1,<3", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "pandas"},
+    {"name": "shapely", "version_spec": ">=2,<3", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "shapely"},
+    {"name": "pyproj", "version_spec": ">=3.6,<4", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "pyproj"},
+    {"name": "fiona", "version_spec": ">=1.9,<2", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "fiona"},
+    {"name": "geopandas", "version_spec": ">=0.14,<1.1", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "geopandas"},
+    {"name": "matplotlib", "version_spec": ">=3.8,<3.10", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "matplotlib"},
+    {"name": "pyforestscan", "version_spec": ">=0.4", "source": "PyPI", "required": true, "category": "scientific engine", "python_import_name": "pyforestscan"}
   ],
   "module_placeholders": ["pdal", "pytorch", "sam", "whiteboxtools", "cloudcompare", "potree"]
 }

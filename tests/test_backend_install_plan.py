@@ -28,7 +28,7 @@ class BackendInstallPlanTests(unittest.TestCase):
         self.assertEqual(plan.environment_path, paths.environment_path)
         self.assertEqual(
             plan.required_package_names(),
-            ("python", "pyforestscan", "pdal", "python-pdal", "gdal", "rasterio", "numpy"),
+            ("python", "pdal", "python-pdal", "gdal", "rasterio", "numpy", "scipy", "pandas", "shapely", "pyproj", "fiona", "geopandas", "matplotlib", "pyforestscan"),
         )
         self.assertIn("conda-forge", [channel.name for channel in plan.channels])
         self.assertTrue(any("planned/experimental" in warning.lower() for warning in plan.warnings))

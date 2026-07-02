@@ -23,9 +23,10 @@ The command does not require QGIS. It prints:
 - executable existence checks,
 - `python --version`,
 - `pdal --version`,
-- Python import checks for `pyforestscan`, `pdal`, `osgeo.gdal`, `rasterio`, and `numpy`,
+- Python import checks for `pyforestscan`, `pdal`, `osgeo.gdal`, `rasterio`, `numpy`, `scipy`, `pandas`, `shapely`, `pyproj`, `fiona`, `geopandas`, and `matplotlib`,
+- a PyForestScan smoke import for `pyforestscan.calculate`, `pyforestscan.filters`, `pyforestscan.handlers`, `pyforestscan.process`, and `pyforestscan.visualize`,
 - command, executable, stdout preview, and stderr preview for each command-backed check,
-- filtered `micromamba list -p <env>` diagnostics for `python`, `gdal`, `libgdal`, `rasterio`, `numpy`, `pdal`, `python-pdal`, `geos`, `proj`, `sqlite`, `libcurl`, `tiledb`, `zstd`, and `lz4`.
+- filtered `micromamba list -p <env>` diagnostics for `python`, `gdal`, `libgdal`, `rasterio`, `numpy`, `scipy`, `pandas`, `shapely`, `pyproj`, `fiona`, `geopandas`, `matplotlib`, `pdal`, `python-pdal`, `geos`, `proj`, `sqlite`, `libcurl`, `tiledb`, `zstd`, and `lz4`.
 
 ## Package and Import Mapping
 
@@ -38,10 +39,17 @@ The current backend spec and manifest expect:
 | PDAL Python bindings | conda-forge | `python-pdal` | `import pdal` |
 | GDAL runtime/bindings | conda-forge | `gdal`, `libgdal` | `gdalinfo --version`, `import osgeo.gdal` |
 | rasterio | conda-forge | `rasterio>=1.3.10,<1.5` | `import rasterio`, report `rasterio.__gdal_version__`, open/close `MemoryFile` |
-| NumPy | conda-forge | `numpy` | `import numpy` |
-| PyForestScan | PyPI | `pyforestscan>=0.4` | `import pyforestscan` |
+| NumPy | conda-forge | `numpy>=1.26,<2.0` | `import numpy` |
+| SciPy | conda-forge | `scipy>=1.11,<1.15` | `import scipy` |
+| pandas | conda-forge | `pandas>=2.1,<3` | `import pandas` |
+| Shapely | conda-forge | `shapely>=2,<3` | `import shapely` |
+| PyProj | conda-forge | `pyproj>=3.6,<4` | `import pyproj` |
+| Fiona | conda-forge | `fiona>=1.9,<2` | `import fiona` |
+| GeoPandas | conda-forge | `geopandas>=0.14,<1.1` | `import geopandas` |
+| Matplotlib | conda-forge | `matplotlib>=3.8,<3.10` | `import matplotlib` |
+| PyForestScan | PyPI | `pyforestscan>=0.4` | `import pyforestscan` plus calculate/filters/handlers/process/visualize smoke imports |
 
-Micromamba installs the conda-forge packages first. PyPI-only packages are installed afterward through the staged backend Python with `pip install --no-deps` and a sanitized environment. On Windows, verification searches `env/Scripts`, `env/Library/bin`, `env/bin`, and `env` for executables, and prepends `env`, `env/Scripts`, and `env/Library/bin` to subprocess PATH so GDAL/rasterio DLL discovery stays backend-local.
+Micromamba installs the conda-forge packages first. PyPI-only packages are installed afterward through the staged backend Python with `pip install --no-deps` and a sanitized environment. Because pip dependency resolution is disabled, PyForestScan runtime imports such as SciPy and Matplotlib must be listed explicitly in the backend specs and manifest. On Windows, verification searches `env/Scripts`, `env/Library/bin`, `env/bin`, and `env` for executables, and prepends `env`, `env/Scripts`, and `env/Library/bin` to subprocess PATH so GDAL/rasterio DLL discovery stays backend-local.
 
 ## Common Failure Patterns
 
@@ -60,6 +68,10 @@ Rasterio is present but its compiled extension is not compatible with the active
 `pdal --version failed: executable not found`
 
 The PDAL runtime package did not create `pdal.exe` under `env/Scripts`, `env/Library/bin`, `env/bin`, or `env`. Confirm package solve output and staged environment contents.
+
+`pyforestscan import failed: No module named scipy`
+
+PyForestScan installed from PyPI, but its runtime dependencies were not present because PBM intentionally uses `pip install --no-deps`. Phase 23K makes SciPy, pandas, Shapely, PyProj, Fiona, GeoPandas, and Matplotlib conda-forge dependencies installed before PyForestScan verification.
 
 ## Repair and Retry
 

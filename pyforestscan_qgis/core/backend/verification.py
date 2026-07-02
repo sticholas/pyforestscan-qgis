@@ -28,6 +28,13 @@ _GEOSPATIAL_STACK_PACKAGES = {
     "libgdal",
     "rasterio",
     "numpy",
+    "scipy",
+    "pandas",
+    "shapely",
+    "pyproj",
+    "fiona",
+    "geopandas",
+    "matplotlib",
     "pdal",
     "python-pdal",
     "geos",
@@ -198,6 +205,26 @@ def python_import_command(python_executable: Path, import_name: str) -> tuple[st
             "from rasterio.io import MemoryFile; "
             "m=MemoryFile(); m.close(); "
             "print('rasterio_memoryfile=ok')"
+        )
+        return (str(python_executable), "-c", code)
+    if import_name == "pyforestscan":
+        modules = (
+            "pyforestscan",
+            "pyforestscan.calculate",
+            "pyforestscan.filters",
+            "pyforestscan.handlers",
+            "pyforestscan.process",
+            "pyforestscan.visualize",
+        )
+        module_literal = repr(modules)
+        code = (
+            "import importlib; "
+            f"mods={module_literal}; "
+            "loaded=[]; "
+            "[loaded.append(importlib.import_module(name).__name__) for name in mods]; "
+            "root=importlib.import_module('pyforestscan'); "
+            "print('pyforestscan=' + str(getattr(root, '__version__', 'UNKNOWN'))); "
+            "print('pyforestscan_modules=' + ','.join(loaded))"
         )
         return (str(python_executable), "-c", code)
     code = (

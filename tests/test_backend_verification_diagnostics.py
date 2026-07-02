@@ -119,6 +119,16 @@ class BackendVerificationDiagnosticsTests(unittest.TestCase):
         self.assertEqual(command[1], "-c")
         self.assertIn("import_module('pdal')", command[2])
 
+    def test_pyforestscan_import_command_smokes_public_modules(self) -> None:
+        command = python_import_command(Path("/backend/env/python.exe"), "pyforestscan")
+
+        self.assertIn("pyforestscan.calculate", command[2])
+        self.assertIn("pyforestscan.filters", command[2])
+        self.assertIn("pyforestscan.handlers", command[2])
+        self.assertIn("pyforestscan.process", command[2])
+        self.assertIn("pyforestscan.visualize", command[2])
+        self.assertIn("pyforestscan_modules=", command[2])
+
     def test_package_import_mapping_consistency(self) -> None:
         registry = default_backend_registry()
         required = {dependency.name: dependency for dependency in registry.required_dependencies()}
@@ -135,9 +145,15 @@ class BackendVerificationDiagnosticsTests(unittest.TestCase):
         self.assertEqual(required["gdal"].python_import_name, "osgeo.gdal")
         self.assertEqual(required["rasterio"].python_import_name, "rasterio")
         self.assertEqual(required["numpy"].python_import_name, "numpy")
+        self.assertEqual(required["scipy"].python_import_name, "scipy")
+        self.assertEqual(required["geopandas"].python_import_name, "geopandas")
+        self.assertEqual(required["matplotlib"].python_import_name, "matplotlib")
         self.assertEqual(manifest_packages["pyforestscan"].source.lower(), "pypi")
         self.assertIn("python-pdal", env_text)
         self.assertIn("gdal", env_text)
+        self.assertIn("scipy", env_text)
+        self.assertIn("geopandas", env_text)
+        self.assertIn("matplotlib", env_text)
         self.assertNotIn("- pyforestscan", env_text)
 
     def test_diagnostic_formatting_includes_staged_section(self) -> None:

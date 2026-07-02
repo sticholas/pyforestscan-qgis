@@ -23,7 +23,7 @@ Implemented scope:
 
 - QGIS compatibility layer with version parsing, Processing provider checks, settings/message-log detection, safe wrappers, and QGIS 4.x defensive warnings.
 - Registry-driven dry-run install plan.
-- Initial managed environment spec for python, pyforestscan, pdal, python-pdal, gdal, rasterio, and numpy.
+- Initial managed environment spec for python, pyforestscan, pdal, python-pdal, gdal, rasterio, numpy, scipy, pandas, shapely, pyproj, fiona, geopandas, and matplotlib.
 - Package channel policy and Micromamba bootstrap placeholders.
 - Mission Control Settings buttons for Preview Install Plan and Verify QGIS Compatibility.
 - Documentation and QGIS-free tests.
