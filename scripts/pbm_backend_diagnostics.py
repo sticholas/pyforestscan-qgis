@@ -13,7 +13,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from pyforestscan_qgis.core.backend.installer import staged_backend_paths
 from pyforestscan_qgis.core.backend.paths import resolve_backend_paths
-from pyforestscan_qgis.core.backend.verification import format_verification_result, verify_backend
+from pyforestscan_qgis.core.backend.verification import conda_stack_summary, format_verification_result, verify_backend
 
 
 def collect_backend_diagnostics(backend_root: Path) -> str:
@@ -32,6 +32,10 @@ def collect_backend_diagnostics(backend_root: Path) -> str:
         "Final Backend Verification",
         "--------------------------",
         format_verification_result(verify_backend(paths, require_config=True)),
+        "",
+        "Final Conda Geospatial Stack",
+        "-----------------------------",
+        _format_conda_stack(paths),
     ]
     staged_paths = staged_backend_paths(paths)
     if staged_paths.backend_root.exists():
@@ -41,10 +45,31 @@ def collect_backend_diagnostics(backend_root: Path) -> str:
                 "Staged Backend Verification",
                 "---------------------------",
                 format_verification_result(verify_backend(staged_paths, require_config=False)),
+                "",
+                "Staged Conda Geospatial Stack",
+                "------------------------------",
+                _format_conda_stack(staged_paths),
             ]
         )
     else:
         lines.extend(["", "Staged Backend Verification", "---------------------------", "No staging directory was found."])
+    return "\n".join(lines)
+
+
+def _format_conda_stack(paths) -> str:
+    check = conda_stack_summary(paths)
+    lines = [
+        f"Command: {' '.join(check.command)}",
+        f"Executable: {check.executable}",
+    ]
+    if check.stdout_preview:
+        lines.append(check.stdout_preview)
+    if check.stderr_preview:
+        lines.append(f"stderr: {check.stderr_preview}")
+    if check.error:
+        lines.append(f"error: {check.error}")
+    if not check.stdout_preview and not check.stderr_preview and not check.error:
+        lines.append("No conda package details were available.")
     return "\n".join(lines)
 
 

@@ -20,6 +20,10 @@ class BackendManifestTests(unittest.TestCase):
 
         self.assertEqual(manifest.schema_version, 1)
         self.assertEqual(manifest.package_names(), ("python", "pyforestscan", "pdal", "python-pdal", "gdal", "rasterio", "numpy"))
+        versions = {package.name: package.version_spec for package in manifest.required_packages()}
+        self.assertEqual(versions["gdal"], ">=3.8,<3.10")
+        self.assertEqual(versions["rasterio"], ">=1.3.10,<1.5")
+        self.assertEqual(versions["numpy"], ">=1.26,<2.0")
         self.assertIn("conda-forge", [channel.name for channel in manifest.channels])
         self.assertIn("micromamba", manifest.artifacts)
 

@@ -7,6 +7,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ## Unreleased
 
+- Phase 23J fixes the remaining PBM rasterio compatibility blocker by preventing PyPI dependency resolution from replacing conda-forge geospatial binaries, tightening GDAL/rasterio/numpy environment ranges, adding deeper rasterio/GDAL/MemoryFile verification, and printing filtered conda package/build diagnostics for the geospatial stack.
 - Phase 23I fixes PBM geospatial backend verification for conda-forge Windows layouts by adding explicit `libgdal` to backend specs, searching `env/Scripts`, `env/Library/bin`, `env/bin`, and `env` for executables, and prepending backend-local conda DLL/runtime paths for verification, pip install, and PBM runner subprocesses.
 - Phase 23H improves PBM staged/final verification diagnostics with per-check command/executable/stdout/stderr details, actionable install failure summaries, a QGIS-free `scripts/pbm_backend_diagnostics.py` command, package/import mapping regression tests, and internal beta troubleshooting documentation.
 - Phase 23G fixes PBM staged install promotion by verifying staged Micromamba/env/Python paths before promotion without requiring final config, promoting verified staged files to final backend paths, writing final backend config only after promotion, then running strict final verification before READY. Promotion now preserves previous active backend files in staging backup and restores them on failure.

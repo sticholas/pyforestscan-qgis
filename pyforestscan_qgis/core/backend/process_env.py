@@ -116,7 +116,7 @@ def summarize_subprocess_output(stderr: str | None, stdout: str | None = None, m
 
 def backend_pip_install_command(backend_python: Path, packages: Sequence[str]) -> list[str]:
     """Return the only supported pip invocation for managed backend packages."""
-    return [str(backend_python), "-m", "pip", "install", *packages]
+    return [str(backend_python), "-m", "pip", "install", "--no-deps", *packages]
 
 
 def conda_environment_path_entries(environment_path: Path, platform_value: str) -> tuple[Path, ...]:

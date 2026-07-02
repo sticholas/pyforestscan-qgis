@@ -39,10 +39,13 @@ Micromamba is handled by the bootstrap policy, not as an environment package.
 Phase 22C uses conservative ranges rather than final production lock files:
 
 - Python: `>=3.12,<3.13`.
-- PDAL/GDAL/libgdal/rasterio/numpy: conda-forge geospatial stack with conservative lower bounds. Binary geospatial packages must stay on conda-forge unless a later manifest explicitly validates another source.
-- PyForestScan: `pyforestscan>=0.4` through backend Python pip after the conda geospatial stack is complete.
+- PDAL: `>=2.6,<2.9` from conda-forge.
+- GDAL/libgdal: `>=3.8,<3.10` from conda-forge so Python bindings and native DLLs solve together.
+- rasterio: `>=1.3.10,<1.5` from conda-forge, verified with its reported GDAL version and a `MemoryFile` smoke check.
+- NumPy: `>=1.26,<2.0` while the Windows internal beta geospatial stack is stabilized.
+- PyForestScan: `pyforestscan>=0.4` through backend Python pip after the conda geospatial stack is complete. PBM uses `pip install --no-deps` for PyPI-only packages so pip cannot replace conda-forge GDAL, rasterio, PDAL, or NumPy binaries.
 
-Exact lock files and platform-specific final pins are deferred until controlled installer validation succeeds on Windows, Linux, and macOS.
+Exact lock files are still deferred until controlled installer validation succeeds on Windows, Linux, and macOS, but Phase 23J records the compatible Windows beta ranges above.
 
 ## Separation From QGIS
 

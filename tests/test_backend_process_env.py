@@ -102,6 +102,7 @@ class BackendProcessEnvironmentTests(unittest.TestCase):
         self.assertTrue(result.success)
         command, kwargs = calls[0]
         self.assertEqual(command, backend_pip_install_command(staged.python_executable, ["pyforestscan>=0.4"]))
+        self.assertIn("--no-deps", command)
         self.assertNotIn("PYTHONUSERBASE", kwargs["env"])
         self.assertEqual(kwargs["env"]["PYTHONNOUSERSITE"], "1")
 

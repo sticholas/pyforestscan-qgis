@@ -22,6 +22,28 @@ from .registry import default_backend_registry
 from .state import detect_backend_state
 
 
+_GEOSPATIAL_STACK_PACKAGES = {
+    "python",
+    "gdal",
+    "libgdal",
+    "rasterio",
+    "numpy",
+    "pdal",
+    "python-pdal",
+    "geos",
+    "proj",
+    "sqlite",
+    "libsqlite",
+    "libcurl",
+    "curl",
+    "vsicurl",
+    "tiledb",
+    "zstd",
+    "lz4-c",
+    "lz4",
+}
+
+
 @dataclass(frozen=True)
 class CommandCheck:
     """Structured result from a verification subprocess."""
@@ -168,6 +190,16 @@ def failed_check_summary(result: BackendVerificationResult, limit: int = 8) -> s
 
 def python_import_command(python_executable: Path, import_name: str) -> tuple[str, ...]:
     """Return the backend Python import/version check command."""
+    if import_name == "rasterio":
+        code = (
+            "import rasterio; "
+            "print('rasterio=' + str(getattr(rasterio, '__version__', 'UNKNOWN'))); "
+            "print('rasterio_gdal=' + str(getattr(rasterio, '__gdal_version__', 'UNKNOWN'))); "
+            "from rasterio.io import MemoryFile; "
+            "m=MemoryFile(); m.close(); "
+            "print('rasterio_memoryfile=ok')"
+        )
+        return (str(python_executable), "-c", code)
     code = (
         "import importlib; "
         f"m=importlib.import_module({import_name!r}); "
@@ -226,6 +258,12 @@ def _verify_dependency(dependency: BackendDependency, paths: BackendPaths, timeo
             messages.append(f"import {dependency.python_import_name} verified")
         else:
             messages.append(f"import {dependency.python_import_name} failed: {import_check.failure_detail()}")
+        if dependency.name == "rasterio":
+            stack_check = conda_stack_summary(paths, timeout_seconds=timeout_seconds)
+            if stack_check.stdout_preview:
+                messages.append(f"Conda geospatial package summary: {stack_check.stdout_preview}")
+            elif not stack_check.passed:
+                messages.append(f"Conda geospatial package summary unavailable: {stack_check.failure_detail()}")
 
     failed_commands = [check for check in command_checks if not check.passed]
     if executable_missing or failed_commands:
@@ -370,6 +408,49 @@ def _run_command(command: tuple[str, ...], executable: Path, timeout_seconds: in
         stderr_preview=stderr_preview,
         detected_version=detected_version,
     )
+
+
+def conda_stack_summary(paths: BackendPaths, timeout_seconds: int = 10) -> CommandCheck:
+    """Return filtered conda package/build diagnostics for the geospatial stack."""
+    executable = paths.micromamba_executable
+    command = (str(executable), "list", "-p", str(paths.environment_path))
+    if not executable.exists():
+        return CommandCheck(command=command, executable=executable, returncode=None, error="Micromamba executable is not available for conda package diagnostics.")
+    try:
+        completed = subprocess.run(
+            list(command),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            env=build_clean_subprocess_env(prepend_paths=_verification_path_entries(paths, executable)),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return CommandCheck(command=command, executable=executable, returncode=None, error=str(exc))
+    filtered = _filter_conda_stack_lines(completed.stdout)
+    stdout_preview = filtered or summarize_subprocess_output(completed.stdout, "")
+    stderr_preview = summarize_subprocess_output(completed.stderr, "")
+    first = stdout_preview.splitlines()[0] if stdout_preview else None
+    return CommandCheck(
+        command=command,
+        executable=executable,
+        returncode=completed.returncode,
+        stdout_preview=stdout_preview,
+        stderr_preview=stderr_preview,
+        detected_version=first,
+    )
+
+
+def _filter_conda_stack_lines(output: str) -> str:
+    lines: list[str] = []
+    for raw_line in output.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        package = stripped.split()[0].lower()
+        if package in _GEOSPATIAL_STACK_PACKAGES:
+            lines.append(stripped)
+    return "\n".join(lines)
 
 
 def _verification_path_entries(paths: BackendPaths, executable: Path) -> tuple[Path, ...]:
