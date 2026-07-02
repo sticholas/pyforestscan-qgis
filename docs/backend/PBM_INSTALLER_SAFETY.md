@@ -26,7 +26,7 @@ The installer must:
 
 ## Transaction Scope
 
-The internal beta installer downloads Micromamba, verifies the checksum when a pinned checksum exists, extracts the archive with path-traversal checks, creates the managed environment from the backend spec, installs PyPI-only backend packages through the managed backend Python, verifies imports/executables, promotes staged files, writes READY config, and records logs under the backend root.
+The internal beta installer downloads Micromamba, verifies the checksum when a pinned checksum exists, extracts the archive with path-traversal checks, creates the managed environment from the backend spec, installs PyPI-only backend packages through the managed backend Python, verifies staged imports/executables from `staging/micromamba` and `staging/env` without requiring final config, promotes staged files, writes READY config with final backend paths, runs strict final verification, and records logs under the backend root.
 
 If a stage fails, staging is rolled back and the Backend page shows failure guidance, repair planning, and log previews.
 
@@ -34,7 +34,7 @@ If a stage fails, staging is rolled back and the Backend page shows failure guid
 
 Phase 23F runs PBM installer subprocesses with a sanitized environment. The policy removes `PYTHONPATH`, `PYTHONHOME`, `PYTHONUSERBASE`, Python user-site contamination, pip user-install switches, and QGIS profile dependency paths before running Micromamba, backend Python pip, verification commands, or PBM runner jobs. It sets `PYTHONNOUSERSITE=1`, `PIP_NO_INPUT=1`, and `PIP_DISABLE_PIP_VERSION_CHECK=1`.
 
-Logs record the command kind, executable path, whether the clean environment was used, and short first/last stderr or stdout previews on failure. Logs do not dump the full environment.
+Logs record the command kind, executable path, whether the clean environment was used, staged versus final verification paths, and short first/last stderr or stdout previews on failure. Logs do not dump the full environment.
 
 ## Package Install Split
 

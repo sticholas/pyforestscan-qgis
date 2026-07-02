@@ -63,6 +63,9 @@ def plan_backend_repair(paths: BackendPaths, manifest: BackendManifest | None = 
         issues.append(RepairIssue("corrupt_config", "error", str(exc), paths.config_file))
         actions.append(RepairAction("rewrite_config", "Rewrite backend configuration after a successful verification."))
 
+    if paths.staging_dir.exists():
+        issues.append(RepairIssue("staging_remnants", "warning", "Previous install staging files remain and should be cleaned before retry.", paths.staging_dir))
+        actions.append(RepairAction("cleanup_staging", "Remove stale staging files and retry backend installation."))
     if not paths.micromamba_executable.exists():
         issues.append(RepairIssue("missing_executable", "error", "Micromamba executable is missing.", paths.micromamba_executable))
         actions.append(RepairAction("restore_micromamba", "Redownload, verify, and extract Micromamba through the transaction engine."))

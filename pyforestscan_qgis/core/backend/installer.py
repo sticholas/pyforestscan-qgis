@@ -146,8 +146,28 @@ def staging_paths(paths: BackendPaths) -> StagingPaths:
 
 
 def staged_backend_paths(paths: BackendPaths) -> BackendPaths:
-    """Return a BackendPaths object rooted in staging for verification."""
-    return resolve_backend_paths(backend_root=paths.staging_dir, platform=paths.platform)
+    """Return a BackendPaths object with exact staged executable/env paths."""
+    staged = staging_paths(paths)
+    return BackendPaths(
+        platform=paths.platform,
+        backend_root=staged.root,
+        micromamba_executable=staged.micromamba_executable,
+        environment_path=staged.environment_path,
+        python_executable=staged.python_executable,
+        logs_dir=paths.logs_dir,
+        config_file=staged.root / "backend.json",
+        registry_file=staged.root / "registry.json",
+        cache_dir=paths.cache_dir,
+        downloads_dir=paths.downloads_dir,
+        staging_dir=paths.staging_dir,
+        scripts_dir=paths.scripts_dir,
+        install_log=paths.install_log,
+        download_log=paths.download_log,
+        verify_log=paths.verify_log,
+        repair_log=paths.repair_log,
+        update_log=paths.update_log,
+        remove_log=paths.remove_log,
+    )
 
 
 class BackendInstaller:
@@ -166,7 +186,7 @@ class BackendInstaller:
         self.environ = environ if environ is not None else os.environ
         self.downloader = downloader
         self.runner = runner or self._default_runner
-        self.verifier = verifier or verify_backend
+        self.verifier = verifier
         self.registry = registry or default_backend_registry()
 
     def install_availability(self) -> BackendInstallAvailability:
@@ -295,12 +315,36 @@ class BackendInstaller:
         return packages
 
     def verify_environment(self) -> BackendVerificationResult:
-        """Verify the staged backend environment."""
-        return self.verifier(staged_backend_paths(self.paths))
+        """Verify the staged backend environment before promotion."""
+        staged_paths = staged_backend_paths(self.paths)
+        self._log_verification_paths("STAGED_VERIFY", staged_paths, require_config=False)
+        return self._verify_backend_paths(staged_paths, require_config=False)
 
     def verify_active_backend(self) -> BackendVerificationResult:
-        """Verify the active backend after promotion."""
-        return self.verifier(self.paths)
+        """Verify the active backend after promotion and config write."""
+        self._log_verification_paths("FINAL_VERIFY", self.paths, require_config=True)
+        return self._verify_backend_paths(self.paths, require_config=True)
+
+    def _verify_backend_paths(self, paths: BackendPaths, require_config: bool) -> BackendVerificationResult:
+        if self.verifier is not None:
+            return self.verifier(paths)
+        return verify_backend(paths, self.registry, require_config=require_config)
+
+    def _log_verification_paths(self, stage: str, paths: BackendPaths, require_config: bool) -> None:
+        write_backend_log_entry(
+            self.paths.install_log,
+            "install",
+            "Verifying PBM backend paths.",
+            stage=stage,
+            details={
+                "backend_root": str(paths.backend_root),
+                "micromamba": str(paths.micromamba_executable),
+                "environment": str(paths.environment_path),
+                "python": str(paths.python_executable),
+                "config": str(paths.config_file),
+                "require_config": str(require_config).lower(),
+            },
+        )
 
     def promote_staging(self) -> BackendOperationResult:
         """Promote verified staged files into the active backend layout."""
@@ -310,13 +354,19 @@ class BackendInstaller:
         staged = staging_paths(self.paths)
         if not staged.micromamba_executable.exists() or not staged.environment_path.exists():
             return BackendOperationResult("promote_staging", BackendStatus.FAILED, False, "Staging is incomplete; cannot promote backend.", False)
-        for target in (self.paths.micromamba_executable.parent, self.paths.environment_path):
-            if target.exists():
-                shutil.rmtree(target)
-        self.paths.micromamba_executable.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(staged.micromamba_dir, self.paths.micromamba_executable.parent, dirs_exist_ok=True)
-        shutil.copytree(staged.environment_path, self.paths.environment_path, dirs_exist_ok=True)
-        return BackendOperationResult("promote_staging", BackendStatus.VERIFYING, True, "Promoted staged backend files into the active backend layout.", True)
+        backup_root = _promotion_backup_dir(self.paths)
+        try:
+            if backup_root.exists():
+                shutil.rmtree(backup_root)
+            backup_root.mkdir(parents=True, exist_ok=True)
+            _backup_active_backend(self.paths, backup_root)
+            self.paths.micromamba_executable.parent.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(staged.micromamba_dir), str(self.paths.micromamba_executable.parent))
+            shutil.move(str(staged.environment_path), str(self.paths.environment_path))
+        except OSError as exc:
+            _restore_promotion_backup(self.paths, backup_root)
+            return BackendOperationResult("promote_staging", BackendStatus.FAILED, False, f"Promotion failed and previous backend was restored when available: {exc}", True)
+        return BackendOperationResult("promote_staging", BackendStatus.VERIFYING, True, "Promoted staged backend files into the active backend layout; previous backend backup will be removed after final verification.", True)
 
     def write_backend_config(self, status: BackendStatus = BackendStatus.READY) -> BackendOperationResult:
         """Write backend config after successful verification."""
@@ -340,11 +390,27 @@ class BackendInstaller:
         return BackendOperationResult("write_backend_config", status, True, f"Wrote backend config at {self.paths.config_file}.", True)
 
     def rollback_failed_install(self) -> BackendOperationResult:
-        """Remove staging files after a failed install attempt."""
+        """Remove staging files after a failed install attempt, restoring active backup if needed."""
+        restored = False
+        backup_root = _promotion_backup_dir(self.paths)
+        if backup_root.exists():
+            restored = _restore_promotion_backup(self.paths, backup_root)
         if self.paths.staging_dir.exists():
             shutil.rmtree(self.paths.staging_dir)
-            return BackendOperationResult("rollback_failed_install", BackendStatus.REPAIR_REQUIRED, True, f"Removed staging directory {self.paths.staging_dir}.", True)
+            message = f"Removed staging directory {self.paths.staging_dir}."
+            if restored:
+                message += " Restored previous active backend from promotion backup."
+            return BackendOperationResult("rollback_failed_install", BackendStatus.REPAIR_REQUIRED, True, message, True)
+        if restored:
+            return BackendOperationResult("rollback_failed_install", BackendStatus.REPAIR_REQUIRED, True, "Restored previous active backend from promotion backup.", True)
         return BackendOperationResult("rollback_failed_install", BackendStatus.NOT_INSTALLED, True, "No staging directory was present.", False)
+
+    def cleanup_successful_install(self) -> BackendOperationResult:
+        """Remove staging and promotion backups after final verification passes."""
+        if self.paths.staging_dir.exists():
+            shutil.rmtree(self.paths.staging_dir)
+            return BackendOperationResult("cleanup_successful_install", BackendStatus.READY, True, f"Removed staging directory {self.paths.staging_dir} after successful verification.", True)
+        return BackendOperationResult("cleanup_successful_install", BackendStatus.READY, True, "No staging directory was present after successful verification.", False)
 
     def install_backend(self, policy: MicromambaBootstrapPolicy | None = None, spec_file: Path | None = None) -> BackendOperationResult:
         """Run the guarded transactional installer when explicitly enabled."""
@@ -396,6 +462,52 @@ def default_environment_spec_file(platform: BackendPlatform) -> Path:
                 return spec_dir / "environment.macos.yml"
             return spec_dir / "environment.yml"
     return source_root / "backend_specs" / "environment.yml"
+
+
+def _promotion_backup_dir(paths: BackendPaths) -> Path:
+    return paths.staging_dir / "promotion_backup"
+
+
+def _backup_active_backend(paths: BackendPaths, backup_root: Path) -> None:
+    micromamba_dir = paths.micromamba_executable.parent
+    targets = (
+        (micromamba_dir, backup_root / "micromamba", True),
+        (paths.environment_path, backup_root / "env", True),
+        (paths.config_file, backup_root / "backend.json", False),
+    )
+    for source, destination, is_dir in targets:
+        if not source.exists():
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if is_dir:
+            shutil.move(str(source), str(destination))
+        else:
+            shutil.copy2(source, destination)
+
+
+def _restore_promotion_backup(paths: BackendPaths, backup_root: Path) -> bool:
+    if not backup_root.exists():
+        return False
+    restored = False
+    dir_targets = (
+        (backup_root / "micromamba", paths.micromamba_executable.parent),
+        (backup_root / "env", paths.environment_path),
+    )
+    for backup, target in dir_targets:
+        if target.exists():
+            shutil.rmtree(target)
+        if backup.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(backup), str(target))
+            restored = True
+    config_backup = backup_root / "backend.json"
+    if paths.config_file.exists():
+        paths.config_file.unlink()
+    if config_backup.exists():
+        paths.config_file.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(config_backup), str(paths.config_file))
+        restored = True
+    return restored
 
 
 def _safe_extract_tar(archive: tarfile.TarFile, destination: Path) -> None:

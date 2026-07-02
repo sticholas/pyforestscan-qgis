@@ -36,51 +36,68 @@ class FakeInstaller:
     def __init__(self, fail_stage: str | None = None) -> None:
         self.fail_stage = fail_stage
         self.rollback_called = False
+        self.calls: list[str] = []
 
     def require_enabled(self, operation: str):
+        self.calls.append("require_enabled")
         return None
 
     def prepare_staging(self):
+        self.calls.append("prepare_staging")
         return self._result("prepare_staging")
 
     def download_micromamba(self, policy=None):
+        self.calls.append("download_micromamba")
         if self.fail_stage == "download":
             return type("Download", (), {"success": False, "message": "download failed", "path": Path("artifact")})()
         return FakeDownload()
 
     def verify_micromamba_download(self, policy=None):
+        self.calls.append("verify_micromamba_download")
         if self.fail_stage == "verify":
             return type("Checksum", (), {"message": "bad checksum", "passed": lambda self: False})()
         return FakeChecksum()
 
     def extract_micromamba(self, policy=None):
+        self.calls.append("extract_micromamba")
         return self._result("extract_micromamba")
 
     def create_environment(self, spec_file=None):
+        self.calls.append("create_environment")
         return self._result("create_environment")
 
     def install_python_packages(self):
+        self.calls.append("install_python_packages")
         return self._result("install_python_packages")
 
     def verify_environment(self):
+        self.calls.append("verify_environment")
         if self.fail_stage == "verify_environment":
             return type("Verification", (), {"summary": "missing packages", "passed": lambda self: False})()
         return FakeVerification()
 
     def verify_active_backend(self):
+        self.calls.append("verify_active_backend")
         if self.fail_stage == "verify_active_backend":
             return type("Verification", (), {"summary": "active backend incomplete", "passed": lambda self: False})()
         return FakeVerification()
 
     def promote_staging(self):
+        self.calls.append("promote_staging")
         return self._result("promote_staging")
 
     def write_backend_config(self, status=BackendStatus.READY):
+        self.calls.append("write_backend_config")
         return self._result("write_backend_config", status=status)
 
     def rollback_failed_install(self):
+        self.calls.append("rollback_failed_install")
         self.rollback_called = True
         return BackendOperationResult("rollback_failed_install", BackendStatus.REPAIR_REQUIRED, True, "rolled back", True)
+
+    def cleanup_successful_install(self):
+        self.calls.append("cleanup_successful_install")
+        return BackendOperationResult("cleanup_successful_install", BackendStatus.READY, True, "cleaned", True)
 
     def _result(self, operation: str, status: BackendStatus = BackendStatus.INSTALLING):
         if self.fail_stage == operation:
@@ -98,7 +115,8 @@ class BackendTransactionTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.status, BackendStatus.READY)
         self.assertEqual(result.stage, BackendTransactionStage.READY)
-        self.assertTrue(installer.rollback_called)
+        self.assertFalse(installer.rollback_called)
+        self.assertEqual(result.operations[-1].operation, "cleanup_successful_install")
 
     def test_transaction_rolls_back_on_stage_failure(self) -> None:
         installer = FakeInstaller(fail_stage="extract_micromamba")
@@ -126,6 +144,25 @@ class BackendTransactionTests(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertTrue(result.rolled_back)
         self.assertEqual(result.stage, BackendTransactionStage.DOWNLOAD)
+
+
+    def test_transaction_order_verifies_staging_before_promoting_and_config(self) -> None:
+        installer = FakeInstaller()
+        result = BackendInstallTransaction(installer).run()
+
+        self.assertTrue(result.success)
+        self.assertLess(installer.calls.index("verify_environment"), installer.calls.index("promote_staging"))
+        self.assertLess(installer.calls.index("promote_staging"), installer.calls.index("write_backend_config"))
+        self.assertLess(installer.calls.index("write_backend_config"), installer.calls.index("verify_active_backend"))
+        self.assertEqual(installer.calls[-1], "cleanup_successful_install")
+
+    def test_transaction_rolls_back_on_failed_promotion(self) -> None:
+        installer = FakeInstaller(fail_stage="promote_staging")
+        result = BackendInstallTransaction(installer).run()
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.stage, BackendTransactionStage.PROMOTE_BACKEND)
+        self.assertTrue(installer.rollback_called)
 
     def test_guarded_installer_still_does_not_modify_without_flag(self) -> None:
         from pyforestscan_qgis.core.backend.installer import BackendInstaller

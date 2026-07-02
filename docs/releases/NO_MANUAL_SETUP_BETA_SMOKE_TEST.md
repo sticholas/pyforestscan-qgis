@@ -10,6 +10,8 @@ This repository validation environment can run unit tests, compile checks, packa
 
 Phase 23F resolved two critical clean-machine blockers reported during installer testing: Environment Check no longer raises `NameError` when PBM is missing or repair-required, and PBM installer subprocesses no longer inherit QGIS profile Python dependency paths such as `%APPDATA%\\QGIS\\QGIS3\\profiles\\default\\python\\dependencies`.
 
+Phase 23G fixes the staged install promotion order found in clean-machine testing: PBM verifies the staged backend first, promotes verified files to final paths, writes final config, then verifies the final backend before reporting `Ready`.
+
 ## Preconditions
 
 - Fresh Windows user profile or clean QGIS profile.

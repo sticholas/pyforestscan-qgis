@@ -21,17 +21,22 @@ from .registry import default_backend_registry
 from .state import detect_backend_state
 
 
-def verify_backend(paths: BackendPaths, registry: BackendRegistry | None = None, timeout_seconds: int = 10) -> BackendVerificationResult:
+def verify_backend(paths: BackendPaths, registry: BackendRegistry | None = None, timeout_seconds: int = 10, require_config: bool = True) -> BackendVerificationResult:
     """Verify the backend without downloading, installing, or modifying QGIS."""
     registry_value = registry or default_backend_registry()
     state = detect_backend_state(paths)
     checks: list[BackendCheckResult] = [
         _path_check("Backend root", paths.backend_root, required=True),
-        _path_check("Backend config", paths.config_file, required=True),
-        _path_check("Micromamba executable", paths.micromamba_executable, required=True),
-        _path_check("Backend environment", paths.environment_path, required=True),
-        _path_check("Backend Python", paths.python_executable, required=True),
     ]
+    if require_config:
+        checks.append(_path_check("Backend config", paths.config_file, required=True))
+    checks.extend(
+        [
+            _path_check("Micromamba executable", paths.micromamba_executable, required=True),
+            _path_check("Backend environment", paths.environment_path, required=True),
+            _path_check("Backend Python", paths.python_executable, required=True),
+        ]
+    )
 
     dependencies: list[BackendDependency] = []
     for dependency in registry_value.dependencies:
@@ -55,7 +60,7 @@ def verify_backend(paths: BackendPaths, registry: BackendRegistry | None = None,
     if not paths.backend_root.exists():
         status = BackendStatus.NOT_INSTALLED
         summary = "Backend is not installed. Normal user installation is disabled; Phase 22C installer mechanics require the developer guard."
-    elif required_failures or failures[:5]:
+    elif required_failures or failures:
         status = BackendStatus.REPAIR_REQUIRED
         summary = "Backend files are incomplete or required dependencies are missing."
     else:

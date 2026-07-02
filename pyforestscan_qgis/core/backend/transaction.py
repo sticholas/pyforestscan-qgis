@@ -117,7 +117,9 @@ class BackendInstallTransaction:
             active_verification = self.installer.verify_active_backend()
             if not _verification_passed(active_verification):
                 return self._fail(BackendTransactionStage.VERIFY_PACKAGES, active_verification.summary, status=BackendStatus.REPAIR_REQUIRED)
-            self.installer.rollback_failed_install()
+            cleanup = self.installer.cleanup_successful_install()
+            self.operations.append(cleanup)
+            self._log(BackendTransactionStage.READY, "INFO" if cleanup.success else "WARNING", cleanup.message)
             self._emit(BackendProgressStage.READY, 100, "Backend installed and verified.")
             return self._result(True, BackendStatus.READY, BackendTransactionStage.READY, "Backend installed and verified in the user-local PBM directory.", False, True)
         except Exception as exc:  # noqa: BLE001 - transactions convert crashes into rollback results.
