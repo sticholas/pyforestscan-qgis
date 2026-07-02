@@ -27,6 +27,8 @@ python3 scripts/prepare_github_release.py --dry-run
 
 ## Manual QGIS Smoke Test
 
+- Complete [Clean Machine ZIP Smoke Test](CLEAN_MACHINE_SMOKE_TEST.md).
+- Review [Dependency State Matrix](DEPENDENCY_STATE_MATRIX.md).
 - Install `dist/pyforestscan_qgis.zip` through QGIS Plugin Manager.
 - Confirm Mission Control opens as a floating, movable window.
 - Run Environment Check and confirm READY or clear dependency guidance.

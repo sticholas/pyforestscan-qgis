@@ -59,9 +59,12 @@ VersionLookup = Callable[[str], str]
 
 
 INSTALLATION_GUIDANCE = (
-    "Install missing scientific dependencies into the Python environment used "
-    "by QGIS. Do not assume system Python and QGIS Python are the same. See "
-    "docs/INSTALLATION_STRATEGY.md for project guidance."
+    "ZIP installation only installs the QGIS plugin. Scientific processing also "
+    "requires PyForestScan, PDAL, GDAL, rasterio, and numpy in the active QGIS "
+    "Python environment. Until PBM backend installation is enabled, install "
+    "missing dependencies manually for the exact QGIS profile/interpreter shown "
+    "above. Do not use system Python unless it is the Python used by QGIS. See "
+    "docs/INSTALLATION_STRATEGY.md and docs/releases/CLEAN_MACHINE_SMOKE_TEST.md."
 )
 
 
@@ -97,8 +100,9 @@ def collect_environment_report(
             version_lookup=lookup,
             required=True,
             guidance=(
-                "Install PyForestScan into the QGIS Python environment before "
-                "running PyForestScan-backed algorithms."
+                "PyForestScan is missing from QGIS Python. ZIP install is still usable "
+                "for opening Mission Control and diagnostics, but processing cannot run "
+                "until PyForestScan is installed manually or a future PBM backend is enabled."
             ),
         ),
         _dependency_check(
@@ -109,8 +113,9 @@ def collect_environment_report(
             version_lookup=lookup,
             required=True,
             guidance=(
-                "Install PDAL Python bindings compatible with the QGIS Python "
-                "environment and platform geospatial stack."
+                "PDAL Python bindings are missing from QGIS Python. Install PDAL and "
+                "python-pdal for the same QGIS environment; mismatched system Python "
+                "installs will not fix QGIS Processing."
             ),
         ),
         _dependency_check(
@@ -122,8 +127,9 @@ def collect_environment_report(
             required=True,
             version_getter=_gdal_version,
             guidance=(
-                "Install GDAL bindings for the QGIS Python environment. QGIS "
-                "usually supplies GDAL, but standalone environments may not."
+                "GDAL bindings are not importable from QGIS Python. Confirm the QGIS "
+                "installation is healthy before installing extra packages; GDAL usually "
+                "comes from QGIS/OSGeo4W rather than system Python."
             ),
         ),
         _dependency_check(
@@ -134,8 +140,8 @@ def collect_environment_report(
             version_lookup=lookup,
             required=True,
             guidance=(
-                "Install rasterio into the QGIS Python environment with a GDAL "
-                "version compatible with QGIS."
+                "rasterio is missing from QGIS Python. Install a rasterio build that is "
+                "compatible with the GDAL version used by QGIS."
             ),
         ),
         _dependency_check(
@@ -145,7 +151,7 @@ def collect_environment_report(
             importer=importer,
             version_lookup=lookup,
             required=True,
-            guidance="Install numpy into the QGIS Python environment.",
+            guidance="numpy is missing from QGIS Python. Install numpy into the exact interpreter used by QGIS.",
         ),
     ]
 

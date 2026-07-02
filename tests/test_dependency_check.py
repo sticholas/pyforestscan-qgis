@@ -56,6 +56,10 @@ class DependencyCheckTests(unittest.TestCase):
         self.assertIs(statuses["numpy"], CheckStatus.FAIL)
         self.assertIs(statuses["QGIS version"], CheckStatus.WARNING)
         self.assertIs(report.readiness, ReadinessStatus.NOT_READY)
+        guidance = {check.name: check.guidance for check in report.checks}
+        self.assertIn("ZIP install", guidance["pyforestscan"])
+        self.assertIn("QGIS Python", guidance["pdal"])
+        self.assertIn("QGIS", guidance["osgeo.gdal"])
 
     def test_dependency_report_creation_for_ready_environment(self) -> None:
         gdal = ModuleType("osgeo.gdal")
@@ -107,6 +111,7 @@ class DependencyCheckTests(unittest.TestCase):
         self.assertIn("[WARNING] QGIS version: Version unknown.", rendered)
         self.assertIn("Final summary: NOT READY", rendered)
         self.assertIn("Installation guidance:", rendered)
+        self.assertIn("ZIP installation only installs the QGIS plugin", rendered)
 
     def test_warning_only_report_is_partially_ready(self) -> None:
         report = build_environment_report(

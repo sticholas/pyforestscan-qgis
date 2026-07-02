@@ -408,7 +408,8 @@ class EnvironmentPage(MissionPage):
         for check in report.checks:
             icon = _status_icon(check.status.value)
             version = f" ({check.version})" if check.version else ""
-            self.checks_list.addItem(f"{icon} {check.name}{version}: {check.message}")
+            guidance = f"\nNext: {check.guidance}" if check.guidance else ""
+            self.checks_list.addItem(f"{icon} {check.name}{version}: {check.message}{guidance}")
         self.environmentChanged.emit(report.readiness.value)
 
 
@@ -1976,6 +1977,9 @@ class SettingsPage(MissionPage):
         self.backend_python_label = _body_label("Python Version: Not detected")
         self.backend_pdal_label = _body_label("PDAL Version: Not detected")
         self.backend_dependency_label = _body_label("Dependency summary: Not verified")
+        self.zip_install_ready_label = _body_label("ZIP install ready: pending clean-machine smoke test")
+        self.backend_auto_install_ready_label = _body_label("Backend auto-install ready: No")
+        self.manual_dependency_setup_label = _body_label("Manual dependency setup required: Yes, unless QGIS Python already has required dependencies")
         self.qgis_compatibility_label = _body_label("QGIS Compatibility: Not checked")
         self.backend_install_readiness_label = _body_label("Install readiness: Dry-run preview only")
         for label in (
@@ -1988,6 +1992,9 @@ class SettingsPage(MissionPage):
             self.backend_python_label,
             self.backend_pdal_label,
             self.backend_dependency_label,
+            self.zip_install_ready_label,
+            self.backend_auto_install_ready_label,
+            self.manual_dependency_setup_label,
             self.qgis_compatibility_label,
             self.backend_install_readiness_label,
         ):
@@ -2013,6 +2020,8 @@ class SettingsPage(MissionPage):
         self.advanced_backend_button.clicked.connect(self.show_backend_advanced)
         self.developer_mode_button = QPushButton("Developer Mode: On" if self.backend_service.backend_install_enabled() else "Developer Mode: Off")
         self.developer_mode_button.setEnabled(False)
+        self.manual_setup_button = QPushButton("Manual Setup Instructions")
+        self.manual_setup_button.clicked.connect(self.show_manual_setup_instructions)
         self.open_backend_folder_button = QPushButton("Open Backend Folder")
         self.open_backend_folder_button.clicked.connect(self.open_backend_folder)
         self.view_backend_logs_button = QPushButton("View Logs")
@@ -2023,6 +2032,7 @@ class SettingsPage(MissionPage):
             self.preview_install_plan_button,
             self.install_backend_button,
             self.repair_backend_button,
+            self.manual_setup_button,
             self.open_backend_folder_button,
             self.view_backend_logs_button,
             self.advanced_backend_button,
@@ -2035,7 +2045,7 @@ class SettingsPage(MissionPage):
         self.backend_details = QTextEdit()
         self.backend_details.setReadOnly(True)
         self.backend_details.setMinimumHeight(220)
-        self.backend_details.setPlainText("Use Verify, Preview Install, Repair, View Logs, or Advanced to inspect PBM readiness. Install Backend remains disabled for normal users.")
+        self.backend_details.setPlainText("Use Verify, Preview Install, Repair, Manual Setup Instructions, View Logs, or Advanced to inspect PBM readiness. Install Backend remains disabled for normal users.")
         backend.addWidget(self.backend_details)
         self.refresh_backend_summary()
 
@@ -2096,13 +2106,17 @@ class SettingsPage(MissionPage):
         required_count = len(registry.required_dependencies())
         total_count = len(registry.dependencies)
         self.backend_dependency_label.setText(f"Dependencies: {required_count} required, {total_count - required_count} optional/future")
+        self.zip_install_ready_label.setText("ZIP install ready: yes for plugin loading; clean Windows/QGIS smoke test still required before broad distribution")
+        self.backend_auto_install_ready_label.setText("Backend auto-install ready: no; PBM installer remains disabled for normal users")
+        self.manual_dependency_setup_label.setText("Manual dependency setup required: yes for scientific processing unless QGIS Python already has PyForestScan, PDAL, GDAL, rasterio, and numpy")
         compat_text = version.message if version else "Manifest unavailable"
         self.qgis_compatibility_label.setText(f"Compatibility: QGIS {compatibility.summary()}; backend {compat_text}")
         readiness = "developer mode enabled" if self.backend_service.backend_install_enabled() else "install disabled"
         self.backend_install_readiness_label.setText(f"Install readiness: manifest dry-run for {len(plan.required_package_names())} packages; {readiness}")
         self.backend_details.setPlainText(
             f"{state.message}\n\n"
-            "Production installer architecture is present, but installation is not enabled for normal users. Preview Install shows the manifest-driven transaction; Repair proposes actions without changing files. "
+            "Current support: ZIP installation loads the plugin, Mission Control, Environment Check, and the Advanced Toolbox. Scientific processing requires dependencies in QGIS Python until PBM backend installation is approved. "
+            "Production installer architecture is present, but backend auto-install is not enabled for normal users. Preview Install shows the manifest-driven transaction; Repair proposes actions without changing files. "
             "If PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1 is set, the experimental installer button is available for development testing only. "
             "PBM will not modify QGIS Python, the QGIS install directory, or user environment variables."
         )
@@ -2178,6 +2192,24 @@ class SettingsPage(MissionPage):
             lines.extend(("", "Warnings:"))
             lines.extend(f"- {warning}" for warning in version.warnings)
         self.backend_details.setPlainText("\n".join(lines))
+
+
+    def show_manual_setup_instructions(self) -> None:
+        """Display current manual dependency setup guidance for clean ZIP installs."""
+        self.backend_details.setPlainText(
+            "Manual Setup Instructions\n\n"
+            "ZIP installation installs only the QGIS plugin. For scientific processing, the active QGIS Python environment must already be able to import pyforestscan, pdal, osgeo.gdal, rasterio, and numpy. Run Environment Check to see the exact interpreter and missing modules.\n\n"
+            "Current release status:\n"
+            "- ZIP install ready: yes for plugin loading and diagnostics; final clean Windows/QGIS smoke test required.\n"
+            "- Backend auto-install ready: no.\n"
+            "- Manual dependency setup required: yes unless QGIS Python already has all required scientific packages.\n\n"
+            "Next steps:\n"
+            "1. Install the ZIP through QGIS Plugin Manager.\n"
+            "2. Open Mission Control and run Environment Check.\n"
+            "3. If dependencies are missing, install them into QGIS Python, not system Python.\n"
+            "4. Re-run Environment Check until READY before Guided or Advanced processing.\n\n"
+            "Reference docs: docs/INSTALLATION_STRATEGY.md and docs/releases/CLEAN_MACHINE_SMOKE_TEST.md."
+        )
 
     def open_backend_folder(self) -> None:
         """Open the backend folder if it already exists, otherwise show the planned path."""

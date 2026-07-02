@@ -29,6 +29,16 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
         self.assertIn("verify_qgis_compatibility", source)
         self.assertIn("Installation is not enabled for normal users", source)
 
+    def test_release_readiness_and_manual_setup_guidance_are_present(self) -> None:
+        source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
+
+        self.assertIn('QPushButton("Manual Setup Instructions")', source)
+        self.assertIn("ZIP install ready", source)
+        self.assertIn("Backend auto-install ready: no", source)
+        self.assertIn("Manual dependency setup required", source)
+        self.assertIn("QGIS Python, not system Python", source)
+
+
 
 if __name__ == "__main__":
     unittest.main()

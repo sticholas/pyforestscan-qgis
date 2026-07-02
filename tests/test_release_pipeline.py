@@ -88,6 +88,16 @@ class ReleasePipelineTests(unittest.TestCase):
         self.assertEqual(len(values["sha256"]), 64)
         self.assertEqual(release_notes_path(version).name, "v0.1.0-beta.1.md")
 
+    def test_clean_machine_release_docs_exist(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        smoke = root / "docs/releases/CLEAN_MACHINE_SMOKE_TEST.md"
+        matrix = root / "docs/releases/DEPENDENCY_STATE_MATRIX.md"
+
+        self.assertIn("dist/pyforestscan_qgis-v0.1.0-beta.1.zip", smoke.read_text(encoding="utf-8"))
+        self.assertIn("No backend / no QGIS deps", matrix.read_text(encoding="utf-8"))
+        self.assertIn("Backend auto-install ready", smoke.read_text(encoding="utf-8"))
+
+
 
 if __name__ == "__main__":
     unittest.main()

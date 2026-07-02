@@ -7,7 +7,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ## Unreleased
 
-No unreleased changes yet.
+- Phase 23B clean-machine ZIP install readiness documentation, dependency-state matrix, clearer missing-dependency guidance, Backend page release-readiness labels, and manual setup instructions.
 
 ## 0.1.0-beta.1 - 2026-07-02
 
