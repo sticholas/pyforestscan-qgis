@@ -47,6 +47,8 @@ QGIS reads this result and maps it back to adapter result types such as `ChmResu
 
 The runner constructs adapter request dataclasses from the JSON spec and calls `PyForestScanAdapter(execution_mode="qgis_python")` inside backend Python. This deliberately reuses the existing adapter scientific implementation while preventing recursive PBM subprocess calls.
 
+`dataset_inspection` is a protocol job type for Dataset Explorer. It runs adapter inspection inside backend Python and returns serialized `DatasetInspection` metrics rather than product output files.
+
 ## Non-Goals
 
 The runner does not:

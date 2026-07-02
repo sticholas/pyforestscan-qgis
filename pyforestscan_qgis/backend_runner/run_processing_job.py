@@ -12,6 +12,7 @@ from typing import Any
 from .job_result import BackendJobResult
 from .job_spec import BackendJobSpec
 from pyforestscan_qgis.core.adapter import PyForestScanAdapter
+from pyforestscan_qgis.core.config import InspectionOptions
 from pyforestscan_qgis.core.types import (
     CanopyCoverRequest,
     ChmRequest,
@@ -41,12 +42,17 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
     """Run one backend job spec and return a structured result."""
     started = _utc_now()
     try:
-        request = _request_from_spec(spec)
         adapter = PyForestScanAdapter(execution_mode="qgis_python")
-        _request_class, method_name = PRODUCT_REQUESTS[spec.product]
-        result = getattr(adapter, method_name)(request)
-        metrics = _json_ready(asdict(result))
-        outputs = {"primary": Path(metrics.get("output_path", spec.output_paths.get("primary", "")))}
+        if spec.product == "dataset_inspection":
+            result = _run_dataset_inspection(adapter, spec)
+            metrics = _json_ready(asdict(result))
+            outputs = {}
+        else:
+            request = _request_from_spec(spec)
+            _request_class, method_name = PRODUCT_REQUESTS[spec.product]
+            result = getattr(adapter, method_name)(request)
+            metrics = _json_ready(asdict(result))
+            outputs = {"primary": Path(metrics.get("output_path", spec.output_paths.get("primary", "")))}
         return BackendJobResult(
             job_id=spec.job_id,
             product=spec.product,
@@ -66,6 +72,16 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
             finished_at=_utc_now(),
             traceback=traceback_module.format_exc(),
         )
+
+
+def _run_dataset_inspection(adapter: PyForestScanAdapter, spec: BackendJobSpec):
+    params = dict(spec.product_parameters)
+    options = InspectionOptions(
+        include_classification_summary=bool(params.get("include_classification_summary", True)),
+        include_dimensions=bool(params.get("include_dimensions", True)),
+        max_points_for_classification_summary=params.get("max_points_for_classification_summary"),
+    )
+    return adapter.inspect_dataset(spec.input_lidar_path, options=options)
 
 
 def _request_from_spec(spec: BackendJobSpec) -> Any:

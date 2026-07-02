@@ -132,6 +132,7 @@ Key entry points:
 - [QGIS Compatibility Layer](docs/development/QGIS_COMPATIBILITY_LAYER.md)
 - [Release Checklist](docs/releases/INTERNAL_RELEASE_CHECKLIST.md)
 - [PBM Internal Beta Smoke Test](docs/releases/PBM_INTERNAL_BETA_SMOKE_TEST.md)
+- [No-Manual-Setup Beta Smoke Test](docs/releases/NO_MANUAL_SETUP_BETA_SMOKE_TEST.md)
 - [Known Limitations](docs/KNOWN_LIMITATIONS.md)
 
 ## Roadmap

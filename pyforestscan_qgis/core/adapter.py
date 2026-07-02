@@ -255,7 +255,8 @@ class PyForestScanAdapter:
             if source.format is DatasetFormat.EPT:
                 inspection = self._inspect_ept(source, opts)
             else:
-                inspection = self._inspect_with_pdal(source, opts)
+                pbm_inspection = self._run_pbm_inspection_if_selected(source, opts)
+                inspection = pbm_inspection if pbm_inspection is not None else self._inspect_with_pdal(source, opts)
         except AdapterError:
             self._progress.fail("Dataset inspection failed")
             raise
@@ -947,6 +948,34 @@ class PyForestScanAdapter:
         self._progress.complete(f"PBM backend {product.value} complete")
         return _adapter_result_from_backend(product, request, backend_result)
 
+
+    def _run_pbm_inspection_if_selected(self, source: DatasetSource, options: InspectionOptions) -> DatasetInspection | None:
+        if self.execution_mode == EXECUTION_MODE_QGIS_PYTHON:
+            return None
+        service = self._backend_service()
+        try:
+            availability = service.can_execute_processing()
+        except Exception as exc:  # noqa: BLE001 - fall back in auto, fail in forced PBM.
+            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
+                raise DatasetError(f"PBM backend is not available for Dataset Explorer: {exc}") from exc
+            return None
+        if not availability.ready:
+            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
+                raise DatasetError(availability.message)
+            return None
+        self._log(LogLevel.INFO, "Inspecting dataset through PBM backend", backend_python=str(availability.backend_python), path=str(source.path))
+        result = service.run_dataset_inspection(
+            Path(source.path),
+            source.crs or "",
+            {
+                "include_classification_summary": options.include_classification_summary,
+                "include_dimensions": options.include_dimensions,
+                "max_points_for_classification_summary": options.max_points_for_classification_summary,
+            },
+            self.config.working_directory or Path(source.path).parent,
+        )
+        return _dataset_inspection_from_backend_metrics(result.product_metrics)
+
     def _read_hag_point_array(self, input_path: Path | str, crs: str, product_label: str) -> object:
         """Read lidar with HeightAboveGround and return one structured point array."""
         handlers = _import_required("pyforestscan.handlers", ProcessingError)
@@ -1074,6 +1103,46 @@ class PyForestScanAdapter:
                 LogContextItem(key=str(key), value=value) for key, value in context.items()
             )
             self._log_sink(LogRecord(level=level, message=message, context=typed_context))
+
+
+def _dataset_inspection_from_backend_metrics(metrics: dict[str, object]) -> DatasetInspection:
+    source_data = dict(metrics.get("source", {}) or {})
+    bounds_data = metrics.get("bounds")
+    if isinstance(bounds_data, dict):
+        bounds = Bounds3D(
+            min_x=float(bounds_data["min_x"]),
+            max_x=float(bounds_data["max_x"]),
+            min_y=float(bounds_data["min_y"]),
+            max_y=float(bounds_data["max_y"]),
+            min_z=float(bounds_data["min_z"]) if bounds_data.get("min_z") is not None else None,
+            max_z=float(bounds_data["max_z"]) if bounds_data.get("max_z") is not None else None,
+        )
+    else:
+        bounds = None
+    classification_summary = tuple(
+        ClassificationCount(int(item["classification"]), int(item["count"]))
+        for item in metrics.get("classification_summary", ()) or ()
+        if isinstance(item, dict)
+    )
+    products = tuple(ProductType(item) for item in metrics.get("supported_products", ()) or ())
+    return DatasetInspection(
+        source=DatasetSource(
+            path=Path(str(source_data.get("path", ""))),
+            format=DatasetFormat(str(source_data.get("format", DatasetFormat.LAS.value))),
+            crs=source_data.get("crs"),
+            is_remote=bool(source_data.get("is_remote", False)),
+        ),
+        point_count=int(metrics["point_count"]) if metrics.get("point_count") is not None else None,
+        bounds=bounds,
+        crs=metrics.get("crs"),
+        dimensions=tuple(str(item) for item in metrics.get("dimensions", ()) or ()),
+        classification_summary=classification_summary,
+        point_format=metrics.get("point_format"),
+        estimated_density=float(metrics["estimated_density"]) if metrics.get("estimated_density") is not None else None,
+        supported_products=products,
+        metadata_source=str(metrics.get("metadata_source", "pbm-backend")),
+        warnings=tuple(str(item) for item in metrics.get("warnings", ()) or ()),
+    )
 
 
 def _adapter_result_from_backend(product: ProductType, request: object, backend_result: object):

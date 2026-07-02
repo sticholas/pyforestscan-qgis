@@ -57,7 +57,7 @@ PAI, FHD, and Rumple summary processing.
 
 Mission Control Settings includes the PyForestScan Backend Manager. It can verify the current backend state, preview the manifest-driven install transaction, show QGIS/backend compatibility, plan repairs, show structured logs, and display advanced module/version information.
 
-Windows internal beta users can click **Install Backend** from Mission Control Settings after confirming that PBM will install into the user-local PyForestScan folder only. PBM does not modify QGIS Python, QGIS installation folders, PATH, shell profiles, system Python, or user environment variables. Linux and macOS install execution remains planned/experimental until smoke tested. When PBM verifies as Ready, routed processing products use PBM backend Python instead of requiring PyForestScan/PDAL in QGIS Python.
+Windows internal beta users can click **Install Backend** from Mission Control Settings after confirming that PBM will install into the user-local PyForestScan folder only. PBM does not modify QGIS Python, QGIS installation folders, PATH, shell profiles, system Python, or user environment variables. Linux and macOS install execution remains planned/experimental until smoke tested. When PBM verifies as Ready, Dataset Explorer local point-cloud inspection and routed processing products use PBM backend Python instead of requiring PyForestScan/PDAL in QGIS Python.
 
 ## Processing Toolbox Expert Tools
 
@@ -418,4 +418,4 @@ On Windows internal beta builds, Mission Control labels the button **Install Bac
 
 Preview Install Plan shows where the user-local backend will be installed, which manifest packages are included, which platform was detected, transaction stages, warnings, verification steps, rollback/repair notes, and offline-install placeholders. Repair shows guidance and logs; update/remove execution remains planned.
 
-PBM will not modify QGIS Python, QGIS install folders, system Python, global user site-packages, or user environment variables. QGIS 3.x is the supported target. QGIS 4.x compatibility checks are defensive and must be tested when QGIS 4.x is available. CHM, Canopy Cover, PAD, PAI, FHD, Rumple, DTM, Point Density, and Voxel Statistic are routed through PBM when ready. Height Above Ground point-cloud export and Preprocess Point Cloud still require QGIS Python dependencies until routed.
+PBM will not modify QGIS Python, QGIS install folders, system Python, global user site-packages, or user environment variables. QGIS 3.x is the supported target. QGIS 4.x compatibility checks are defensive and must be tested when QGIS 4.x is available. Dataset Explorer local LAS/LAZ/COPC inspection plus CHM, Canopy Cover, PAD, PAI, FHD, Rumple, DTM, Point Density, and Voxel Statistic are routed through PBM when ready. Height Above Ground point-cloud export and Preprocess Point Cloud still require QGIS Python dependencies until routed.

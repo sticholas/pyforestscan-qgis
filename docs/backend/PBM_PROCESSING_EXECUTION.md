@@ -26,11 +26,11 @@ The adapter supports these execution modes:
 | `pbm_backend` | Require PBM backend and fail with an actionable message if it is not ready. |
 | `qgis_python` | Use the current in-process QGIS Python path. The backend runner uses this mode internally to avoid recursion. |
 
-Mission Control, Advanced Toolbox algorithms, and Batch use the adapter default `auto` mode. When PBM is ready, routed products run in PBM backend Python and QGIS only orchestrates the job and loads output files.
+Mission Control, Dataset Explorer, Advanced Toolbox algorithms, and Batch use the adapter default `auto` mode. When PBM is ready, local LAS/LAZ/COPC inspection and routed products run in PBM backend Python, while QGIS orchestrates the job and loads output files.
 
 ## Routed Products
 
-Phase 23D routes these products through PBM when ready:
+Phase 23D/23E routes Dataset Explorer local point-cloud inspection and these products through PBM when ready:
 
 - CHM.
 - Canopy Cover.
@@ -42,7 +42,7 @@ Phase 23D routes these products through PBM when ready:
 - Point Density.
 - Voxel Statistic.
 
-Height Above Ground point-cloud export and Preprocess Point Cloud remain on the QGIS Python path until their runner payloads are validated separately.
+Height Above Ground point-cloud export and Preprocess Point Cloud remain on the QGIS Python path until their runner payloads are validated separately. Remote EPT metadata inspection remains local metadata parsing.
 
 ## Safety Checks
 

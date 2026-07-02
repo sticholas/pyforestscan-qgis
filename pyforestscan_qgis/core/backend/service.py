@@ -96,6 +96,24 @@ class BackendService:
         """Run one product through the PBM backend execution service."""
         return self.execution_service().run_product(product, request)
 
+    def run_dataset_inspection(self, input_path: Path, crs: str, options: dict[str, object], run_folder: Path):
+        """Run Dataset Explorer inspection through PBM backend Python."""
+        from pyforestscan_qgis.backend_runner.job_spec import BackendJobSpec
+
+        job_id = f"pbm-dataset-inspection-{input_path.stem}"
+        spec = BackendJobSpec(
+            job_id=job_id,
+            input_lidar_path=input_path,
+            crs=crs,
+            run_folder=run_folder,
+            product="dataset_inspection",
+            product_parameters=dict(options),
+            output_paths={},
+            result_path=run_folder / ".pbm_jobs" / f"{job_id}.result.json",
+        )
+        spec_path = spec.write()
+        return self.execution_service().run_processing_job(spec, spec_path)
+
     def preview_repair_plan(self) -> RepairPlan:
         """Return a non-mutating backend repair plan."""
         return plan_backend_repair(self.paths, self.manifest)

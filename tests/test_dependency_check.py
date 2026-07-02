@@ -104,6 +104,20 @@ class DependencyCheckTests(unittest.TestCase):
         self.assertIs(statuses["PBM managed backend"], CheckStatus.WARNING)
         self.assertIs(report.readiness, ReadinessStatus.NOT_READY)
 
+    def test_no_manual_setup_scope_reports_routed_products(self) -> None:
+        report = collect_environment_report(
+            plugin_path="/tmp/plugin",
+            import_module=FakeImporter({}),
+            version_lookup=lambda package: "metadata-version",
+            pbm_backend_check=lambda: EnvironmentCheckResult("PBM managed backend", CheckStatus.PASS, "Managed backend verified as READY."),
+            execution_backend_check=lambda: EnvironmentCheckResult("Selected execution backend", CheckStatus.PASS, "PyForestScan Backend Manager will be preferred."),
+        )
+
+        checks = {check.name: check for check in report.checks}
+        self.assertIs(checks["No-manual-setup scope"].status, CheckStatus.PASS)
+        self.assertIn("Dataset Explorer", checks["No-manual-setup scope"].message)
+        self.assertIn("Voxel Statistic", checks["No-manual-setup scope"].guidance)
+
     def test_report_formatting_includes_statuses_guidance_and_summary(self) -> None:
         report = build_environment_report(
             [

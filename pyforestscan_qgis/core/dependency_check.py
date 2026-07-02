@@ -166,7 +166,9 @@ def collect_environment_report(
 
     if include_pbm_backend:
         checks.append((pbm_backend_check or _pbm_backend_status_check)())
-        checks.append((execution_backend_check or _selected_execution_backend_check)())
+        selected_backend = (execution_backend_check or _selected_execution_backend_check)()
+        checks.append(selected_backend)
+        checks.append(_no_manual_setup_scope_check(selected_backend))
 
     return build_environment_report(checks)
 
@@ -245,6 +247,24 @@ def _selected_execution_backend_check() -> EnvironmentCheckResult:
         status=CheckStatus.WARNING,
         message="QGIS Python will be used for processing unless PBM backend becomes READY.",
         guidance="Install or repair PBM backend to avoid requiring PyForestScan/PDAL in QGIS Python for routed products.",
+    )
+
+
+
+def _no_manual_setup_scope_check(selected_backend: EnvironmentCheckResult) -> EnvironmentCheckResult:
+    """Explain which workflows no longer require manual QGIS Python setup."""
+    if "Backend Manager" in selected_backend.message or "PBM" in selected_backend.message:
+        return EnvironmentCheckResult(
+            name="No-manual-setup scope",
+            status=CheckStatus.PASS,
+            message="Dataset Explorer and routed products can use PBM backend without PyForestScan/PDAL in QGIS Python.",
+            guidance="Routed products: CHM, Canopy Cover, PAD, PAI, FHD, Rumple, DTM, Point Density, and Voxel Statistic. HAG export and Preprocess Point Cloud still require QGIS Python dependencies.",
+        )
+    return EnvironmentCheckResult(
+        name="No-manual-setup scope",
+        status=CheckStatus.WARNING,
+        message="No-manual-setup processing is unavailable until PBM backend is READY.",
+        guidance="Install or repair PBM backend, then rerun Environment Check.",
     )
 
 

@@ -17,7 +17,7 @@ from pyforestscan_qgis.core.backend.paths import resolve_backend_paths
 from pyforestscan_qgis.core.batch import BatchProductSettings, BatchRequest
 from pyforestscan_qgis.core.batch_preflight import run_batch_preflight
 from pyforestscan_qgis.core.dependency_check import EnvironmentReport, ReadinessStatus
-from pyforestscan_qgis.core.types import ChmRequest, ProductType
+from pyforestscan_qgis.core.types import Bounds3D, ChmRequest, DatasetFormat, DatasetInspection, DatasetSource, ProductType
 
 
 def ready_verification(paths):
@@ -132,6 +132,52 @@ class PBMProcessingExecutionTests(unittest.TestCase):
             with self.assertRaises(Exception) as ctx:
                 adapter.create_chm(ChmRequest(Path(tmpdir) / "plot.laz", Path(tmpdir) / "chm.tif", 1.0, "EPSG:32610"))
         self.assertIn("PBM backend is not ready", str(ctx.exception))
+
+
+    def test_adapter_inspects_dataset_through_pbm_when_ready(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            lidar = root / "plot.laz"
+            lidar.write_text("lidar", encoding="utf-8")
+
+            class FakeService:
+                def can_execute_processing(self):
+                    return SimpleNamespace(ready=True, backend_python=Path("/backend/python"), message="ready")
+
+                def run_dataset_inspection(self, input_path, crs, options, run_folder):  # type: ignore[no-untyped-def]
+                    inspection = DatasetInspection(
+                        source=DatasetSource(input_path, DatasetFormat.LAZ, crs, False),
+                        point_count=42,
+                        bounds=Bounds3D(0, 10, 0, 20, 1, 30),
+                        crs=crs,
+                        dimensions=("X", "Y", "Z"),
+                        classification_summary=(),
+                        point_format="7",
+                        estimated_density=0.21,
+                        supported_products=(ProductType.CHM,),
+                        metadata_source="pdal-pipeline",
+                        warnings=(),
+                    )
+                    return BackendJobResult("inspect", "dataset_inspection", "success", product_metrics={
+                        "source": {"path": str(input_path), "format": "laz", "crs": crs, "is_remote": False},
+                        "point_count": inspection.point_count,
+                        "bounds": {"min_x": 0, "max_x": 10, "min_y": 0, "max_y": 20, "min_z": 1, "max_z": 30},
+                        "crs": crs,
+                        "dimensions": ["X", "Y", "Z"],
+                        "classification_summary": [],
+                        "point_format": "7",
+                        "estimated_density": 0.21,
+                        "supported_products": ["chm"],
+                        "metadata_source": "pdal-pipeline",
+                        "warnings": [],
+                    })
+
+            adapter = PyForestScanAdapter(backend_service_factory=FakeService)
+            inspection = adapter.inspect_dataset(lidar)
+
+        self.assertEqual(inspection.point_count, 42)
+        self.assertEqual(inspection.metadata_source, "pdal-pipeline")
+        self.assertEqual(inspection.supported_products, (ProductType.CHM,))
 
     def test_batch_preflight_allows_pbm_backend_when_qgis_deps_missing(self) -> None:
         class FakeAdapter:
