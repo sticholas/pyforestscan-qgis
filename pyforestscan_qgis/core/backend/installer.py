@@ -13,14 +13,17 @@ from typing import Callable
 from .checksums import ChecksumResult, verify_checksum
 from .config import planned_backend_config, save_backend_config, utc_now_iso
 from .downloads import DownloadResult, Downloader, download_file
+from .logging import write_backend_log_entry
 from .micromamba import MicromambaBootstrapPolicy, micromamba_bootstrap_policy
-from .models import BackendOperationResult, BackendPlatform, BackendStatus, BackendVerificationResult
+from .models import BackendOperationResult, BackendPlatform, BackendRegistry, BackendStatus, BackendVerificationResult
 from .paths import BackendPaths, resolve_backend_paths
+from .process_env import backend_pip_install_command, build_clean_subprocess_env, clean_env_summary, summarize_subprocess_output
+from .registry import default_backend_registry
 from .verification import verify_backend
 
 BACKEND_INSTALL_ENABLE_ENV = "PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL"
 
-CommandRunner = Callable[[list[str]], subprocess.CompletedProcess[str]]
+CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 Verifier = Callable[[BackendPaths], BackendVerificationResult]
 
 
@@ -157,12 +160,14 @@ class BackendInstaller:
         downloader: Downloader | None = None,
         runner: CommandRunner | None = None,
         verifier: Verifier | None = None,
+        registry: BackendRegistry | None = None,
     ) -> None:
         self.paths = paths
         self.environ = environ if environ is not None else os.environ
         self.downloader = downloader
         self.runner = runner or self._default_runner
         self.verifier = verifier or verify_backend
+        self.registry = registry or default_backend_registry()
 
     def install_availability(self) -> BackendInstallAvailability:
         """Return real installer availability for this installer instance."""
@@ -202,7 +207,6 @@ class BackendInstaller:
         self.paths.logs_dir.mkdir(parents=True, exist_ok=True)
         staged = staging_paths(self.paths)
         staged.micromamba_dir.mkdir(parents=True, exist_ok=True)
-        staged.environment_path.mkdir(parents=True, exist_ok=True)
         return BackendOperationResult(
             operation="prepare_staging",
             status=BackendStatus.INSTALLING,
@@ -253,13 +257,42 @@ class BackendInstaller:
         spec = spec_file or default_environment_spec_file(self.paths.platform)
         command = [str(staged.micromamba_executable), "create", "-y", "-p", str(staged.environment_path), "-f", str(spec)]
         try:
-            completed = self.runner(command)
+            completed = self._run_subprocess(command, command_kind="micromamba_create", prepend_paths=(staged.micromamba_executable.parent,))
         except Exception as exc:  # noqa: BLE001 - installer reports failures.
             return BackendOperationResult("create_environment", BackendStatus.FAILED, False, f"Environment creation failed: {exc}", True)
         if completed.returncode != 0:
-            output = (completed.stderr or completed.stdout or "").strip()
+            output = summarize_subprocess_output(completed.stderr, completed.stdout) or "No subprocess output."
             return BackendOperationResult("create_environment", BackendStatus.FAILED, False, f"Environment creation failed: {output}", True)
         return BackendOperationResult("create_environment", BackendStatus.INSTALLING, True, f"Created staged backend environment at {staged.environment_path}.", True)
+
+    def install_python_packages(self) -> BackendOperationResult:
+        """Install PyPI-only manifest packages with staged backend Python."""
+        disabled = self.require_enabled("install_python_packages")
+        if disabled:
+            return disabled
+        staged = staging_paths(self.paths)
+        packages = self.pip_packages()
+        if not packages:
+            return BackendOperationResult("install_python_packages", BackendStatus.INSTALLING, True, "No PyPI-only backend packages are required.", False)
+        command = backend_pip_install_command(staged.python_executable, packages)
+        try:
+            completed = self._run_subprocess(command, command_kind="backend_python_pip", prepend_paths=(staged.python_executable.parent,))
+        except Exception as exc:  # noqa: BLE001 - installer reports failures.
+            return BackendOperationResult("install_python_packages", BackendStatus.FAILED, False, f"Backend Python package install failed: {exc}", True)
+        if completed.returncode != 0:
+            output = summarize_subprocess_output(completed.stderr, completed.stdout) or "No subprocess output."
+            return BackendOperationResult("install_python_packages", BackendStatus.FAILED, False, f"Backend Python package install failed: {output}", True)
+        return BackendOperationResult("install_python_packages", BackendStatus.INSTALLING, True, f"Installed PyPI-only backend packages with {staged.python_executable}.", True)
+
+    def pip_packages(self) -> list[str]:
+        """Return registry-driven PyPI package specifiers for backend Python pip."""
+        packages: list[str] = []
+        for dependency in self.registry.required_dependencies():
+            if "pypi" not in dependency.source.lower():
+                continue
+            version_spec = dependency.version_spec.replace(" ", "")
+            packages.append(f"{dependency.name}{version_spec}" if version_spec else dependency.name)
+        return packages
 
     def verify_environment(self) -> BackendVerificationResult:
         """Verify the staged backend environment."""
@@ -332,8 +365,21 @@ class BackendInstaller:
             log_path=self.paths.install_log if self.paths.install_log.exists() else None,
         )
 
-    def _default_runner(self, command: list[str]) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(command, check=False, capture_output=True, text=True, timeout=1800)
+    def _run_subprocess(self, command: list[str], command_kind: str, prepend_paths: tuple[Path, ...] = ()) -> subprocess.CompletedProcess[str]:
+        """Run an installer subprocess with a sanitized PBM environment."""
+        env = build_clean_subprocess_env(self.environ, prepend_paths=prepend_paths)
+        details = clean_env_summary(command_kind, command[0])
+        write_backend_log_entry(self.paths.install_log, "install", "Running PBM installer subprocess with sanitized environment.", stage=command_kind.upper(), details=details)
+        completed = self.runner(command, check=False, capture_output=True, text=True, timeout=1800, env=env)
+        if completed.returncode != 0:
+            failure_details = dict(details)
+            failure_details["returncode"] = str(completed.returncode)
+            failure_details["stderr_preview"] = summarize_subprocess_output(completed.stderr, completed.stdout)
+            write_backend_log_entry(self.paths.install_log, "install", "PBM installer subprocess failed.", level="ERROR", stage=command_kind.upper(), details=failure_details)
+        return completed
+
+    def _default_runner(self, command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(command, **kwargs)
 
 
 def default_environment_spec_file(platform: BackendPlatform) -> Path:

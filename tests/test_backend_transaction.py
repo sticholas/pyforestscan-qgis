@@ -59,6 +59,9 @@ class FakeInstaller:
     def create_environment(self, spec_file=None):
         return self._result("create_environment")
 
+    def install_python_packages(self):
+        return self._result("install_python_packages")
+
     def verify_environment(self):
         if self.fail_stage == "verify_environment":
             return type("Verification", (), {"summary": "missing packages", "passed": lambda self: False})()

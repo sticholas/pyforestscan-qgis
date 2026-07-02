@@ -9,5 +9,3 @@ dependencies:
   - rasterio>=1.3
   - numpy>=2.0
   - pip
-  - pip:
-      - pyforestscan>=0.4

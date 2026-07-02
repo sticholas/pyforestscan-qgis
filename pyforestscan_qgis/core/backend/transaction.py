@@ -88,10 +88,12 @@ class BackendInstallTransaction:
             if not self._accept_operation(BackendTransactionStage.CREATE_ENVIRONMENT, create):
                 return self._fail(BackendTransactionStage.CREATE_ENVIRONMENT, create.message)
 
-            self._emit(BackendProgressStage.INSTALLING, 70, "Installing manifest packages through environment creation.")
-            package_step = BackendOperationResult("install_packages", BackendStatus.INSTALLING, True, "Manifest packages are installed by the environment creation step.", False)
-            self.operations.append(package_step)
-            self._log(BackendTransactionStage.INSTALL_PACKAGES, "INFO", package_step.message)
+            if _cancelled(cancel_token):
+                return self._cancel(BackendTransactionStage.INSTALL_PACKAGES)
+            self._emit(BackendProgressStage.INSTALLING, 70, "Installing PyPI-only packages with backend Python.")
+            package_step = self.installer.install_python_packages()
+            if not self._accept_operation(BackendTransactionStage.INSTALL_PACKAGES, package_step):
+                return self._fail(BackendTransactionStage.INSTALL_PACKAGES, package_step.message)
 
             if _cancelled(cancel_token):
                 return self._cancel(BackendTransactionStage.VERIFY_PACKAGES)

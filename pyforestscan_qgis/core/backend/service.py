@@ -132,7 +132,7 @@ class BackendService:
 
     def installer(self) -> BackendInstaller:
         """Return a controlled installer bound to current paths."""
-        return BackendInstaller(self.paths)
+        return BackendInstaller(self.paths, registry=self.registry)
 
     def plan_install(self) -> BackendOperationResult:
         """Return developer installer readiness without modifying files."""

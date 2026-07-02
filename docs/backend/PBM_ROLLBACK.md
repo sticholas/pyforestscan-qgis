@@ -18,7 +18,7 @@ Installer steps write to `staging/` first. Active backend paths are promoted onl
 
 ## Rollback Behavior
 
-`rollback_failed_install()` removes the staging directory. It does not remove QGIS files, QGIS Python packages, system Python packages, global user site-packages, or environment variables.
+`rollback_failed_install()` removes the staging directory, including empty or partial environment prefixes created by failed Micromamba runs. This prevents an empty `staging/env` folder from poisoning a retry. It does not remove QGIS files, QGIS Python packages, system Python packages, global user site-packages, or environment variables.
 
 Rollback runs when:
 

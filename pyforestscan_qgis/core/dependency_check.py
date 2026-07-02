@@ -251,6 +251,43 @@ def _selected_execution_backend_check() -> EnvironmentCheckResult:
 
 
 
+def _pbm_backend_status_check() -> EnvironmentCheckResult:
+    """Report PBM backend readiness without letting backend diagnostics crash Environment Check."""
+    try:
+        from .backend import BackendService
+        from .backend.models import BackendStatus
+
+        result = BackendService().verify_backend()
+    except Exception as exc:  # noqa: BLE001 - Environment Check must remain safe on clean machines.
+        return EnvironmentCheckResult(
+            name="PBM managed backend",
+            status=CheckStatus.WARNING,
+            message=f"Could not verify managed backend: {exc}",
+            guidance="Open Mission Control Backend settings, review PBM logs, then install or repair the user-local backend.",
+        )
+
+    if result.status is BackendStatus.READY:
+        return EnvironmentCheckResult(
+            name="PBM managed backend",
+            status=CheckStatus.PASS,
+            message="Managed backend verified as READY.",
+            guidance="Routed products can run in the user-local PBM backend without installing scientific packages into QGIS Python.",
+        )
+    if result.status is BackendStatus.REPAIR_REQUIRED:
+        return EnvironmentCheckResult(
+            name="PBM managed backend",
+            status=CheckStatus.WARNING,
+            message=f"Managed backend requires repair: {result.summary}",
+            guidance="Use Mission Control Backend settings to view logs, repair, or retry installation. QGIS Python is not modified.",
+        )
+    return EnvironmentCheckResult(
+        name="PBM managed backend",
+        status=CheckStatus.WARNING,
+        message=f"Managed backend status: {result.status.value}. {result.summary}",
+        guidance="Install PBM backend from Mission Control on supported internal beta builds, or continue with QGIS Python dependencies.",
+    )
+
+
 def _no_manual_setup_scope_check(selected_backend: EnvironmentCheckResult) -> EnvironmentCheckResult:
     """Explain which workflows no longer require manual QGIS Python setup."""
     if "Backend Manager" in selected_backend.message or "PBM" in selected_backend.message:

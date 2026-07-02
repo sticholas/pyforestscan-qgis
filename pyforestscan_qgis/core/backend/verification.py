@@ -16,6 +16,7 @@ from .models import (
     DependencyVerificationStatus,
 )
 from .paths import BackendPaths
+from .process_env import build_clean_subprocess_env
 from .registry import default_backend_registry
 from .state import detect_backend_state
 
@@ -160,6 +161,7 @@ def _run_version_command(executable: Path, args: tuple[str, ...], timeout_second
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
+            env=build_clean_subprocess_env(prepend_paths=(executable.parent,)),
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -180,6 +182,7 @@ def _run_python_import(python_executable: Path, import_name: str, timeout_second
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
+            env=build_clean_subprocess_env(prepend_paths=(python_executable.parent,)),
         )
     except (OSError, subprocess.TimeoutExpired):
         return None

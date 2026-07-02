@@ -8,6 +8,8 @@ Clean Windows/QGIS GUI smoke test status: **prepared, not executed in this Codex
 
 This repository validation environment can run unit tests, compile checks, package validation, documentation link checks, and release validation. It cannot provide a fresh Windows desktop with QGIS Plugin Manager, a clean QGIS profile, and interactive Mission Control backend installation. The exact smoke procedure below is ready for the internal tester machine, and code-level blockers found during Phase 23E were closed.
 
+Phase 23F resolved two critical clean-machine blockers reported during installer testing: Environment Check no longer raises `NameError` when PBM is missing or repair-required, and PBM installer subprocesses no longer inherit QGIS profile Python dependency paths such as `%APPDATA%\\QGIS\\QGIS3\\profiles\\default\\python\\dependencies`.
+
 ## Preconditions
 
 - Fresh Windows user profile or clean QGIS profile.
@@ -27,6 +29,7 @@ Before and after PBM install, record:
 - User PATH before/after.
 - PowerShell profile and shell profile timestamps before/after.
 - PBM backend root: `%LOCALAPPDATA%\PyForestScan\backend`.
+- PBM install log confirms sanitized environment policy for Micromamba, backend Python pip, verification, and runner subprocesses.
 
 Expected result: only the user-local PBM backend folder changes. QGIS folders, QGIS Python, system Python, PATH, and shell profiles are unchanged.
 

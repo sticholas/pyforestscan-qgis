@@ -13,6 +13,7 @@ from pyforestscan_qgis.backend_runner.job_spec import BackendJobSpec, build_job_
 from .logging import backend_log_path, write_backend_log_entry
 from .models import BackendStatus, BackendVerificationResult
 from .paths import BackendPaths
+from .process_env import build_clean_subprocess_env, clean_env_summary, summarize_subprocess_output
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -67,11 +68,12 @@ class BackendExecutionService:
             return availability
         command = self.runner_command_for_args(("--help",))
         try:
-            completed = self.runner(command, check=False, capture_output=True, text=True, timeout=30, cwd=str(self.plugin_parent))
+            completed = self.runner(command, check=False, capture_output=True, text=True, timeout=30, cwd=str(self.plugin_parent), env=build_clean_subprocess_env(prepend_paths=(self.paths.python_executable.parent,)))
         except Exception as exc:  # noqa: BLE001 - report safely to UI/tests.
             return BackendExecutionAvailability(False, f"PBM runner verification failed: {exc}", self.paths.python_executable)
         if completed.returncode != 0:
-            return BackendExecutionAvailability(False, f"PBM runner verification failed: {(completed.stderr or completed.stdout).strip()}", self.paths.python_executable)
+            output = summarize_subprocess_output(completed.stderr, completed.stdout)
+            return BackendExecutionAvailability(False, f"PBM runner verification failed: {output}", self.paths.python_executable)
         return BackendExecutionAvailability(True, "PBM backend runner is importable.", self.paths.python_executable)
 
     def write_job_spec(self, product: str, request: Any, run_folder: Path | None = None) -> Path:
@@ -101,7 +103,7 @@ class BackendExecutionService:
             "execute",
             "Starting PBM backend processing job.",
             stage="START",
-            details={"backend_python": str(self.paths.python_executable), "spec": str(path), "product": spec.product},
+            details={**clean_env_summary("backend_runner", self.paths.python_executable), "backend_python": str(self.paths.python_executable), "spec": str(path), "product": spec.product},
         )
         try:
             completed = self.runner(
@@ -111,6 +113,7 @@ class BackendExecutionService:
                 text=True,
                 timeout=self.timeout_seconds,
                 cwd=str(self.plugin_parent),
+                env=build_clean_subprocess_env(prepend_paths=(self.paths.python_executable.parent,)),
             )
         except subprocess.TimeoutExpired as exc:
             write_backend_log_entry(self.log_path, "execute", f"PBM backend job timed out: {exc}", level="ERROR", stage="TIMEOUT")
@@ -120,7 +123,7 @@ class BackendExecutionService:
             raise RuntimeError(f"PBM backend job failed to start: {exc}") from exc
 
         if not spec.result_path.exists():
-            message = (completed.stderr or completed.stdout or "PBM backend runner did not write a result file.").strip()
+            message = summarize_subprocess_output(completed.stderr, completed.stdout) or "PBM backend runner did not write a result file."
             write_backend_log_entry(self.log_path, "execute", message, level="ERROR", stage="RESULT", details={"returncode": completed.returncode})
             raise RuntimeError(message)
         result = BackendJobResult.read(spec.result_path)
@@ -148,7 +151,7 @@ class BackendExecutionService:
             details={"returncode": completed.returncode, "result": str(spec.result_path), "backend_python": str(self.paths.python_executable)},
         )
         if completed.returncode != 0 or not result.success:
-            raise RuntimeError("; ".join(result.errors) or (completed.stderr or completed.stdout or "PBM backend job failed.").strip())
+            raise RuntimeError("; ".join(result.errors) or summarize_subprocess_output(completed.stderr, completed.stdout) or "PBM backend job failed.")
         return result
 
     def runner_command(self, spec_path: Path) -> list[str]:
