@@ -157,6 +157,7 @@ class BackendGeospatialEnvironmentTests(unittest.TestCase):
         self.assertIn("  - scipy>=1.11,<1.15", text)
         self.assertIn("  - geopandas>=0.14,<1.1", text)
         self.assertIn("  - matplotlib>=3.8,<3.10", text)
+        self.assertIn("  - tqdm>=4.66,<5", text)
         self.assertNotIn("pip:\n", text)
         self.assertNotIn("GDAL", text.split("  - pip")[-1])
         self.assertNotIn("rasterio", text.split("  - pip")[-1])

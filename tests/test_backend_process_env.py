@@ -10,7 +10,7 @@ from pathlib import Path
 from pyforestscan_qgis.core.backend.installer import BACKEND_INSTALL_ENABLE_ENV, BackendInstaller, staging_paths
 from pyforestscan_qgis.core.backend.models import BackendDependency, BackendPlatform, BackendRegistry, BackendStatus
 from pyforestscan_qgis.core.backend.paths import resolve_backend_paths
-from pyforestscan_qgis.core.backend.process_env import backend_pip_install_command, build_clean_subprocess_env
+from pyforestscan_qgis.core.backend.process_env import backend_pip_install_command, build_clean_subprocess_env, conda_environment_data_env
 
 
 class BackendProcessEnvironmentTests(unittest.TestCase):
@@ -38,6 +38,38 @@ class BackendProcessEnvironmentTests(unittest.TestCase):
         self.assertEqual(clean["PIP_NO_INPUT"], "1")
         self.assertNotIn("QGIS3", clean["PATH"])
         self.assertIn("C:\\Windows\\System32", clean["PATH"])
+
+    def test_clean_env_does_not_inherit_host_gdal_proj_paths(self) -> None:
+        clean = build_clean_subprocess_env(
+            {
+                "PATH": "/usr/bin",
+                "GDAL_DATA": "/qgis/share/gdal",
+                "PROJ_LIB": "/qgis/share/proj",
+                "PROJ_DATA": "/qgis/share/proj",
+            }
+        )
+
+        self.assertNotIn("GDAL_DATA", clean)
+        self.assertNotIn("PROJ_LIB", clean)
+        self.assertNotIn("PROJ_DATA", clean)
+
+    def test_windows_conda_data_env_sets_gdal_and_proj_paths_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = Path(tmpdir) / "env"
+            gdal = env / "Library" / "share" / "gdal"
+            proj = env / "Library" / "share" / "proj"
+            gdal.mkdir(parents=True)
+            proj.mkdir(parents=True)
+
+            data_env = conda_environment_data_env(env, "windows")
+            clean = build_clean_subprocess_env({"PATH": r"C:\Windows\System32"}, extra_env=data_env)
+
+        self.assertEqual(data_env["GDAL_DATA"], str(gdal))
+        self.assertEqual(data_env["PROJ_DATA"], str(proj))
+        self.assertEqual(data_env["PROJ_LIB"], str(proj))
+        self.assertEqual(clean["GDAL_DATA"], str(gdal))
+        self.assertEqual(clean["PROJ_DATA"], str(proj))
+        self.assertEqual(clean["PROJ_LIB"], str(proj))
 
     def test_clean_env_prepends_requested_backend_paths(self) -> None:
         clean = build_clean_subprocess_env({"PATH": "/usr/bin"}, prepend_paths=(Path("/backend/bin"),))

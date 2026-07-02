@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "backend_version": "1.0.0",
-  "environment_version": "2026.07-pyforestscan-runtime",
+  "environment_version": "2026.07-pyforestscan-runtime-closure",
   "micromamba_version": "latest",
   "python_version": ">=3.12,<3.13",
   "created_at": "2026-07-02T00:00:00Z",
@@ -42,6 +42,7 @@
     {"name": "fiona", "version_spec": ">=1.9,<2", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "fiona"},
     {"name": "geopandas", "version_spec": ">=0.14,<1.1", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "geopandas"},
     {"name": "matplotlib", "version_spec": ">=3.8,<3.10", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "matplotlib"},
+    {"name": "tqdm", "version_spec": ">=4.66,<5", "source": "conda-forge", "required": true, "category": "python package", "python_import_name": "tqdm"},
     {"name": "pyforestscan", "version_spec": ">=0.4", "source": "PyPI", "required": true, "category": "scientific engine", "python_import_name": "pyforestscan"}
   ],
   "module_placeholders": ["pdal", "pytorch", "sam", "whiteboxtools", "cloudcompare", "potree"]

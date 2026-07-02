@@ -119,6 +119,22 @@ def backend_pip_install_command(backend_python: Path, packages: Sequence[str]) -
     return [str(backend_python), "-m", "pip", "install", "--no-deps", *packages]
 
 
+def conda_environment_data_env(environment_path: Path, platform_value: str) -> dict[str, str]:
+    """Return backend-local GDAL/PROJ data env vars when conda data dirs exist."""
+    data_env: dict[str, str] = {}
+    for candidate in _gdal_data_candidates(environment_path, platform_value):
+        if candidate.exists():
+            data_env["GDAL_DATA"] = str(candidate)
+            break
+    for candidate in _proj_data_candidates(environment_path, platform_value):
+        if candidate.exists():
+            value = str(candidate)
+            data_env["PROJ_DATA"] = value
+            data_env["PROJ_LIB"] = value
+            break
+    return data_env
+
+
 def conda_environment_path_entries(environment_path: Path, platform_value: str) -> tuple[Path, ...]:
     """Return backend-local PATH entries needed by conda geospatial runtimes."""
     if platform_value.lower() == "windows":
@@ -167,3 +183,27 @@ def _is_qgis_python_profile_path(path_entry: str) -> bool:
     if "osgeo4w" in normalized and "/python" in normalized:
         return True
     return False
+
+
+def _gdal_data_candidates(environment_path: Path, platform_value: str) -> tuple[Path, ...]:
+    if platform_value.lower() == "windows":
+        return (
+            environment_path / "Library" / "share" / "gdal",
+            environment_path / "share" / "gdal",
+        )
+    return (
+        environment_path / "share" / "gdal",
+        environment_path / "Library" / "share" / "gdal",
+    )
+
+
+def _proj_data_candidates(environment_path: Path, platform_value: str) -> tuple[Path, ...]:
+    if platform_value.lower() == "windows":
+        return (
+            environment_path / "Library" / "share" / "proj",
+            environment_path / "share" / "proj",
+        )
+    return (
+        environment_path / "share" / "proj",
+        environment_path / "Library" / "share" / "proj",
+    )

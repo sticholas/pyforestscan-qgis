@@ -16,4 +16,5 @@ dependencies:
   - fiona>=1.9,<2
   - geopandas>=0.14,<1.1
   - matplotlib>=3.8,<3.10
+  - tqdm>=4.66,<5
   - pip

@@ -146,6 +146,15 @@ def default_backend_registry() -> BackendRegistry:
             python_import_name="matplotlib",
         ),
         BackendDependency(
+            name="tqdm",
+            display_name="tqdm",
+            category="python package",
+            required=_REQUIRED,
+            version_spec=">=4.66,<5",
+            source="conda-forge",
+            python_import_name="tqdm",
+        ),
+        BackendDependency(
             name="pyforestscan",
             display_name="PyForestScan",
             category="scientific engine",

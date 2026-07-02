@@ -30,6 +30,7 @@ class BackendRegistryTests(unittest.TestCase):
                 "fiona",
                 "geopandas",
                 "matplotlib",
+                "tqdm",
                 "pyforestscan",
             },
             required_names,

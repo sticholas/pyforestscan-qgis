@@ -20,6 +20,7 @@ PBM uses a registry-driven model so backend dependencies can evolve without hard
 | `fiona` | Vector file runtime | `import fiona` through backend Python when present. |
 | `geopandas` | Vector/geospatial runtime | `import geopandas` through backend Python when present. |
 | `matplotlib` | PyForestScan visualize runtime | `import matplotlib` through backend Python when present. |
+| `tqdm` | PyForestScan tiled-processing progress runtime | `import tqdm` through backend Python when present. |
 | `pyforestscan` | Scientific engine | `import pyforestscan` and public submodules through backend Python when present. |
 
 ## Future Optional Modules

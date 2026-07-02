@@ -23,10 +23,10 @@ The command does not require QGIS. It prints:
 - executable existence checks,
 - `python --version`,
 - `pdal --version`,
-- Python import checks for `pyforestscan`, `pdal`, `osgeo.gdal`, `rasterio`, `numpy`, `scipy`, `pandas`, `shapely`, `pyproj`, `fiona`, `geopandas`, and `matplotlib`,
+- Python import checks for `pyforestscan`, `pdal`, `osgeo.gdal`, `rasterio`, `numpy`, `scipy`, `pandas`, `shapely`, `pyproj`, `fiona`, `geopandas`, `matplotlib`, and `tqdm`,
 - a PyForestScan smoke import for `pyforestscan.calculate`, `pyforestscan.filters`, `pyforestscan.handlers`, `pyforestscan.process`, and `pyforestscan.visualize`,
 - command, executable, stdout preview, and stderr preview for each command-backed check,
-- filtered `micromamba list -p <env>` diagnostics for `python`, `gdal`, `libgdal`, `rasterio`, `numpy`, `scipy`, `pandas`, `shapely`, `pyproj`, `fiona`, `geopandas`, `matplotlib`, `pdal`, `python-pdal`, `geos`, `proj`, `sqlite`, `libcurl`, `tiledb`, `zstd`, and `lz4`.
+- filtered `micromamba list -p <env>` diagnostics for `python`, `gdal`, `libgdal`, `rasterio`, `numpy`, `scipy`, `pandas`, `shapely`, `pyproj`, `fiona`, `geopandas`, `matplotlib`, `tqdm`, `pdal`, `python-pdal`, `geos`, `proj`, `sqlite`, `libcurl`, `tiledb`, `zstd`, and `lz4`.
 
 ## Package and Import Mapping
 
@@ -47,9 +47,10 @@ The current backend spec and manifest expect:
 | Fiona | conda-forge | `fiona>=1.9,<2` | `import fiona` |
 | GeoPandas | conda-forge | `geopandas>=0.14,<1.1` | `import geopandas` |
 | Matplotlib | conda-forge | `matplotlib>=3.8,<3.10` | `import matplotlib` |
+| tqdm | conda-forge | `tqdm>=4.66,<5` | `import tqdm` |
 | PyForestScan | PyPI | `pyforestscan>=0.4` | `import pyforestscan` plus calculate/filters/handlers/process/visualize smoke imports |
 
-Micromamba installs the conda-forge packages first. PyPI-only packages are installed afterward through the staged backend Python with `pip install --no-deps` and a sanitized environment. Because pip dependency resolution is disabled, PyForestScan runtime imports such as SciPy and Matplotlib must be listed explicitly in the backend specs and manifest. On Windows, verification searches `env/Scripts`, `env/Library/bin`, `env/bin`, and `env` for executables, and prepends `env`, `env/Scripts`, and `env/Library/bin` to subprocess PATH so GDAL/rasterio DLL discovery stays backend-local.
+Micromamba installs the conda-forge packages first. PyPI-only packages are installed afterward through the staged backend Python with `pip install --no-deps` and a sanitized environment. Because pip dependency resolution is disabled, PyForestScan runtime imports such as SciPy, Matplotlib, and tqdm must be listed explicitly in the backend specs and manifest. On Windows, verification searches `env/Scripts`, `env/Library/bin`, `env/bin`, and `env` for executables, prepends `env`, `env/Scripts`, and `env/Library/bin` to subprocess PATH, and sets backend-local `GDAL_DATA`, `PROJ_DATA`, and `PROJ_LIB` when `env/Library/share/gdal` and `env/Library/share/proj` exist.
 
 ## Common Failure Patterns
 
@@ -69,9 +70,13 @@ Rasterio is present but its compiled extension is not compatible with the active
 
 The PDAL runtime package did not create `pdal.exe` under `env/Scripts`, `env/Library/bin`, `env/bin`, or `env`. Confirm package solve output and staged environment contents.
 
-`pyforestscan import failed: No module named scipy`
+`pyforestscan import failed: No module named scipy` or `No module named tqdm`
 
-PyForestScan installed from PyPI, but its runtime dependencies were not present because PBM intentionally uses `pip install --no-deps`. Phase 23K makes SciPy, pandas, Shapely, PyProj, Fiona, GeoPandas, and Matplotlib conda-forge dependencies installed before PyForestScan verification.
+PyForestScan installed from PyPI, but its runtime dependencies were not present because PBM intentionally uses `pip install --no-deps`. Phase 23K/23L makes SciPy, pandas, Shapely, PyProj, Fiona, GeoPandas, Matplotlib, and tqdm conda-forge dependencies installed before PyForestScan verification.
+
+`GDAL_DATA is not defined`
+
+PBM now sets backend-local `GDAL_DATA`, `PROJ_DATA`, and `PROJ_LIB` when matching conda data folders exist. If a warning still appears but the GDAL/rasterio/PyForestScan checks pass, PBM records it as a warning for diagnosis rather than failing the backend.
 
 ## Repair and Retry
 

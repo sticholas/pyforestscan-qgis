@@ -17,7 +17,7 @@ from .models import (
     DependencyVerificationStatus,
 )
 from .paths import BackendPaths
-from .process_env import build_clean_subprocess_env, conda_environment_path_entries, summarize_subprocess_output
+from .process_env import build_clean_subprocess_env, conda_environment_data_env, conda_environment_path_entries, summarize_subprocess_output
 from .registry import default_backend_registry
 from .state import detect_backend_state
 
@@ -35,6 +35,7 @@ _GEOSPATIAL_STACK_PACKAGES = {
     "fiona",
     "geopandas",
     "matplotlib",
+    "tqdm",
     "pdal",
     "python-pdal",
     "geos",
@@ -175,8 +176,19 @@ def log_verification_checks(result: BackendVerificationResult, log_path: Path, s
             "stdout_preview": check.stdout_preview,
             "stderr_preview": check.stderr_preview,
         }
-        level = "ERROR" if check.status is DependencyVerificationStatus.FAIL else "WARNING" if check.status is DependencyVerificationStatus.WARNING else "INFO"
+        level = _log_level_for_check(check)
         write_backend_log_entry(log_path, "verify", check.message, level=level, stage=stage, details=details)
+
+
+def _log_level_for_check(check: BackendCheckResult) -> str:
+    if check.status is DependencyVerificationStatus.FAIL:
+        return "ERROR"
+    if check.status is DependencyVerificationStatus.WARNING:
+        return "WARNING"
+    warning_text = f"{check.stderr_preview}\n{check.stdout_preview}".lower()
+    if "gdal_data" in warning_text or "proj_lib" in warning_text or "proj_data" in warning_text:
+        return "WARNING"
+    return "INFO"
 
 
 def failed_check_summary(result: BackendVerificationResult, limit: int = 8) -> str:
@@ -419,7 +431,7 @@ def _run_command(command: tuple[str, ...], executable: Path, timeout_seconds: in
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
-            env=build_clean_subprocess_env(prepend_paths=_verification_path_entries(paths, executable)),
+            env=build_clean_subprocess_env(prepend_paths=_verification_path_entries(paths, executable), extra_env=conda_environment_data_env(paths.environment_path, paths.platform.value)),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return CommandCheck(command=command, executable=executable, returncode=None, error=str(exc))
@@ -450,7 +462,7 @@ def conda_stack_summary(paths: BackendPaths, timeout_seconds: int = 10) -> Comma
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
-            env=build_clean_subprocess_env(prepend_paths=_verification_path_entries(paths, executable)),
+            env=build_clean_subprocess_env(prepend_paths=_verification_path_entries(paths, executable), extra_env=conda_environment_data_env(paths.environment_path, paths.platform.value)),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return CommandCheck(command=command, executable=executable, returncode=None, error=str(exc))

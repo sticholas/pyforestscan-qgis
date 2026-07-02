@@ -38,6 +38,7 @@ The initial environment spec is registry-driven and includes:
 | `fiona` | Vector file runtime used by GeoPandas/Fiona-backed handlers. |
 | `geopandas` | Vector/geospatial package used by polygon/vector helper paths. |
 | `matplotlib` | Visualization dependency for PyForestScan visualize imports. |
+| `tqdm` | Progress dependency imported by PyForestScan tiled processing. |
 
 Micromamba is handled by the bootstrap policy, not as an environment package.
 
@@ -50,10 +51,10 @@ Phase 22C uses conservative ranges rather than final production lock files:
 - GDAL/libgdal: `>=3.8,<3.10` from conda-forge so Python bindings and native DLLs solve together.
 - rasterio: `>=1.3.10,<1.5` from conda-forge, verified with its reported GDAL version and a `MemoryFile` smoke check.
 - NumPy: `>=1.26,<2.0` while the Windows internal beta geospatial stack is stabilized.
-- PyForestScan runtime libraries: `scipy>=1.11,<1.15`, `pandas>=2.1,<3`, `shapely>=2,<3`, `pyproj>=3.6,<4`, `fiona>=1.9,<2`, `geopandas>=0.14,<1.1`, and `matplotlib>=3.8,<3.10` from conda-forge. These are explicit because PBM installs PyForestScan with pip dependency resolution disabled.
-- PyForestScan: `pyforestscan>=0.4` through backend Python pip after the conda geospatial/scientific stack is complete. PBM uses `pip install --no-deps` for PyPI-only packages so pip cannot replace conda-forge GDAL, rasterio, PDAL, NumPy, SciPy, or vector-runtime binaries.
+- PyForestScan runtime libraries: `scipy>=1.11,<1.15`, `pandas>=2.1,<3`, `shapely>=2,<3`, `pyproj>=3.6,<4`, `fiona>=1.9,<2`, `geopandas>=0.14,<1.1`, `matplotlib>=3.8,<3.10`, and `tqdm>=4.66,<5` from conda-forge. These are explicit because PBM installs PyForestScan with pip dependency resolution disabled.
+- PyForestScan: `pyforestscan>=0.4` through backend Python pip after the conda geospatial/scientific stack is complete. PBM uses `pip install --no-deps` for PyPI-only packages so pip cannot replace conda-forge GDAL, rasterio, PDAL, NumPy, SciPy, tqdm, or vector-runtime binaries.
 
-Exact lock files are still deferred until controlled installer validation succeeds on Windows, Linux, and macOS, but Phase 23J records the compatible Windows beta ranges above.
+Exact lock files are still deferred until controlled installer validation succeeds on Windows, Linux, and macOS, but Phase 23L records the current Windows beta runtime closure above.
 
 ## Separation From QGIS
 

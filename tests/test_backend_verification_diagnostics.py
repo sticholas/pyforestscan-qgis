@@ -25,7 +25,7 @@ from pyforestscan_qgis.core.backend.models import (
 from pyforestscan_qgis.core.backend.paths import resolve_backend_paths
 from pyforestscan_qgis.core.backend.registry import default_backend_registry
 from pyforestscan_qgis.core.backend.transaction import BackendInstallTransaction
-from pyforestscan_qgis.core.backend.verification import failed_check_summary, format_verification_result, python_import_command, verify_backend
+from pyforestscan_qgis.core.backend.verification import _log_level_for_check, failed_check_summary, format_verification_result, python_import_command, verify_backend
 
 
 class BackendVerificationDiagnosticsTests(unittest.TestCase):
@@ -148,12 +148,14 @@ class BackendVerificationDiagnosticsTests(unittest.TestCase):
         self.assertEqual(required["scipy"].python_import_name, "scipy")
         self.assertEqual(required["geopandas"].python_import_name, "geopandas")
         self.assertEqual(required["matplotlib"].python_import_name, "matplotlib")
+        self.assertEqual(required["tqdm"].python_import_name, "tqdm")
         self.assertEqual(manifest_packages["pyforestscan"].source.lower(), "pypi")
         self.assertIn("python-pdal", env_text)
         self.assertIn("gdal", env_text)
         self.assertIn("scipy", env_text)
         self.assertIn("geopandas", env_text)
         self.assertIn("matplotlib", env_text)
+        self.assertIn("tqdm", env_text)
         self.assertNotIn("- pyforestscan", env_text)
 
     def test_diagnostic_formatting_includes_staged_section(self) -> None:

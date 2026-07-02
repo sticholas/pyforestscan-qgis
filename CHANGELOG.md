@@ -7,6 +7,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ## Unreleased
 
+- Phase 23L completes the PyForestScan runtime dependency closure by adding `tqdm`, extending manifest/spec verification, setting backend-local `GDAL_DATA`, `PROJ_DATA`, and `PROJ_LIB` when conda data folders exist, and treating lingering GDAL/PROJ data messages as warnings when functionality passes.
 - Phase 23K adds PyForestScan runtime dependencies to the PBM backend: scipy, pandas, Shapely, PyProj, Fiona, GeoPandas, and Matplotlib are installed from conda-forge before the PyPI-only PyForestScan package, and verification now smoke-imports PyForestScan public modules including calculate, filters, handlers, process, and visualize.
 - Phase 23J fixes the remaining PBM rasterio compatibility blocker by preventing PyPI dependency resolution from replacing conda-forge geospatial binaries, tightening GDAL/rasterio/numpy environment ranges, adding deeper rasterio/GDAL/MemoryFile verification, and printing filtered conda package/build diagnostics for the geospatial stack.
 - Phase 23I fixes PBM geospatial backend verification for conda-forge Windows layouts by adding explicit `libgdal` to backend specs, searching `env/Scripts`, `env/Library/bin`, `env/bin`, and `env` for executables, and prepending backend-local conda DLL/runtime paths for verification, pip install, and PBM runner subprocesses.
