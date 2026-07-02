@@ -31,4 +31,4 @@ stateDiagram-v2
 | Removing | Reserved for future removal orchestration. |
 | Failed | Reserved for failed backend operations. |
 
-Phase 22D can report states, verify existing files, preview manifest-driven installation, report QGIS compatibility, plan repairs, write structured logs, and run guarded transactional installer mechanics when `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1` is set. Normal user install, repair execution, update, remove, and backend processing execution remain disabled.
+Phase 23C can report states, verify existing files, preview manifest-driven installation, report QGIS compatibility, plan repairs, write structured logs, and run guarded transactional installer mechanics for Windows internal beta builds after confirmation. Linux/macOS installer execution, repair execution beyond retry guidance, update, remove, and broad backend processing execution remain planned.

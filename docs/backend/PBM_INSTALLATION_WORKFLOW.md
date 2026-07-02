@@ -1,6 +1,6 @@
 # PBM Installation Workflow
 
-This page describes the target installation workflow. Phase 22C implements a controlled developer-only installer prototype; normal user installation remains disabled.
+This page describes the target installation workflow. Phase 23C enables the controlled installer for Windows internal beta builds after explicit user confirmation; Linux/macOS remain planned until tested.
 
 ## Target User Workflow
 
@@ -20,22 +20,22 @@ sequenceDiagram
     PBM->>Env: Install dependencies
     PBM->>PBM: Verify dependencies
     PBM->>QGIS: Report Ready
-    QGIS->>User: Tools are ready
+    QGIS->>User: Backend is ready
 ```
 
-## Phase 22C Behavior
+## Phase 23C Behavior
 
 - Detect planned backend paths.
 - Detect whether `backend.json`, micromamba, backend environment, and backend Python exist.
 - Run version commands only when executables already exist.
 - Run Python import checks only when backend Python already exists.
-- Return planned-operation results for install, repair, update, and remove.
-- Preview the future install plan for normal users.
-- Refuse real install actions unless `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1` is set.
-- In developer mode, use `downloads/`, `staging/`, `env/`, and `logs/` below the user-local backend root.
+- Return guarded-operation results for install and planned-operation results for repair, update, and remove.
+- Preview the install plan without mutating files.
+- Refuse real install actions unless the build/platform availability guard allows execution and the user confirms the install.
+- On supported internal beta builds, use `downloads/`, `staging/`, `env/`, and `logs/` below the user-local backend root.
 - Roll back staging files on failed download, checksum, extraction, environment creation, or verification.
 - Report QGIS compatibility for current QGIS 3.x and defensive QGIS 4.x readiness.
-- Show clear UI text that installation is planned for users and experimental for developers.
+- Show clear UI text that Windows internal beta installation is available after confirmation and untested platforms remain planned/experimental.
 
 ## Future Installer Requirements
 

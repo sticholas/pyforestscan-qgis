@@ -13,4 +13,4 @@ Repair planning detects:
 
 Repair plans return proposed actions such as restoring Micromamba, recreating the environment, rewriting config after verification, or preserving bad config for diagnostics.
 
-Actual repair execution remains developer-only until the public installer is approved.
+Actual repair execution beyond retry guidance remains planned. Windows internal beta users can inspect logs, preview repair guidance, and retry installation; update/remove policies remain future work.

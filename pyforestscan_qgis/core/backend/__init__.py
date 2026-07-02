@@ -3,15 +3,14 @@
 PBM is the plugin-owned architecture for managing an isolated backend runtime.
 Phase 22D adds production installer architecture: manifest-driven dependency
 selection, resumable downloads, transactional install stages, repair planning,
-structured logs, version checks, and future backend modules. Public one-click
-installation remains disabled until release pins and platform testing are ready.
+structured logs, version checks, and future backend modules. Internal beta installation is enabled on Windows with confirmation, while Linux/macOS remain planned until platform smoke testing is complete.
 """
 
 from .checksums import ChecksumPolicy, ChecksumResult, verify_checksum
 from .download_manager import CancellationToken, DownloadManager, DownloadRequest, DownloadSource, ManagedDownloadResult
 from .downloads import DownloadResult, download_file, download_path
 from .install_plan import BackendInstallPlan, BackendInstallStep, create_backend_install_plan, format_install_plan
-from .installer import BACKEND_INSTALL_ENABLE_ENV, BackendInstaller, backend_install_enabled
+from .installer import BACKEND_INSTALL_ENABLE_ENV, BackendInstallAvailability, BackendInstaller, backend_install_availability, backend_install_enabled
 from .manifest import BackendManifest, BackendManifestError, load_backend_manifest
 from .micromamba import MicromambaBootstrapPolicy, micromamba_bootstrap_policy, micromamba_source_url
 from .models import (
@@ -37,6 +36,7 @@ __all__ = [
     "BACKEND_INSTALL_ENABLE_ENV",
     "BackendConfig",
     "BackendDependency",
+    "BackendInstallAvailability",
     "BackendInstallPlan",
     "BackendInstallStep",
     "BackendInstallTransaction",
@@ -67,6 +67,7 @@ __all__ = [
     "MicromambaBootstrapPolicy",
     "RepairPlan",
     "VersionCompatibilityResult",
+    "backend_install_availability",
     "backend_install_enabled",
     "create_backend_install_plan",
     "default_backend_module_registry",

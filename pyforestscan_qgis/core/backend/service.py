@@ -8,7 +8,7 @@ from .checksums import ChecksumResult
 from .config import load_backend_config, planned_backend_config
 from .downloads import DownloadResult
 from .install_plan import BackendInstallPlan, create_backend_install_plan, format_install_plan
-from .installer import BACKEND_INSTALL_ENABLE_ENV, BackendInstaller, backend_install_enabled
+from .installer import BackendInstallAvailability, BackendInstaller, backend_install_availability, backend_install_enabled
 from .logging import read_backend_log, write_backend_log_entry
 from .manifest import BackendManifest, load_backend_manifest
 from .models import BackendOperationResult, BackendRegistry, BackendState, BackendStatus, BackendVerificationResult
@@ -75,9 +75,13 @@ class BackendService:
         """Format repair diagnostics for UI display."""
         return format_repair_plan(plan or self.preview_repair_plan())
 
+    def install_availability(self) -> BackendInstallAvailability:
+        """Return user-facing installer availability for the current build/platform."""
+        return backend_install_availability(platform=self.paths.platform)
+
     def backend_install_enabled(self) -> bool:
-        """Return whether the developer-only installer flag is enabled."""
-        return backend_install_enabled()
+        """Return whether real backend installation is enabled."""
+        return backend_install_enabled(platform=self.paths.platform)
 
     def installer(self) -> BackendInstaller:
         """Return a controlled installer bound to current paths."""
@@ -88,7 +92,7 @@ class BackendService:
         return self.installer().plan_install()
 
     def download_micromamba(self) -> DownloadResult:
-        """Download Micromamba through the developer-only installer path."""
+        """Download Micromamba through the controlled installer path."""
         return self.installer().download_micromamba()
 
     def verify_micromamba_download(self) -> ChecksumResult:
@@ -96,11 +100,11 @@ class BackendService:
         return self.installer().verify_micromamba_download()
 
     def extract_micromamba(self) -> BackendOperationResult:
-        """Extract Micromamba through the developer-only installer path."""
+        """Extract Micromamba through the controlled installer path."""
         return self.installer().extract_micromamba()
 
     def create_environment(self) -> BackendOperationResult:
-        """Create the managed backend environment through the developer-only installer path."""
+        """Create the managed backend environment through the controlled installer path."""
         return self.installer().create_environment()
 
     def verify_environment(self) -> BackendVerificationResult:
@@ -108,7 +112,7 @@ class BackendService:
         return self.installer().verify_environment()
 
     def write_backend_config(self) -> BackendOperationResult:
-        """Write backend config through the developer-only installer path."""
+        """Write backend config through the controlled installer path."""
         return self.installer().write_backend_config()
 
     def rollback_failed_install(self) -> BackendOperationResult:
@@ -116,11 +120,11 @@ class BackendService:
         return self.installer().rollback_failed_install()
 
     def install_backend(self) -> BackendOperationResult:
-        """Run the developer-guarded transactional installer when explicitly enabled."""
+        """Run the transactional installer when the availability guard allows it."""
         return self.installer().install_backend()
 
     def repair_backend(self) -> BackendOperationResult:
-        """Return repair planning; execution remains developer-only."""
+        """Return repair planning while repair execution remains planned."""
         plan = self.preview_repair_plan()
         if self.paths.logs_dir.exists():
             write_backend_log_entry(self.paths.repair_log, "repair", f"Repair plan has {len(plan.issues)} issue(s).", stage="PLAN")
@@ -128,7 +132,7 @@ class BackendService:
             operation="repair",
             status=plan.status,
             success=False,
-            message=f"Backend repair execution is planned. {len(plan.issues)} issue(s) detected; execution remains behind {BACKEND_INSTALL_ENABLE_ENV}=1.",
+            message=f"Backend repair execution is planned. {len(plan.issues)} issue(s) detected; use logs and retry installation on supported internal beta builds.",
             modified_system=False,
         )
 
@@ -186,7 +190,7 @@ class BackendService:
             operation="run_backend_python",
             status=self.detect_backend().status,
             success=False,
-            message="Backend Python execution is planned but disabled until PBM public activation is approved.",
+            message="Backend Python execution is planned for the PBM execution bridge; current scientific tools still use QGIS Python unless explicitly routed.",
             modified_system=False,
         )
 
@@ -197,7 +201,7 @@ class BackendService:
             operation="run_pdal_pipeline",
             status=self.detect_backend().status,
             success=False,
-            message=f"Backend PDAL execution is planned but disabled until PBM public activation is approved.{detail}",
+            message=f"Backend PDAL execution is planned for the PBM execution bridge; current scientific tools still use QGIS Python unless explicitly routed.{detail}",
             modified_system=False,
         )
 
@@ -210,6 +214,6 @@ class BackendService:
             operation=operation,
             status=status,
             success=False,
-            message=f"Backend {operation} is planned. Phase 22D keeps execution behind {BACKEND_INSTALL_ENABLE_ENV}=1 and public one-click installation remains disabled.",
+            message=f"Backend {operation} is planned. Phase 23C enables internal beta install on Windows, but update/remove execution remains disabled.",
             modified_system=False,
         )

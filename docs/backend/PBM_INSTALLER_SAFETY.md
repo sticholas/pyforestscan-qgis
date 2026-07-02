@@ -1,23 +1,17 @@
 # PBM Installer Safety
 
-Phase 22C introduces controlled installer mechanics behind a hard developer-only guard.
+Phase 23C enables real backend installer execution for Windows internal beta builds only.
 
-## Developer Guard
+## Internal Beta Guard
 
-Real installer actions may run only when this environment variable is set:
+The normal user-facing guard is build/platform based:
 
-```text
-PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1
-```
+- Windows internal beta builds show **Install Backend**.
+- Linux and macOS remain planned/experimental until platform smoke testing is complete.
+- Unknown platforms remain disabled.
+- A confirmation dialog is required before installation starts.
 
-If the flag is absent:
-
-- Mission Control shows preview and compatibility information only.
-- Install Backend remains disabled and labeled planned.
-- `BackendService.install_backend()` refuses to run and reports a clear message.
-- No directories are created and no downloads occur.
-
-If the flag is present, Mission Control labels the button `Install Backend Experimental` and warns that it is for development testing only.
+The confirmation text states that PBM installs PyForestScan backend packages into the user-local PyForestScan folder and does not modify QGIS or system Python. The legacy `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1` override may still be used for controlled developer tests, but it is no longer the normal internal beta user flow.
 
 ## Safety Boundaries
 
@@ -26,10 +20,12 @@ The installer must:
 - Use only the user-local PBM backend root.
 - Avoid administrator privileges.
 - Avoid QGIS Python, QGIS install folders, system Python, and global user site-packages.
-- Avoid global environment-variable changes.
-- Keep existing Guided Mission Control, Advanced Toolbox, and Batch behavior unchanged.
+- Avoid PATH, shell profile, registry, and user environment-variable changes.
+- Keep existing Guided Mission Control, Advanced Toolbox, and Batch behavior unchanged unless a workflow explicitly implements PBM execution.
 - Keep External Worker mode disabled.
 
-## Developer Prototype Scope
+## Transaction Scope
 
-The Phase 22C prototype includes download, checksum, extraction, environment creation, verification, config writing, staging, and rollback mechanics. Exact production checksums, final version locks, and broad user enablement remain future work.
+The internal beta installer downloads Micromamba, verifies the checksum when a pinned checksum exists, extracts the archive with path-traversal checks, creates the managed environment from the backend spec, verifies imports/executables, promotes staged files, writes READY config, and records logs under the backend root.
+
+If a stage fails, staging is rolled back and the Backend page shows failure guidance, repair planning, and log previews.

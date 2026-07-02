@@ -45,6 +45,7 @@ class DependencyCheckTests(unittest.TestCase):
             plugin_path="/tmp/plugin",
             import_module=FakeImporter({}),
             version_lookup=unexpected_lookup,
+            pbm_backend_check=lambda: EnvironmentCheckResult("PBM managed backend", CheckStatus.PASS, "Managed backend verified as READY."),
         )
 
         statuses = {check.name: check.status for check in report.checks}
@@ -79,6 +80,7 @@ class DependencyCheckTests(unittest.TestCase):
             plugin_path="/tmp/plugin",
             import_module=FakeImporter(modules),
             version_lookup=lambda package: "metadata-version",
+            pbm_backend_check=lambda: EnvironmentCheckResult("PBM managed backend", CheckStatus.PASS, "Managed backend verified as READY."),
         )
 
         self.assertIs(report.readiness, ReadinessStatus.READY)
@@ -86,6 +88,18 @@ class DependencyCheckTests(unittest.TestCase):
         versions = {check.name: check.version for check in report.checks}
         self.assertEqual(versions["QGIS version"], "3.34.0")
         self.assertEqual(versions["osgeo.gdal"], "GDAL 3.8.0")
+
+    def test_pbm_backend_warning_is_reported_without_lowering_missing_dependency_clarity(self) -> None:
+        report = collect_environment_report(
+            plugin_path="/tmp/plugin",
+            import_module=FakeImporter({}),
+            version_lookup=lambda package: "metadata-version",
+            pbm_backend_check=lambda: EnvironmentCheckResult("PBM managed backend", CheckStatus.WARNING, "Managed backend status: Not Installed."),
+        )
+
+        statuses = {check.name: check.status for check in report.checks}
+        self.assertIs(statuses["PBM managed backend"], CheckStatus.WARNING)
+        self.assertIs(report.readiness, ReadinessStatus.NOT_READY)
 
     def test_report_formatting_includes_statuses_guidance_and_summary(self) -> None:
         report = build_environment_report(

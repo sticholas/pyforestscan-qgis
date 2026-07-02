@@ -31,4 +31,6 @@ This document records current limitations for the internal release candidate. It
 
 ## PyForestScan Backend Manager
 
-The PyForestScan Backend Manager includes production installer architecture, but normal user installation remains disabled. Real installer execution is guarded by `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1` for development testing only. PBM must not install into QGIS Python, modify QGIS folders, require administrator privileges, change user environment variables, or route processing through a managed backend yet. QGIS 3.x is the supported target; QGIS 4.x compatibility is prepared defensively but must be tested when available.
+The PyForestScan Backend Manager can run backend installation for Windows internal beta builds only. Linux and macOS installer execution remain planned/experimental until clean platform smoke testing is complete. PBM installs only into the user-local PyForestScan backend folder and must not install into QGIS Python, modify QGIS folders, require administrator privileges, change user environment variables, or enable External Worker mode.
+
+PBM verification can report the managed backend as `Ready`, but scientific processing is not automatically routed through PBM unless a workflow explicitly implements that execution path. Tools that still execute inside QGIS Python must continue to report QGIS Python dependency requirements honestly. QGIS 3.x is the supported target; QGIS 4.x compatibility is prepared defensively but must be tested when available.

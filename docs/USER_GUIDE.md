@@ -57,7 +57,7 @@ PAI, FHD, and Rumple summary processing.
 
 Mission Control Settings includes the PyForestScan Backend Manager. It can verify the current backend state, preview the manifest-driven install transaction, show QGIS/backend compatibility, plan repairs, show structured logs, and display advanced module/version information.
 
-Normal users cannot run backend installation yet. The backend is designed to be user-local and separate from QGIS Python; PBM does not modify QGIS Python, QGIS installation folders, PATH, shell profiles, or user environment variables. Developer-only experimental execution still requires `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1`.
+Windows internal beta users can click **Install Backend** from Mission Control Settings after confirming that PBM will install into the user-local PyForestScan folder only. PBM does not modify QGIS Python, QGIS installation folders, PATH, shell profiles, system Python, or user environment variables. Linux and macOS install execution remains planned/experimental until smoke tested.
 
 ## Processing Toolbox Expert Tools
 
@@ -414,8 +414,8 @@ External worker mode is disabled. Manual validation showed that QGIS GUI Python 
 
 Mission Control Settings includes a PyForestScan Backend Manager section. It can show backend status, installed and manifest versions, plugin compatibility, dependency summaries, storage paths, QGIS compatibility, structured logs, repair plans, and the manifest-driven install preview.
 
-For normal users, Install Backend remains disabled. Developer-only execution is available only for development testing when `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1` is set before launching QGIS. When that flag is present, Mission Control labels the button `Install Backend Experimental`.
+On Windows internal beta builds, Mission Control labels the button **Install Backend** and requires an explicit confirmation dialog before starting. The installer downloads Micromamba, verifies the checksum when a pinned checksum is available, extracts safely, creates the backend environment from the manifest/spec, verifies Python/imports/executables, promotes the backend, writes READY config, and shows log previews.
 
-Preview Install Plan shows where the user-local backend would be installed, which manifest packages would be included, which platform was detected, transaction stages, warnings, verification steps, rollback/repair notes, and offline-install placeholders. The installer architecture uses staging and rollback under the user-local PBM backend root.
+Preview Install Plan shows where the user-local backend will be installed, which manifest packages are included, which platform was detected, transaction stages, warnings, verification steps, rollback/repair notes, and offline-install placeholders. Repair shows guidance and logs; update/remove execution remains planned.
 
-PBM will not modify QGIS Python, QGIS install folders, system Python, global user site-packages, or user environment variables. QGIS 3.x is the supported target. QGIS 4.x compatibility checks are defensive and must be tested when QGIS 4.x is available.
+PBM will not modify QGIS Python, QGIS install folders, system Python, global user site-packages, or user environment variables. QGIS 3.x is the supported target. QGIS 4.x compatibility checks are defensive and must be tested when QGIS 4.x is available. Tools not yet routed through PBM still require QGIS Python dependencies and should say so clearly.

@@ -15,7 +15,7 @@ PyForestScan remains the scientific engine. This repository provides the QGIS ap
 - **Batch processing** with preflight checks, manifests, resume/retry, checkpointed summaries, sequential mode, and guarded Parallel Safe mode.
 - **Workspace state** with recent workspaces, notes, timeline, run history, and local `.pyforestscan/` metadata.
 - **Expert Processing Toolbox** grouped by Diagnostics, Input / I/O, Preprocessing / Filters, Terrain, and Metrics.
-- **PyForestScan Backend Manager** production installation architecture for future user-local dependency installation, currently detection, verification, QGIS compatibility reporting, manifest-driven dry-run planning, repair planning, structured logs, transaction staging, and developer-guarded installer execution. Public one-click installation remains disabled.
+- **PyForestScan Backend Manager** for user-local backend management: detection, verification, QGIS compatibility reporting, manifest-driven install previews, repair planning, structured logs, transaction staging, and Windows internal beta backend installation. Linux/macOS install execution remains planned until smoke tested.
 
 External Worker mode is disabled. It is preserved as research code only and is blocked from normal use.
 
@@ -81,7 +81,7 @@ python3 scripts/validate_plugin_package.py dist/pyforestscan_qgis.zip
 
 The package script writes both `dist/pyforestscan_qgis-v<version>.zip` and the latest convenience copy `dist/pyforestscan_qgis.zip`. Install either ZIP in QGIS through **Plugins > Manage and Install Plugins > Install from ZIP**.
 
-Before processing, run **PyForestScan / Diagnostics / Environment Check** or the Mission Control Environment page. Windows QGIS dependency guidance is documented in [Windows QGIS Dependencies](docs/development/WINDOWS_QGIS_DEPENDENCIES.md).
+Before processing, run **PyForestScan / Diagnostics / Environment Check** or the Mission Control Environment page. Windows internal beta builds can install the PBM backend into the user-local PyForestScan folder from Mission Control Settings; PBM does not modify QGIS Python or system Python. Tools that have not been routed through PBM still report QGIS Python dependency requirements clearly.
 
 ## Internal Release Pipeline
 
@@ -129,6 +129,7 @@ Key entry points:
 - [PBM Transaction Model](docs/backend/PBM_TRANSACTION_MODEL.md)
 - [QGIS Compatibility Layer](docs/development/QGIS_COMPATIBILITY_LAYER.md)
 - [Release Checklist](docs/releases/INTERNAL_RELEASE_CHECKLIST.md)
+- [PBM Internal Beta Smoke Test](docs/releases/PBM_INTERNAL_BETA_SMOKE_TEST.md)
 - [Known Limitations](docs/KNOWN_LIMITATIONS.md)
 
 ## Roadmap

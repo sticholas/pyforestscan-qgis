@@ -11,6 +11,7 @@ from pyforestscan_qgis.core.backend.downloads import download_file, download_pat
 from pyforestscan_qgis.core.backend.installer import (
     BACKEND_INSTALL_ENABLE_ENV,
     BackendInstaller,
+    backend_install_availability,
     backend_install_enabled,
     default_environment_spec_file,
     staging_paths,
@@ -41,6 +42,9 @@ class BackendInstallerTests(unittest.TestCase):
             self.assertFalse(verify_checksum(artifact, ChecksumPolicy(expected="0" * 64)).passed())
             missing_policy = verify_checksum(artifact, ChecksumPolicy(expected=None, required=True))
             self.assertEqual(missing_policy.status, "fail")
+            optional_policy = verify_checksum(artifact, ChecksumPolicy(expected=None, required=False))
+            self.assertTrue(optional_policy.passed())
+            self.assertIn("skipped", optional_policy.message)
 
     def test_download_path_selection_and_mock_download(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -54,17 +58,25 @@ class BackendInstallerTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.attempts, 1)
 
-    def test_developer_guard_blocks_install(self) -> None:
+    def test_internal_beta_guard_blocks_untested_platforms(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             paths = resolve_backend_paths(backend_root=Path(tmpdir) / "backend", platform=BackendPlatform.LINUX)
             installer = BackendInstaller(paths=paths, environ={})
             result = installer.install_backend()
 
-        self.assertFalse(backend_install_enabled({}))
+        self.assertFalse(backend_install_enabled({}, BackendPlatform.LINUX))
         self.assertFalse(result.success)
         self.assertFalse(result.modified_system)
-        self.assertIn(BACKEND_INSTALL_ENABLE_ENV, result.message)
+        self.assertIn("planned/experimental", result.message)
         self.assertFalse(paths.backend_root.exists())
+
+    def test_windows_internal_beta_enables_install_without_env_var(self) -> None:
+        availability = backend_install_availability(environ={}, platform=BackendPlatform.WINDOWS)
+
+        self.assertTrue(availability.enabled)
+        self.assertTrue(backend_install_enabled({}, BackendPlatform.WINDOWS))
+        self.assertFalse(availability.developer_override)
+        self.assertIn("Windows internal beta", availability.reason)
 
     def test_staging_path_creation_and_rollback(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

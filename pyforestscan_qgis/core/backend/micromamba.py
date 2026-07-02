@@ -58,7 +58,8 @@ def micromamba_bootstrap_policy(paths: BackendPaths, checksum: str | None = None
     archive_name = micromamba_archive_name(paths.platform)
     notes = [
         "Micromamba is downloaded only into the user-local PBM downloads directory.",
-        "Production activation requires a pinned SHA-256 checksum before extraction.",
+        "Checksum verification is enforced when a pinned SHA-256 is supplied by the manifest.",
+        "Internal beta builds may proceed without a checksum while logging that verification was skipped.",
         "Offline installation remains a future placeholder for pre-fetched artifacts and lock files.",
     ]
     if not source_url:
@@ -69,6 +70,6 @@ def micromamba_bootstrap_policy(paths: BackendPaths, checksum: str | None = None
         archive_name=archive_name,
         download_path=paths.downloads_dir / archive_name,
         executable_path=paths.micromamba_executable,
-        checksum_policy=ChecksumPolicy(expected=checksum, required=True, source="Pinned SHA-256 supplied by installer policy."),
+        checksum_policy=ChecksumPolicy(expected=checksum, required=bool(checksum), source="Pinned SHA-256 supplied by installer policy when available."),
         notes=tuple(notes),
     )

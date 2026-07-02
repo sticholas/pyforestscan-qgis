@@ -71,7 +71,7 @@ def validate_release(dist_dir: Path | None = None, update_manifest: bool = True)
     errors.extend(_validate_forbidden_members(release_zip))
     errors.extend(_validate_changelog(version.plugin_version))
     errors.extend(_validate_external_worker_disabled())
-    errors.extend(_validate_pbm_install_disabled())
+    errors.extend(_validate_pbm_internal_beta_guard())
     docs_status = _run_docs_link_check()
     if docs_status != "passed" and manifest.get("docs_link_check_status") != "passed":
         errors.append("Documentation link check did not pass and no passing status is recorded.")
@@ -143,12 +143,22 @@ def _validate_external_worker_disabled() -> list[str]:
     return ["External Worker disabled guard text was not found."]
 
 
-def _validate_pbm_install_disabled() -> list[str]:
+def _validate_pbm_internal_beta_guard() -> list[str]:
     pages = (REPOSITORY_ROOT / PLUGIN_DIR_NAME / "ui" / "pages.py").read_text(encoding="utf-8")
     installer = (REPOSITORY_ROOT / PLUGIN_DIR_NAME / "core" / "backend" / "installer.py").read_text(encoding="utf-8")
-    if 'QPushButton("Install Backend (Planned)")' in pages and "setEnabled(False)" in pages and "PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL" in installer:
+    version = (REPOSITORY_ROOT / PLUGIN_DIR_NAME / "__version__.py").read_text(encoding="utf-8")
+    required = (
+        "install_backend_internal_beta" in pages,
+        "This will install PyForestScan backend packages into your user-local PyForestScan folder" in pages,
+        "It will not modify QGIS or system Python" in pages,
+        "backend_install_availability" in installer,
+        "BackendPlatform.WINDOWS" in installer,
+        "planned/experimental" in installer,
+        "INTERNAL_BETA_BACKEND_INSTALL = True" in version,
+    )
+    if all(required):
         return []
-    return ["PBM normal install disabled guard was not found."]
+    return ["PBM internal beta install guard or confirmation text was not found."]
 
 
 def _run_docs_link_check() -> str:

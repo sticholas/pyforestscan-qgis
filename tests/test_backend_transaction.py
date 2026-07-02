@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from pyforestscan_qgis.core.backend.download_manager import CancellationToken
-from pyforestscan_qgis.core.backend.models import BackendOperationResult, BackendStatus
+from pyforestscan_qgis.core.backend.models import BackendOperationResult, BackendPlatform, BackendStatus
 from pyforestscan_qgis.core.backend.paths import resolve_backend_paths
 from pyforestscan_qgis.core.backend.transaction import BackendInstallTransaction, BackendTransactionStage
 
@@ -62,6 +62,11 @@ class FakeInstaller:
     def verify_environment(self):
         if self.fail_stage == "verify_environment":
             return type("Verification", (), {"summary": "missing packages", "passed": lambda self: False})()
+        return FakeVerification()
+
+    def verify_active_backend(self):
+        if self.fail_stage == "verify_active_backend":
+            return type("Verification", (), {"summary": "active backend incomplete", "passed": lambda self: False})()
         return FakeVerification()
 
     def promote_staging(self):
@@ -123,12 +128,12 @@ class BackendTransactionTests(unittest.TestCase):
         from pyforestscan_qgis.core.backend.installer import BackendInstaller
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            paths = resolve_backend_paths(backend_root=Path(tmpdir) / "backend")
+            paths = resolve_backend_paths(backend_root=Path(tmpdir) / "backend", platform=BackendPlatform.LINUX)
             result = BackendInstaller(paths, environ={}).install_backend()
 
         self.assertFalse(result.success)
         self.assertFalse(result.modified_system)
-        self.assertIn("PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL", result.message)
+        self.assertIn("planned/experimental", result.message)
 
 
 if __name__ == "__main__":

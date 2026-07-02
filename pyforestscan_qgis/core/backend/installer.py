@@ -25,6 +25,20 @@ Verifier = Callable[[BackendPaths], BackendVerificationResult]
 
 
 @dataclass(frozen=True)
+class BackendInstallAvailability:
+    """User-facing availability for real backend installer execution."""
+
+    enabled: bool
+    supported: bool
+    platform: BackendPlatform
+    build_allows_install: bool
+    developer_override: bool
+    reason: str
+    button_label: str
+    requires_confirmation: bool = True
+
+
+@dataclass(frozen=True)
 class StagingPaths:
     """Installer staging paths below the user-local backend root."""
 
@@ -35,19 +49,82 @@ class StagingPaths:
     python_executable: Path
 
 
-def backend_install_enabled(environ: dict[str, str] | None = None) -> bool:
-    """Return whether the developer-only installer flag is enabled."""
+def backend_install_availability(
+    environ: dict[str, str] | None = None,
+    platform: BackendPlatform | None = None,
+) -> BackendInstallAvailability:
+    """Return whether real installer execution is available for this build/platform."""
     env = environ if environ is not None else os.environ
-    return env.get(BACKEND_INSTALL_ENABLE_ENV) == "1"
+    platform_value = platform or resolve_backend_paths().platform
+    developer_override = env.get(BACKEND_INSTALL_ENABLE_ENV) == "1"
+    try:
+        from ... import __version__ as version_metadata
+
+        build_allows = bool(getattr(version_metadata, "INTERNAL_BETA_BACKEND_INSTALL", False))
+        beta_platforms = tuple(str(item).lower() for item in getattr(version_metadata, "INTERNAL_BETA_BACKEND_INSTALL_PLATFORMS", ()))
+    except Exception:  # noqa: BLE001 - installer availability must remain safe if metadata is unavailable.
+        build_allows = False
+        beta_platforms = ()
+
+    supported = platform_value is BackendPlatform.WINDOWS
+    if developer_override:
+        return BackendInstallAvailability(
+            enabled=platform_value is not BackendPlatform.UNKNOWN,
+            supported=platform_value is not BackendPlatform.UNKNOWN,
+            platform=platform_value,
+            build_allows_install=build_allows,
+            developer_override=True,
+            reason="Developer override is enabled for controlled installer testing.",
+            button_label="Install Backend",
+        )
+    if not build_allows:
+        return BackendInstallAvailability(
+            enabled=False,
+            supported=supported,
+            platform=platform_value,
+            build_allows_install=False,
+            developer_override=False,
+            reason="This build does not enable backend installation.",
+            button_label="Install Backend (Planned)",
+        )
+    if platform_value.value in beta_platforms and supported:
+        return BackendInstallAvailability(
+            enabled=True,
+            supported=True,
+            platform=platform_value,
+            build_allows_install=True,
+            developer_override=False,
+            reason="Windows internal beta backend installation is enabled.",
+            button_label="Install Backend",
+        )
+    if platform_value in (BackendPlatform.LINUX, BackendPlatform.MACOS):
+        reason = "Backend installation is planned/experimental on Linux and macOS until platform smoke testing is complete."
+    else:
+        reason = "Backend installation is unavailable for this platform."
+    return BackendInstallAvailability(
+        enabled=False,
+        supported=False,
+        platform=platform_value,
+        build_allows_install=build_allows,
+        developer_override=False,
+        reason=reason,
+        button_label="Install Backend (Planned)",
+    )
 
 
-def install_disabled_result(operation: str) -> BackendOperationResult:
-    """Return the standard refusal result when the developer flag is absent."""
+def backend_install_enabled(environ: dict[str, str] | None = None, platform: BackendPlatform | None = None) -> bool:
+    """Return whether real installer actions are enabled."""
+    return backend_install_availability(environ=environ, platform=platform).enabled
+
+
+def install_disabled_result(operation: str, platform: BackendPlatform | None = None, environ: dict[str, str] | None = None) -> BackendOperationResult:
+    """Return the standard refusal result when installer execution is unavailable."""
+    availability = backend_install_availability(environ=environ, platform=platform)
     return BackendOperationResult(
         operation=operation,
         status=BackendStatus.NOT_INSTALLED,
         success=False,
-        message=f"Backend installer is planned and disabled. Set {BACKEND_INSTALL_ENABLE_ENV}=1 only for development testing.",
+        message=f"Backend installer is not available: {availability.reason}",
         modified_system=False,
     )
 
@@ -87,25 +164,30 @@ class BackendInstaller:
         self.runner = runner or self._default_runner
         self.verifier = verifier or verify_backend
 
+    def install_availability(self) -> BackendInstallAvailability:
+        """Return real installer availability for this installer instance."""
+        return backend_install_availability(self.environ, self.paths.platform)
+
     def enabled(self) -> bool:
         """Return whether real installer actions are enabled."""
-        return backend_install_enabled(self.environ)
+        return self.install_availability().enabled
 
     def require_enabled(self, operation: str) -> BackendOperationResult | None:
-        """Return a refusal result when the developer installer flag is absent."""
+        """Return a refusal result when installer execution is unavailable."""
         if self.enabled():
             return None
-        return install_disabled_result(operation)
+        return install_disabled_result(operation, self.paths.platform, self.environ)
 
     def plan_install(self) -> BackendOperationResult:
         """Return installer readiness without modifying the filesystem."""
-        if not self.enabled():
-            return install_disabled_result("plan_install")
+        availability = self.install_availability()
+        if not availability.enabled:
+            return install_disabled_result("plan_install", self.paths.platform, self.environ)
         return BackendOperationResult(
             operation="plan_install",
             status=BackendStatus.NOT_INSTALLED,
             success=True,
-            message="Developer backend installer is enabled. Install operations remain experimental.",
+            message=f"{availability.reason} Installer will write only to the user-local PBM backend directory.",
             modified_system=False,
         )
 
@@ -151,7 +233,7 @@ class BackendInstaller:
         staged = staging_paths(self.paths)
         try:
             with tarfile.open(policy_value.download_path, "r:*") as archive:
-                archive.extractall(staged.root)  # noqa: S202 - developer-only installer extracts a checksum-verified artifact.
+                _safe_extract_tar(archive, staged.root)
             candidate = _find_extracted_micromamba(staged.root, self.paths.platform)
             if candidate is None:
                 return BackendOperationResult("extract_micromamba", BackendStatus.FAILED, False, "Micromamba executable was not found after extraction.", True)
@@ -182,6 +264,10 @@ class BackendInstaller:
     def verify_environment(self) -> BackendVerificationResult:
         """Verify the staged backend environment."""
         return self.verifier(staged_backend_paths(self.paths))
+
+    def verify_active_backend(self) -> BackendVerificationResult:
+        """Verify the active backend after promotion."""
+        return self.verifier(self.paths)
 
     def promote_staging(self) -> BackendOperationResult:
         """Promote verified staged files into the active backend layout."""
@@ -264,6 +350,26 @@ def default_environment_spec_file(platform: BackendPlatform) -> Path:
                 return spec_dir / "environment.macos.yml"
             return spec_dir / "environment.yml"
     return source_root / "backend_specs" / "environment.yml"
+
+
+def _safe_extract_tar(archive: tarfile.TarFile, destination: Path) -> None:
+    """Extract a tar archive after rejecting path traversal and unsafe links."""
+    destination.mkdir(parents=True, exist_ok=True)
+    root = destination.resolve()
+    for member in archive.getmembers():
+        member_path = (destination / member.name).resolve()
+        _require_within_directory(member_path, root)
+        if member.issym() or member.islnk():
+            link_target = (member_path.parent / member.linkname).resolve()
+            _require_within_directory(link_target, root)
+    archive.extractall(destination)
+
+
+def _require_within_directory(candidate: Path, root: Path) -> None:
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise tarfile.TarError(f"Archive member escapes extraction directory: {candidate}") from exc
 
 
 def _find_extracted_micromamba(root: Path, platform: BackendPlatform) -> Path | None:

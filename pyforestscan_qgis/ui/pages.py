@@ -27,6 +27,7 @@ from qgis.PyQt.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QMessageBox,
     QListWidgetItem,
     QProgressBar,
     QPushButton,
@@ -1966,7 +1967,7 @@ class SettingsPage(MissionPage):
         workspace.addLayout(workspace_form)
 
         backend = self.add_section("PyForestScan Backend Manager")
-        backend.addWidget(_body_label("Installation is not enabled for normal users. Phase 22D adds manifest-driven transactions, repair planning, structured logs, and developer-guarded installer execution."))
+        backend.addWidget(_body_label("Windows internal beta builds can install a user-local backend. PBM does not modify QGIS Python, the QGIS installation, system Python, PATH, or user environment variables."))
         self.backend_service = BackendService()
         self.backend_status_label = _body_label("Backend Status: Unknown")
         self.backend_location_label = _body_label("Backend Location: Unknown")
@@ -1981,7 +1982,7 @@ class SettingsPage(MissionPage):
         self.backend_auto_install_ready_label = _body_label("Backend auto-install ready: No")
         self.manual_dependency_setup_label = _body_label("Manual dependency setup required: Yes, unless QGIS Python already has required dependencies")
         self.qgis_compatibility_label = _body_label("QGIS Compatibility: Not checked")
-        self.backend_install_readiness_label = _body_label("Install readiness: Dry-run preview only")
+        self.backend_install_readiness_label = _body_label("Install readiness: Platform check pending")
         for label in (
             self.backend_status_label,
             self.backend_location_label,
@@ -2007,18 +2008,16 @@ class SettingsPage(MissionPage):
         self.verify_qgis_button.clicked.connect(self.verify_qgis_compatibility)
         self.preview_install_plan_button = QPushButton("Preview Install Plan")
         self.preview_install_plan_button.clicked.connect(self.preview_install_plan)
-        if self.backend_service.backend_install_enabled():
-            self.install_backend_button = QPushButton("Install Backend Experimental")
-            self.install_backend_button.setEnabled(True)
-            self.install_backend_button.clicked.connect(self.install_backend_experimental)
-        else:
-            self.install_backend_button = QPushButton("Install Backend (Planned)")
-            self.install_backend_button.setEnabled(False)
+        install_availability = self.backend_service.install_availability()
+        self.install_backend_button = QPushButton(install_availability.button_label)
+        self.install_backend_button.setEnabled(install_availability.enabled)
+        if install_availability.enabled:
+            self.install_backend_button.clicked.connect(self.install_backend_internal_beta)
         self.repair_backend_button = QPushButton("Repair")
         self.repair_backend_button.clicked.connect(self.repair_backend_preview)
         self.advanced_backend_button = QPushButton("Advanced")
         self.advanced_backend_button.clicked.connect(self.show_backend_advanced)
-        self.developer_mode_button = QPushButton("Developer Mode: On" if self.backend_service.backend_install_enabled() else "Developer Mode: Off")
+        self.developer_mode_button = QPushButton("Internal Beta Install: On" if install_availability.enabled else "Internal Beta Install: Off")
         self.developer_mode_button.setEnabled(False)
         self.manual_setup_button = QPushButton("Manual Setup Instructions")
         self.manual_setup_button.clicked.connect(self.show_manual_setup_instructions)
@@ -2045,7 +2044,7 @@ class SettingsPage(MissionPage):
         self.backend_details = QTextEdit()
         self.backend_details.setReadOnly(True)
         self.backend_details.setMinimumHeight(220)
-        self.backend_details.setPlainText("Use Verify, Preview Install, Repair, Manual Setup Instructions, View Logs, or Advanced to inspect PBM readiness. Install Backend remains disabled for normal users.")
+        self.backend_details.setPlainText("Use Verify, Preview Install, Install Backend, Repair, Manual Setup Instructions, Open Backend Folder, or View Logs to inspect PBM readiness. Install Backend is enabled only for supported internal beta platforms.")
         backend.addWidget(self.backend_details)
         self.refresh_backend_summary()
 
@@ -2097,6 +2096,7 @@ class SettingsPage(MissionPage):
         manifest = self.backend_service.backend_manifest()
         version = self.backend_service.version_compatibility()
         compatibility = build_qgis_compatibility_report()
+        availability = self.backend_service.install_availability()
         self.backend_status_label.setText(f"Backend Status: {state.status.value}")
         self.backend_location_label.setText(f"Storage Location: {paths.backend_root}")
         self.backend_environment_label.setText(f"Environment Location: {paths.environment_path}")
@@ -2107,18 +2107,25 @@ class SettingsPage(MissionPage):
         total_count = len(registry.dependencies)
         self.backend_dependency_label.setText(f"Dependencies: {required_count} required, {total_count - required_count} optional/future")
         self.zip_install_ready_label.setText("ZIP install ready: yes for plugin loading; clean Windows/QGIS smoke test still required before broad distribution")
-        self.backend_auto_install_ready_label.setText("Backend auto-install ready: no; PBM installer remains disabled for normal users")
-        self.manual_dependency_setup_label.setText("Manual dependency setup required: yes for scientific processing unless QGIS Python already has PyForestScan, PDAL, GDAL, rasterio, and numpy")
+        auto_ready = "yes, Windows internal beta" if availability.enabled else f"no; {availability.reason}"
+        self.backend_auto_install_ready_label.setText(f"Backend auto-install ready: {auto_ready}")
+        if state.status.value == "Ready":
+            manual_text = "Manual dependency setup required: no for backend verification; processing integration is reported per workflow"
+        else:
+            manual_text = "Manual dependency setup required: no after a successful PBM install; workflows not routed through PBM still require QGIS Python dependencies"
+        self.manual_dependency_setup_label.setText(manual_text)
         compat_text = version.message if version else "Manifest unavailable"
         self.qgis_compatibility_label.setText(f"Compatibility: QGIS {compatibility.summary()}; backend {compat_text}")
-        readiness = "developer mode enabled" if self.backend_service.backend_install_enabled() else "install disabled"
-        self.backend_install_readiness_label.setText(f"Install readiness: manifest dry-run for {len(plan.required_package_names())} packages; {readiness}")
+        self.backend_install_readiness_label.setText(f"Install readiness: {availability.reason}; manifest includes {len(plan.required_package_names())} packages")
+        self.install_backend_button.setText(availability.button_label)
+        self.install_backend_button.setEnabled(availability.enabled)
+        self.developer_mode_button.setText("Internal Beta Install: On" if availability.enabled else "Internal Beta Install: Off")
         self.backend_details.setPlainText(
             f"{state.message}\n\n"
-            "Current support: ZIP installation loads the plugin, Mission Control, Environment Check, and the Advanced Toolbox. Scientific processing requires dependencies in QGIS Python until PBM backend installation is approved. "
-            "Production installer architecture is present, but backend auto-install is not enabled for normal users. Preview Install shows the manifest-driven transaction; Repair proposes actions without changing files. "
-            "If PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1 is set, the experimental installer button is available for development testing only. "
-            "PBM will not modify QGIS Python, the QGIS install directory, or user environment variables."
+            "Current support: ZIP installation loads the plugin, Mission Control, Environment Check, and the Advanced Toolbox. Windows internal beta builds can install the managed backend into the user-local PyForestScan folder after confirmation. "
+            "Linux and macOS installation remain planned/experimental until smoke tested. Preview Install shows the manifest-driven transaction; Repair proposes actions and logs failures. "
+            "PBM will not modify QGIS Python, the QGIS install directory, system Python, PATH, shell profiles, or user environment variables. "
+            "Processing integration is still explicit: tools that have not been routed through PBM continue to require QGIS Python dependencies."
         )
 
     def verify_backend(self) -> None:
@@ -2143,21 +2150,66 @@ class SettingsPage(MissionPage):
     def preview_install_plan(self) -> None:
         """Display the dry-run backend installation plan."""
         plan = self.backend_service.preview_install_plan()
-        readiness = "developer mode enabled" if self.backend_service.backend_install_enabled() else "install disabled"
-        self.backend_install_readiness_label.setText(f"Install readiness: manifest dry-run for {len(plan.required_package_names())} packages; {readiness}")
+        availability = self.backend_service.install_availability()
+        self.backend_install_readiness_label.setText(f"Install readiness: {availability.reason}; manifest includes {len(plan.required_package_names())} packages")
         self.backend_details.setPlainText(self.backend_service.format_install_plan(plan))
 
-    def install_backend_experimental(self) -> None:
-        """Run the developer-only backend installer when the hard guard is enabled."""
-        result = self.backend_service.install_backend()
-        self.backend_status_label.setText(f"Backend Status: {result.status.value}")
+    def install_backend_internal_beta(self) -> None:
+        """Confirm and run the Windows internal beta backend installer."""
+        availability = self.backend_service.install_availability()
+        if not availability.enabled:
+            self.backend_details.setPlainText(f"Install Backend is not available on this platform/build.\n\n{availability.reason}")
+            return
+        message = (
+            "This will install PyForestScan backend packages into your user-local PyForestScan folder. "
+            "It will not modify QGIS or system Python.\n\n"
+            f"Backend folder: {self.backend_service.paths.backend_root}\n"
+            "The installer downloads Micromamba, creates a managed environment, verifies imports/executables, and writes PBM config only under that folder."
+        )
+        reply = QMessageBox.question(
+            self,
+            "Install PyForestScan Backend",
+            message,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            self.backend_details.setPlainText("Backend installation canceled before any installer action was started.")
+            return
+        self.backend_status_label.setText("Backend Status: Installing")
         self.backend_details.setPlainText(
-            "Experimental installer. Use only for development testing.\n\n"
+            "Backend installation started.\n\n"
+            "Stages:\n"
+            "- Download Micromamba\n"
+            "- Verify checksum when supplied\n"
+            "- Extract Micromamba safely\n"
+            "- Create managed environment from the backend spec\n"
+            "- Verify Python, PyForestScan, PDAL, GDAL, rasterio, and numpy\n"
+            "- Promote backend and write READY config\n\n"
+            "Current operation: starting transaction..."
+        )
+        QApplication.processEvents()
+        result = self.backend_service.install_backend()
+        self.refresh_backend_summary()
+        self.backend_status_label.setText(f"Backend Status: {result.status.value}")
+        logs = self.backend_service.get_logs().get("install", ())
+        log_preview = "\n".join(logs[-10:]) if logs else "No install log entries yet."
+        self.backend_details.setPlainText(
+            "PBM Backend Install Result\n\n"
             f"Operation: {result.operation}\n"
             f"Success: {result.success}\n"
+            f"Status: {result.status.value}\n"
             f"Modified user-local backend files: {result.modified_system}\n"
-            f"Message: {result.message}"
+            f"Log path: {result.log_path if result.log_path else self.backend_service.paths.install_log}\n"
+            f"Message: {result.message}\n\n"
+            "Repair option: use Repair if installation failed, then View Logs for details.\n\n"
+            "Log preview:\n"
+            f"{log_preview}"
         )
+
+    def install_backend_experimental(self) -> None:
+        """Backward-compatible wrapper for older tests and docs."""
+        self.install_backend_internal_beta()
 
 
     def repair_backend_preview(self) -> None:
@@ -2174,7 +2226,7 @@ class SettingsPage(MissionPage):
         version = self.backend_service.version_compatibility()
         lines = [
             "PBM Advanced",
-            f"Developer mode: {'enabled' if self.backend_service.backend_install_enabled() else 'off'}",
+            f"Internal beta install: {'enabled' if self.backend_service.backend_install_enabled() else 'off'}",
             f"Manifest backend version: {manifest.backend_version if manifest else 'Unavailable'}",
             f"Manifest environment version: {manifest.environment_version if manifest else 'Unavailable'}",
             f"Version compatibility: {version.message if version else 'Unavailable'}",
@@ -2195,20 +2247,20 @@ class SettingsPage(MissionPage):
 
 
     def show_manual_setup_instructions(self) -> None:
-        """Display current manual dependency setup guidance for clean ZIP installs."""
+        """Display current dependency setup guidance for clean ZIP installs."""
         self.backend_details.setPlainText(
             "Manual Setup Instructions\n\n"
-            "ZIP installation installs only the QGIS plugin. For scientific processing, the active QGIS Python environment must already be able to import pyforestscan, pdal, osgeo.gdal, rasterio, and numpy. Run Environment Check to see the exact interpreter and missing modules.\n\n"
+            "ZIP installation installs only the QGIS plugin. PBM backend installation creates an isolated, user-local PyForestScan backend and does not install packages into QGIS Python, system Python, PATH, shell profiles, or QGIS folders.\n\n"
             "Current release status:\n"
-            "- ZIP install ready: yes for plugin loading and diagnostics; final clean Windows/QGIS smoke test required.\n"
-            "- Backend auto-install ready: no.\n"
-            "- Manual dependency setup required: yes unless QGIS Python already has all required scientific packages.\n\n"
+            "- ZIP install ready: yes for plugin loading and diagnostics; clean Windows/QGIS smoke testing remains required before broad distribution.\n"
+            "- Backend auto-install ready: yes for Windows internal beta builds after confirmation.\n"
+            "- Manual dependency setup required: no after PBM backend installation verifies successfully; workflows not routed through PBM still report QGIS Python requirements clearly.\n\n"
             "Next steps:\n"
             "1. Install the ZIP through QGIS Plugin Manager.\n"
             "2. Open Mission Control and run Environment Check.\n"
-            "3. If dependencies are missing, install them into QGIS Python, not system Python.\n"
-            "4. Re-run Environment Check until READY before Guided or Advanced processing.\n\n"
-            "Reference docs: docs/INSTALLATION_STRATEGY.md and docs/releases/CLEAN_MACHINE_SMOKE_TEST.md."
+            "3. Open Backend settings and click Install Backend on Windows internal beta builds.\n"
+            "4. Verify Backend until status is Ready before trying Guided, Advanced, or Batch workflows.\n\n"
+            "Reference docs: docs/INSTALLATION_STRATEGY.md, docs/releases/CLEAN_MACHINE_SMOKE_TEST.md, and docs/releases/PBM_INTERNAL_BETA_SMOKE_TEST.md."
         )
 
     def open_backend_folder(self) -> None:
@@ -2219,8 +2271,8 @@ class SettingsPage(MissionPage):
         else:
             self.backend_details.setPlainText(
                 f"Backend folder does not exist yet: {folder}\n\n"
-                "Installation remains disabled for normal users and would create only this user-local directory when approved. "
-                "Use Preview Install or Repair to review the manifest-driven backend layout."
+                "Windows internal beta installation will create only this user-local directory after confirmation. "
+                "Use Preview Install to review the manifest-driven backend layout before installing."
             )
 
     def view_backend_logs(self) -> None:

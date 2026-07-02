@@ -7,6 +7,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ## Unreleased
 
+- Phase 23C enables the PBM backend installer for Windows internal beta builds with user confirmation, optional-checksum handling when no pinned Micromamba checksum exists, safe archive extraction, active backend verification, Backend page progress/log messaging, PBM Environment Check reporting, and internal beta smoke-test documentation. Linux/macOS remain planned until tested, and processing routes that still use QGIS Python continue to say so.
 - Phase 23B clean-machine ZIP install readiness documentation, dependency-state matrix, clearer missing-dependency guidance, Backend page release-readiness labels, and manual setup instructions.
 
 ## 0.1.0-beta.1 - 2026-07-02

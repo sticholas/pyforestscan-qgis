@@ -56,14 +56,16 @@ class EnvironmentReport:
 
 ImportModule = Callable[[str], ModuleType]
 VersionLookup = Callable[[str], str]
+PBMBackendCheck = Callable[[], EnvironmentCheckResult]
 
 
 INSTALLATION_GUIDANCE = (
     "ZIP installation only installs the QGIS plugin. Scientific processing also "
     "requires PyForestScan, PDAL, GDAL, rasterio, and numpy in the active QGIS "
-    "Python environment. Until PBM backend installation is enabled, install "
-    "missing dependencies manually for the exact QGIS profile/interpreter shown "
-    "above. Do not use system Python unless it is the Python used by QGIS. See "
+    "Python environment unless a workflow explicitly supports the managed PBM "
+    "backend. Windows internal beta builds can install PBM into the user-local "
+    "PyForestScan folder without changing QGIS or system Python. Do not use "
+    "system Python unless it is the Python used by QGIS. See "
     "docs/INSTALLATION_STRATEGY.md and docs/releases/CLEAN_MACHINE_SMOKE_TEST.md."
 )
 
@@ -72,6 +74,8 @@ def collect_environment_report(
     plugin_path: Path | str | None = None,
     import_module: ImportModule | None = None,
     version_lookup: VersionLookup | None = None,
+    include_pbm_backend: bool = True,
+    pbm_backend_check: PBMBackendCheck | None = None,
 ) -> EnvironmentReport:
     """Collect structured diagnostics for the active runtime environment.
 
@@ -79,6 +83,8 @@ def collect_environment_report(
         plugin_path: Optional plugin package path to include in the report.
         import_module: Optional import function used by tests.
         version_lookup: Optional package metadata lookup used by tests.
+        include_pbm_backend: Include managed-backend readiness diagnostics.
+        pbm_backend_check: Optional PBM check override used by tests.
 
     Returns:
         EnvironmentReport containing individual checks and final readiness.
@@ -154,6 +160,9 @@ def collect_environment_report(
             guidance="numpy is missing from QGIS Python. Install numpy into the exact interpreter used by QGIS.",
         ),
     ]
+
+    if include_pbm_backend:
+        checks.append((pbm_backend_check or _pbm_backend_status_check)())
 
     return build_environment_report(checks)
 

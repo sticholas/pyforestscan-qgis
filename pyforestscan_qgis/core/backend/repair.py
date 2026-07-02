@@ -85,7 +85,7 @@ def plan_backend_repair(paths: BackendPaths, manifest: BackendManifest | None = 
 
 def format_repair_plan(plan: RepairPlan) -> str:
     """Format a repair plan for Mission Control."""
-    lines = ["Backend Repair Plan", f"Status: {plan.status.value}", "Execution: developer-only / disabled for normal users", ""]
+    lines = ["Backend Repair Plan", f"Status: {plan.status.value}", "Execution: repair actions are planned; Windows internal beta can retry installation and inspect logs", ""]
     if not plan.issues:
         lines.append("No repair issues were detected by file-level checks.")
     else:

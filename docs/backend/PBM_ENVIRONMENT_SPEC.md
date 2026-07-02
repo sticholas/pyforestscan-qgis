@@ -15,7 +15,7 @@ backend_specs/
   pins.md
 ```
 
-The packaging script includes these files inside the plugin ZIP under `pyforestscan_qgis/backend_specs/` so the developer-only installer can locate them from an installed plugin.
+The packaging script includes these files inside the plugin ZIP under `pyforestscan_qgis/backend_specs/` so the internal beta installer can locate them from an installed plugin.
 
 ## Required Packages
 

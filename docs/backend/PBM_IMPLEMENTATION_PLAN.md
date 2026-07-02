@@ -36,10 +36,10 @@ Implemented scope:
 
 - Micromamba source URL policy, archive naming, download helper, checksum verification helper, and retry behavior.
 - Backend environment spec files under `backend_specs/` with conservative ranges and package notes.
-- Developer-only installer guard using `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1`.
+- User-facing Windows internal beta install guard with explicit confirmation before installer execution.
 - Staging layout under `<backend_root>/staging/` with rollback on failure.
 - Service methods for planning, downloading, verifying, extracting, environment creation, staged verification, config writing, and rollback.
-- Mission Control Settings button that remains planned/disabled unless the developer flag is present, then shows `Install Backend Experimental`.
+- Mission Control Settings button that shows **Install Backend** for Windows internal beta builds and remains planned/disabled on untested platforms.
 - Package script support for including backend specs in the plugin ZIP.
 - QGIS-free tests with mocked downloads and no real environment creation.
 
@@ -63,10 +63,10 @@ Implemented scope:
 - Repair planner for missing executables, missing Python, broken environments, corrupt config, corrupt manifest, and blocked package verification.
 - Structured JSON-lines logs for install, download, verify, repair, update, and remove operations.
 - Declarative future module registry for PDAL, PyTorch, SAM, WhiteboxTools, CloudCompare, and Potree placeholders.
-- Mission Control Settings backend controls for status, compatibility, dependency summary, storage location, install preview, repair planning, logs, advanced details, and developer mode.
+- Mission Control Settings backend controls for status, compatibility, dependency summary, storage location, install preview, repair planning, logs, advanced details, and internal beta controls.
 - QGIS-free tests for manifest parsing, download behavior, transaction rollback, repair planning, version mismatch, cancellation, partial downloads, and module registration.
 
-Public one-click backend installation remains disabled until checksums, lock files, platform testing, and upgrade policy are complete.
+Windows internal beta backend installation is enabled; broader public/platform enablement remains pending checksums, lock files, platform testing, and upgrade policy.
 
 ## Phase 22E: Backend Execution Bridge
 

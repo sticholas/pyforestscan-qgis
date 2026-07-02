@@ -66,8 +66,11 @@ def create_backend_install_plan(paths: BackendPaths | None = None, registry: Bac
     if paths_value.platform is BackendPlatform.UNKNOWN:
         warnings.append("Backend platform is unknown; installation cannot be enabled until path and artifact policies are defined.")
     if manifest_value is not None and not manifest_value.micromamba_artifact().sha256_for(paths_value.platform):
-        warnings.append("Manifest does not yet pin a SHA-256 hash for this platform; public installation must remain disabled.")
-    warnings.append("Installation is disabled for normal users. Real installer mechanics require PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1 for development testing.")
+        warnings.append("Manifest does not pin a SHA-256 hash for this platform; internal beta may skip checksum verification, but public release should pin one.")
+    if paths_value.platform is BackendPlatform.WINDOWS:
+        warnings.append("Windows internal beta installation is enabled with confirmation and user-local writes only.")
+    elif paths_value.platform in (BackendPlatform.LINUX, BackendPlatform.MACOS):
+        warnings.append("Installer execution is planned/experimental on this platform until smoke testing is complete.")
 
     return BackendInstallPlan(
         backend_root=paths_value.backend_root,
@@ -117,8 +120,8 @@ def create_backend_install_plan(paths: BackendPaths | None = None, registry: Bac
 def format_install_plan(plan: BackendInstallPlan) -> str:
     """Format the dry-run install plan for Mission Control."""
     lines = [
-        "PyForestScan Backend Install Plan (Dry Run)",
-        "Installation is disabled for normal users. Developer-only installs require PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1; PBM does not modify QGIS Python or environment variables.",
+        "PyForestScan Backend Install Plan Preview",
+        "Windows internal beta builds can execute this plan after confirmation. Linux/macOS remain planned until tested. PBM does not modify QGIS Python, system Python, or environment variables.",
         "",
         f"Manifest schema: {plan.manifest_schema_version}",
         f"Backend version: {plan.backend_version}",

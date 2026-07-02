@@ -49,7 +49,7 @@ flowchart LR
 
 ## PyForestScan Backend Manager
 
-PBM is the user-local backend management architecture. Phase 22D keeps public installation disabled while adding production installer components: `backend_manifest.json`, resumable downloads, transaction stages, structured logs, version compatibility checks, repair planning, and declarative future modules. PBM does not install into QGIS Python, modify QGIS folders, or change user environment variables.
+PBM is the user-local backend management architecture. Phase 23C enables Windows internal beta installation using the production installer components: `backend_manifest.json`, Micromamba download, optional checksum verification when a pinned checksum exists, safe extraction, transaction stages, structured logs, version compatibility checks, repair planning, and declarative future modules. PBM does not install into QGIS Python, modify QGIS folders, or change user environment variables.
 
 ## Guided Workflow
 
@@ -143,7 +143,7 @@ Core services and knowledge modules should remain importable in plain Python tes
 
 The PyForestScan Backend Manager (PBM) is a new core subsystem for future user-local dependency management. It resolves platform-specific backend paths, stores typed backend configuration, maintains a dependency registry, verifies existing backend files, reports QGIS compatibility, and previews a registry-driven dry-run install plan through a service facade.
 
-PBM does not currently install dependencies, download Micromamba, modify QGIS Python, change user environment variables, replace existing processing execution, or run PyForestScan jobs. It prepares the boundary for a future managed backend located under the user profile rather than the QGIS installation. QGIS 3.x is the current supported target; QGIS 4.x checks are defensive until real QGIS 4 builds can be validated.
+PBM can install dependencies into a user-local managed backend for Windows internal beta builds. Linux and macOS installer execution remain planned until platform smoke testing is complete. PBM still does not modify QGIS Python, change user environment variables, replace every existing processing execution path, or automatically run PyForestScan jobs through the managed backend. Workflows must explicitly opt into PBM execution before they can claim PBM runtime support. QGIS 3.x is the current supported target; QGIS 4.x checks are defensive until real QGIS 4 builds can be validated.
 
 ```mermaid
 flowchart TD
@@ -152,9 +152,9 @@ flowchart TD
     B --> D["Dependency registry"]
     B --> E["Verification"]
     B --> H["QGIS compatibility report"]
-    B --> I["Dry-run install plan"]
-    E --> F["Existing backend files only"]
-    I -."future install".-> G["User-local micromamba environment"]
+    B --> I["Install plan and internal beta install"]
+    E --> F["Existing backend files"]
+    I --> G["User-local micromamba environment"]
 ```
 
 See [PBM Architecture](backend/PBM_ARCHITECTURE.md), [PBM Install Plan](backend/PBM_INSTALL_PLAN.md), and [PBM QGIS Compatibility](backend/PBM_QGIS_COMPATIBILITY.md) for details.

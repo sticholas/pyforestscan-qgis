@@ -10,7 +10,7 @@ This checklist is for a clean Windows/QGIS environment where PyForestScan QGIS i
 - Confirm the plugin ZIP is the versioned artifact, not an unpacked working tree.
 - Confirm no existing `pyforestscan_qgis` plugin folder is present in the active QGIS profile.
 - Confirm External Worker mode is not selectable after install.
-- Confirm `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL` is not set for normal-user testing.
+- Confirm the build is the Windows internal beta ZIP when testing backend install. No developer environment variable should be required for the normal PBM flow.
 
 ## ZIP Install
 
@@ -27,8 +27,8 @@ Expected result: plugin loads, toolbar/menu entry appears, and Mission Control o
 - Mission Control opens as a floating/movable window.
 - Home page renders without requiring PyForestScan imports.
 - Settings > PyForestScan Backend Manager renders without creating backend files.
-- Backend page says backend auto-install is not ready and manual dependency setup may be required.
-- Manual Setup Instructions button explains QGIS Python versus system Python.
+- Backend page says Windows internal beta backend auto-install is available, or explains why the platform is planned/experimental.
+- Manual Setup Instructions button explains PBM backend versus QGIS Python execution paths.
 
 ## Environment Check
 
@@ -66,9 +66,9 @@ Only run this section when Environment Check is `READY`.
 
 - Verify Backend reports missing/not installed state clearly when no PBM backend exists.
 - Preview Install Plan shows paths, package list, verification steps, rollback notes, and warnings.
-- Repair shows a plan only; it does not execute repair for normal users.
-- Install Backend remains disabled and labeled planned.
-- Developer-only experimental install button is not visible unless `PYFORESTSCAN_QGIS_ENABLE_BACKEND_INSTALL=1` was set before QGIS launch.
+- Repair shows a plan and log guidance.
+- On Windows internal beta builds, Install Backend is enabled and requires confirmation before action.
+- On Linux/macOS, Install Backend remains planned/experimental until platform smoke testing is complete.
 
 ## Release Readiness Status
 
@@ -78,9 +78,9 @@ Only run this section when Environment Check is `READY`.
 | Mission Control startup | Expected yes | Does not require scientific deps at import time. |
 | Environment Check with missing deps | Expected yes | Must report `NOT READY`, not crash. |
 | Advanced Toolbox visible | Expected yes | Provider registration should not require PyForestScan import. |
-| Guided Mode scientific processing | Yes only when QGIS Python dependencies are present | Manual dependency setup required until PBM is enabled. |
-| Backend auto-install ready | No | PBM installer remains disabled for normal users. |
-| Manual dependency setup required | Yes for processing unless deps are already present | ZIP install alone is not a scientific runtime installer. |
+| Guided Mode scientific processing | Yes when its active execution path has dependencies | PBM backend readiness is reported separately; tools not routed through PBM still require QGIS Python deps. |
+| Backend auto-install ready | Yes for Windows internal beta | Linux/macOS remain planned/experimental until tested. |
+| Manual dependency setup required | No after successful PBM install for backend readiness | Current QGIS-Python workflows still report their own requirements until routed through PBM. |
 
 ## Result Log
 

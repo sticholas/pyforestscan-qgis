@@ -1,6 +1,6 @@
 # PBM Micromamba Bootstrap
 
-Phase 22C defines a controlled Micromamba bootstrap policy for the PyForestScan Backend Manager (PBM). The policy supports a developer-only installer prototype, but normal users still see installation as disabled.
+Phase 23C uses the controlled Micromamba bootstrap policy for the PyForestScan Backend Manager (PBM). Windows internal beta builds can download and extract Micromamba into the user-local backend after confirmation; Linux/macOS remain planned until tested.
 
 ## Source URL Strategy
 

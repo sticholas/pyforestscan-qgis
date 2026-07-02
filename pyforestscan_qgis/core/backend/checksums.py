@@ -14,7 +14,7 @@ class ChecksumPolicy:
     algorithm: str = "sha256"
     expected: str | None = None
     required: bool = True
-    source: str = "Phase 22C placeholder; production installs require pinned checksums."
+    source: str = "Checksums are enforced when supplied by the installer policy."
 
 
 @dataclass(frozen=True)
@@ -48,10 +48,16 @@ def verify_checksum(path: Path, policy: ChecksumPolicy) -> ChecksumResult:
         return ChecksumResult(status="fail", message=f"Downloaded artifact is missing: {path}", expected=policy.expected)
     actual = sha256_file(path)
     if not policy.expected:
-        status = "fail" if policy.required else "warning"
+        if policy.required:
+            return ChecksumResult(
+                status="fail",
+                message="No pinned checksum is available for this required checksum policy.",
+                actual=actual,
+                expected=None,
+            )
         return ChecksumResult(
-            status=status,
-            message="No pinned checksum is available; production installer must provide one before activation.",
+            status="pass",
+            message="No pinned checksum is available; checksum verification was skipped for this internal beta artifact.",
             actual=actual,
             expected=None,
         )
