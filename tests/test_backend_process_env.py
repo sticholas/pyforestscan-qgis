@@ -10,11 +10,32 @@ from pathlib import Path
 from pyforestscan_qgis.core.backend.installer import BACKEND_INSTALL_ENABLE_ENV, BackendInstaller, staging_paths
 from pyforestscan_qgis.core.backend.models import BackendDependency, BackendPlatform, BackendRegistry, BackendStatus
 from pyforestscan_qgis.core.backend.paths import resolve_backend_paths
-from pyforestscan_qgis.core.backend.process_env import backend_pip_install_command, build_clean_subprocess_env, conda_environment_data_env
+from pyforestscan_qgis.core.backend.process_env import backend_pip_install_command, build_clean_subprocess_env, conda_environment_data_env, hidden_subprocess_kwargs
 
 
 class BackendProcessEnvironmentTests(unittest.TestCase):
     """Validate clean subprocess environments without running QGIS."""
+
+
+    def test_windows_no_console_subprocess_flags_are_applied(self) -> None:
+        class FakeStartupInfo:
+            def __init__(self) -> None:
+                self.dwFlags = 0
+                self.wShowWindow = None
+
+        class FakeSubprocess:
+            CREATE_NO_WINDOW = 0x08000000
+            STARTF_USESHOWWINDOW = 1
+            STARTUPINFO = FakeStartupInfo
+
+        kwargs = hidden_subprocess_kwargs(os_name="nt", subprocess_module=FakeSubprocess)
+
+        self.assertEqual(kwargs["creationflags"], FakeSubprocess.CREATE_NO_WINDOW)
+        self.assertEqual(kwargs["startupinfo"].dwFlags, FakeSubprocess.STARTF_USESHOWWINDOW)
+        self.assertEqual(kwargs["startupinfo"].wShowWindow, 0)
+
+    def test_non_windows_no_console_kwargs_are_empty(self) -> None:
+        self.assertEqual({}, hidden_subprocess_kwargs(os_name="posix"))
 
     def test_clean_env_removes_python_and_qgis_profile_paths(self) -> None:
         qgis_profile = r"C:\Users\Alala\AppData\Roaming\QGIS\QGIS3\profiles\default\python\dependencies\3.12"

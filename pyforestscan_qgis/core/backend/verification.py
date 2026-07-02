@@ -17,7 +17,7 @@ from .models import (
     DependencyVerificationStatus,
 )
 from .paths import BackendPaths
-from .process_env import build_clean_subprocess_env, conda_environment_data_env, conda_environment_path_entries, summarize_subprocess_output
+from .process_env import build_clean_subprocess_env, conda_environment_data_env, conda_environment_path_entries, hidden_subprocess_kwargs, summarize_subprocess_output
 from .registry import default_backend_registry
 from .state import detect_backend_state
 
@@ -432,6 +432,7 @@ def _run_command(command: tuple[str, ...], executable: Path, timeout_seconds: in
             text=True,
             timeout=timeout_seconds,
             env=build_clean_subprocess_env(prepend_paths=_verification_path_entries(paths, executable), extra_env=conda_environment_data_env(paths.environment_path, paths.platform.value)),
+            **hidden_subprocess_kwargs(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return CommandCheck(command=command, executable=executable, returncode=None, error=str(exc))
@@ -463,6 +464,7 @@ def conda_stack_summary(paths: BackendPaths, timeout_seconds: int = 10) -> Comma
             text=True,
             timeout=timeout_seconds,
             env=build_clean_subprocess_env(prepend_paths=_verification_path_entries(paths, executable), extra_env=conda_environment_data_env(paths.environment_path, paths.platform.value)),
+            **hidden_subprocess_kwargs(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return CommandCheck(command=command, executable=executable, returncode=None, error=str(exc))

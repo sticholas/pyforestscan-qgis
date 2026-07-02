@@ -43,7 +43,7 @@ Expected result: only the user-local PBM backend folder changes. QGIS folders, Q
 2. Open Mission Control.
 3. Open Settings > PyForestScan Backend Manager.
 4. Click **Install Backend** and accept the confirmation.
-5. Click **Verify Backend** until status is `Ready`.
+5. Watch the progress bar, current stage/action, elapsed time, and latest message until the installer reaches `Backend Ready`; then click **Verify Backend** if needed.
 6. Run Environment Check.
 7. Confirm Environment Check reports:
    - QGIS Python scientific dependency status.
@@ -71,7 +71,7 @@ Expected result: only the user-local PBM backend folder changes. QGIS folders, Q
 | Area | Expected result |
 | --- | --- |
 | ZIP install | Plugin loads without manual Python package setup. |
-| PBM install | Backend installs under `%LOCALAPPDATA%\PyForestScan\backend`. |
+| PBM install | Backend installs under `%LOCALAPPDATA%\PyForestScan\backend`; progress is visible, step progress is estimated, technical logs are hidden by default, and no console windows should flash during subprocess work. |
 | Environment Check | `READY WITH PBM BACKEND` is expected when PBM is Ready and QGIS Python scientific packages are absent; QGIS package failures remain visible but do not block routed products. |
 | Dataset Explorer | LAS/LAZ/COPC inspection uses PBM backend when ready. |
 | Routed products | CHM, Canopy Cover, PAD, PAI, FHD, Rumple, DTM, Point Density, and Voxel Statistic run through PBM. |

@@ -414,7 +414,7 @@ External worker mode is disabled. Manual validation showed that QGIS GUI Python 
 
 Mission Control Settings includes a PyForestScan Backend Manager section. It can show backend status, installed and manifest versions, plugin compatibility, dependency summaries, storage paths, QGIS compatibility, structured logs, repair plans, and the manifest-driven install preview.
 
-On Windows internal beta builds, Mission Control labels the button **Install Backend** and requires an explicit confirmation dialog before starting. The installer downloads Micromamba, verifies the checksum when a pinned checksum is available, extracts safely, creates the backend environment from the manifest/spec, verifies Python/imports/executables, promotes the backend, writes READY config, and shows log previews.
+On Windows internal beta builds, Mission Control labels the button **Install Backend** and requires an explicit confirmation dialog before starting. The installer runs in a background Qt worker where possible, shows estimated staged progress, current stage/action, elapsed time, and the latest message, and keeps technical logs under Advanced / Troubleshooting. It downloads Micromamba, verifies the checksum when a pinned checksum is available, extracts safely, creates the backend environment from the manifest/spec, verifies Python/imports/executables, promotes the backend, and writes READY config.
 
 Preview Install Plan shows where the user-local backend will be installed, which manifest packages are included, which platform was detected, transaction stages, warnings, verification steps, rollback/repair notes, and offline-install placeholders. Repair shows guidance and logs; update/remove execution remains planned.
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -207,3 +208,21 @@ def _proj_data_candidates(environment_path: Path, platform_value: str) -> tuple[
         environment_path / "share" / "proj",
         environment_path / "Library" / "share" / "proj",
     )
+
+
+
+def hidden_subprocess_kwargs(os_name: str | None = None, subprocess_module: object = subprocess) -> dict[str, object]:
+    """Return kwargs that keep backend subprocesses from flashing consoles on Windows."""
+    if (os_name or os.name) != "nt":
+        return {}
+    kwargs: dict[str, object] = {}
+    creationflags = getattr(subprocess_module, "CREATE_NO_WINDOW", 0)
+    if creationflags:
+        kwargs["creationflags"] = creationflags
+    startupinfo_type = getattr(subprocess_module, "STARTUPINFO", None)
+    if startupinfo_type is not None:
+        startupinfo = startupinfo_type()
+        startupinfo.dwFlags |= getattr(subprocess_module, "STARTF_USESHOWWINDOW", 0)
+        startupinfo.wShowWindow = 0
+        kwargs["startupinfo"] = startupinfo
+    return kwargs

@@ -9,6 +9,7 @@ from pathlib import Path
 from pyforestscan_qgis.core.backend.download_manager import CancellationToken
 from pyforestscan_qgis.core.backend.models import BackendOperationResult, BackendPlatform, BackendStatus
 from pyforestscan_qgis.core.backend.paths import resolve_backend_paths
+from pyforestscan_qgis.core.backend.progress import BackendProgressStage, STAGED_PROGRESS_ORDER, backend_progress_percentage
 from pyforestscan_qgis.core.backend.transaction import BackendInstallTransaction, BackendTransactionStage
 
 
@@ -107,6 +108,36 @@ class FakeInstaller:
 
 class BackendTransactionTests(unittest.TestCase):
     """Validate rollback, success, and cancellation transaction behavior."""
+
+
+    def test_staged_progress_percent_mapping_matches_user_facing_plan(self) -> None:
+        expected = (
+            (BackendProgressStage.PREPARING, 5),
+            (BackendProgressStage.DOWNLOADING, 15),
+            (BackendProgressStage.VERIFYING_DOWNLOAD, 25),
+            (BackendProgressStage.EXTRACTING, 35),
+            (BackendProgressStage.CREATING_ENVIRONMENT, 50),
+            (BackendProgressStage.INSTALLING_PACKAGES, 70),
+            (BackendProgressStage.VERIFYING_BACKEND, 85),
+            (BackendProgressStage.FINALIZING, 95),
+            (BackendProgressStage.READY, 100),
+        )
+
+        self.assertEqual(tuple(stage for stage, _percent in expected), STAGED_PROGRESS_ORDER)
+        self.assertEqual(tuple(percent for _stage, percent in expected), tuple(backend_progress_percentage(stage) for stage in STAGED_PROGRESS_ORDER))
+
+    def test_transaction_emits_ordered_estimated_progress(self) -> None:
+        updates = []
+        installer = FakeInstaller()
+        result = BackendInstallTransaction(installer, progress_callback=updates.append).run()
+        emitted = [update.stage for update in updates if update.stage in STAGED_PROGRESS_ORDER]
+
+        self.assertTrue(result.success)
+        self.assertEqual(BackendProgressStage.PREPARING, emitted[0])
+        self.assertEqual(BackendProgressStage.READY, emitted[-1])
+        self.assertLess(emitted.index(BackendProgressStage.DOWNLOADING), emitted.index(BackendProgressStage.VERIFYING_DOWNLOAD))
+        self.assertLess(emitted.index(BackendProgressStage.CREATING_ENVIRONMENT), emitted.index(BackendProgressStage.INSTALLING_PACKAGES))
+        self.assertTrue(all(update.estimated_remaining_step == "Step progress is estimated." for update in updates))
 
     def test_transaction_success_reaches_ready(self) -> None:
         installer = FakeInstaller()

@@ -10,15 +10,37 @@ class BackendProgressStage(str, Enum):
     """User-facing progress stages for backend operations."""
 
     QUEUED = "Queued"
-    DOWNLOADING = "Downloading"
-    VERIFYING = "Verifying"
+    PREPARING = "Preparing"
+    DOWNLOADING = "Downloading Micromamba"
+    VERIFYING_DOWNLOAD = "Verifying Download"
     EXTRACTING = "Extracting"
-    INSTALLING = "Installing"
-    CHECKING = "Checking"
+    CREATING_ENVIRONMENT = "Creating Environment"
+    INSTALLING_PACKAGES = "Installing Packages"
+    VERIFYING_BACKEND = "Verifying Backend"
     FINALIZING = "Finalizing"
     READY = "Ready"
     FAILED = "Failed"
     CANCELLED = "Cancelled"
+
+
+STAGED_PROGRESS_PERCENTAGES = {
+    BackendProgressStage.PREPARING: 5,
+    BackendProgressStage.DOWNLOADING: 15,
+    BackendProgressStage.VERIFYING_DOWNLOAD: 25,
+    BackendProgressStage.EXTRACTING: 35,
+    BackendProgressStage.CREATING_ENVIRONMENT: 50,
+    BackendProgressStage.INSTALLING_PACKAGES: 70,
+    BackendProgressStage.VERIFYING_BACKEND: 85,
+    BackendProgressStage.FINALIZING: 95,
+    BackendProgressStage.READY: 100,
+}
+
+STAGED_PROGRESS_ORDER = tuple(STAGED_PROGRESS_PERCENTAGES)
+
+
+def backend_progress_percentage(stage: BackendProgressStage) -> int | None:
+    """Return the intentionally estimated staged progress percentage."""
+    return STAGED_PROGRESS_PERCENTAGES.get(stage)
 
 
 @dataclass(frozen=True)

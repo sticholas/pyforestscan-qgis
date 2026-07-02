@@ -17,7 +17,7 @@ from .logging import write_backend_log_entry
 from .micromamba import MicromambaBootstrapPolicy, micromamba_bootstrap_policy
 from .models import BackendOperationResult, BackendPlatform, BackendRegistry, BackendStatus, BackendVerificationResult
 from .paths import BackendPaths, resolve_backend_paths
-from .process_env import backend_pip_install_command, build_clean_subprocess_env, clean_env_summary, conda_environment_path_entries, summarize_subprocess_output
+from .process_env import backend_pip_install_command, build_clean_subprocess_env, clean_env_summary, conda_environment_path_entries, hidden_subprocess_kwargs, summarize_subprocess_output
 from .registry import default_backend_registry
 from .verification import verify_backend
 
@@ -412,7 +412,7 @@ class BackendInstaller:
             return BackendOperationResult("cleanup_successful_install", BackendStatus.READY, True, f"Removed staging directory {self.paths.staging_dir} after successful verification.", True)
         return BackendOperationResult("cleanup_successful_install", BackendStatus.READY, True, "No staging directory was present after successful verification.", False)
 
-    def install_backend(self, policy: MicromambaBootstrapPolicy | None = None, spec_file: Path | None = None) -> BackendOperationResult:
+    def install_backend(self, policy: MicromambaBootstrapPolicy | None = None, spec_file: Path | None = None, progress_callback=None) -> BackendOperationResult:
         """Run the guarded transactional installer when explicitly enabled."""
         from .logging import write_backend_log_entry
         from .transaction import BackendInstallTransaction
@@ -420,7 +420,7 @@ class BackendInstaller:
         def log_stage(stage: str, severity: str, message: str) -> None:
             write_backend_log_entry(self.paths.install_log, "install", message, level=severity, stage=stage)
 
-        transaction = BackendInstallTransaction(self, logger=log_stage)
+        transaction = BackendInstallTransaction(self, logger=log_stage, progress_callback=progress_callback)
         result = transaction.run(policy=policy, spec_file=spec_file)
         if not result.success:
             write_backend_log_entry(self.paths.install_log, "install", result.message, level="ERROR", stage=result.stage.value if result.stage else "FAILED")
@@ -438,7 +438,7 @@ class BackendInstaller:
         env = build_clean_subprocess_env(self.environ, prepend_paths=prepend_paths)
         details = clean_env_summary(command_kind, command[0])
         write_backend_log_entry(self.paths.install_log, "install", "Running PBM installer subprocess with sanitized environment.", stage=command_kind.upper(), details=details)
-        completed = self.runner(command, check=False, capture_output=True, text=True, timeout=1800, env=env)
+        completed = self.runner(command, check=False, capture_output=True, text=True, timeout=1800, env=env, **hidden_subprocess_kwargs())
         if completed.returncode != 0:
             failure_details = dict(details)
             failure_details["returncode"] = str(completed.returncode)

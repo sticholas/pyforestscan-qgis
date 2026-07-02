@@ -166,9 +166,9 @@ class BackendService:
         """Rollback staging through the installer path."""
         return self.installer().rollback_failed_install()
 
-    def install_backend(self) -> BackendOperationResult:
+    def install_backend(self, progress_callback=None) -> BackendOperationResult:
         """Run the transactional installer when the availability guard allows it."""
-        return self.installer().install_backend()
+        return self.installer().install_backend(progress_callback=progress_callback)
 
     def repair_backend(self) -> BackendOperationResult:
         """Return repair planning while repair execution remains planned."""

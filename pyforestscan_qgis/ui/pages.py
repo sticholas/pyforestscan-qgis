@@ -8,11 +8,12 @@ the adapter boundary.
 from __future__ import annotations
 
 import json
+import time
 from html import escape
 from pathlib import Path
 from typing import Callable
 
-from qgis.PyQt.QtCore import QObject, QSize, Qt, QThread, QUrl, pyqtSignal
+from qgis.PyQt.QtCore import QObject, QSize, Qt, QThread, QTimer, QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
     QApplication,
@@ -1272,6 +1273,28 @@ class _BatchExecutionWorker(QObject):
         self.completed.emit(result)
 
 
+class _BackendInstallWorker(QObject):
+    """Qt worker that runs PBM installation away from the main QGIS UI thread."""
+
+    progressUpdated = pyqtSignal(object)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, service: BackendService) -> None:
+        """Store the backend service used for the install transaction."""
+        super().__init__()
+        self.service = service
+
+    def run(self) -> None:
+        """Run backend installation and emit progress/result signals."""
+        try:
+            result = self.service.install_backend(progress_callback=self.progressUpdated.emit)
+        except Exception as exc:  # noqa: BLE001 - worker must never crash QGIS UI.
+            self.failed.emit(f"Unexpected backend installation failure: {exc}")
+            return
+        self.completed.emit(result)
+
+
 class BatchPage(MissionPage):
     """Sequential folder-to-products batch workflow."""
 
@@ -1972,6 +1995,13 @@ class SettingsPage(MissionPage):
         backend = self.add_section("PyForestScan Backend Manager")
         backend.addWidget(_body_label("Windows internal beta builds can install a user-local backend. PBM does not modify QGIS Python, the QGIS installation, system Python, PATH, or user environment variables."))
         self.backend_service = BackendService()
+        self.backend_install_running = False
+        self.backend_install_thread: QThread | None = None
+        self.backend_install_worker: _BackendInstallWorker | None = None
+        self.backend_install_started_at: float | None = None
+        self.backend_install_timer = QTimer(self)
+        self.backend_install_timer.setInterval(1000)
+        self.backend_install_timer.timeout.connect(self._refresh_backend_install_elapsed)
         self.backend_status_label = _body_label("Backend Status: Unknown")
         self.backend_location_label = _body_label("Backend Location: Unknown")
         self.backend_environment_label = _body_label("Environment Location: Unknown")
@@ -2001,6 +2031,24 @@ class SettingsPage(MissionPage):
             self.manual_dependency_setup_label,
             self.qgis_compatibility_label,
             self.backend_install_readiness_label,
+        ):
+            backend.addWidget(label)
+
+        self.backend_install_progress_bar = QProgressBar()
+        self.backend_install_progress_bar.setRange(0, 100)
+        self.backend_install_progress_bar.setValue(0)
+        backend.addWidget(self.backend_install_progress_bar)
+        self.backend_install_stage_label = _body_label("Install stage: Not running")
+        self.backend_install_action_label = _body_label("Current package/action: None")
+        self.backend_install_elapsed_label = _body_label("Elapsed time: 00:00")
+        self.backend_install_message_label = _body_label("Latest message: No backend install is running.")
+        self.backend_install_estimate_label = _body_label("Step progress is estimated.")
+        for label in (
+            self.backend_install_stage_label,
+            self.backend_install_action_label,
+            self.backend_install_elapsed_label,
+            self.backend_install_message_label,
+            self.backend_install_estimate_label,
         ):
             backend.addWidget(label)
 
@@ -2049,6 +2097,17 @@ class SettingsPage(MissionPage):
         self.backend_details.setMinimumHeight(220)
         self.backend_details.setPlainText("Use Verify, Preview Install, Install Backend, Repair, Manual Setup Instructions, Open Backend Folder, or View Logs to inspect PBM readiness. Install Backend is enabled only for supported internal beta platforms.")
         backend.addWidget(self.backend_details)
+        self.backend_technical_log_group = QGroupBox("Advanced / Troubleshooting: technical log")
+        self.backend_technical_log_group.setCheckable(True)
+        self.backend_technical_log_group.setChecked(False)
+        technical_layout = QVBoxLayout()
+        self.backend_technical_log = QTextEdit()
+        self.backend_technical_log.setReadOnly(True)
+        self.backend_technical_log.setVisible(False)
+        self.backend_technical_log_group.toggled.connect(self.backend_technical_log.setVisible)
+        technical_layout.addWidget(self.backend_technical_log)
+        self.backend_technical_log_group.setLayout(technical_layout)
+        backend.addWidget(self.backend_technical_log_group)
         self.refresh_backend_summary()
 
     def set_workspace_session(self, session: WorkspaceSession) -> None:
@@ -2120,9 +2179,12 @@ class SettingsPage(MissionPage):
         compat_text = version.message if version else "Manifest unavailable"
         self.qgis_compatibility_label.setText(f"Compatibility: QGIS {compatibility.summary()}; backend {compat_text}")
         self.backend_install_readiness_label.setText(f"Install readiness: {availability.reason}; manifest includes {len(plan.required_package_names())} packages")
-        self.install_backend_button.setText(availability.button_label)
-        self.install_backend_button.setEnabled(availability.enabled)
+        if not self.backend_install_running:
+            self.install_backend_button.setText(availability.button_label)
+            self.install_backend_button.setEnabled(availability.enabled)
         self.developer_mode_button.setText("Internal Beta Install: On" if availability.enabled else "Internal Beta Install: Off")
+        if self.backend_install_running:
+            return
         self.backend_details.setPlainText(
             f"{state.message}\n\n"
             "Current support: ZIP installation loads the plugin, Mission Control, Environment Check, and the Advanced Toolbox. Windows internal beta builds can install the managed backend into the user-local PyForestScan folder after confirmation. "
@@ -2179,36 +2241,141 @@ class SettingsPage(MissionPage):
         if reply != QMessageBox.Yes:
             self.backend_details.setPlainText("Backend installation canceled before any installer action was started.")
             return
-        self.backend_status_label.setText("Backend Status: Installing")
-        self.backend_details.setPlainText(
-            "Backend installation started.\n\n"
-            "Stages:\n"
-            "- Download Micromamba\n"
-            "- Verify checksum when supplied\n"
-            "- Extract Micromamba safely\n"
-            "- Create managed environment from the backend spec\n"
-            "- Verify Python, PyForestScan, PDAL, GDAL, rasterio, and numpy\n"
-            "- Promote backend and write READY config\n\n"
-            "Current operation: starting transaction..."
+        self._start_backend_install_worker()
+
+    def _start_backend_install_worker(self) -> None:
+        """Start PBM installation on a background Qt worker thread."""
+        if self.backend_install_running:
+            self.backend_details.setPlainText("Installation is running. Please wait for this step to finish.")
+            return
+        self.backend_install_thread = QThread(self)
+        self.backend_install_worker = _BackendInstallWorker(self.backend_service)
+        self.backend_install_worker.moveToThread(self.backend_install_thread)
+        self.backend_install_thread.started.connect(self.backend_install_worker.run)
+        self.backend_install_worker.progressUpdated.connect(self._on_backend_install_progress)
+        self.backend_install_worker.completed.connect(self._on_backend_install_complete)
+        self.backend_install_worker.failed.connect(self._on_backend_install_failed)
+        self.backend_install_worker.completed.connect(self.backend_install_thread.quit)
+        self.backend_install_worker.failed.connect(self.backend_install_thread.quit)
+        self.backend_install_thread.finished.connect(self.backend_install_worker.deleteLater)
+        self.backend_install_thread.finished.connect(self.backend_install_thread.deleteLater)
+        self.backend_install_thread.finished.connect(self._clear_backend_install_thread)
+        self._set_backend_install_running(True)
+        self.backend_install_thread.start()
+
+    def _set_backend_install_running(self, running: bool) -> None:
+        """Disable install/repair/update-style controls while PBM installation runs."""
+        self.backend_install_running = running
+        if running:
+            self.backend_install_started_at = time.monotonic()
+            self.backend_install_timer.start()
+            self.backend_status_label.setText("Backend Status: Installing")
+            self.backend_install_progress_bar.setValue(5)
+            self.backend_install_stage_label.setText("Install stage: Preparing")
+            self.backend_install_action_label.setText("Current package/action: staging")
+            self.backend_install_message_label.setText("Latest message: Installation is running. Please wait for this step to finish.")
+            self.backend_install_estimate_label.setText("Step progress is estimated.")
+            self.backend_details.setPlainText(
+                "Backend installation is running in the background.\n\n"
+                "Installation is running. Please wait for this step to finish.\n"
+                "Step progress is estimated. Technical logs are hidden under Advanced / Troubleshooting."
+            )
+        else:
+            self.backend_install_timer.stop()
+            self.backend_install_started_at = None
+        availability = self.backend_service.install_availability()
+        for button in self._backend_install_action_buttons():
+            button.setEnabled(not running)
+        if not running:
+            self.install_backend_button.setText(availability.button_label)
+            self.install_backend_button.setEnabled(availability.enabled)
+
+    def _backend_install_action_buttons(self) -> tuple[QPushButton, ...]:
+        """Return controls disabled while install is running."""
+        return (
+            self.verify_backend_button,
+            self.verify_qgis_button,
+            self.preview_install_plan_button,
+            self.install_backend_button,
+            self.repair_backend_button,
+            self.manual_setup_button,
         )
-        QApplication.processEvents()
-        result = self.backend_service.install_backend()
+
+    def _on_backend_install_progress(self, update: object) -> None:
+        """Update visible staged progress from worker-thread installer updates."""
+        percentage = getattr(update, "percentage", None)
+        if percentage is not None:
+            self.backend_install_progress_bar.setValue(int(percentage))
+        stage = getattr(getattr(update, "stage", None), "value", getattr(update, "stage", "Unknown"))
+        current = getattr(update, "current_package", "") or "current step"
+        message = getattr(update, "message", "") or "Working..."
+        estimate = getattr(update, "estimated_remaining_step", "") or "Step progress is estimated."
+        self.backend_install_stage_label.setText(f"Install stage: {stage}")
+        self.backend_install_action_label.setText(f"Current package/action: {current}")
+        self.backend_install_message_label.setText(f"Latest message: {message}")
+        self.backend_install_estimate_label.setText(estimate)
+        self._refresh_backend_install_elapsed()
+
+    def _on_backend_install_complete(self, result: object) -> None:
+        """Render final PBM install state after background worker completion."""
+        self._set_backend_install_running(False)
         self.refresh_backend_summary()
-        self.backend_status_label.setText(f"Backend Status: {result.status.value}")
-        logs = self.backend_service.get_logs().get("install", ())
-        log_preview = "\n".join(logs[-10:]) if logs else "No install log entries yet."
+        status_value = getattr(getattr(result, "status", None), "value", str(getattr(result, "status", "Unknown")))
+        success = bool(getattr(result, "success", False))
+        if success:
+            final_state = "Backend Ready"
+            self.backend_install_progress_bar.setValue(100)
+        elif status_value == "Repair Required":
+            final_state = "Repair Required"
+        else:
+            final_state = "Install Failed"
+        self.backend_status_label.setText(f"Backend Status: {final_state}")
+        self.backend_install_stage_label.setText(f"Install stage: {final_state}")
+        self.backend_install_message_label.setText(f"Latest message: {getattr(result, 'message', '')}")
         self.backend_details.setPlainText(
             "PBM Backend Install Result\n\n"
-            f"Operation: {result.operation}\n"
-            f"Success: {result.success}\n"
-            f"Status: {result.status.value}\n"
-            f"Modified user-local backend files: {result.modified_system}\n"
-            f"Log path: {result.log_path if result.log_path else self.backend_service.paths.install_log}\n"
-            f"Message: {result.message}\n\n"
-            "Repair option: use Repair if installation failed, then View Logs for details.\n\n"
-            "Log preview:\n"
-            f"{log_preview}"
+            f"Final state: {final_state}\n"
+            f"Operation: {getattr(result, 'operation', 'install_backend')}\n"
+            f"Success: {success}\n"
+            f"Status: {status_value}\n"
+            f"Modified user-local backend files: {getattr(result, 'modified_system', False)}\n"
+            f"Log path: {getattr(result, 'log_path', None) or self.backend_service.paths.install_log}\n"
+            f"Message: {getattr(result, 'message', '')}\n\n"
+            "Use Repair if installation failed. Technical logs are available under Advanced / Troubleshooting or View Logs."
         )
+        self._refresh_backend_technical_log()
+
+    def _on_backend_install_failed(self, message: str) -> None:
+        """Display unexpected installer worker failure."""
+        self._set_backend_install_running(False)
+        self.backend_status_label.setText("Backend Status: Install Failed")
+        self.backend_install_stage_label.setText("Install stage: Install Failed")
+        self.backend_install_message_label.setText(f"Latest message: {message}")
+        self.backend_details.setPlainText(
+            "PBM Backend Install Result\n\n"
+            "Final state: Install Failed\n"
+            f"Message: {message}\n\n"
+            "Use View Logs for details. Technical logs are hidden under Advanced / Troubleshooting."
+        )
+        self._refresh_backend_technical_log()
+
+    def _refresh_backend_install_elapsed(self) -> None:
+        """Update elapsed install time without implying exact step duration."""
+        if self.backend_install_started_at is None:
+            return
+        elapsed = max(0, int(time.monotonic() - self.backend_install_started_at))
+        minutes, seconds = divmod(elapsed, 60)
+        self.backend_install_elapsed_label.setText(f"Elapsed time: {minutes:02d}:{seconds:02d}")
+
+    def _refresh_backend_technical_log(self) -> None:
+        """Load recent install logs into the hidden advanced log panel."""
+        logs = self.backend_service.get_logs().get("install", ())
+        self.backend_technical_log.setPlainText("\n".join(logs[-60:]) if logs else "No install log entries yet.")
+
+    def _clear_backend_install_thread(self) -> None:
+        """Clear backend install worker references after Qt cleanup."""
+        self.backend_install_thread = None
+        self.backend_install_worker = None
 
     def install_backend_experimental(self) -> None:
         """Backward-compatible wrapper for older tests and docs."""

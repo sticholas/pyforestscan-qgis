@@ -39,6 +39,30 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
         self.assertIn("Backend auto-install ready: yes for Windows internal beta builds after confirmation", source)
 
 
+    def test_backend_install_progress_ui_and_worker_are_present(self) -> None:
+        source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
+
+        self.assertIn("class _BackendInstallWorker(QObject)", source)
+        self.assertIn("progressUpdated = pyqtSignal(object)", source)
+        self.assertIn("self.backend_install_progress_bar", source)
+        self.assertIn("Install stage:", source)
+        self.assertIn("Current package/action:", source)
+        self.assertIn("Elapsed time:", source)
+        self.assertIn("Latest message:", source)
+        self.assertIn("Step progress is estimated.", source)
+        self.assertIn("Advanced / Troubleshooting: technical log", source)
+
+    def test_install_running_state_disables_backend_action_buttons(self) -> None:
+        source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
+
+        self.assertIn("def _set_backend_install_running", source)
+        self.assertIn("for button in self._backend_install_action_buttons():", source)
+        self.assertIn("button.setEnabled(not running)", source)
+        self.assertIn("self.backend_install_thread = QThread(self)", source)
+        self.assertIn("Installation is running. Please wait for this step to finish.", source)
+        self.assertNotIn('QPushButton("Cancel Backend Install")', source)
+
+
 
 if __name__ == "__main__":
     unittest.main()
