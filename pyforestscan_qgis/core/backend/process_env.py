@@ -119,6 +119,21 @@ def backend_pip_install_command(backend_python: Path, packages: Sequence[str]) -
     return [str(backend_python), "-m", "pip", "install", *packages]
 
 
+def conda_environment_path_entries(environment_path: Path, platform_value: str) -> tuple[Path, ...]:
+    """Return backend-local PATH entries needed by conda geospatial runtimes."""
+    if platform_value.lower() == "windows":
+        return (
+            environment_path,
+            environment_path / "Scripts",
+            environment_path / "Library" / "bin",
+            environment_path / "bin",
+        )
+    return (
+        environment_path / "bin",
+        environment_path,
+    )
+
+
 def _path_key(env: Mapping[str, str]) -> str:
     for key in env:
         if key.upper() == "PATH":

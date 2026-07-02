@@ -28,6 +28,7 @@ The initial environment spec is registry-driven and includes:
 | `pdal` | Point-cloud runtime. |
 | `python-pdal` | Python bindings for PDAL. |
 | `gdal` | Raster/geospatial runtime and Python bindings. |
+| `libgdal` | Native GDAL runtime library from conda-forge. |
 | `rasterio` | Raster IO used by product workflows. |
 | `numpy` | Numeric array dependency. |
 
@@ -38,8 +39,8 @@ Micromamba is handled by the bootstrap policy, not as an environment package.
 Phase 22C uses conservative ranges rather than final production lock files:
 
 - Python: `>=3.12,<3.13`.
-- PDAL/GDAL/rasterio/numpy: conda-forge geospatial stack with conservative lower bounds.
-- PyForestScan: `pyforestscan>=0.4` through pip until package-source validation is complete.
+- PDAL/GDAL/libgdal/rasterio/numpy: conda-forge geospatial stack with conservative lower bounds. Binary geospatial packages must stay on conda-forge unless a later manifest explicitly validates another source.
+- PyForestScan: `pyforestscan>=0.4` through backend Python pip after the conda geospatial stack is complete.
 
 Exact lock files and platform-specific final pins are deferred until controlled installer validation succeeds on Windows, Linux, and macOS.
 

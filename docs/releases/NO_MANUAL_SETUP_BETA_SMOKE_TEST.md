@@ -12,7 +12,7 @@ Phase 23F resolved two critical clean-machine blockers reported during installer
 
 Phase 23G fixes the staged install promotion order found in clean-machine testing: PBM verifies the staged backend first, promotes verified files to final paths, writes final config, then verifies the final backend before reporting `Ready`.
 
-Phase 23H improves staged verification diagnostics. If installation fails at `VERIFY PACKAGES`, run `python3 scripts/pbm_backend_diagnostics.py --backend-root %LOCALAPPDATA%\\PyForestScan\\backend` from a checkout to capture exact missing imports, command failures, stdout previews, and stderr previews.
+Phase 23H improves staged verification diagnostics. If installation fails at `VERIFY PACKAGES`, run `python3 scripts/pbm_backend_diagnostics.py --backend-root %LOCALAPPDATA%\\PyForestScan\\backend` from a checkout to capture exact missing imports, command failures, stdout previews, and stderr previews. Phase 23I updates geospatial verification so Windows conda executables and DLLs under `env/Library/bin` are discovered without modifying global PATH.
 
 ## Preconditions
 

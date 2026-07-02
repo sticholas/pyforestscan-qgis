@@ -13,7 +13,7 @@ from pyforestscan_qgis.backend_runner.job_spec import BackendJobSpec, build_job_
 from .logging import backend_log_path, write_backend_log_entry
 from .models import BackendStatus, BackendVerificationResult
 from .paths import BackendPaths
-from .process_env import build_clean_subprocess_env, clean_env_summary, summarize_subprocess_output
+from .process_env import build_clean_subprocess_env, clean_env_summary, conda_environment_path_entries, summarize_subprocess_output
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -68,7 +68,7 @@ class BackendExecutionService:
             return availability
         command = self.runner_command_for_args(("--help",))
         try:
-            completed = self.runner(command, check=False, capture_output=True, text=True, timeout=30, cwd=str(self.plugin_parent), env=build_clean_subprocess_env(prepend_paths=(self.paths.python_executable.parent,)))
+            completed = self.runner(command, check=False, capture_output=True, text=True, timeout=30, cwd=str(self.plugin_parent), env=build_clean_subprocess_env(prepend_paths=conda_environment_path_entries(self.paths.environment_path, self.paths.platform.value)))
         except Exception as exc:  # noqa: BLE001 - report safely to UI/tests.
             return BackendExecutionAvailability(False, f"PBM runner verification failed: {exc}", self.paths.python_executable)
         if completed.returncode != 0:
@@ -113,7 +113,7 @@ class BackendExecutionService:
                 text=True,
                 timeout=self.timeout_seconds,
                 cwd=str(self.plugin_parent),
-                env=build_clean_subprocess_env(prepend_paths=(self.paths.python_executable.parent,)),
+                env=build_clean_subprocess_env(prepend_paths=conda_environment_path_entries(self.paths.environment_path, self.paths.platform.value)),
             )
         except subprocess.TimeoutExpired as exc:
             write_backend_log_entry(self.log_path, "execute", f"PBM backend job timed out: {exc}", level="ERROR", stage="TIMEOUT")

@@ -17,7 +17,7 @@ from .logging import write_backend_log_entry
 from .micromamba import MicromambaBootstrapPolicy, micromamba_bootstrap_policy
 from .models import BackendOperationResult, BackendPlatform, BackendRegistry, BackendStatus, BackendVerificationResult
 from .paths import BackendPaths, resolve_backend_paths
-from .process_env import backend_pip_install_command, build_clean_subprocess_env, clean_env_summary, summarize_subprocess_output
+from .process_env import backend_pip_install_command, build_clean_subprocess_env, clean_env_summary, conda_environment_path_entries, summarize_subprocess_output
 from .registry import default_backend_registry
 from .verification import verify_backend
 
@@ -296,7 +296,7 @@ class BackendInstaller:
             return BackendOperationResult("install_python_packages", BackendStatus.INSTALLING, True, "No PyPI-only backend packages are required.", False)
         command = backend_pip_install_command(staged.python_executable, packages)
         try:
-            completed = self._run_subprocess(command, command_kind="backend_python_pip", prepend_paths=(staged.python_executable.parent,))
+            completed = self._run_subprocess(command, command_kind="backend_python_pip", prepend_paths=conda_environment_path_entries(staged.environment_path, self.paths.platform.value))
         except Exception as exc:  # noqa: BLE001 - installer reports failures.
             return BackendOperationResult("install_python_packages", BackendStatus.FAILED, False, f"Backend Python package install failed: {exc}", True)
         if completed.returncode != 0:

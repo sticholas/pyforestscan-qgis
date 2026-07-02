@@ -35,12 +35,12 @@ The current backend spec and manifest expect:
 | Python runtime | conda-forge | `python>=3.12,<3.13` | `python --version` |
 | PDAL executable | conda-forge | `pdal` | `pdal --version` |
 | PDAL Python bindings | conda-forge | `python-pdal` | `import pdal` |
-| GDAL runtime/bindings | conda-forge | `gdal` | `gdalinfo --version`, `import osgeo.gdal` |
+| GDAL runtime/bindings | conda-forge | `gdal`, `libgdal` | `gdalinfo --version`, `import osgeo.gdal` |
 | rasterio | conda-forge | `rasterio` | `import rasterio` |
 | NumPy | conda-forge | `numpy` | `import numpy` |
 | PyForestScan | PyPI | `pyforestscan>=0.4` | `import pyforestscan` |
 
-Micromamba installs the conda-forge packages first. PyPI-only packages are installed afterward through the staged backend Python with a sanitized environment.
+Micromamba installs the conda-forge packages first. PyPI-only packages are installed afterward through the staged backend Python with a sanitized environment. On Windows, verification searches `env/Scripts`, `env/Library/bin`, `env/bin`, and `env` for executables, and prepends `env`, `env/Scripts`, and `env/Library/bin` to subprocess PATH so GDAL/rasterio DLL discovery stays backend-local.
 
 ## Common Failure Patterns
 
@@ -50,11 +50,11 @@ The conda environment was created but the PDAL Python bindings are missing or un
 
 `osgeo.gdal import failed: DLL load failed`
 
-GDAL Python bindings are present but cannot load their native DLLs. Check the staged environment `Library/bin`/DLL layout and whether the sanitized environment still needs a backend-local DLL path for verification on Windows.
+GDAL Python bindings are present but cannot load their native DLLs. Check the staged environment `Library/bin`/DLL layout and the diagnostic command's PATH details. PBM verification should include backend-local conda DLL paths; if this still fails, the likely blocker is package solve compatibility or a missing native dependency in the conda environment.
 
 `pdal --version failed: executable not found`
 
-The PDAL runtime package did not create the expected `pdal.exe` under the staged environment. Confirm package solve output and staged `env/Scripts` contents.
+The PDAL runtime package did not create `pdal.exe` under `env/Scripts`, `env/Library/bin`, `env/bin`, or `env`. Confirm package solve output and staged environment contents.
 
 ## Repair and Retry
 

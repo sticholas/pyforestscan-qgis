@@ -17,7 +17,7 @@ from .models import (
     DependencyVerificationStatus,
 )
 from .paths import BackendPaths
-from .process_env import build_clean_subprocess_env, summarize_subprocess_output
+from .process_env import build_clean_subprocess_env, conda_environment_path_entries, summarize_subprocess_output
 from .registry import default_backend_registry
 from .state import detect_backend_state
 
@@ -193,7 +193,7 @@ def _verify_dependency(dependency: BackendDependency, paths: BackendPaths, timeo
     if dependency.executable_name:
         if executable_path and executable_path.exists():
             if dependency.verification_command:
-                version_check = _run_version_command(executable_path, dependency.verification_command, timeout_seconds)
+                version_check = _run_version_command(executable_path, dependency.verification_command, timeout_seconds, paths)
                 command_checks.append(version_check)
                 if version_check.passed:
                     detected_version = version_check.detected_version or detected_version
@@ -204,7 +204,8 @@ def _verify_dependency(dependency: BackendDependency, paths: BackendPaths, timeo
                 messages.append(f"{dependency.executable_name} executable found")
         else:
             executable_missing = True
-            messages.append(f"{dependency.executable_name} executable not found at {executable_path}")
+            searched = ", ".join(str(path) for path in _dependency_candidate_paths(dependency, paths))
+            messages.append(f"{dependency.executable_name} executable not found. Searched: {searched}")
 
     if dependency.python_import_name:
         if not paths.python_executable.exists():
@@ -218,7 +219,7 @@ def _verify_dependency(dependency: BackendDependency, paths: BackendPaths, timeo
                 command_checks=tuple(command_checks),
                 path=executable_path,
             )
-        import_check = _run_python_import(paths.python_executable, dependency.python_import_name, timeout_seconds)
+        import_check = _run_python_import(paths.python_executable, dependency.python_import_name, timeout_seconds, paths)
         command_checks.append(import_check)
         if import_check.passed:
             detected_version = import_check.detected_version or detected_version
@@ -289,17 +290,40 @@ def _check_from_dependency(dependency: BackendDependency, paths: BackendPaths) -
 
 
 def _dependency_path(dependency: BackendDependency, paths: BackendPaths) -> Path | None:
+    candidates = _dependency_candidate_paths(dependency, paths)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0] if candidates else None
+
+
+def _dependency_candidate_paths(dependency: BackendDependency, paths: BackendPaths) -> tuple[Path, ...]:
     if not dependency.executable_name:
-        return None
+        return ()
     name = dependency.executable_name
     if dependency.name == "micromamba":
-        return paths.micromamba_executable
+        return (paths.micromamba_executable,)
     if dependency.name == "python":
-        return paths.python_executable
+        return (paths.python_executable,)
+    names = (name,)
     if paths.platform.value == "windows" and not name.lower().endswith(".exe"):
-        name = f"{name}.exe"
-    bin_dir = paths.environment_path / ("Scripts" if paths.platform.value == "windows" else "bin")
-    return bin_dir / name
+        names = (f"{name}.exe", name)
+    search_dirs = _backend_executable_search_dirs(paths)
+    return tuple(directory / candidate_name for directory in search_dirs for candidate_name in names)
+
+
+def _backend_executable_search_dirs(paths: BackendPaths) -> tuple[Path, ...]:
+    if paths.platform.value == "windows":
+        return (
+            paths.environment_path / "Scripts",
+            paths.environment_path / "Library" / "bin",
+            paths.environment_path / "bin",
+            paths.environment_path,
+        )
+    return (
+        paths.environment_path / "bin",
+        paths.environment_path,
+    )
 
 
 def _dependency_message(dependency: BackendDependency) -> str:
@@ -312,17 +336,17 @@ def _dependency_message(dependency: BackendDependency) -> str:
     return dependency.notes or "Missing or not verifiable in the managed backend"
 
 
-def _run_version_command(executable: Path, args: tuple[str, ...], timeout_seconds: int) -> CommandCheck:
+def _run_version_command(executable: Path, args: tuple[str, ...], timeout_seconds: int, paths: BackendPaths) -> CommandCheck:
     command = (str(executable), *args)
-    return _run_command(command, executable, timeout_seconds)
+    return _run_command(command, executable, timeout_seconds, paths)
 
 
-def _run_python_import(python_executable: Path, import_name: str, timeout_seconds: int) -> CommandCheck:
+def _run_python_import(python_executable: Path, import_name: str, timeout_seconds: int, paths: BackendPaths) -> CommandCheck:
     command = python_import_command(python_executable, import_name)
-    return _run_command(command, python_executable, timeout_seconds)
+    return _run_command(command, python_executable, timeout_seconds, paths)
 
 
-def _run_command(command: tuple[str, ...], executable: Path, timeout_seconds: int) -> CommandCheck:
+def _run_command(command: tuple[str, ...], executable: Path, timeout_seconds: int, paths: BackendPaths) -> CommandCheck:
     try:
         completed = subprocess.run(
             list(command),
@@ -330,7 +354,7 @@ def _run_command(command: tuple[str, ...], executable: Path, timeout_seconds: in
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
-            env=build_clean_subprocess_env(prepend_paths=(executable.parent,)),
+            env=build_clean_subprocess_env(prepend_paths=_verification_path_entries(paths, executable)),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return CommandCheck(command=command, executable=executable, returncode=None, error=str(exc))
@@ -346,6 +370,13 @@ def _run_command(command: tuple[str, ...], executable: Path, timeout_seconds: in
         stderr_preview=stderr_preview,
         detected_version=detected_version,
     )
+
+
+def _verification_path_entries(paths: BackendPaths, executable: Path) -> tuple[Path, ...]:
+    entries = list(conda_environment_path_entries(paths.environment_path, paths.platform.value))
+    if executable.parent not in entries:
+        entries.append(executable.parent)
+    return tuple(entries)
 
 
 def _verification_failure_summary(checks: list[BackendCheckResult]) -> str:
