@@ -46,7 +46,7 @@ class DependencyCheckTests(unittest.TestCase):
             import_module=FakeImporter({}),
             version_lookup=unexpected_lookup,
             pbm_backend_check=lambda: EnvironmentCheckResult("PBM managed backend", CheckStatus.PASS, "Managed backend verified as READY."),
-            execution_backend_check=lambda: EnvironmentCheckResult("Selected execution backend", CheckStatus.PASS, "PyForestScan Backend Manager will be preferred."),
+            execution_backend_check=lambda: EnvironmentCheckResult("Active execution backend", CheckStatus.PASS, "PyForestScan Backend Manager will be preferred."),
         )
 
         statuses = {check.name: check.status for check in report.checks}
@@ -57,9 +57,10 @@ class DependencyCheckTests(unittest.TestCase):
         self.assertIs(statuses["rasterio"], CheckStatus.FAIL)
         self.assertIs(statuses["numpy"], CheckStatus.FAIL)
         self.assertIs(statuses["QGIS version"], CheckStatus.WARNING)
-        self.assertIs(report.readiness, ReadinessStatus.NOT_READY)
+        self.assertIs(report.readiness, ReadinessStatus.READY_WITH_PBM_BACKEND)
+        self.assertIn("PBM backend is READY", report.summary)
         guidance = {check.name: check.guidance for check in report.checks}
-        self.assertIn("ZIP install", guidance["pyforestscan"])
+        self.assertIn("PBM-routed products", guidance["pyforestscan"])
         self.assertIn("QGIS Python", guidance["pdal"])
         self.assertIn("QGIS", guidance["osgeo.gdal"])
 
@@ -82,7 +83,7 @@ class DependencyCheckTests(unittest.TestCase):
             import_module=FakeImporter(modules),
             version_lookup=lambda package: "metadata-version",
             pbm_backend_check=lambda: EnvironmentCheckResult("PBM managed backend", CheckStatus.PASS, "Managed backend verified as READY."),
-            execution_backend_check=lambda: EnvironmentCheckResult("Selected execution backend", CheckStatus.PASS, "PyForestScan Backend Manager will be preferred."),
+            execution_backend_check=lambda: EnvironmentCheckResult("Active execution backend", CheckStatus.PASS, "PyForestScan Backend Manager will be preferred."),
         )
 
         self.assertIs(report.readiness, ReadinessStatus.READY)
@@ -97,12 +98,61 @@ class DependencyCheckTests(unittest.TestCase):
             import_module=FakeImporter({}),
             version_lookup=lambda package: "metadata-version",
             pbm_backend_check=lambda: EnvironmentCheckResult("PBM managed backend", CheckStatus.WARNING, "Managed backend status: Not Installed."),
-            execution_backend_check=lambda: EnvironmentCheckResult("Selected execution backend", CheckStatus.WARNING, "QGIS Python will be used."),
+            execution_backend_check=lambda: EnvironmentCheckResult("Active execution backend", CheckStatus.WARNING, "QGIS Python will be used."),
         )
 
         statuses = {check.name: check.status for check in report.checks}
         self.assertIs(statuses["PBM managed backend"], CheckStatus.WARNING)
         self.assertIs(report.readiness, ReadinessStatus.NOT_READY)
+
+    def test_qgis_dependencies_missing_and_pbm_ready_is_overall_ready_with_pbm(self) -> None:
+        report = collect_environment_report(
+            plugin_path="/tmp/plugin",
+            import_module=FakeImporter({}),
+            version_lookup=lambda package: "metadata-version",
+            pbm_backend_check=lambda: EnvironmentCheckResult("PBM managed backend", CheckStatus.PASS, "PBM backend is READY."),
+            execution_backend_check=lambda: EnvironmentCheckResult("Active execution backend", CheckStatus.PASS, "PyForestScan Backend Manager will be preferred."),
+        )
+        rendered = format_environment_report(report)
+
+        self.assertIs(report.readiness, ReadinessStatus.READY_WITH_PBM_BACKEND)
+        self.assertIn("QGIS Python Scientific Packages", rendered)
+        self.assertIn("[FAIL] pyforestscan", rendered)
+        self.assertIn("PBM backend is READY", rendered)
+        self.assertIn("PBM-routed products", rendered)
+        self.assertNotIn("processing cannot run", rendered.lower())
+
+    def test_qgis_dependencies_missing_and_pbm_missing_is_not_ready(self) -> None:
+        report = collect_environment_report(
+            plugin_path="/tmp/plugin",
+            import_module=FakeImporter({}),
+            version_lookup=lambda package: "metadata-version",
+            pbm_backend_check=lambda: EnvironmentCheckResult("PBM managed backend", CheckStatus.WARNING, "Managed backend status: Not Installed."),
+            execution_backend_check=lambda: EnvironmentCheckResult("Active execution backend", CheckStatus.WARNING, "QGIS Python will be used."),
+        )
+
+        self.assertIs(report.readiness, ReadinessStatus.NOT_READY)
+
+    def test_qgis_dependencies_ready_and_pbm_missing_is_ready_with_qgis_python(self) -> None:
+        gdal = ModuleType("osgeo.gdal")
+        gdal.VersionInfo = lambda argument="": "GDAL 3.8.0"
+        modules = {
+            "pyforestscan": module_with_version("0.2.0"),
+            "pdal": module_with_version("3.4.5"),
+            "osgeo.gdal": gdal,
+            "rasterio": module_with_version("1.3.9"),
+            "numpy": module_with_version("1.26.0"),
+        }
+        report = collect_environment_report(
+            plugin_path="/tmp/plugin",
+            import_module=FakeImporter(modules),
+            version_lookup=lambda package: "metadata-version",
+            pbm_backend_check=lambda: EnvironmentCheckResult("PBM managed backend", CheckStatus.WARNING, "Managed backend status: Not Installed."),
+            execution_backend_check=lambda: EnvironmentCheckResult("Active execution backend", CheckStatus.WARNING, "QGIS Python will be used."),
+        )
+
+        self.assertIs(report.readiness, ReadinessStatus.READY_WITH_QGIS_PYTHON)
+        self.assertIn("QGIS Python scientific packages are ready", report.summary)
 
     def test_no_manual_setup_scope_reports_routed_products(self) -> None:
         report = collect_environment_report(
@@ -110,7 +160,7 @@ class DependencyCheckTests(unittest.TestCase):
             import_module=FakeImporter({}),
             version_lookup=lambda package: "metadata-version",
             pbm_backend_check=lambda: EnvironmentCheckResult("PBM managed backend", CheckStatus.PASS, "Managed backend verified as READY."),
-            execution_backend_check=lambda: EnvironmentCheckResult("Selected execution backend", CheckStatus.PASS, "PyForestScan Backend Manager will be preferred."),
+            execution_backend_check=lambda: EnvironmentCheckResult("Active execution backend", CheckStatus.PASS, "PyForestScan Backend Manager will be preferred."),
         )
 
         checks = {check.name: check for check in report.checks}
@@ -141,6 +191,7 @@ class DependencyCheckTests(unittest.TestCase):
         self.assertIn("Guidance: Install PyForestScan into QGIS Python.", rendered)
         self.assertIn("[WARNING] QGIS version: Version unknown.", rendered)
         self.assertIn("Final summary: NOT READY", rendered)
+        self.assertIn("Recommended Next Step:", rendered)
         self.assertIn("Installation guidance:", rendered)
         self.assertIn("ZIP installation only installs the QGIS plugin", rendered)
 

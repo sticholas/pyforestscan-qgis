@@ -27,9 +27,11 @@ class CheckStatus(str, Enum):
 
 
 class ReadinessStatus(str, Enum):
-    """Overall readiness classification for the active environment."""
+    """Overall readiness classification for processing capability."""
 
     READY = "READY"
+    READY_WITH_PBM_BACKEND = "READY WITH PBM BACKEND"
+    READY_WITH_QGIS_PYTHON = "READY WITH QGIS PYTHON"
     PARTIALLY_READY = "PARTIALLY READY"
     NOT_READY = "NOT READY"
 
@@ -61,13 +63,40 @@ ExecutionBackendCheck = Callable[[], EnvironmentCheckResult]
 
 
 INSTALLATION_GUIDANCE = (
-    "ZIP installation only installs the QGIS plugin. Scientific processing also "
-    "requires PyForestScan, PDAL, GDAL, rasterio, and numpy in the active QGIS "
-    "Python environment unless a workflow explicitly supports the managed PBM "
-    "backend. Windows internal beta builds can install PBM into the user-local "
-    "PyForestScan folder without changing QGIS or system Python. Do not use "
-    "system Python unless it is the Python used by QGIS. See "
-    "docs/INSTALLATION_STRATEGY.md and docs/releases/CLEAN_MACHINE_SMOKE_TEST.md."
+    "ZIP installation only installs the QGIS plugin. QGIS Python scientific "
+    "packages are optional for PBM-routed products when the managed PBM backend "
+    "is READY. QGIS-Python-only tools still require matching packages in the "
+    "active QGIS Python environment. Windows internal beta builds can install "
+    "PBM into the user-local PyForestScan folder without changing QGIS or "
+    "system Python. Do not use system Python unless it is the Python used by QGIS."
+)
+
+
+QGIS_RUNTIME_CHECKS = {
+    "QGIS Python executable path",
+    "Python version",
+    "Platform / operating system",
+    "QGIS version",
+    "Plugin path",
+}
+QGIS_SCIENTIFIC_CHECKS = {"pyforestscan", "pdal", "osgeo.gdal", "rasterio", "numpy"}
+PBM_CHECKS = {"PBM managed backend"}
+EXECUTION_CHECKS = {"Active execution backend", "Selected execution backend", "No-manual-setup scope"}
+PBM_ROUTED_PRODUCTS = (
+    "Dataset Explorer local inspection",
+    "CHM",
+    "Canopy Cover",
+    "PAD",
+    "PAI",
+    "FHD",
+    "Rumple",
+    "DTM",
+    "Point Density",
+    "Voxel Statistic",
+)
+QGIS_PYTHON_ONLY_PRODUCTS = (
+    "Height Above Ground point-cloud export",
+    "Preprocess Point Cloud",
 )
 
 
@@ -109,9 +138,9 @@ def collect_environment_report(
             version_lookup=lookup,
             required=True,
             guidance=(
-                "PyForestScan is missing from QGIS Python. ZIP install is still usable "
-                "for opening Mission Control and diagnostics, but processing cannot run "
-                "until PyForestScan is available in QGIS Python or PBM backend execution is selected for this product."
+                "PyForestScan is missing from QGIS Python. PBM-routed products can "
+                "run when PBM backend is READY; QGIS-Python-only tools still require "
+                "PyForestScan in the active QGIS Python environment."
             ),
         ),
         _dependency_check(
@@ -122,9 +151,9 @@ def collect_environment_report(
             version_lookup=lookup,
             required=True,
             guidance=(
-                "PDAL Python bindings are missing from QGIS Python. Install PDAL and "
-                "python-pdal for the same QGIS environment; mismatched system Python "
-                "installs will not fix QGIS Processing."
+                "PDAL Python bindings are missing from QGIS Python. PBM-routed "
+                "products can use the managed backend when READY. Install PDAL and "
+                "python-pdal into QGIS Python only for QGIS-Python-only tools."
             ),
         ),
         _dependency_check(
@@ -178,7 +207,25 @@ def build_environment_report(
 ) -> EnvironmentReport:
     """Build the final report and readiness value from individual checks."""
     check_tuple = tuple(checks)
-    if any(check.status is CheckStatus.FAIL for check in check_tuple):
+    by_name = {check.name: check for check in check_tuple}
+    has_full_environment_sections = QGIS_SCIENTIFIC_CHECKS.issubset(by_name) and "PBM managed backend" in by_name
+    if has_full_environment_sections:
+        qgis_scientific_ready = all(by_name[name].status is not CheckStatus.FAIL for name in QGIS_SCIENTIFIC_CHECKS)
+        pbm_check = by_name["PBM managed backend"]
+        pbm_ready = pbm_check.status is CheckStatus.PASS and ("ready" in pbm_check.message.lower() or "verified" in pbm_check.message.lower())
+        if pbm_ready and qgis_scientific_ready:
+            readiness = ReadinessStatus.READY
+            summary = "PBM backend and QGIS Python scientific packages are ready."
+        elif pbm_ready:
+            readiness = ReadinessStatus.READY_WITH_PBM_BACKEND
+            summary = "PBM backend is READY. Routed products can run without installing PyForestScan or PDAL into QGIS Python."
+        elif qgis_scientific_ready:
+            readiness = ReadinessStatus.READY_WITH_QGIS_PYTHON
+            summary = "QGIS Python scientific packages are ready. PBM backend is optional or not installed."
+        else:
+            readiness = ReadinessStatus.NOT_READY
+            summary = "Neither PBM backend nor QGIS Python scientific packages are ready for processing."
+    elif any(check.status is CheckStatus.FAIL for check in check_tuple):
         readiness = ReadinessStatus.NOT_READY
         summary = "One or more required dependencies are missing."
     elif any(check.status is CheckStatus.WARNING for check in check_tuple):
@@ -202,24 +249,65 @@ def format_environment_report(report: EnvironmentReport) -> str:
         "===================================",
         "",
     ]
+    sections = (
+        ("QGIS / Plugin Runtime", QGIS_RUNTIME_CHECKS),
+        ("QGIS Python Scientific Packages", QGIS_SCIENTIFIC_CHECKS),
+        ("PBM Managed Backend", PBM_CHECKS),
+        ("Execution Readiness", EXECUTION_CHECKS),
+    )
+    rendered: set[int] = set()
+    for title, names in sections:
+        section_checks = [check for check in report.checks if check.name in names]
+        if not section_checks:
+            continue
+        lines.extend([title, "-" * len(title)])
+        for check in section_checks:
+            rendered.add(id(check))
+            _append_check_lines(lines, check)
+        if title == "Execution Readiness":
+            lines.append("PBM-routed products: " + ", ".join(PBM_ROUTED_PRODUCTS) + ".")
+            lines.append("QGIS-Python-only remaining: " + ", ".join(QGIS_PYTHON_ONLY_PRODUCTS) + ".")
+        lines.append("")
 
-    for check in report.checks:
-        version = f" (version: {check.version})" if check.version else ""
-        lines.append(f"[{check.status.value}] {check.name}: {check.message}{version}")
-        if check.guidance:
-            lines.append(f"    Guidance: {check.guidance}")
+    remaining = [check for check in report.checks if id(check) not in rendered]
+    if remaining:
+        lines.extend(["Additional Checks", "-----------------"])
+        for check in remaining:
+            _append_check_lines(lines, check)
+        lines.append("")
 
     lines.extend(
         [
-            "",
             f"Final summary: {report.readiness.value}",
             report.summary,
+            "",
+            "Recommended Next Step:",
+            _recommended_next_step(report),
             "",
             "Installation guidance:",
             INSTALLATION_GUIDANCE,
         ]
     )
     return "\n".join(lines)
+
+
+def _append_check_lines(lines: list[str], check: EnvironmentCheckResult) -> None:
+    version = f" (version: {check.version})" if check.version else ""
+    lines.append(f"[{check.status.value}] {check.name}: {check.message}{version}")
+    if check.guidance:
+        lines.append(f"    Guidance: {check.guidance}")
+
+
+def _recommended_next_step(report: EnvironmentReport) -> str:
+    if report.readiness is ReadinessStatus.READY_WITH_PBM_BACKEND:
+        return "Run PBM-routed products normally. Install QGIS Python scientific packages only if you need Height Above Ground export or Preprocess Point Cloud."
+    if report.readiness is ReadinessStatus.READY_WITH_QGIS_PYTHON:
+        return "Processing can run through QGIS Python. PBM backend installation is optional for no-manual-setup routed workflows."
+    if report.readiness is ReadinessStatus.READY:
+        return "Run processing normally. PBM is preferred for routed products when configured; QGIS Python remains available as fallback."
+    if report.readiness is ReadinessStatus.NOT_READY:
+        return "Install or repair PBM backend, or install matching scientific packages into the active QGIS Python environment."
+    return "Review warnings, then choose PBM backend or QGIS Python based on the workflow you plan to run."
 
 
 
@@ -231,19 +319,19 @@ def _selected_execution_backend_check() -> EnvironmentCheckResult:
         backend = PyForestScanAdapter().selected_execution_backend()
     except Exception as exc:  # noqa: BLE001 - diagnostics must never crash.
         return EnvironmentCheckResult(
-            name="Selected execution backend",
+            name="Active execution backend",
             status=CheckStatus.WARNING,
             message=f"Could not determine selected execution backend: {exc}",
         )
     if backend == "pbm_backend":
         return EnvironmentCheckResult(
-            name="Selected execution backend",
+            name="Active execution backend",
             status=CheckStatus.PASS,
             message="PyForestScan Backend Manager will be preferred for routed processing products.",
             guidance="QGIS will orchestrate jobs and load outputs; heavy routed products run in PBM backend Python.",
         )
     return EnvironmentCheckResult(
-        name="Selected execution backend",
+        name="Active execution backend",
         status=CheckStatus.WARNING,
         message="QGIS Python will be used for processing unless PBM backend becomes READY.",
         guidance="Install or repair PBM backend to avoid requiring PyForestScan/PDAL in QGIS Python for routed products.",
@@ -270,8 +358,8 @@ def _pbm_backend_status_check() -> EnvironmentCheckResult:
         return EnvironmentCheckResult(
             name="PBM managed backend",
             status=CheckStatus.PASS,
-            message="Managed backend verified as READY.",
-            guidance="Routed products can run in the user-local PBM backend without installing scientific packages into QGIS Python.",
+            message="PBM backend is READY. Routed products can run without installing PyForestScan or PDAL into QGIS Python.",
+            guidance="PBM-routed products: Dataset Explorer local inspection, CHM, Canopy Cover, PAD, PAI, FHD, Rumple, DTM, Point Density, and Voxel Statistic.",
         )
     if result.status is BackendStatus.REPAIR_REQUIRED:
         return EnvironmentCheckResult(
@@ -294,8 +382,8 @@ def _no_manual_setup_scope_check(selected_backend: EnvironmentCheckResult) -> En
         return EnvironmentCheckResult(
             name="No-manual-setup scope",
             status=CheckStatus.PASS,
-            message="Dataset Explorer and routed products can use PBM backend without PyForestScan/PDAL in QGIS Python.",
-            guidance="Routed products: CHM, Canopy Cover, PAD, PAI, FHD, Rumple, DTM, Point Density, and Voxel Statistic. HAG export and Preprocess Point Cloud still require QGIS Python dependencies.",
+            message="Dataset Explorer local inspection and PBM-routed products can use PBM backend without PyForestScan/PDAL in QGIS Python.",
+            guidance="PBM-routed: CHM, Canopy Cover, PAD, PAI, FHD, Rumple, DTM, Point Density, and Voxel Statistic. QGIS-Python-only remaining: Height Above Ground point-cloud export and Preprocess Point Cloud.",
         )
     return EnvironmentCheckResult(
         name="No-manual-setup scope",

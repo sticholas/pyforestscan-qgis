@@ -104,7 +104,7 @@ def run_batch_preflight(
     try:
         readiness = adapter.check_environment().readiness.value
         backend = adapter.selected_execution_backend() if hasattr(adapter, "selected_execution_backend") else "qgis_python"
-        if readiness != "READY" and backend != "pbm_backend":
+        if readiness == "NOT READY":
             blockers.append(f"Environment is {readiness}; run Environment Check before batch processing.")
         elif readiness != "READY" and backend == "pbm_backend":
             warnings.append("QGIS Python scientific dependencies are not READY, but PBM backend is READY and will be used for routed products.")

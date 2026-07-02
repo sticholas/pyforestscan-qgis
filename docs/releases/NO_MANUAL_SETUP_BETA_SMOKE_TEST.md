@@ -12,7 +12,7 @@ Phase 23F resolved two critical clean-machine blockers reported during installer
 
 Phase 23G fixes the staged install promotion order found in clean-machine testing: PBM verifies the staged backend first, promotes verified files to final paths, writes final config, then verifies the final backend before reporting `Ready`.
 
-Phase 23H improves staged verification diagnostics. If installation fails at `VERIFY PACKAGES`, run `python3 scripts/pbm_backend_diagnostics.py --backend-root %LOCALAPPDATA%\\PyForestScan\\backend` from a checkout to capture exact missing imports, command failures, stdout previews, and stderr previews. Phase 23I updates geospatial verification so Windows conda executables and DLLs under `env/Library/bin` are discovered without modifying global PATH. Phase 23J prevents PyPI dependency resolution from replacing conda-forge geospatial binaries, tightens the Windows beta GDAL/rasterio/numpy ranges, and adds rasterio/GDAL/MemoryFile plus conda package-build diagnostics. Phase 23K adds explicit PyForestScan runtime dependencies such as SciPy and Matplotlib before the PyPI-only PyForestScan smoke check. Phase 23L adds tqdm and backend-local GDAL/PROJ data environment variables for verification and PBM runner subprocesses.
+Phase 23H improves staged verification diagnostics. If installation fails at `VERIFY PACKAGES`, run `python3 scripts/pbm_backend_diagnostics.py --backend-root %LOCALAPPDATA%\\PyForestScan\\backend` from a checkout to capture exact missing imports, command failures, stdout previews, and stderr previews. Phase 23I updates geospatial verification so Windows conda executables and DLLs under `env/Library/bin` are discovered without modifying global PATH. Phase 23J prevents PyPI dependency resolution from replacing conda-forge geospatial binaries, tightens the Windows beta GDAL/rasterio/numpy ranges, and adds rasterio/GDAL/MemoryFile plus conda package-build diagnostics. Phase 23K adds explicit PyForestScan runtime dependencies such as SciPy and Matplotlib before the PyPI-only PyForestScan smoke check. Phase 23L adds tqdm and backend-local GDAL/PROJ data environment variables for verification and PBM runner subprocesses. Phase 23M corrects Environment Check so clean QGIS Python missing PyForestScan/PDAL is shown as package status, while PBM-ready routed execution reports `READY WITH PBM BACKEND`.
 
 ## Preconditions
 
@@ -48,7 +48,7 @@ Expected result: only the user-local PBM backend folder changes. QGIS folders, Q
 7. Confirm Environment Check reports:
    - QGIS Python scientific dependency status.
    - PBM backend status.
-   - Selected execution backend.
+   - Active execution backend.
    - No-manual-setup scope for Dataset Explorer and routed products.
 8. Run Dataset Explorer on a small LAS/LAZ file.
 9. Build a Product Plan.
@@ -72,7 +72,7 @@ Expected result: only the user-local PBM backend folder changes. QGIS folders, Q
 | --- | --- |
 | ZIP install | Plugin loads without manual Python package setup. |
 | PBM install | Backend installs under `%LOCALAPPDATA%\PyForestScan\backend`. |
-| Environment Check | PBM Ready and selected execution backend are visible. |
+| Environment Check | `READY WITH PBM BACKEND` is expected when PBM is Ready and QGIS Python scientific packages are absent; QGIS package failures remain visible but do not block routed products. |
 | Dataset Explorer | LAS/LAZ/COPC inspection uses PBM backend when ready. |
 | Routed products | CHM, Canopy Cover, PAD, PAI, FHD, Rumple, DTM, Point Density, and Voxel Statistic run through PBM. |
 | Batch | Sequential and Parallel Safe modes use adapter routing; External Worker remains disabled. |
@@ -99,7 +99,7 @@ Fill this section during the clean-machine run.
 - QGIS Python scientific deps before PBM install:
 - PBM install result:
 - PBM verify result:
-- Environment Check result:
+- Environment Check result (`READY WITH PBM BACKEND` expected if QGIS Python scientific deps are absent and PBM is Ready):
 - Dataset Explorer result:
 - CHM result:
 - Canopy Cover result:
