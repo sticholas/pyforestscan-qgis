@@ -49,11 +49,15 @@ This documentation is organized for users, scientists, developers, maintainers, 
 - [Job Execution](development/JOB_EXECUTION.md)
 - [Batch Processing](development/BATCH_PROCESSING.md)
 - [Workspace Architecture](development/WORKSPACE_ARCHITECTURE.md)
+- [QGIS Compatibility Layer](development/QGIS_COMPATIBILITY_LAYER.md)
 - [Testing Strategy](TESTING_STRATEGY.md)
 
 ## Backend Manager
 
 - [PBM Architecture](backend/PBM_ARCHITECTURE.md)
+- [PBM Install Plan](backend/PBM_INSTALL_PLAN.md)
+- [PBM QGIS Compatibility](backend/PBM_QGIS_COMPATIBILITY.md)
+- [PBM Environment Spec](backend/PBM_ENVIRONMENT_SPEC.md)
 - [PBM State Machine](backend/PBM_STATE_MACHINE.md)
 - [PBM Dependency Registry](backend/PBM_DEPENDENCY_REGISTRY.md)
 - [PBM Installation Workflow](backend/PBM_INSTALLATION_WORKFLOW.md)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .config import load_backend_config, planned_backend_config
+from .install_plan import BackendInstallPlan, create_backend_install_plan, format_install_plan
 from .logging import read_backend_log, write_backend_log_entry
 from .models import BackendOperationResult, BackendRegistry, BackendState, BackendStatus, BackendVerificationResult
 from .paths import BackendPaths, resolve_backend_paths
@@ -14,7 +15,7 @@ from .verification import format_verification_result, verify_backend
 
 
 class BackendService:
-    """Detect and verify the planned user-local PyForestScan backend."""
+    """Detect, verify, and preview the planned user-local PyForestScan backend."""
 
     def __init__(self, paths: BackendPaths | None = None, registry: BackendRegistry | None = None) -> None:
         """Create a backend service using resolved paths and registry data."""
@@ -32,20 +33,28 @@ class BackendService:
             write_backend_log_entry(self.paths.verify_log, "verify", result.summary, details={"status": result.status.value})
         return result
 
+    def preview_install_plan(self) -> BackendInstallPlan:
+        """Return the dry-run backend install plan without modifying files."""
+        return create_backend_install_plan(self.paths, self.registry)
+
+    def format_install_plan(self, plan: BackendInstallPlan | None = None) -> str:
+        """Format the dry-run install plan for UI display."""
+        return format_install_plan(plan or self.preview_install_plan())
+
     def install_backend(self) -> BackendOperationResult:
-        """Return a planned-operation result; no installation occurs in Phase 22A."""
+        """Return a planned-operation result; no installation occurs in Phase 22B."""
         return self._planned_operation("install", BackendStatus.NOT_INSTALLED)
 
     def repair_backend(self) -> BackendOperationResult:
-        """Return a planned-operation result; no repair occurs in Phase 22A."""
+        """Return a planned-operation result; no repair occurs in Phase 22B."""
         return self._planned_operation("repair", self.detect_backend().status)
 
     def update_backend(self) -> BackendOperationResult:
-        """Return a planned-operation result; no update occurs in Phase 22A."""
+        """Return a planned-operation result; no update occurs in Phase 22B."""
         return self._planned_operation("update", self.detect_backend().status)
 
     def remove_backend(self) -> BackendOperationResult:
-        """Return a planned-operation result; no removal occurs in Phase 22A."""
+        """Return a planned-operation result; no removal occurs in Phase 22B."""
         return self._planned_operation("remove", self.detect_backend().status)
 
     def open_backend_folder_path(self) -> Path:
@@ -92,7 +101,7 @@ class BackendService:
             operation="run_backend_python",
             status=self.detect_backend().status,
             success=False,
-            message="Backend Python execution is planned but disabled in Phase 22A.",
+            message="Backend Python execution is planned but disabled in Phase 22B.",
             modified_system=False,
         )
 
@@ -103,7 +112,7 @@ class BackendService:
             operation="run_pdal_pipeline",
             status=self.detect_backend().status,
             success=False,
-            message=f"Backend PDAL execution is planned but disabled in Phase 22A.{detail}",
+            message=f"Backend PDAL execution is planned but disabled in Phase 22B.{detail}",
             modified_system=False,
         )
 
@@ -116,6 +125,6 @@ class BackendService:
             operation=operation,
             status=status,
             success=False,
-            message="Backend installation is planned. Phase 22A provides detection, verification, and architecture only.",
+            message="Backend installation is planned. Phase 22B provides dry-run install planning, compatibility checks, and verification scaffolding only.",
             modified_system=False,
         )

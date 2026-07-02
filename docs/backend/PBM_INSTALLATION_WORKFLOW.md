@@ -1,6 +1,6 @@
 # PBM Installation Workflow
 
-This page describes the target installation workflow. Phase 22A does not implement installation.
+This page describes the target installation workflow. Phase 22B does not implement installation; it only previews the future plan.
 
 ## Target User Workflow
 
@@ -23,13 +23,15 @@ sequenceDiagram
     QGIS->>User: Tools are ready
 ```
 
-## Phase 22A Behavior
+## Phase 22B Behavior
 
 - Detect planned backend paths.
 - Detect whether `backend.json`, micromamba, backend environment, and backend Python exist.
 - Run version commands only when executables already exist.
 - Run Python import checks only when backend Python already exists.
 - Return planned-operation results for install, repair, update, and remove.
+- Preview the future install plan without creating folders, downloading artifacts, or installing packages.
+- Report QGIS compatibility for current QGIS 3.x and defensive QGIS 4.x readiness.
 - Show clear UI text that installation is planned, not active.
 
 ## Future Installer Requirements
@@ -39,5 +41,6 @@ sequenceDiagram
 - Create the environment without administrator privileges.
 - Never install packages into QGIS Python.
 - Never modify the QGIS installation.
+- Never modify user environment variables.
 - Write compact logs for install, verify, update, and remove operations.
 - Recover cleanly from partial installs and support repair.

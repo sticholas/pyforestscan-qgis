@@ -2,7 +2,7 @@
 
 The PyForestScan Backend Manager (PBM) is the planned backend dependency management subsystem for PyForestScan QGIS. PBM keeps the plugin lightweight while preparing a user-local backend runtime for PyForestScan, PDAL, GDAL, rasterio, numpy, and future scientific modules.
 
-Phase 22A provides architecture, typed models, path resolution, dependency registry, verification, logs, service boundaries, and Settings UI status. It does not download, install, repair, update, remove, or execute scientific work through the managed backend.
+Phase 22A provided architecture, typed models, path resolution, dependency registry, verification, logs, service boundaries, and Settings UI status. Phase 22B adds dry-run install planning, an environment specification, Micromamba bootstrap placeholders, and QGIS compatibility reporting. PBM still does not download, install, repair, update, remove, alter QGIS Python, change user environment variables, or execute scientific work through the managed backend.
 
 ## Goals
 
@@ -30,17 +30,19 @@ flowchart TD
     B --> E["State detection"]
     B --> F["Verification"]
     B --> G["Structured logs"]
+    B --> M["QGIS compatibility report"]
+    B --> N["Dry-run install plan"]
     F --> H["Existing files only"]
     F --> I["Version commands if executables exist"]
     F --> J["Python imports if backend Python exists"]
-    B -."future".-> K["Installer / repair / update orchestration"]
+    N -."future".-> K["Installer / repair / update orchestration"]
     K -."future".-> L["Micromamba environment"]
 ```
 
 ## Service Boundaries
 
 - `pyforestscan_qgis/core/backend/` is plain Python and QGIS-free.
-- Mission Control may display backend status and invoke safe service methods.
+- Mission Control may display backend status, compatibility status, verification details, and dry-run install plans.
 - PBM must not install into QGIS Python.
 - PBM must not modify QGIS install folders or system environment variables.
 - Current product execution remains on the existing adapter/PyForestScan path until a later phase explicitly switches execution to the managed backend.
@@ -50,6 +52,10 @@ flowchart TD
 - `paths.py`: cross-platform backend path contract.
 - `models.py`: typed status, config, registry, dependency, verification, operation, and log records.
 - `registry.py`: initial required dependencies and optional future modules.
+- `channels.py`: package channel policy for dry-run planning.
+- `environment_spec.py`: registry-driven managed environment specification.
+- `bootstrap.py`: Micromamba bootstrap artifact placeholders.
+- `install_plan.py`: dry-run install, verification, rollback, and offline plan formatting.
 - `state.py`: filesystem-only state detection.
 - `config.py`: `backend.json` serialization helpers.
 - `verification.py`: placeholder-safe checks and report formatting.

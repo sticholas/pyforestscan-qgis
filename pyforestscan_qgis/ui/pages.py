@@ -41,6 +41,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ..core.adapter import PyForestScanAdapter
 from ..core.backend import BackendService
+from ..core.qgis_compat import build_qgis_compatibility_report, format_qgis_compatibility_report
 from ..core.batch import BatchProductSettings, BatchRequest, discover_lidar_files
 from ..core.batch_executor import PARALLEL_SAFE_MODE, SEQUENTIAL_MODE, BatchExecutor
 from ..core.batch_preflight import BatchPreflightReport, run_batch_preflight
@@ -1964,7 +1965,7 @@ class SettingsPage(MissionPage):
         workspace.addLayout(workspace_form)
 
         backend = self.add_section("PyForestScan Backend Manager")
-        backend.addWidget(_body_label("Backend installation is planned. Current phase provides detection, verification, and architecture only."))
+        backend.addWidget(_body_label("Backend installation is not enabled yet. Phase 22B provides QGIS compatibility checks and dry-run install planning only."))
         self.backend_service = BackendService()
         self.backend_status_label = _body_label("Backend Status: Unknown")
         self.backend_location_label = _body_label("Backend Location: Unknown")
@@ -1972,6 +1973,8 @@ class SettingsPage(MissionPage):
         self.backend_python_label = _body_label("Python Version: Not detected")
         self.backend_pdal_label = _body_label("PDAL Version: Not detected")
         self.backend_dependency_label = _body_label("Dependency summary: Not verified")
+        self.qgis_compatibility_label = _body_label("QGIS Compatibility: Not checked")
+        self.backend_install_readiness_label = _body_label("Install readiness: Dry-run preview only")
         for label in (
             self.backend_status_label,
             self.backend_location_label,
@@ -1979,12 +1982,18 @@ class SettingsPage(MissionPage):
             self.backend_python_label,
             self.backend_pdal_label,
             self.backend_dependency_label,
+            self.qgis_compatibility_label,
+            self.backend_install_readiness_label,
         ):
             backend.addWidget(label)
 
         backend_buttons = QHBoxLayout()
         self.verify_backend_button = QPushButton("Verify Backend")
         self.verify_backend_button.clicked.connect(self.verify_backend)
+        self.verify_qgis_button = QPushButton("Verify QGIS Compatibility")
+        self.verify_qgis_button.clicked.connect(self.verify_qgis_compatibility)
+        self.preview_install_plan_button = QPushButton("Preview Install Plan")
+        self.preview_install_plan_button.clicked.connect(self.preview_install_plan)
         self.install_backend_button = QPushButton("Install Backend (Planned)")
         self.install_backend_button.setEnabled(False)
         self.repair_backend_button = QPushButton("Repair (Planned)")
@@ -1997,6 +2006,8 @@ class SettingsPage(MissionPage):
         self.view_backend_logs_button.clicked.connect(self.view_backend_logs)
         for button in (
             self.verify_backend_button,
+            self.verify_qgis_button,
+            self.preview_install_plan_button,
             self.install_backend_button,
             self.repair_backend_button,
             self.update_backend_button,
@@ -2009,8 +2020,8 @@ class SettingsPage(MissionPage):
 
         self.backend_details = QTextEdit()
         self.backend_details.setReadOnly(True)
-        self.backend_details.setMinimumHeight(180)
-        self.backend_details.setPlainText("Click Verify Backend to detect the planned user-local backend location and dependency state.")
+        self.backend_details.setMinimumHeight(220)
+        self.backend_details.setPlainText("Click Preview Install Plan or Verify QGIS Compatibility to review dry-run readiness. Install Backend remains disabled.")
         backend.addWidget(self.backend_details)
         self.refresh_backend_summary()
 
@@ -2054,19 +2065,23 @@ class SettingsPage(MissionPage):
         self.defaultOutputFolderChanged.emit(Path(value) if value else None)
 
     def refresh_backend_summary(self) -> None:
-        """Display backend path and detected state without running dependency commands."""
+        """Display backend path, install-plan readiness, and detected state."""
         state = self.backend_service.detect_backend()
         paths = self.backend_service.paths
         registry = self.backend_service.get_registry()
+        plan = self.backend_service.preview_install_plan()
+        compatibility = build_qgis_compatibility_report()
         self.backend_status_label.setText(f"Backend Status: {state.status.value}")
         self.backend_location_label.setText(f"Backend Location: {paths.backend_root}")
         self.backend_environment_label.setText(f"Environment Location: {paths.environment_path}")
         required_count = len(registry.required_dependencies())
         total_count = len(registry.dependencies)
         self.backend_dependency_label.setText(f"Dependency summary: {required_count} required, {total_count - required_count} optional/future")
+        self.qgis_compatibility_label.setText(f"QGIS Compatibility: {compatibility.summary()}")
+        self.backend_install_readiness_label.setText(f"Install readiness: dry-run preview for {len(plan.required_package_names())} packages; install disabled")
         self.backend_details.setPlainText(
             f"{state.message}\n\n"
-            "Install Backend, Repair, and Update are intentionally disabled in this phase. "
+            "Installation is not enabled yet. Preview Install Plan shows where the backend would be installed, which packages would be used, and which checks would run. "
             "PBM will not modify QGIS Python, the QGIS install directory, or user environment variables."
         )
 
@@ -2083,6 +2098,18 @@ class SettingsPage(MissionPage):
         self.backend_dependency_label.setText(f"Dependency summary: {verified_required}/{len(required)} required dependencies verified")
         self.backend_details.setPlainText(self.backend_service.format_verification_report(result))
 
+    def verify_qgis_compatibility(self) -> None:
+        """Display defensive QGIS compatibility details."""
+        report = build_qgis_compatibility_report()
+        self.qgis_compatibility_label.setText(f"QGIS Compatibility: {report.summary()}")
+        self.backend_details.setPlainText(format_qgis_compatibility_report(report))
+
+    def preview_install_plan(self) -> None:
+        """Display the dry-run backend installation plan."""
+        plan = self.backend_service.preview_install_plan()
+        self.backend_install_readiness_label.setText(f"Install readiness: dry-run preview for {len(plan.required_package_names())} packages; install disabled")
+        self.backend_details.setPlainText(self.backend_service.format_install_plan(plan))
+
     def open_backend_folder(self) -> None:
         """Open the backend folder if it already exists, otherwise show the planned path."""
         folder = self.backend_service.open_backend_folder_path()
@@ -2091,7 +2118,8 @@ class SettingsPage(MissionPage):
         else:
             self.backend_details.setPlainText(
                 f"Backend folder does not exist yet: {folder}\n\n"
-                "Installation is planned for a future phase and will create this user-local directory without modifying QGIS."
+                "Installation is planned for a future phase and will create this user-local directory without modifying QGIS. "
+                "Use Preview Install Plan to review the dry-run backend layout."
             )
 
     def view_backend_logs(self) -> None:
@@ -2103,8 +2131,6 @@ class SettingsPage(MissionPage):
             lines.extend(entries or ("No log entries.",))
             lines.append("")
         self.backend_details.setPlainText("\n".join(lines).strip())
-
-
 
 def _find_backend_dependency(result: object, name: str):
     """Return one backend dependency from a verification result by name."""

@@ -19,12 +19,22 @@ No installation or backend execution occurs.
 
 ## Phase 22B: Installer Design Validation
 
-Recommended next work:
+Implemented scope:
 
-- Choose the micromamba bootstrap source and verification strategy.
+- QGIS compatibility layer with version parsing, Processing provider checks, settings/message-log detection, safe wrappers, and QGIS 4.x defensive warnings.
+- Registry-driven dry-run install plan.
+- Initial managed environment spec for python, pyforestscan, pdal, python-pdal, gdal, rasterio, and numpy.
+- Package channel policy and Micromamba bootstrap placeholders.
+- Mission Control Settings buttons for Preview Install Plan and Verify QGIS Compatibility.
+- Documentation and QGIS-free tests.
+
+No downloads, installs, environment creation, QGIS Python modification, user environment-variable changes, or backend execution occur.
+
+Remaining design work before Phase 22C:
+
+- Choose the exact Micromamba bootstrap source and checksum verification strategy.
 - Design package lock/spec files.
 - Define exact channels and version pins.
-- Add installer dry-run planning output.
 - Add manual Windows installer proof outside QGIS.
 
 ## Phase 22C: Controlled Installer Prototype

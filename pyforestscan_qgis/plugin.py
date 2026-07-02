@@ -6,8 +6,8 @@ from typing import Any
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QAction
-from qgis.core import QgsApplication
 
+from .core.qgis_compat import open_or_raise_mission_control, register_processing_provider, report_message, unregister_processing_provider
 from .processing_provider import PyForestScanProvider
 from .resources import plugin_icon
 from .ui.mission_control import MissionControlDock
@@ -32,15 +32,21 @@ class PyForestScanPlugin:
     def initGui(self) -> None:
         """Register Processing provider and open Mission Control."""
         if self.provider is None:
-            self.provider = PyForestScanProvider()
-            QgsApplication.processingRegistry().addProvider(self.provider)
+            provider = PyForestScanProvider()
+            result = register_processing_provider(provider)
+            if result.success:
+                self.provider = provider
+            else:
+                report_message(result.message, level="WARNING")
         self._create_mission_control_action()
         self._show_mission_control()
 
     def unload(self) -> None:
         """Remove Processing provider, actions, and Mission Control dock."""
         if self.provider is not None:
-            QgsApplication.processingRegistry().removeProvider(self.provider)
+            result = unregister_processing_provider(self.provider)
+            if not result.success:
+                report_message(result.message, level="WARNING")
             self.provider = None
         if self.mission_control_action is not None:
             remove_menu = getattr(self.iface, "removePluginMenu", None)
@@ -78,8 +84,6 @@ class PyForestScanPlugin:
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.mission_control)
             self.mission_control.setFloating(True)
             self.mission_control.resize(1400, 900)
-        self.mission_control.show()
-        self.mission_control.raise_()
-        activate = getattr(self.mission_control, "activateWindow", None)
-        if callable(activate):
-            activate()
+        result = open_or_raise_mission_control(self.mission_control)
+        if not result.success:
+            report_message(result.message, level="WARNING")

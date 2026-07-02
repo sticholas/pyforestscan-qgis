@@ -31,4 +31,4 @@ This internal release is intended for controlled QGIS testing, workflow validati
 
 ## PyForestScan Backend Manager
 
-The PyForestScan Backend Manager is a foundation only. It detects planned paths, verifies existing backend files when present, and exposes disabled planned install/repair/update actions. It does not download Micromamba, create environments, install dependencies, or route processing through a managed backend yet.
+The PyForestScan Backend Manager remains dry-run only. It detects planned paths, verifies existing backend files when present, reports QGIS compatibility, previews the future install plan, and exposes disabled planned install/repair/update actions. It does not download Micromamba, create environments, install dependencies, modify QGIS Python, change user environment variables, or route processing through a managed backend yet. QGIS 3.x is the supported target; QGIS 4.x compatibility is prepared defensively but must be tested when available.

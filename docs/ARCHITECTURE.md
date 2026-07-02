@@ -136,9 +136,9 @@ Core services and knowledge modules should remain importable in plain Python tes
 
 ## PyForestScan Backend Manager
 
-The PyForestScan Backend Manager (PBM) is a new core subsystem for future user-local dependency management. It resolves platform-specific backend paths, stores typed backend configuration, maintains a dependency registry, verifies existing backend files, and exposes planned installer operations through a service facade.
+The PyForestScan Backend Manager (PBM) is a new core subsystem for future user-local dependency management. It resolves platform-specific backend paths, stores typed backend configuration, maintains a dependency registry, verifies existing backend files, reports QGIS compatibility, and previews a registry-driven dry-run install plan through a service facade.
 
-PBM does not currently install dependencies, modify QGIS Python, replace existing processing execution, or run PyForestScan jobs. It prepares the boundary for a future managed backend located under the user profile rather than the QGIS installation.
+PBM does not currently install dependencies, download Micromamba, modify QGIS Python, change user environment variables, replace existing processing execution, or run PyForestScan jobs. It prepares the boundary for a future managed backend located under the user profile rather than the QGIS installation. QGIS 3.x is the current supported target; QGIS 4.x checks are defensive until real QGIS 4 builds can be validated.
 
 ```mermaid
 flowchart TD
@@ -146,11 +146,13 @@ flowchart TD
     B --> C["Backend paths"]
     B --> D["Dependency registry"]
     B --> E["Verification"]
+    B --> H["QGIS compatibility report"]
+    B --> I["Dry-run install plan"]
     E --> F["Existing backend files only"]
-    B -."future install".-> G["User-local micromamba environment"]
+    I -."future install".-> G["User-local micromamba environment"]
 ```
 
-See [PBM Architecture](backend/PBM_ARCHITECTURE.md) for details.
+See [PBM Architecture](backend/PBM_ARCHITECTURE.md), [PBM Install Plan](backend/PBM_INSTALL_PLAN.md), and [PBM QGIS Compatibility](backend/PBM_QGIS_COMPATIBILITY.md) for details.
 
 ## Design Rules
 

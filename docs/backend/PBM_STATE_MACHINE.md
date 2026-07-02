@@ -20,7 +20,7 @@ stateDiagram-v2
 
 ## States
 
-| State | Meaning in Phase 22A |
+| State | Meaning in Phase 22B |
 | --- | --- |
 | Not Installed | Backend root or required files are absent. This is expected before PBM installation exists. |
 | Installing | Reserved for future installer orchestration. |
@@ -31,4 +31,4 @@ stateDiagram-v2
 | Removing | Reserved for future removal orchestration. |
 | Failed | Reserved for failed backend operations. |
 
-Phase 22A can report states but only performs detection and verification. Install, repair, update, and remove return planned-operation results and do not modify the system.
+Phase 22B can report states, verify existing files, preview installation, and report QGIS compatibility. Install, repair, update, and remove return planned-operation results and do not modify the system.
