@@ -208,6 +208,10 @@ class BackendCheckResult:
     message: str
     detected_version: str | None = None
     path: Path | None = None
+    command: tuple[str, ...] = ()
+    executable: Path | None = None
+    stdout_preview: str = ""
+    stderr_preview: str = ""
 
 
 @dataclass(frozen=True)

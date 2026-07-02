@@ -328,7 +328,7 @@ class BackendInstaller:
     def _verify_backend_paths(self, paths: BackendPaths, require_config: bool) -> BackendVerificationResult:
         if self.verifier is not None:
             return self.verifier(paths)
-        return verify_backend(paths, self.registry, require_config=require_config)
+        return verify_backend(paths, self.registry, require_config=require_config, log_path=self.paths.install_log, log_stage="STAGED_VERIFY" if not require_config else "FINAL_VERIFY")
 
     def _log_verification_paths(self, stage: str, paths: BackendPaths, require_config: bool) -> None:
         write_backend_log_entry(
@@ -422,6 +422,8 @@ class BackendInstaller:
 
         transaction = BackendInstallTransaction(self, logger=log_stage)
         result = transaction.run(policy=policy, spec_file=spec_file)
+        if not result.success:
+            write_backend_log_entry(self.paths.install_log, "install", result.message, level="ERROR", stage=result.stage.value if result.stage else "FAILED")
         return BackendOperationResult(
             operation="install_backend",
             status=result.status,

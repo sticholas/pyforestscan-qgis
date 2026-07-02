@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import subprocess
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
+from .logging import write_backend_log_entry
 from .models import (
     BackendCheckResult,
     BackendDependency,
@@ -16,12 +17,47 @@ from .models import (
     DependencyVerificationStatus,
 )
 from .paths import BackendPaths
-from .process_env import build_clean_subprocess_env
+from .process_env import build_clean_subprocess_env, summarize_subprocess_output
 from .registry import default_backend_registry
 from .state import detect_backend_state
 
 
-def verify_backend(paths: BackendPaths, registry: BackendRegistry | None = None, timeout_seconds: int = 10, require_config: bool = True) -> BackendVerificationResult:
+@dataclass(frozen=True)
+class CommandCheck:
+    """Structured result from a verification subprocess."""
+
+    command: tuple[str, ...]
+    executable: Path
+    returncode: int | None
+    stdout_preview: str = ""
+    stderr_preview: str = ""
+    detected_version: str | None = None
+    error: str = ""
+
+    @property
+    def passed(self) -> bool:
+        return self.returncode == 0 and not self.error
+
+    def failure_detail(self) -> str:
+        if self.error:
+            return self.error
+        if self.stderr_preview:
+            return self.stderr_preview
+        if self.stdout_preview:
+            return self.stdout_preview
+        if self.returncode is not None:
+            return f"command exited with status {self.returncode}"
+        return "command did not complete"
+
+
+def verify_backend(
+    paths: BackendPaths,
+    registry: BackendRegistry | None = None,
+    timeout_seconds: int = 10,
+    require_config: bool = True,
+    log_path: Path | None = None,
+    log_stage: str = "VERIFY",
+) -> BackendVerificationResult:
     """Verify the backend without downloading, installing, or modifying QGIS."""
     registry_value = registry or default_backend_registry()
     state = detect_backend_state(paths)
@@ -42,15 +78,7 @@ def verify_backend(paths: BackendPaths, registry: BackendRegistry | None = None,
     for dependency in registry_value.dependencies:
         verified = _verify_dependency(dependency, paths, timeout_seconds=timeout_seconds)
         dependencies.append(verified)
-        checks.append(
-            BackendCheckResult(
-                name=dependency.display_name,
-                status=verified.verification_status,
-                message=_dependency_message(verified),
-                detected_version=verified.detected_version,
-                path=_dependency_path(verified, paths),
-            )
-        )
+        checks.append(_check_from_dependency(verified, paths))
 
     next_registry = BackendRegistry(dependencies=tuple(dependencies), registry_version=registry_value.registry_version)
     failures = [check for check in checks if check.status is DependencyVerificationStatus.FAIL]
@@ -62,18 +90,21 @@ def verify_backend(paths: BackendPaths, registry: BackendRegistry | None = None,
         summary = "Backend is not installed. Normal user installation is disabled; Phase 22C installer mechanics require the developer guard."
     elif required_failures or failures:
         status = BackendStatus.REPAIR_REQUIRED
-        summary = "Backend files are incomplete or required dependencies are missing."
+        summary = _verification_failure_summary(checks)
     else:
         status = BackendStatus.READY
         summary = "Backend verification checks passed."
 
-    return BackendVerificationResult(
+    result = BackendVerificationResult(
         status=status,
         state=state,
         checks=tuple(checks),
         registry=next_registry,
         summary=summary,
     )
+    if log_path is not None:
+        log_verification_checks(result, log_path, stage=log_stage)
+    return result
 
 
 def format_verification_result(result: BackendVerificationResult) -> str:
@@ -89,8 +120,60 @@ def format_verification_result(result: BackendVerificationResult) -> str:
     ]
     for check in result.checks:
         version = f" ({check.detected_version})" if check.detected_version else ""
-        lines.append(f"- {check.status.value.upper()} {check.name}: {check.message}{version}")
+        path = f" [{check.path}]" if check.path else ""
+        lines.append(f"- {check.status.value.upper()} {check.name}: {check.message}{version}{path}")
+        if check.command:
+            lines.append(f"  Command: {_format_command(check.command)}")
+        if check.executable:
+            lines.append(f"  Executable: {check.executable}")
+        if check.stdout_preview:
+            lines.append(f"  stdout: {check.stdout_preview}")
+        if check.stderr_preview:
+            lines.append(f"  stderr: {check.stderr_preview}")
     return "\n".join(lines)
+
+
+def log_verification_checks(result: BackendVerificationResult, log_path: Path, stage: str = "VERIFY") -> None:
+    """Write one structured log entry for each backend verification check."""
+    for check in result.checks:
+        details = {
+            "check": check.name,
+            "status": check.status.value,
+            "path": str(check.path) if check.path else "",
+            "detected_version": check.detected_version or "",
+            "command": _format_command(check.command),
+            "executable": str(check.executable) if check.executable else "",
+            "stdout_preview": check.stdout_preview,
+            "stderr_preview": check.stderr_preview,
+        }
+        level = "ERROR" if check.status is DependencyVerificationStatus.FAIL else "WARNING" if check.status is DependencyVerificationStatus.WARNING else "INFO"
+        write_backend_log_entry(log_path, "verify", check.message, level=level, stage=stage, details=details)
+
+
+def failed_check_summary(result: BackendVerificationResult, limit: int = 8) -> str:
+    """Return actionable failed-check lines for install result messages."""
+    checks = tuple(getattr(result, "checks", ()))
+    failed = [check for check in checks if check.status is DependencyVerificationStatus.FAIL]
+    if not failed:
+        return getattr(result, "summary", "Backend verification failed.")
+    lines = ["Failed verification checks:"]
+    for check in failed[:limit]:
+        detail = check.stderr_preview or check.stdout_preview
+        suffix = f" ({detail})" if detail and detail not in check.message else ""
+        lines.append(f"- {check.name}: {check.message}{suffix}")
+    if len(failed) > limit:
+        lines.append(f"- ... {len(failed) - limit} more failed check(s)")
+    return "\n".join(lines)
+
+
+def python_import_command(python_executable: Path, import_name: str) -> tuple[str, ...]:
+    """Return the backend Python import/version check command."""
+    code = (
+        "import importlib; "
+        f"m=importlib.import_module({import_name!r}); "
+        "print(getattr(m, '__version__', 'UNKNOWN'))"
+    )
+    return (str(python_executable), "-c", code)
 
 
 def _path_check(name: str, path: Path, required: bool) -> BackendCheckResult:
@@ -102,37 +185,106 @@ def _path_check(name: str, path: Path, required: bool) -> BackendCheckResult:
 
 def _verify_dependency(dependency: BackendDependency, paths: BackendPaths, timeout_seconds: int) -> BackendDependency:
     executable_path = _dependency_path(dependency, paths)
-    if dependency.executable_name and executable_path and executable_path.exists() and dependency.verification_command:
-        version = _run_version_command(executable_path, dependency.verification_command, timeout_seconds)
-        status = DependencyVerificationStatus.PASS if version else DependencyVerificationStatus.WARNING
-        return replace(
-            dependency,
-            install_status=DependencyInstallStatus.PRESENT,
-            verification_status=status,
-            detected_version=version,
-        )
+    command_checks: list[CommandCheck] = []
+    messages: list[str] = []
+    detected_version: str | None = None
+    executable_missing = False
+
+    if dependency.executable_name:
+        if executable_path and executable_path.exists():
+            if dependency.verification_command:
+                version_check = _run_version_command(executable_path, dependency.verification_command, timeout_seconds)
+                command_checks.append(version_check)
+                if version_check.passed:
+                    detected_version = version_check.detected_version or detected_version
+                    messages.append(f"{dependency.executable_name} command verified")
+                else:
+                    messages.append(f"{dependency.executable_name} command failed: {version_check.failure_detail()}")
+            else:
+                messages.append(f"{dependency.executable_name} executable found")
+        else:
+            executable_missing = True
+            messages.append(f"{dependency.executable_name} executable not found at {executable_path}")
+
     if dependency.python_import_name:
         if not paths.python_executable.exists():
-            return replace(
+            messages.append(f"Backend Python is not available for import {dependency.python_import_name}.")
+            return _dependency_with_diagnostics(
                 dependency,
                 install_status=DependencyInstallStatus.MISSING,
                 verification_status=DependencyVerificationStatus.FAIL if dependency.required else DependencyVerificationStatus.WARNING,
-                notes=(dependency.notes + " Backend Python is not available for import verification.").strip(),
+                detected_version=detected_version,
+                notes=" ".join(messages),
+                command_checks=tuple(command_checks),
+                path=executable_path,
             )
-        version = _run_python_import(paths.python_executable, dependency.python_import_name, timeout_seconds)
-        status = DependencyVerificationStatus.PASS if version else DependencyVerificationStatus.FAIL if dependency.required else DependencyVerificationStatus.WARNING
-        return replace(
-            dependency,
-            install_status=DependencyInstallStatus.PRESENT if version else DependencyInstallStatus.MISSING,
-            verification_status=status,
-            detected_version=version,
-        )
-    if dependency.executable_name and executable_path and executable_path.exists():
-        return replace(dependency, install_status=DependencyInstallStatus.PRESENT, verification_status=DependencyVerificationStatus.PASS)
-    return replace(
+        import_check = _run_python_import(paths.python_executable, dependency.python_import_name, timeout_seconds)
+        command_checks.append(import_check)
+        if import_check.passed:
+            detected_version = import_check.detected_version or detected_version
+            messages.append(f"import {dependency.python_import_name} verified")
+        else:
+            messages.append(f"import {dependency.python_import_name} failed: {import_check.failure_detail()}")
+
+    failed_commands = [check for check in command_checks if not check.passed]
+    if executable_missing or failed_commands:
+        status = DependencyVerificationStatus.FAIL if dependency.required else DependencyVerificationStatus.WARNING
+        install_status = DependencyInstallStatus.MISSING if executable_missing else DependencyInstallStatus.PRESENT
+    elif command_checks or (dependency.executable_name and executable_path and executable_path.exists()):
+        status = DependencyVerificationStatus.PASS
+        install_status = DependencyInstallStatus.PRESENT
+    else:
+        status = DependencyVerificationStatus.FAIL if dependency.required else DependencyVerificationStatus.WARNING
+        install_status = DependencyInstallStatus.MISSING
+        messages.append("No executable or import verification target is available.")
+
+    return _dependency_with_diagnostics(
         dependency,
-        install_status=DependencyInstallStatus.MISSING,
-        verification_status=DependencyVerificationStatus.FAIL if dependency.required else DependencyVerificationStatus.WARNING,
+        install_status=install_status,
+        verification_status=status,
+        detected_version=detected_version,
+        notes="; ".join(messages),
+        command_checks=tuple(command_checks),
+        path=executable_path,
+    )
+
+
+def _dependency_with_diagnostics(
+    dependency: BackendDependency,
+    install_status: DependencyInstallStatus,
+    verification_status: DependencyVerificationStatus,
+    detected_version: str | None,
+    notes: str,
+    command_checks: tuple[CommandCheck, ...],
+    path: Path | None,
+) -> BackendDependency:
+    next_dependency = replace(
+        dependency,
+        install_status=install_status,
+        verification_status=verification_status,
+        detected_version=detected_version,
+        notes=notes or dependency.notes,
+    )
+    object.__setattr__(next_dependency, "_command_checks", command_checks)
+    object.__setattr__(next_dependency, "_verification_path", path)
+    return next_dependency
+
+
+def _check_from_dependency(dependency: BackendDependency, paths: BackendPaths) -> BackendCheckResult:
+    command_checks: tuple[CommandCheck, ...] = getattr(dependency, "_command_checks", ())
+    failed = next((check for check in command_checks if not check.passed), None)
+    first = failed or (command_checks[-1] if command_checks else None)
+    path = getattr(dependency, "_verification_path", None) or _dependency_path(dependency, paths)
+    return BackendCheckResult(
+        name=dependency.display_name,
+        status=dependency.verification_status,
+        message=_dependency_message(dependency),
+        detected_version=dependency.detected_version,
+        path=path,
+        command=first.command if first else (),
+        executable=first.executable if first else path,
+        stdout_preview=first.stdout_preview if first else "",
+        stderr_preview=first.stderr_preview if first else "",
     )
 
 
@@ -151,46 +303,62 @@ def _dependency_path(dependency: BackendDependency, paths: BackendPaths) -> Path
 
 
 def _dependency_message(dependency: BackendDependency) -> str:
+    if dependency.notes and ("failed:" in dependency.notes or "not found" in dependency.notes or "not available" in dependency.notes):
+        return dependency.notes
     if dependency.verification_status is DependencyVerificationStatus.PASS:
-        return "Verified"
+        return dependency.notes or "Verified"
     if dependency.verification_status is DependencyVerificationStatus.WARNING:
-        return "Detected with warnings or reserved as an optional future module"
-    return "Missing or not verifiable in the managed backend"
+        return dependency.notes or "Detected with warnings or reserved as an optional future module"
+    return dependency.notes or "Missing or not verifiable in the managed backend"
 
 
-def _run_version_command(executable: Path, args: tuple[str, ...], timeout_seconds: int) -> str | None:
+def _run_version_command(executable: Path, args: tuple[str, ...], timeout_seconds: int) -> CommandCheck:
+    command = (str(executable), *args)
+    return _run_command(command, executable, timeout_seconds)
+
+
+def _run_python_import(python_executable: Path, import_name: str, timeout_seconds: int) -> CommandCheck:
+    command = python_import_command(python_executable, import_name)
+    return _run_command(command, python_executable, timeout_seconds)
+
+
+def _run_command(command: tuple[str, ...], executable: Path, timeout_seconds: int) -> CommandCheck:
     try:
         completed = subprocess.run(
-            [str(executable), *args],
+            list(command),
             check=False,
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
             env=build_clean_subprocess_env(prepend_paths=(executable.parent,)),
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return CommandCheck(command=command, executable=executable, returncode=None, error=str(exc))
+    stdout_preview = summarize_subprocess_output(completed.stdout, "")
+    stderr_preview = summarize_subprocess_output(completed.stderr, "")
     output = (completed.stdout or completed.stderr or "").strip().splitlines()
-    return output[0] if output else None
-
-
-def _run_python_import(python_executable: Path, import_name: str, timeout_seconds: int) -> str | None:
-    code = (
-        "import importlib, sys; "
-        f"m=importlib.import_module({import_name!r}); "
-        "print(getattr(m, '__version__', 'UNKNOWN'))"
+    detected_version = output[0] if completed.returncode == 0 and output else None
+    return CommandCheck(
+        command=command,
+        executable=executable,
+        returncode=completed.returncode,
+        stdout_preview=stdout_preview,
+        stderr_preview=stderr_preview,
+        detected_version=detected_version,
     )
-    try:
-        completed = subprocess.run(
-            [str(python_executable), "-c", code],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            env=build_clean_subprocess_env(prepend_paths=(python_executable.parent,)),
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if completed.returncode != 0:
-        return None
-    return (completed.stdout or "UNKNOWN").strip().splitlines()[0]
+
+
+def _verification_failure_summary(checks: list[BackendCheckResult]) -> str:
+    failed = [check for check in checks if check.status is DependencyVerificationStatus.FAIL]
+    if not failed:
+        return "Backend files are incomplete or required dependencies are missing."
+    lines = ["Backend verification failed:"]
+    for check in failed[:8]:
+        lines.append(f"- {check.name}: {check.message}")
+    if len(failed) > 8:
+        lines.append(f"- ... {len(failed) - 8} more failed check(s)")
+    return "\n".join(lines)
+
+
+def _format_command(command: tuple[str, ...]) -> str:
+    return " ".join(command) if command else ""

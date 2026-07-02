@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .models import BackendOperationResult, BackendStatus, BackendVerificationResult
+from .verification import failed_check_summary
 from .progress import BackendProgressModel, BackendProgressStage, BackendProgressUpdate
 
 
@@ -100,7 +101,7 @@ class BackendInstallTransaction:
             self._emit(BackendProgressStage.CHECKING, 82, "Verifying managed backend environment.")
             verification = self.installer.verify_environment()
             if not _verification_passed(verification):
-                return self._fail(BackendTransactionStage.VERIFY_PACKAGES, verification.summary, status=BackendStatus.REPAIR_REQUIRED)
+                return self._fail(BackendTransactionStage.VERIFY_PACKAGES, failed_check_summary(verification), status=BackendStatus.REPAIR_REQUIRED)
 
             if _cancelled(cancel_token):
                 return self._cancel(BackendTransactionStage.PROMOTE_BACKEND)
@@ -116,7 +117,7 @@ class BackendInstallTransaction:
             self._emit(BackendProgressStage.CHECKING, 96, "Verifying active backend location.")
             active_verification = self.installer.verify_active_backend()
             if not _verification_passed(active_verification):
-                return self._fail(BackendTransactionStage.VERIFY_PACKAGES, active_verification.summary, status=BackendStatus.REPAIR_REQUIRED)
+                return self._fail(BackendTransactionStage.VERIFY_PACKAGES, failed_check_summary(active_verification), status=BackendStatus.REPAIR_REQUIRED)
             cleanup = self.installer.cleanup_successful_install()
             self.operations.append(cleanup)
             self._log(BackendTransactionStage.READY, "INFO" if cleanup.success else "WARNING", cleanup.message)

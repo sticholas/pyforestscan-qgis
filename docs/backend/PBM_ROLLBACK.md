@@ -42,4 +42,4 @@ A successful future install promotes staged Micromamba and environment files int
 <backend_root>/env/
 ```
 
-The backend config is written only after staged verification and promotion pass. Final verification then checks the final config and final executable/environment paths before the backend is marked `Ready`.
+The backend config is written only after staged verification and promotion pass. Final verification then checks the final config and final executable/environment paths before the backend is marked `Ready`. If staged verification fails, the install result and logs list failed dependency names and command output previews.

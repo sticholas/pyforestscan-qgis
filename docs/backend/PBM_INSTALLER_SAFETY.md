@@ -34,8 +34,8 @@ If a stage fails, staging is rolled back and the Backend page shows failure guid
 
 Phase 23F runs PBM installer subprocesses with a sanitized environment. The policy removes `PYTHONPATH`, `PYTHONHOME`, `PYTHONUSERBASE`, Python user-site contamination, pip user-install switches, and QGIS profile dependency paths before running Micromamba, backend Python pip, verification commands, or PBM runner jobs. It sets `PYTHONNOUSERSITE=1`, `PIP_NO_INPUT=1`, and `PIP_DISABLE_PIP_VERSION_CHECK=1`.
 
-Logs record the command kind, executable path, whether the clean environment was used, staged versus final verification paths, and short first/last stderr or stdout previews on failure. Logs do not dump the full environment.
+Logs record the command kind, executable path, whether the clean environment was used, staged versus final verification paths, per-check verification status, command, executable, detected version, and short first/last stderr or stdout previews on failure. Logs do not dump the full environment.
 
 ## Package Install Split
 
-Micromamba creates the conda-forge environment from the backend spec. The spec keeps `pip` available but does not use an inline `pip:` section. Registry entries sourced from PyPI, currently `pyforestscan>=0.4`, are installed afterward with `<backend env>/python -m pip install ...` using the same sanitized environment. The installer must never call QGIS Python pip.
+Micromamba creates the conda-forge environment from the backend spec. The spec keeps `pip` available but does not use an inline `pip:` section. Registry entries sourced from PyPI, currently `pyforestscan>=0.4`, are installed afterward with `<backend env>/python -m pip install ...` using the same sanitized environment. The installer must never call QGIS Python pip. Package/import mapping is audited in [PBM Internal Beta Troubleshooting](PBM_INTERNAL_BETA_TROUBLESHOOTING.md).

@@ -65,6 +65,7 @@ This documentation is organized for users, scientists, developers, maintainers, 
 - [PBM Micromamba Bootstrap](backend/PBM_MICROMAMBA_BOOTSTRAP.md)
 - [PBM Installer Safety](backend/PBM_INSTALLER_SAFETY.md)
 - [PBM Rollback](backend/PBM_ROLLBACK.md)
+- [PBM Internal Beta Troubleshooting](backend/PBM_INTERNAL_BETA_TROUBLESHOOTING.md)
 - [PBM QGIS Compatibility](backend/PBM_QGIS_COMPATIBILITY.md)
 - [PBM Environment Spec](backend/PBM_ENVIRONMENT_SPEC.md)
 - [PBM State Machine](backend/PBM_STATE_MACHINE.md)
