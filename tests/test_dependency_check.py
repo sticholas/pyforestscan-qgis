@@ -51,18 +51,18 @@ class DependencyCheckTests(unittest.TestCase):
 
         statuses = {check.name: check.status for check in report.checks}
 
-        self.assertIs(statuses["pyforestscan"], CheckStatus.FAIL)
-        self.assertIs(statuses["pdal"], CheckStatus.FAIL)
-        self.assertIs(statuses["osgeo.gdal"], CheckStatus.FAIL)
-        self.assertIs(statuses["rasterio"], CheckStatus.FAIL)
-        self.assertIs(statuses["numpy"], CheckStatus.FAIL)
+        self.assertIs(statuses["pyforestscan"], CheckStatus.WARNING)
+        self.assertIs(statuses["pdal"], CheckStatus.WARNING)
+        self.assertIs(statuses["osgeo.gdal"], CheckStatus.WARNING)
+        self.assertIs(statuses["rasterio"], CheckStatus.WARNING)
+        self.assertIs(statuses["numpy"], CheckStatus.WARNING)
         self.assertIs(statuses["QGIS version"], CheckStatus.WARNING)
-        self.assertIs(report.readiness, ReadinessStatus.READY_WITH_PBM_BACKEND)
-        self.assertIn("PBM backend is READY", report.summary)
+        self.assertIs(report.readiness, ReadinessStatus.READY)
+        self.assertIn("Execution Backend: PBM Backend", report.summary)
         guidance = {check.name: check.guidance for check in report.checks}
-        self.assertIn("PBM-routed products", guidance["pyforestscan"])
-        self.assertIn("QGIS Python", guidance["pdal"])
-        self.assertIn("QGIS", guidance["osgeo.gdal"])
+        self.assertIn("QGIS-Python-only tools", guidance["pyforestscan"])
+        self.assertIn("manual fallback", guidance["pdal"])
+        self.assertIn("manual fallback", guidance["osgeo.gdal"])
 
     def test_dependency_report_creation_for_ready_environment(self) -> None:
         gdal = ModuleType("osgeo.gdal")
@@ -103,24 +103,54 @@ class DependencyCheckTests(unittest.TestCase):
 
         statuses = {check.name: check.status for check in report.checks}
         self.assertIs(statuses["PBM managed backend"], CheckStatus.WARNING)
+        self.assertIs(statuses["pyforestscan"], CheckStatus.FAIL)
+        self.assertIs(statuses["pdal"], CheckStatus.FAIL)
         self.assertIs(report.readiness, ReadinessStatus.NOT_READY)
 
-    def test_qgis_dependencies_missing_and_pbm_ready_is_overall_ready_with_pbm(self) -> None:
+    def test_qgis_dependencies_missing_and_pbm_ready_is_overall_ready(self) -> None:
         report = collect_environment_report(
             plugin_path="/tmp/plugin",
             import_module=FakeImporter({}),
             version_lookup=lambda package: "metadata-version",
-            pbm_backend_check=lambda: EnvironmentCheckResult("PBM managed backend", CheckStatus.PASS, "PBM backend is READY."),
+            pbm_backend_check=lambda: EnvironmentCheckResult("PBM managed backend", CheckStatus.PASS, "PBM backend is READY. Backend Python: /tmp/pbm/env/bin/python."),
             execution_backend_check=lambda: EnvironmentCheckResult("Active execution backend", CheckStatus.PASS, "PyForestScan Backend Manager will be preferred."),
         )
         rendered = format_environment_report(report)
+        statuses = {check.name: check.status for check in report.checks}
+        messages = {check.name: check.message for check in report.checks}
 
-        self.assertIs(report.readiness, ReadinessStatus.READY_WITH_PBM_BACKEND)
-        self.assertIn("QGIS Python Scientific Packages", rendered)
-        self.assertIn("[FAIL] pyforestscan", rendered)
-        self.assertIn("PBM backend is READY", rendered)
+        self.assertIs(report.readiness, ReadinessStatus.READY)
+        self.assertIn("QGIS Python fallback environment", rendered)
+        self.assertNotIn("QGIS Python Scientific Packages", rendered)
+        self.assertIs(statuses["pyforestscan"], CheckStatus.WARNING)
+        self.assertIs(statuses["pdal"], CheckStatus.WARNING)
+        self.assertIn("Not installed — optional when PBM backend is READY.", messages["pyforestscan"])
+        self.assertIn("Not installed — optional when PBM backend is READY.", messages["pdal"])
+        self.assertNotIn("[FAIL] pyforestscan", rendered)
+        self.assertNotIn("[FAIL] pdal", rendered)
+        self.assertIn("PBM Backend: READY", rendered)
+        self.assertIn("Backend Python", rendered)
+        self.assertIn("Execution Backend: PBM Backend", rendered)
         self.assertIn("PBM-routed products", rendered)
+        self.assertIn("Overall Environment Status: READY", rendered)
+        self.assertIn("Final summary: READY", rendered)
+        self.assertNotIn("Final summary: NOT READY", rendered)
         self.assertNotIn("processing cannot run", rendered.lower())
+
+    def test_pbm_ready_report_does_not_list_pyforestscan_or_pdal_as_blocking_failures(self) -> None:
+        report = collect_environment_report(
+            plugin_path="/tmp/plugin",
+            import_module=FakeImporter({}),
+            version_lookup=lambda package: "metadata-version",
+            pbm_backend_check=lambda: EnvironmentCheckResult("PBM managed backend", CheckStatus.PASS, "Managed backend verified as READY."),
+            execution_backend_check=lambda: EnvironmentCheckResult("Active execution backend", CheckStatus.PASS, "PBM Backend"),
+        )
+        rendered = format_environment_report(report)
+
+        self.assertNotIn("[FAIL] pyforestscan", rendered)
+        self.assertNotIn("[FAIL] pdal", rendered)
+        self.assertNotIn("pyforestscan: Could not import", rendered)
+        self.assertNotIn("pdal: Could not import", rendered)
 
     def test_qgis_dependencies_missing_and_pbm_missing_is_not_ready(self) -> None:
         report = collect_environment_report(
@@ -152,7 +182,7 @@ class DependencyCheckTests(unittest.TestCase):
         )
 
         self.assertIs(report.readiness, ReadinessStatus.READY_WITH_QGIS_PYTHON)
-        self.assertIn("QGIS Python scientific packages are ready", report.summary)
+        self.assertIn("QGIS Python fallback environment is ready", report.summary)
 
     def test_no_manual_setup_scope_reports_routed_products(self) -> None:
         report = collect_environment_report(

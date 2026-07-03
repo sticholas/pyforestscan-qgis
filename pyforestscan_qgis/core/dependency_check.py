@@ -30,7 +30,6 @@ class ReadinessStatus(str, Enum):
     """Overall readiness classification for processing capability."""
 
     READY = "READY"
-    READY_WITH_PBM_BACKEND = "READY WITH PBM BACKEND"
     READY_WITH_QGIS_PYTHON = "READY WITH QGIS PYTHON"
     PARTIALLY_READY = "PARTIALLY READY"
     NOT_READY = "NOT READY"
@@ -63,12 +62,12 @@ ExecutionBackendCheck = Callable[[], EnvironmentCheckResult]
 
 
 INSTALLATION_GUIDANCE = (
-    "ZIP installation only installs the QGIS plugin. QGIS Python scientific "
-    "packages are optional for PBM-routed products when the managed PBM backend "
-    "is READY. QGIS-Python-only tools still require matching packages in the "
-    "active QGIS Python environment. Windows internal beta builds can install "
-    "PBM into the user-local PyForestScan folder without changing QGIS or "
-    "system Python. Do not use system Python unless it is the Python used by QGIS."
+    "ZIP installation only installs the QGIS plugin. PBM is the intended "
+    "execution backend for routed products when it is READY. QGIS Python "
+    "scientific packages are an optional fallback environment except for "
+    "QGIS-Python-only tools such as Height Above Ground point-cloud export and "
+    "Preprocess Point Cloud. Windows internal beta builds install PBM into the "
+    "user-local PyForestScan folder without changing QGIS or system Python."
 )
 
 
@@ -79,7 +78,8 @@ QGIS_RUNTIME_CHECKS = {
     "QGIS version",
     "Plugin path",
 }
-QGIS_SCIENTIFIC_CHECKS = {"pyforestscan", "pdal", "osgeo.gdal", "rasterio", "numpy"}
+QGIS_FALLBACK_CHECKS = {"pyforestscan", "pdal", "osgeo.gdal", "rasterio", "numpy"}
+QGIS_SCIENTIFIC_CHECKS = QGIS_FALLBACK_CHECKS
 PBM_CHECKS = {"PBM managed backend"}
 EXECUTION_CHECKS = {"Active execution backend", "Selected execution backend", "No-manual-setup scope"}
 PBM_ROUTED_PRODUCTS = (
@@ -208,23 +208,22 @@ def build_environment_report(
     """Build the final report and readiness value from individual checks."""
     check_tuple = tuple(checks)
     by_name = {check.name: check for check in check_tuple}
-    has_full_environment_sections = QGIS_SCIENTIFIC_CHECKS.issubset(by_name) and "PBM managed backend" in by_name
+    has_full_environment_sections = QGIS_FALLBACK_CHECKS.issubset(by_name) and "PBM managed backend" in by_name
     if has_full_environment_sections:
-        qgis_scientific_ready = all(by_name[name].status is not CheckStatus.FAIL for name in QGIS_SCIENTIFIC_CHECKS)
         pbm_check = by_name["PBM managed backend"]
-        pbm_ready = pbm_check.status is CheckStatus.PASS and ("ready" in pbm_check.message.lower() or "verified" in pbm_check.message.lower())
-        if pbm_ready and qgis_scientific_ready:
+        pbm_ready = _pbm_check_is_ready(pbm_check)
+        check_tuple = _with_optional_qgis_fallback_checks(check_tuple, pbm_ready)
+        by_name = {check.name: check for check in check_tuple}
+        qgis_fallback_ready = all(by_name[name].status is not CheckStatus.FAIL for name in QGIS_FALLBACK_CHECKS)
+        if pbm_ready:
             readiness = ReadinessStatus.READY
-            summary = "PBM backend and QGIS Python scientific packages are ready."
-        elif pbm_ready:
-            readiness = ReadinessStatus.READY_WITH_PBM_BACKEND
-            summary = "PBM backend is READY. Routed products can run without installing PyForestScan or PDAL into QGIS Python."
-        elif qgis_scientific_ready:
+            summary = "PBM backend is READY. Execution Backend: PBM Backend. Routed processing can run without QGIS Python PyForestScan/PDAL."
+        elif qgis_fallback_ready:
             readiness = ReadinessStatus.READY_WITH_QGIS_PYTHON
-            summary = "QGIS Python scientific packages are ready. PBM backend is optional or not installed."
+            summary = "QGIS Python fallback environment is ready. PBM backend is optional or not installed."
         else:
             readiness = ReadinessStatus.NOT_READY
-            summary = "Neither PBM backend nor QGIS Python scientific packages are ready for processing."
+            summary = "Neither PBM backend nor QGIS Python fallback environment is ready for processing."
     elif any(check.status is CheckStatus.FAIL for check in check_tuple):
         readiness = ReadinessStatus.NOT_READY
         summary = "One or more required dependencies are missing."
@@ -247,13 +246,14 @@ def format_environment_report(report: EnvironmentReport) -> str:
     lines = [
         "PyForestScan QGIS Environment Check",
         "===================================",
+        f"Overall Environment Status: {report.readiness.value}",
         "",
     ]
     sections = (
         ("QGIS / Plugin Runtime", QGIS_RUNTIME_CHECKS),
-        ("QGIS Python Scientific Packages", QGIS_SCIENTIFIC_CHECKS),
         ("PBM Managed Backend", PBM_CHECKS),
         ("Execution Readiness", EXECUTION_CHECKS),
+        ("QGIS Python fallback environment", QGIS_FALLBACK_CHECKS),
     )
     rendered: set[int] = set()
     for title, names in sections:
@@ -264,6 +264,9 @@ def format_environment_report(report: EnvironmentReport) -> str:
         for check in section_checks:
             rendered.add(id(check))
             _append_check_lines(lines, check)
+        if title == "PBM Managed Backend" and report.readiness is ReadinessStatus.READY:
+            lines.append("PBM Backend: READY")
+            lines.append("Routed products available: " + ", ".join(PBM_ROUTED_PRODUCTS) + ".")
         if title == "Execution Readiness":
             lines.append("PBM-routed products: " + ", ".join(PBM_ROUTED_PRODUCTS) + ".")
             lines.append("QGIS-Python-only remaining: " + ", ".join(QGIS_PYTHON_ONLY_PRODUCTS) + ".")
@@ -298,13 +301,35 @@ def _append_check_lines(lines: list[str], check: EnvironmentCheckResult) -> None
         lines.append(f"    Guidance: {check.guidance}")
 
 
+def _pbm_check_is_ready(check: EnvironmentCheckResult) -> bool:
+    return check.status is CheckStatus.PASS and ("ready" in check.message.lower() or "verified" in check.message.lower())
+
+
+def _with_optional_qgis_fallback_checks(checks: tuple[EnvironmentCheckResult, ...], pbm_ready: bool) -> tuple[EnvironmentCheckResult, ...]:
+    if not pbm_ready:
+        return checks
+    updated: list[EnvironmentCheckResult] = []
+    for check in checks:
+        if check.name in QGIS_FALLBACK_CHECKS and check.status is CheckStatus.FAIL:
+            updated.append(
+                EnvironmentCheckResult(
+                    name=check.name,
+                    status=CheckStatus.WARNING,
+                    message="Not installed — optional when PBM backend is READY.",
+                    version=check.version,
+                    guidance="Install into QGIS Python only if you choose QGIS-Python-only tools or want a manual fallback.",
+                )
+            )
+        else:
+            updated.append(check)
+    return tuple(updated)
+
+
 def _recommended_next_step(report: EnvironmentReport) -> str:
-    if report.readiness is ReadinessStatus.READY_WITH_PBM_BACKEND:
-        return "Run PBM-routed products normally. Install QGIS Python scientific packages only if you need Height Above Ground export or Preprocess Point Cloud."
     if report.readiness is ReadinessStatus.READY_WITH_QGIS_PYTHON:
         return "Processing can run through QGIS Python. PBM backend installation is optional for no-manual-setup routed workflows."
     if report.readiness is ReadinessStatus.READY:
-        return "Run processing normally. PBM is preferred for routed products when configured; QGIS Python remains available as fallback."
+        return "Run PBM-routed products normally. Install QGIS Python scientific packages only if you need Height Above Ground export, Preprocess Point Cloud, or a manual fallback."
     if report.readiness is ReadinessStatus.NOT_READY:
         return "Install or repair PBM backend, or install matching scientific packages into the active QGIS Python environment."
     return "Review warnings, then choose PBM backend or QGIS Python based on the workflow you plan to run."
@@ -355,10 +380,12 @@ def _pbm_backend_status_check() -> EnvironmentCheckResult:
         )
 
     if result.status is BackendStatus.READY:
+        backend_python = getattr(getattr(result, "state", None), "python_executable", None)
+        python_text = f" Backend Python: {backend_python}." if backend_python else ""
         return EnvironmentCheckResult(
             name="PBM managed backend",
             status=CheckStatus.PASS,
-            message="PBM backend is READY. Routed products can run without installing PyForestScan or PDAL into QGIS Python.",
+            message=f"PBM Backend: READY.{python_text} Routed products can run without installing PyForestScan or PDAL into QGIS Python.",
             guidance="PBM-routed products: Dataset Explorer local inspection, CHM, Canopy Cover, PAD, PAI, FHD, Rumple, DTM, Point Density, and Voxel Statistic.",
         )
     if result.status is BackendStatus.REPAIR_REQUIRED:

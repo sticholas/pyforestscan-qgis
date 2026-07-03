@@ -182,7 +182,7 @@ class PBMProcessingExecutionTests(unittest.TestCase):
     def test_batch_preflight_allows_pbm_backend_when_qgis_deps_missing(self) -> None:
         class FakeAdapter:
             def check_environment(self):
-                return EnvironmentReport((), ReadinessStatus.READY_WITH_PBM_BACKEND, "PBM backend is READY")
+                return EnvironmentReport((), ReadinessStatus.READY, "PBM backend is READY")
 
             def selected_execution_backend(self):
                 return "pbm_backend"
@@ -201,7 +201,7 @@ class PBMProcessingExecutionTests(unittest.TestCase):
             report = run_batch_preflight(request, adapter=FakeAdapter())  # type: ignore[arg-type]
 
         self.assertTrue(report.ready)
-        self.assertTrue(any("PBM backend is READY" in warning for warning in report.warnings))
+        self.assertEqual((), report.blockers)
 
 
 if __name__ == "__main__":

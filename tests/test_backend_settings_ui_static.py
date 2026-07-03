@@ -64,5 +64,19 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
 
 
 
+    def test_environment_page_status_uses_report_readiness(self) -> None:
+        source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
+
+        self.assertIn('self.status_label.setText(f"Status: {report.readiness.value}")', source)
+        self.assertIn("self.environmentChanged.emit(report.readiness.value)", source)
+
+    def test_environment_check_algorithm_uses_shared_report_formatter(self) -> None:
+        source = (ROOT / "pyforestscan_qgis/algorithms/placeholder_algorithms.py").read_text(encoding="utf-8")
+
+        self.assertIn("report = collect_environment_report(plugin_path=plugin_root())", source)
+        self.assertIn("rendered_report = format_environment_report(report)", source)
+        self.assertIn("return {self.OUTPUT_MESSAGE: rendered_report}", source)
+
+
 if __name__ == "__main__":
     unittest.main()

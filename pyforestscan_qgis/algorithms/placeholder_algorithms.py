@@ -223,7 +223,9 @@ class EnvironmentCheckAlgorithm(PyForestScanAlgorithm):
                 else:
                     feedback.pushInfo(line)
             elif line.startswith(f"[{CheckStatus.FAIL.value}]"):
-                if callable(report_error):
+                if "optional when PBM backend is READY" in line:
+                    feedback.pushInfo(line)
+                elif callable(report_error):
                     report_error(line, fatalError=False)
                 else:
                     feedback.pushInfo(line)
