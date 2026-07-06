@@ -7,6 +7,8 @@ first public release, changes are tracked under `Unreleased`.
 
 ## Unreleased
 
+- Phase 24D standardizes Mission Control UX with a permanent design standard, primary-action terminology, hidden empty sections, collapsed technical/default detail, lighter Advisor/Workspace/Results pages, and QGIS-free UX regression tests while leaving PBM, processing algorithms, scientific calculations, and the Advanced Toolbox unchanged.
+
 ## 0.1.0-beta.2 - 2026-07-06
 
 - PBM backend installation is enabled for Windows internal beta builds and installs into the user-local PyForestScan backend folder without modifying QGIS Python, system Python, PATH, shell profiles, or QGIS installation folders.

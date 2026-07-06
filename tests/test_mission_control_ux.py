@@ -9,6 +9,8 @@ from pyforestscan_qgis.ui.ux_summary import (
     backend_summary_from_environment,
     environment_headline,
     qgis_fallback_summary,
+    empty_state_message,
+    primary_action_label,
     routed_products_summary,
     technical_sections_default_collapsed,
     workflow_action_labels,
@@ -21,7 +23,17 @@ class MissionControlUxTests(unittest.TestCase):
     """Verify compact workflow labels without importing QGIS."""
 
     def test_home_action_labels_match_beta_workflow(self) -> None:
-        self.assertEqual(workflow_action_labels(), ("Start Single Dataset", "Start Batch", "Continue Last Run"))
+        self.assertEqual(workflow_action_labels(), ("Open Dataset", "Start Batch", "Continue Previous Session"))
+
+    def test_empty_states_are_concise_guidance(self) -> None:
+        self.assertEqual(empty_state_message("advisor"), "Analyze a dataset to receive recommendations.")
+        self.assertEqual(empty_state_message("results"), "Run processing to generate output products.")
+        self.assertEqual(empty_state_message("workspace"), "Open or create a workspace to begin.")
+
+    def test_primary_action_labels_are_standardized(self) -> None:
+        self.assertEqual(primary_action_label("dataset"), "Analyze Dataset")
+        self.assertEqual(primary_action_label("processing"), "Run Processing")
+        self.assertEqual(primary_action_label("settings"), "Verify Backend")
 
     def test_backend_ready_summary_is_not_scary(self) -> None:
         self.assertEqual(backend_summary_from_environment("READY"), "Backend status: PBM ready for routed products")
@@ -41,6 +53,10 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn('Technical dependency details', source)
         self.assertIn('Advanced Batch Options', source)
         self.assertIn('Batch Footprint Estimate', source)
+        self.assertIn('Advanced / Troubleshooting: backend details', source)
+        self.assertIn('self.recommendations_card.setVisible(bool(report.suggested_next_actions))', source)
+        self.assertIn('self.warnings_card.setVisible(bool(report.warnings))', source)
+        self.assertIn('self.jobs_section.setVisible(False)', source)
 
     def test_workflow_buttons_and_results_buttons_are_present(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")

@@ -9,6 +9,7 @@ Current internal beta release candidate: `0.1.0-beta.2`. Build artifacts are `di
 ## Current Capabilities
 
 - **Mission Control** guided workflow for single datasets and batch runs.
+- **Mission Control UX standard** with primary-action pages, collapsed technical details, compact empty states, and consistent guided workflow terminology.
 - **Environment diagnostics** for QGIS Python, PyForestScan, PDAL, GDAL, rasterio, and numpy.
 - **Dataset Explorer** reports with point count, bounds, CRS, density, classifications, warnings, footprint preview, JSON/CSV/HTML outputs.
 - **Scientific Advisor** with deterministic, documented recommendations and QGIS next-step guidance.
@@ -132,6 +133,7 @@ Key entry points:
 - [PBM Processing Execution](docs/backend/PBM_PROCESSING_EXECUTION.md)
 - [PBM Runner Protocol](docs/backend/PBM_RUNNER_PROTOCOL.md)
 - [QGIS Compatibility Layer](docs/development/QGIS_COMPATIBILITY_LAYER.md)
+- [Mission Control UX Standard](docs/development/MISSION_CONTROL_UX_STANDARD.md)
 - [Release Checklist](docs/releases/INTERNAL_RELEASE_CHECKLIST.md)
 - [PBM Internal Beta Smoke Test](docs/releases/PBM_INTERNAL_BETA_SMOKE_TEST.md)
 - [No-Manual-Setup Beta Smoke Test](docs/releases/NO_MANUAL_SETUP_BETA_SMOKE_TEST.md)

@@ -27,16 +27,16 @@ flowchart TD
 
 - Home: compact workflow dashboard with backend status, environment status,
   current dataset or batch context, last output folder, next action guidance, and
-  primary Start Single Dataset / Start Batch / Continue Last Run actions. Version
+  primary Open Dataset / Start Batch / Continue Previous Session actions. Version
   details and recent activity are collapsed by default.
-- Workspace: welcome/resume surface with Continue Last Workspace, Start New
+- Workspace: welcome/resume surface with Resume Workspace, Start New
   Workspace, Recent Workspaces, status, recent runs, key output links, timeline,
   notes, and clear/reset controls.
 - Environment: execution-readiness summary with PBM backend status first,
   active execution backend, a Refresh action, and an Open Backend Settings action.
   QGIS Python fallback checks and technical dependency details are collapsed by default.
 - Scientific Advisor: deterministic Knowledge Engine guidance after Dataset Explorer, including warnings, product explanations, parameter suggestions, and QGIS QA tools.
-- Dataset: choose LAS, LAZ, COPC, or EPT plus an output folder, create the active
+- Dataset: choose LAS, LAZ, COPC, or EPT plus an output folder, analyze the dataset, create the active
   run folder, write Dataset Explorer reports, show a spatial footprint preview,
   add the footprint to QGIS, and zoom the main map canvas.
 - Planning: Product Planner uses the active Dataset Explorer report and writes
@@ -60,6 +60,8 @@ The Qt shell sets a production-oriented minimum size and Mission Control applies
 runtime stretch factors so the page stack expands horizontally and vertically.
 Each page uses one full-width vertical scroll area; individual pages should avoid
 adding nested scroll areas unless there is a specific interaction reason.
+
+Mission Control follows the permanent [Mission Control UX Standard](../development/MISSION_CONTROL_UX_STANDARD.md): one primary action per page, no empty sections, collapsed technical details, concise empty states, and consistent workflow terminology.
 
 - `pyforestscan_qgis/ui/forms/mission_control.ui`: Qt Designer shell for the
   dock header, sidebar, page stack, and status bar.

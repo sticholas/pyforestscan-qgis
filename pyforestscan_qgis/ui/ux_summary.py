@@ -32,7 +32,36 @@ MISSION_WORKFLOW_STEPS: tuple[str, ...] = (
 
 def workflow_action_labels() -> tuple[str, str, str]:
     """Return the primary Home action labels."""
-    return ("Start Single Dataset", "Start Batch", "Continue Last Run")
+    return ("Open Dataset", "Start Batch", "Continue Previous Session")
+
+
+def empty_state_message(page: str) -> str:
+    """Return concise guidance for empty Mission Control pages."""
+    messages = {
+        "advisor": "Analyze a dataset to receive recommendations.",
+        "results": "Run processing to generate output products.",
+        "workspace": "Open or create a workspace to begin.",
+        "dataset": "Select a lidar dataset, then analyze it.",
+        "planning": "Analyze a dataset before choosing products.",
+    }
+    return messages.get(page.lower(), "Choose the next action to continue.")
+
+
+def primary_action_label(page: str) -> str:
+    """Return the standard dominant action label for a Mission Control page."""
+    labels = {
+        "home": "Open Dataset",
+        "environment": "Refresh Environment",
+        "dataset": "Analyze Dataset",
+        "advisor": "Continue to Planning",
+        "planning": "Continue to Processing",
+        "processing": "Run Processing",
+        "batch": "Run Batch",
+        "results": "Open Output Folder",
+        "settings": "Verify Backend",
+        "workspace": "Resume Workspace",
+    }
+    return labels.get(page.lower(), "Continue")
 
 
 def backend_summary_from_environment(environment: str) -> str:

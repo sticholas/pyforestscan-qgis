@@ -4,7 +4,7 @@ Use this checklist before sharing an internal PyForestScan QGIS build with teste
 
 ## Phase 24C Release Candidate Status
 
-Artifact SHA-256: `a455ae892c681c71d8c53516d002bc793f780023af7b6aac6898de0b76e0d1ec`
+Artifact SHA-256: `19549977f373efa5c2c7804fe5222e2d999f12d9cf1c5f0823ac81de9e81c51e`
 
 | Area | Status | Evidence / next action |
 | --- | --- | --- |
@@ -62,6 +62,7 @@ python3 scripts/prepare_github_release.py --dry-run
 - Run a small sequential batch.
 - Run a small Parallel Safe batch with two workers after preflight.
 - Confirm External Worker mode is not selectable.
+- Confirm Mission Control follows the UX standard: no empty sections, one clear primary action per page, and technical detail collapsed by default.
 
 ## Release Artifacts
 

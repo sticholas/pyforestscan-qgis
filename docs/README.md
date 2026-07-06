@@ -50,6 +50,7 @@ This documentation is organized for users, scientists, developers, maintainers, 
 - [Batch Processing](development/BATCH_PROCESSING.md)
 - [Workspace Architecture](development/WORKSPACE_ARCHITECTURE.md)
 - [QGIS Compatibility Layer](development/QGIS_COMPATIBILITY_LAYER.md)
+- [Mission Control UX Standard](development/MISSION_CONTROL_UX_STANDARD.md)
 - [Testing Strategy](TESTING_STRATEGY.md)
 
 ## Backend Manager
