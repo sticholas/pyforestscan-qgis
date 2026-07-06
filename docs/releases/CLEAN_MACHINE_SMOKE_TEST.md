@@ -96,3 +96,25 @@ Record the following after testing:
 - Guided Mode result:
 - Backend page clarity issues:
 - Tracebacks or QGIS log messages:
+
+
+## Phase 24A Result Fields
+
+Artifact SHA-256: `90c9bfd7405d89a2f401adac8132472ae1c7ac93b7cfb944ba2282f89da13e30`
+
+| QA item | Status | Notes |
+| --- | --- | --- |
+| ZIP install in QGIS | Pending manual tester | Requires clean Windows/QGIS GUI profile. |
+| Mission Control opens | Pending manual tester | Confirm toolbar/menu launch. |
+| PBM backend install | Pending manual tester | Confirm progress UI reaches Backend Ready. |
+| Environment Check after PBM | Pending manual tester | Expected overall `READY`. |
+| Guided Dataset Explorer | Pending manual tester | Small LAS/LAZ/COPC. |
+| Guided CHM | Pending manual tester | PBM-routed. |
+| Guided Canopy Cover | Pending manual tester | PBM-routed. |
+| Guided PAD | Pending manual tester | PBM-routed. |
+| Guided PAI | Pending manual tester | PBM-routed. |
+| Guided FHD | Pending manual tester | PBM-routed. |
+| Guided Rumple | Pending manual tester | PBM-routed. |
+| Advanced Toolbox groups | Pending manual tester | Confirm groups appear cleanly. |
+| Small batch run | Pending manual tester | Sequential PBM-routed batch. |
+| No manual QGIS Python deps | Pending manual tester | Confirm routed products run without QGIS Python PyForestScan/PDAL. |

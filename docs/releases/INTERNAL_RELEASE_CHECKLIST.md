@@ -2,6 +2,28 @@
 
 Use this checklist before sharing an internal PyForestScan QGIS build with testers.
 
+## Phase 24A Release Candidate Status
+
+Artifact SHA-256: `90c9bfd7405d89a2f401adac8132472ae1c7ac93b7cfb944ba2282f89da13e30`
+
+| Area | Status | Evidence / next action |
+| --- | --- | --- |
+| Branch | Pass | `develop` |
+| Working tree before QA | Pass | Clean before Phase 24A edits. |
+| Unit tests | Pass | 291 tests passed in repository validation. |
+| Compile check | Pass | `python3 -m compileall pyforestscan_qgis` |
+| Package validation | Pass | `dist/pyforestscan_qgis.zip` validated. |
+| Docs links | Pass | Local Markdown links resolve. |
+| Release validation | Pass | `scripts/validate_release.py` passed. |
+| ZIP install in QGIS | Pending manual tester | Requires clean Windows/QGIS GUI environment. |
+| Mission Control opens | Pending manual tester | Confirm from installed ZIP. |
+| PBM backend install | Pending manual tester | Confirm Backend page progress reaches Backend Ready. |
+| Environment Check after PBM | Pending manual tester | Expected overall `READY`; QGIS Python deps optional fallback. |
+| Guided Mode products | Pending manual tester | Dataset Explorer, CHM, Canopy Cover, PAD, PAI, FHD, Rumple. |
+| Advanced Toolbox groups | Pending manual tester | Diagnostics, Input / I/O, Preprocessing / Filters, Terrain, Metrics. |
+| Small batch run | Pending manual tester | Sequential batch with PBM-routed product. |
+| No manual QGIS Python deps | Pending manual tester | Confirm PBM-routed products run without QGIS Python PyForestScan/PDAL. |
+
 ## Repository Health
 
 - Confirm branch is `develop`.
@@ -12,7 +34,7 @@ Use this checklist before sharing an internal PyForestScan QGIS build with teste
 
 ## Automated Validation
 
-Run from `/home/milo/repos/pyforestscan-qgis`:
+Run from `/home/milo/repos/pyforestscan-qgis`. Phase 24A executed these commands except the dry-run GitHub release helper, which is prepared below:
 
 ```bash
 python3 -m unittest discover tests
@@ -53,3 +75,17 @@ python3 scripts/prepare_github_release.py --dry-run
 ## Go / No-Go
 
 Go only when tests pass, package validation passes, QGIS smoke tests pass, and known limitations are acceptable for internal testers.
+
+
+## Tag And Release Commands
+
+Prepared for maintainer execution after manual clean-machine QA passes:
+
+```bash
+git status --short --branch
+git tag -a v0.1.0-beta.1 -m "v0.1.0-beta.1 internal beta"
+git push origin v0.1.0-beta.1
+python3 scripts/prepare_github_release.py --dry-run
+```
+
+Do not create the GitHub release unless explicitly instructed after internal tester QA is recorded.
