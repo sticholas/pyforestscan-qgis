@@ -1,6 +1,6 @@
 # Clean Machine ZIP Smoke Test
 
-Target artifact: `dist/pyforestscan_qgis-v0.1.0-beta.1.zip`.
+Target artifact: `dist/pyforestscan_qgis-v0.1.0-beta.2.zip`.
 
 This checklist is for a clean Windows/QGIS environment where PyForestScan QGIS is installed only from the ZIP. It separates plugin install readiness from scientific dependency readiness.
 
@@ -16,7 +16,7 @@ This checklist is for a clean Windows/QGIS environment where PyForestScan QGIS i
 
 1. Open QGIS Plugin Manager.
 2. Choose **Install from ZIP**.
-3. Select `dist/pyforestscan_qgis-v0.1.0-beta.1.zip`.
+3. Select `dist/pyforestscan_qgis-v0.1.0-beta.2.zip`.
 4. Confirm QGIS accepts the ZIP without traceback.
 5. Restart QGIS if QGIS requests it.
 
@@ -72,7 +72,7 @@ Only run this section when Environment Check is `READY`.
 
 ## Release Readiness Status
 
-| Item | Status for v0.1.0-beta.1 | Notes |
+| Item | Status for v0.1.0-beta.2 | Notes |
 | --- | --- | --- |
 | ZIP install ready | Yes, pending this clean-machine smoke result | Structural package validation passes. |
 | Mission Control startup | Expected yes | Does not require scientific deps at import time. |
@@ -98,9 +98,9 @@ Record the following after testing:
 - Tracebacks or QGIS log messages:
 
 
-## Phase 24A Result Fields
+## Phase 24C Result Fields
 
-Artifact SHA-256: `70708bce2c719b338a692e34f448100980bba1e6c8bc664f7a7ee3601e89b4ba`
+Artifact SHA-256: `a455ae892c681c71d8c53516d002bc793f780023af7b6aac6898de0b76e0d1ec`
 
 | QA item | Status | Notes |
 | --- | --- | --- |

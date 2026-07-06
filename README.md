@@ -4,6 +4,8 @@ PyForestScan QGIS is a professional QGIS interface for [PyForestScan](https://py
 
 PyForestScan remains the scientific engine. This repository provides the QGIS application layer: environment diagnostics, dataset inspection, product planning, processing orchestration, output loading, batch execution, workspace history, and documentation.
 
+Current internal beta release candidate: `0.1.0-beta.2`. Build artifacts are `dist/pyforestscan_qgis-v0.1.0-beta.2.zip` and `dist/pyforestscan_qgis.zip` after running `python3 scripts/package_plugin.py`.
+
 ## Current Capabilities
 
 - **Mission Control** guided workflow for single datasets and batch runs.

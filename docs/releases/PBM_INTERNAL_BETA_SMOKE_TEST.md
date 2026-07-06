@@ -1,6 +1,6 @@
 # PBM Internal Beta Smoke Test
 
-Target artifact: `dist/pyforestscan_qgis-v0.1.0-beta.1.zip`.
+Target artifact: `dist/pyforestscan_qgis-v0.1.0-beta.2.zip`.
 
 This checklist validates the Phase 23C Windows internal beta backend installer. It must be run on a clean Windows/QGIS 3.x profile where the plugin is installed only from the ZIP.
 
@@ -16,7 +16,7 @@ This checklist validates the Phase 23C Windows internal beta backend installer. 
 ## ZIP Install
 
 1. Open QGIS Plugin Manager.
-2. Install `dist/pyforestscan_qgis-v0.1.0-beta.1.zip` from ZIP.
+2. Install `dist/pyforestscan_qgis-v0.1.0-beta.2.zip` from ZIP.
 3. Confirm the plugin loads without traceback.
 4. Open Mission Control.
 5. Confirm Advanced Toolbox groups are visible.

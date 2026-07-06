@@ -1,6 +1,6 @@
 # No-Manual-Setup Beta Smoke Test
 
-Target artifact: `dist/pyforestscan_qgis-v0.1.0-beta.1.zip`.
+Target artifact: `dist/pyforestscan_qgis-v0.1.0-beta.2.zip`.
 
 ## Status
 
@@ -21,7 +21,7 @@ Phase 23H improves staged verification diagnostics. If installation fails at `VE
 - No manually installed `pyforestscan`, `pdal`, `rasterio`, or extra scientific packages in QGIS Python.
 - No existing `%LOCALAPPDATA%\PyForestScan\backend` unless testing repair/resume.
 - External Worker mode is not selectable.
-- Plugin installed only from `dist/pyforestscan_qgis-v0.1.0-beta.1.zip`.
+- Plugin installed only from `dist/pyforestscan_qgis-v0.1.0-beta.2.zip`.
 
 ## Safety Verification
 

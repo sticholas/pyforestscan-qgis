@@ -7,6 +7,14 @@ first public release, changes are tracked under `Unreleased`.
 
 ## Unreleased
 
+## 0.1.0-beta.2 - 2026-07-06
+
+- PBM backend installation is enabled for Windows internal beta builds and installs into the user-local PyForestScan backend folder without modifying QGIS Python, system Python, PATH, shell profiles, or QGIS installation folders.
+- PBM execution routing supports Dataset Explorer local inspection plus CHM, Canopy Cover, PAD, PAI, FHD, Rumple, DTM, Point Density, and Voxel Statistic when the managed backend is READY.
+- Environment Check now reports execution readiness: PBM READY means overall READY for routed products, with QGIS Python scientific packages shown as optional fallback details rather than blocking failures.
+- Mission Control beta UX is simplified into a compact dashboard, PBM-first Environment page, explicit Processing backend label, output-first Results page, and a three-step Batch flow with technical details collapsed by default.
+- Remaining limitations: Linux/macOS PBM install execution remains planned/experimental, External Worker mode remains disabled, Height Above Ground point-cloud export and Preprocess Point Cloud still require QGIS Python integration, and clean-machine GUI smoke testing must be recorded before broader sharing.
+
 - Phase 24B simplifies Mission Control for internal beta users: Home is a compact dashboard, Environment foregrounds PBM execution readiness with QGIS fallback details collapsed, Processing shows the active backend, Results exposes output-first actions, Batch reads as Discover / Preflight / Run, and developer-heavy PBM details stay under Advanced/Troubleshooting.
 - Phase 24A prepares the internal beta release candidate by recording final ZIP SHA-256, release QA pass/pending fields, clean-machine tester checklist updates, and tag/release command preparation without creating a GitHub release.
 - Phase 23N aligns Environment Check with PBM execution readiness: PBM READY now reports overall `READY`, makes QGIS Python scientific packages an optional fallback section, and prevents missing QGIS Python PyForestScan/PDAL from appearing as blocking failures when routed PBM processing is available.

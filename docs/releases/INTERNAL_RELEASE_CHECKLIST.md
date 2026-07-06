@@ -2,15 +2,15 @@
 
 Use this checklist before sharing an internal PyForestScan QGIS build with testers.
 
-## Phase 24A Release Candidate Status
+## Phase 24C Release Candidate Status
 
-Artifact SHA-256: `70708bce2c719b338a692e34f448100980bba1e6c8bc664f7a7ee3601e89b4ba`
+Artifact SHA-256: `a455ae892c681c71d8c53516d002bc793f780023af7b6aac6898de0b76e0d1ec`
 
 | Area | Status | Evidence / next action |
 | --- | --- | --- |
 | Branch | Pass | `develop` |
-| Working tree before QA | Pass | Clean before Phase 24A edits. |
-| Unit tests | Pass | 291 tests passed in repository validation. |
+| Working tree before QA | Pass | Clean before Phase 24C edits. |
+| Unit tests | Pass | `python3 -m unittest discover tests` passed. |
 | Compile check | Pass | `python3 -m compileall pyforestscan_qgis` |
 | Package validation | Pass | `dist/pyforestscan_qgis.zip` validated. |
 | Docs links | Pass | Local Markdown links resolve. |
@@ -35,7 +35,7 @@ Artifact SHA-256: `70708bce2c719b338a692e34f448100980bba1e6c8bc664f7a7ee3601e89b
 
 ## Automated Validation
 
-Run from `/home/milo/repos/pyforestscan-qgis`. Phase 24A executed these commands except the dry-run GitHub release helper, which is prepared below:
+Run from `/home/milo/repos/pyforestscan-qgis`. Phase 24C executed these commands, including the dry-run GitHub release helper:
 
 ```bash
 python3 -m unittest discover tests
@@ -65,7 +65,7 @@ python3 scripts/prepare_github_release.py --dry-run
 
 ## Release Artifacts
 
-- `dist/pyforestscan_qgis-v0.1.0-beta.1.zip` versioned package.
+- `dist/pyforestscan_qgis-v0.1.0-beta.2.zip` versioned package.
 - `dist/pyforestscan_qgis.zip` latest convenience package.
 - `dist/release_manifest.json` trace manifest.
 - `CHANGELOG.md` entry.
@@ -84,8 +84,8 @@ Prepared for maintainer execution after manual clean-machine QA passes:
 
 ```bash
 git status --short --branch
-git tag -a v0.1.0-beta.1 -m "v0.1.0-beta.1 internal beta"
-git push origin v0.1.0-beta.1
+git tag -a v0.1.0-beta.2 -m "v0.1.0-beta.2 internal beta"
+git push origin v0.1.0-beta.2
 python3 scripts/prepare_github_release.py --dry-run
 ```
 

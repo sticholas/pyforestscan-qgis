@@ -25,14 +25,14 @@ class ReleasePipelineTests(unittest.TestCase):
     def test_version_source_and_metadata_are_synchronized(self) -> None:
         version = read_version_info()
 
-        self.assertEqual(version.plugin_version, "0.1.0-beta.1")
+        self.assertEqual(version.plugin_version, "0.1.0-beta.2")
         self.assertEqual(read_metadata_version(), version.plugin_version)
         self.assertEqual(version.minimum_qgis_version, "3.28")
         self.assertIn(3, version.supported_qgis_major_versions)
         self.assertEqual(version.compatible_pbm_manifest_version, "1.0.0")
 
     def test_versioned_zip_name(self) -> None:
-        self.assertEqual(versioned_zip_path("0.1.0-beta.1", Path("dist")).as_posix(), "dist/pyforestscan_qgis-v0.1.0-beta.1.zip")
+        self.assertEqual(versioned_zip_path("0.1.0-beta.2", Path("dist")).as_posix(), "dist/pyforestscan_qgis-v0.1.0-beta.2.zip")
 
     def test_package_plugin_writes_manifest_and_latest_copy(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -82,18 +82,18 @@ class ReleasePipelineTests(unittest.TestCase):
             package_plugin(output_path=versioned_zip_path(version, dist), latest_path=dist / "pyforestscan_qgis.zip")
             values = prepare_release(dist)
 
-        self.assertEqual(values["tag_name"], "v0.1.0-beta.1")
-        self.assertTrue(values["release_notes_path"].endswith("docs/releases/v0.1.0-beta.1.md"))
-        self.assertTrue(values["zip_artifact_path"].endswith("pyforestscan_qgis-v0.1.0-beta.1.zip"))
+        self.assertEqual(values["tag_name"], "v0.1.0-beta.2")
+        self.assertTrue(values["release_notes_path"].endswith("docs/releases/v0.1.0-beta.2.md"))
+        self.assertTrue(values["zip_artifact_path"].endswith("pyforestscan_qgis-v0.1.0-beta.2.zip"))
         self.assertEqual(len(values["sha256"]), 64)
-        self.assertEqual(release_notes_path(version).name, "v0.1.0-beta.1.md")
+        self.assertEqual(release_notes_path(version).name, "v0.1.0-beta.2.md")
 
     def test_clean_machine_release_docs_exist(self) -> None:
         root = Path(__file__).resolve().parents[1]
         smoke = root / "docs/releases/CLEAN_MACHINE_SMOKE_TEST.md"
         matrix = root / "docs/releases/DEPENDENCY_STATE_MATRIX.md"
 
-        self.assertIn("dist/pyforestscan_qgis-v0.1.0-beta.1.zip", smoke.read_text(encoding="utf-8"))
+        self.assertIn("dist/pyforestscan_qgis-v0.1.0-beta.2.zip", smoke.read_text(encoding="utf-8"))
         self.assertIn("No backend / no QGIS deps", matrix.read_text(encoding="utf-8"))
         self.assertIn("Backend auto-install ready", smoke.read_text(encoding="utf-8"))
 

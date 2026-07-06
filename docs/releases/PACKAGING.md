@@ -31,7 +31,7 @@ python3 scripts/package_plugin.py
 The script writes:
 
 ```text
-dist/pyforestscan_qgis-v0.1.0-beta.1.zip
+dist/pyforestscan_qgis-v0.1.0-beta.2.zip
 dist/pyforestscan_qgis.zip
 dist/release_manifest.json
 ```

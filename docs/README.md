@@ -91,6 +91,7 @@ This documentation is organized for users, scientists, developers, maintainers, 
 - [No-Manual-Setup Beta Smoke Test](releases/NO_MANUAL_SETUP_BETA_SMOKE_TEST.md)
 - [Packaging](releases/PACKAGING.md)
 - [Release Notes Template](releases/RELEASE_NOTES_TEMPLATE.md)
+- [v0.1.0-beta.2 Release Notes](releases/v0.1.0-beta.2.md)
 - [v0.1.0-beta.1 Release Notes](releases/v0.1.0-beta.1.md)
 - [Clean Machine ZIP Smoke Test](releases/CLEAN_MACHINE_SMOKE_TEST.md)
 - [Dependency State Matrix](releases/DEPENDENCY_STATE_MATRIX.md)
