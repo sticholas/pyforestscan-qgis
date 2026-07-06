@@ -4,7 +4,7 @@ Use this checklist before sharing an internal PyForestScan QGIS build with teste
 
 ## Phase 24A Release Candidate Status
 
-Artifact SHA-256: `90c9bfd7405d89a2f401adac8132472ae1c7ac93b7cfb944ba2282f89da13e30`
+Artifact SHA-256: `70708bce2c719b338a692e34f448100980bba1e6c8bc664f7a7ee3601e89b4ba`
 
 | Area | Status | Evidence / next action |
 | --- | --- | --- |
@@ -23,6 +23,7 @@ Artifact SHA-256: `90c9bfd7405d89a2f401adac8132472ae1c7ac93b7cfb944ba2282f89da13
 | Advanced Toolbox groups | Pending manual tester | Diagnostics, Input / I/O, Preprocessing / Filters, Terrain, Metrics. |
 | Small batch run | Pending manual tester | Sequential batch with PBM-routed product. |
 | No manual QGIS Python deps | Pending manual tester | Confirm PBM-routed products run without QGIS Python PyForestScan/PDAL. |
+| Mission Control UX continuity | Pending manual tester | Confirm Home is compact, Environment is not scary when PBM is READY, Batch reads as Discover / Preflight / Run, and technical logs are collapsed. |
 
 ## Repository Health
 

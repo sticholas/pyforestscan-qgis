@@ -88,6 +88,7 @@ from ..core.workspace import (
 )
 from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
+from .ux_summary import backend_summary_from_environment, environment_headline, qgis_fallback_summary, routed_products_summary, workflow_action_labels
 
 ActivityCallback = Callable[[str, str], None]
 
@@ -138,39 +139,37 @@ class HomePage(MissionPage):
 
     startSingleDatasetRequested = pyqtSignal()
     startBatchRequested = pyqtSignal()
+    continueLastRequested = pyqtSignal()
 
     def __init__(self, plugin_version: str, parent: QWidget | None = None) -> None:
         """Create the home dashboard."""
         super().__init__("Home", parent)
         dashboard = self.add_section("Workflow Dashboard")
-        self.environment_label = _body_label("Environment: Unknown")
-        self.dataset_label = _body_label("Active dataset: None")
-        self.batch_label = _body_label("Batch: Not started")
-        self.workspace_label = _body_label("Workspace: None")
-        self.workspace_status_label = _body_label("Workspace status: No workspace open")
-        self.workspace_products_label = _body_label("Products generated: None")
-        self.next_action_label = QLabel("Next: refresh the environment or start a dataset workflow.")
+        self.backend_label = _body_label("Backend status: unknown")
+        self.environment_label = _body_label("Environment status: Unknown")
+        self.dataset_label = _body_label("Current dataset/batch: None")
+        self.output_label = _body_label("Last output folder: None")
+        self.next_action_label = QLabel("Next: check backend, then start a dataset or batch workflow.")
         self.next_action_label.setObjectName("advisorMetric")
         self.next_action_label.setWordWrap(True)
-        self.recent_run_label = _body_label("Recent run folder: None")
-        dashboard.addWidget(self.environment_label)
-        dashboard.addWidget(self.dataset_label)
-        dashboard.addWidget(self.batch_label)
-        dashboard.addWidget(self.workspace_label)
-        dashboard.addWidget(self.workspace_status_label)
-        dashboard.addWidget(self.workspace_products_label)
-        dashboard.addWidget(self.next_action_label)
-        dashboard.addWidget(self.recent_run_label)
+        for label in (self.backend_label, self.environment_label, self.dataset_label, self.output_label, self.next_action_label):
+            dashboard.addWidget(label)
 
+        single_label, batch_label, continue_label = workflow_action_labels()
         actions = QHBoxLayout()
-        self.start_single_button = QPushButton("Start Single Dataset")
+        self.start_single_button = QPushButton(single_label)
         self.start_single_button.setMinimumHeight(42)
         self.start_single_button.clicked.connect(self.startSingleDatasetRequested.emit)
-        self.start_batch_button = QPushButton("Start Batch")
+        self.start_batch_button = QPushButton(batch_label)
         self.start_batch_button.setMinimumHeight(42)
         self.start_batch_button.clicked.connect(self.startBatchRequested.emit)
+        self.continue_last_button = QPushButton(continue_label)
+        self.continue_last_button.setMinimumHeight(42)
+        self.continue_last_button.setEnabled(False)
+        self.continue_last_button.clicked.connect(self.continueLastRequested.emit)
         actions.addWidget(self.start_single_button)
         actions.addWidget(self.start_batch_button)
+        actions.addWidget(self.continue_last_button)
         actions.addStretch(1)
         dashboard.addLayout(actions)
 
@@ -182,9 +181,10 @@ class HomePage(MissionPage):
         version_layout.addWidget(self.pyforestscan_version_label)
         _wire_collapsible_group(version_group)
 
-        activity = self.add_section("Recent Activity")
+        activity_group, activity = _collapsible_section(self.content_layout, "Recent Activity", checked=False)
         self.activity_list = QListWidget()
         activity.addWidget(self.activity_list)
+        _wire_collapsible_group(activity_group)
 
     def set_versions(self, pyforestscan_version: str | None) -> None:
         """Update version labels."""
@@ -192,24 +192,27 @@ class HomePage(MissionPage):
 
     def set_summary(self, environment: str, dataset: str | None, project: str | None, batch_status: str = "Not started", recent_run: str | None = None) -> None:
         """Update dashboard labels."""
-        self.environment_label.setText(f"Environment: {environment}")
-        self.dataset_label.setText(f"Active dataset: {Path(dataset).name if dataset else 'None'}")
-        self.batch_label.setText(f"Batch: {batch_status}")
-        self.recent_run_label.setText(f"Recent run folder: {recent_run or 'None'}")
+        current = Path(dataset).name if dataset else ("Batch ready" if batch_status != "Not started" else "None")
+        self.backend_label.setText(backend_summary_from_environment(environment))
+        self.environment_label.setText(f"Environment status: {environment}")
+        self.dataset_label.setText(f"Current dataset/batch: {current}")
+        self.output_label.setText(f"Last output folder: {recent_run or 'None'}")
         self.next_action_label.setText(f"Next: {_next_home_action(environment, dataset, batch_status)}")
 
     def set_workspace(self, workspace: Workspace | None) -> None:
         """Display active workspace status on Home."""
         if workspace is None:
-            self.workspace_label.setText("Workspace: None")
-            self.workspace_status_label.setText("Workspace status: No workspace open")
-            self.workspace_products_label.setText("Products generated: None")
+            self.continue_last_button.setEnabled(False)
             return
-        generated = ", ".join(run.products[0] if len(run.products) == 1 else "+".join(run.products) for run in workspace.history.runs if run.success) or "None"
-        self.workspace_label.setText(f"Workspace: {workspace.name}")
-        self.workspace_status_label.setText(f"Workspace status: {workspace_status_label(workspace)}")
-        self.workspace_products_label.setText(f"Products generated: {generated}")
+        session = workspace.session
+        self.continue_last_button.setEnabled(True)
+        self.dataset_label.setText(f"Current dataset/batch: {Path(session.last_selected_dataset).name if session.last_selected_dataset else workspace.name}")
+        self.output_label.setText(f"Last output folder: {session.last_output_folder or workspace.output_root}")
         self.next_action_label.setText(f"Next: {workspace_primary_action(workspace)}")
+
+    def set_continue_available(self, available: bool) -> None:
+        """Enable Continue Last Run when a current or recent workspace exists."""
+        self.continue_last_button.setEnabled(available)
 
     def set_activities(self, activities: tuple[tuple[str, str], ...]) -> None:
         """Display recent activity."""
@@ -384,19 +387,42 @@ class EnvironmentPage(MissionPage):
     """Environment diagnostics page."""
 
     environmentChanged = pyqtSignal(str)
+    backendSettingsRequested = pyqtSignal()
 
     def __init__(self, adapter: PyForestScanAdapter, parent: QWidget | None = None) -> None:
         """Create the environment page."""
         super().__init__("Environment", parent)
         self.adapter = adapter
         controls = self.add_section("Runtime")
-        self.refresh_button = QPushButton("Refresh Environment")
+        button_row = QHBoxLayout()
+        self.refresh_button = QPushButton("Refresh")
         self.refresh_button.clicked.connect(self.refresh)
-        controls.addWidget(self.refresh_button)
+        self.open_backend_settings_button = QPushButton("Open Backend Settings")
+        self.open_backend_settings_button.clicked.connect(self.backendSettingsRequested.emit)
+        button_row.addWidget(self.refresh_button)
+        button_row.addWidget(self.open_backend_settings_button)
+        button_row.addStretch(1)
+        controls.addLayout(button_row)
         self.status_label = QLabel("Status: Unknown")
-        controls.addWidget(self.status_label)
+        self.status_label.setObjectName("advisorMetric")
+        self.status_label.setWordWrap(True)
+        self.pbm_status_label = _body_label("PBM backend status: not checked")
+        self.execution_label = _body_label("Execution backend: not checked")
+        self.scope_label = _body_label(routed_products_summary())
+        self.next_step_label = _body_label("Recommended next step: refresh environment.")
+        for label in (self.status_label, self.pbm_status_label, self.execution_label, self.scope_label, self.next_step_label):
+            controls.addWidget(label)
+
+        fallback_group, fallback = _collapsible_section(self.content_layout, "QGIS Python fallback environment", checked=False)
+        fallback.addWidget(_details_label("Optional when PBM backend is READY. Expand only for QGIS-Python-only tools or troubleshooting."))
+        self.fallback_checks_list = QListWidget()
+        fallback.addWidget(self.fallback_checks_list)
+        _wire_collapsible_group(fallback_group)
+
+        technical_group, technical = _collapsible_section(self.content_layout, "Technical dependency details", checked=False)
         self.checks_list = QListWidget()
-        controls.addWidget(self.checks_list)
+        technical.addWidget(self.checks_list)
+        _wire_collapsible_group(technical_group)
 
     def refresh(self) -> None:
         """Run adapter-backed environment validation."""
@@ -406,12 +432,33 @@ class EnvironmentPage(MissionPage):
     def set_report(self, report: EnvironmentReport) -> None:
         """Display an environment report."""
         self.status_label.setText(f"Status: {report.readiness.value}")
+        self.status_label.setText(environment_headline(report.readiness.value))
         self.checks_list.clear()
+        self.fallback_checks_list.clear()
+        pbm_message = "PBM backend status: not checked"
+        execution_message = "Execution backend: not checked"
+        next_step = "Recommended next step: continue with Dataset Explorer or Batch when READY."
+        fallback_names = {"pyforestscan", "pdal", "osgeo.gdal", "rasterio", "numpy"}
         for check in report.checks:
             icon = _status_icon(check.status.value)
             version = f" ({check.version})" if check.version else ""
             guidance = f"\nNext: {check.guidance}" if check.guidance else ""
-            self.checks_list.addItem(f"{icon} {check.name}{version}: {check.message}{guidance}")
+            row = f"{icon} {check.name}{version}: {check.message}{guidance}"
+            self.checks_list.addItem(row)
+            if check.name == "PBM managed backend":
+                pbm_message = f"PBM backend status: {check.message}"
+            elif check.name == "Active execution backend":
+                execution_message = f"Execution backend: {check.message}"
+            elif check.name in fallback_names:
+                self.fallback_checks_list.addItem(row)
+        if report.readiness.value == "NOT READY":
+            next_step = "Recommended next step: open Backend Settings and install or repair PBM."
+        elif report.readiness.value == "READY WITH QGIS PYTHON":
+            next_step = "Recommended next step: run guided workflows, or install PBM for no-manual-setup routed products."
+        self.pbm_status_label.setText(pbm_message)
+        self.execution_label.setText(execution_message)
+        self.scope_label.setText(f"{routed_products_summary()}\n{qgis_fallback_summary()}")
+        self.next_step_label.setText(next_step)
         self.environmentChanged.emit(report.readiness.value)
 
 
@@ -1070,6 +1117,9 @@ class ProcessingPage(MissionPage):
         overview.addWidget(self.footprint_label)
         overview.addWidget(self.status_label)
 
+        self.execution_backend_label = _body_label("Execution backend: PBM when READY; QGIS Python fallback only when PBM is unavailable.")
+        overview.addWidget(self.execution_backend_label)
+
         self.job_title_edit = QLineEdit("Mission Control Product Job")
         self.job_title_edit.setPlaceholderText("Optional run label")
         overview.addWidget(self.job_title_edit)
@@ -1195,6 +1245,7 @@ class ProcessingPage(MissionPage):
         self.cancel_button.setEnabled(True)
         self.log_text.clear()
         execution_backend = self.job_manager.execution_backend().replace("_", " ")
+        self.execution_backend_label.setText(f"Execution backend: {execution_backend}")
         self.log_text.setPlainText(f"Execution backend: {execution_backend}.\n")
         try:
             job = self.job_manager.run_pipeline(
@@ -1227,6 +1278,7 @@ class ProcessingPage(MissionPage):
         self.current_job_id = job.job_id
         self.status_label.setText(f"Status: {job.status.value}")
         self.progress_bar.setValue(int(job.progress.percent))
+        self.execution_backend_label.setText(f"Execution backend: {self.job_manager.execution_backend().replace('_', ' ')}")
         self.log_text.setPlainText("\n".join(f"{entry.level}: {entry.message}" for entry in job.logs))
         self.cancel_button.setEnabled(job.status in {JobStatus.PENDING, JobStatus.VALIDATING, JobStatus.RUNNING, JobStatus.CANCELLING})
         self._set_pipeline_results(job)
@@ -1316,7 +1368,7 @@ class BatchPage(MissionPage):
         self.batch_worker: _BatchExecutionWorker | None = None
         self.preflight_report: BatchPreflightReport | None = None
 
-        source = self.add_section("Input Folder")
+        source = self.add_section("1. Discover Files")
         folder_row = QHBoxLayout()
         self.input_folder_edit = QLineEdit()
         self.input_folder_edit.setPlaceholderText("Choose a folder containing LAS, LAZ, COPC, or EPT datasets")
@@ -1393,6 +1445,9 @@ class BatchPage(MissionPage):
         settings_form.addRow("Canopy cover threshold", self.canopy_threshold_spin)
         settings_form.addRow("CHM interpolation", self.chm_interpolation_combo)
         products.addLayout(settings_form)
+        advanced_batch_group, advanced_batch = _collapsible_section(self.content_layout, "Advanced Batch Options", checked=False)
+        advanced_form = QFormLayout()
+        advanced_form.setVerticalSpacing(10)
         self.execution_mode_combo = QComboBox()
         self.execution_mode_combo.addItem("Sequential", SEQUENTIAL_MODE)
         self.execution_mode_combo.addItem("Parallel safe mode", PARALLEL_SAFE_MODE)
@@ -1402,13 +1457,14 @@ class BatchPage(MissionPage):
         self.max_workers_spin.setMaximum(6)
         self.max_workers_spin.setValue(2)
         self.max_workers_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
-        settings_form.addRow("Execution mode", self.execution_mode_combo)
-        settings_form.addRow("Max workers", self.max_workers_spin)
-        mode_help = _body_label(
-            "Sequential is safest. Parallel Safe is faster but still runs inside QGIS and is capped. "
-            "External Worker is disabled until a true headless Python launcher is proven."
+        advanced_form.addRow("Execution mode", self.execution_mode_combo)
+        advanced_form.addRow("Max workers", self.max_workers_spin)
+        advanced_batch.addLayout(advanced_form)
+        mode_help = _details_label(
+            "Sequential is safest. Parallel Safe is available with confirmation and guardrails. "
+            "External Worker is disabled."
         )
-        products.addWidget(mode_help)
+        advanced_batch.addWidget(mode_help)
         self.stop_on_error_check = QCheckBox("Stop batch when a file fails")
         self.load_outputs_check = QCheckBox("Load generated outputs into QGIS")
         self.load_outputs_check.setToolTip("Off by default for batches so QGIS is not overwhelmed by many layers.")
@@ -1418,23 +1474,28 @@ class BatchPage(MissionPage):
         self.skip_completed_check.setChecked(True)
         self.retry_failed_only_check = QCheckBox("Retry failed files only")
         self.overwrite_existing_check = QCheckBox("Overwrite existing outputs")
-        products.addWidget(self.stop_on_error_check)
-        products.addWidget(self.load_outputs_check)
-        products.addWidget(self.confirm_parallel_check)
-        products.addWidget(self.skip_completed_check)
-        products.addWidget(self.retry_failed_only_check)
-        products.addWidget(self.overwrite_existing_check)
+        for check in (
+            self.stop_on_error_check,
+            self.load_outputs_check,
+            self.confirm_parallel_check,
+            self.skip_completed_check,
+            self.retry_failed_only_check,
+            self.overwrite_existing_check,
+        ):
+            advanced_batch.addWidget(check)
+        _wire_collapsible_group(advanced_batch_group)
         for check in self.product_checks.values():
             check.toggled.connect(lambda _checked: self._refresh_footprint_label())
         self.resolution_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
         self.height_bin_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
         self.file_list.itemChanged.connect(lambda _item: self._refresh_footprint_label())
 
-        footprint = self.add_section("Processing Footprint")
+        footprint_group, footprint = _collapsible_section(self.content_layout, "Batch Footprint Estimate", checked=False)
         self.footprint_label = _body_label("Select files and products to review the batch footprint. Raster dimensions are estimated per file after Dataset Explorer runs.")
         footprint.addWidget(self.footprint_label)
+        _wire_collapsible_group(footprint_group)
 
-        preflight = self.add_section("1. Preflight")
+        preflight = self.add_section("2. Preflight")
         self.preflight_button = QPushButton("Run Preflight Check")
         self.preflight_button.setMinimumHeight(38)
         self.preflight_button.clicked.connect(self.run_preflight)
@@ -1449,7 +1510,7 @@ class BatchPage(MissionPage):
         self.preflight_text.setPlainText("Run preflight before starting a batch.")
         preflight.addWidget(self.preflight_text)
 
-        run_section = self.add_section("2. Run Batch")
+        run_section = self.add_section("3. Run Batch / Review Results")
         self.run_button = QPushButton("Run Selected Files")
         self.run_button.setMinimumHeight(40)
         self.run_button.clicked.connect(self.run_batch)
@@ -1859,13 +1920,25 @@ class ResultsPage(MissionPage):
         super().__init__("Results", parent)
         self._friendly_paths: list[Path] = []
         self._advanced_paths: list[Path] = []
+        self._current_output_folder: Path | None = None
 
         links = self.add_section("Results")
         self.friendly_links = QListWidget()
         links.addWidget(self.friendly_links)
-        open_link = QPushButton("Open Selected")
-        open_link.clicked.connect(self.open_selected_link)
-        links.addWidget(open_link)
+        button_row = QHBoxLayout()
+        self.open_output_folder_button = QPushButton("Open Output Folder")
+        self.open_output_folder_button.setEnabled(False)
+        self.open_output_folder_button.clicked.connect(self.open_output_folder)
+        self.load_outputs_button = QPushButton("Load Outputs")
+        self.load_outputs_button.setToolTip("Select an output link, then load/open it for review.")
+        self.load_outputs_button.clicked.connect(self.open_selected_link)
+        self.clear_current_run_button = QPushButton("Clear Current Run")
+        self.clear_current_run_button.clicked.connect(self.clear_current_run)
+        button_row.addWidget(self.open_output_folder_button)
+        button_row.addWidget(self.load_outputs_button)
+        button_row.addWidget(self.clear_current_run_button)
+        button_row.addStretch(1)
+        links.addLayout(button_row)
 
         jobs = self.add_section("Job History")
         self.job_history = QListWidget()
@@ -1895,8 +1968,12 @@ class ResultsPage(MissionPage):
         self.previous_reports.clear()
         self._friendly_paths = []
         self._advanced_paths = []
+        self._current_output_folder = None
+        self.open_output_folder_button.setEnabled(False)
         if context is None:
             return
+        self._current_output_folder = context.outputs_dir
+        self.open_output_folder_button.setEnabled(True)
         for label, path in context.friendly_links:
             self._friendly_paths.append(path)
             self.friendly_links.addItem(f"{label}: {path}")
@@ -1938,6 +2015,21 @@ class ResultsPage(MissionPage):
         row = self.friendly_links.currentRow()
         if 0 <= row < len(self._friendly_paths):
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._friendly_paths[row])))
+
+    def open_output_folder(self) -> None:
+        """Open the current run output folder."""
+        if self._current_output_folder is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._current_output_folder)))
+
+    def clear_current_run(self) -> None:
+        """Clear current run links from the Results page."""
+        self.friendly_links.clear()
+        self.previous_reports.clear()
+        self.job_history.clear()
+        self._friendly_paths = []
+        self._advanced_paths = []
+        self._current_output_folder = None
+        self.open_output_folder_button.setEnabled(False)
 
     def open_report(self) -> None:
         """Open the selected advanced report with the desktop handler."""
@@ -2095,7 +2187,7 @@ class SettingsPage(MissionPage):
         self.backend_details = QTextEdit()
         self.backend_details.setReadOnly(True)
         self.backend_details.setMinimumHeight(220)
-        self.backend_details.setPlainText("Use Verify, Preview Install, Install Backend, Repair, Manual Setup Instructions, Open Backend Folder, or View Logs to inspect PBM readiness. Install Backend is enabled only for supported internal beta platforms.")
+        self.backend_details.setPlainText("Backend controls are ready. Use Verify Backend or Install Backend for the normal beta path; advanced reports and logs stay under Advanced / Troubleshooting.")
         backend.addWidget(self.backend_details)
         self.backend_technical_log_group = QGroupBox("Advanced / Troubleshooting: technical log")
         self.backend_technical_log_group.setCheckable(True)
@@ -2187,10 +2279,9 @@ class SettingsPage(MissionPage):
             return
         self.backend_details.setPlainText(
             f"{state.message}\n\n"
-            "Current support: ZIP installation loads the plugin, Mission Control, Environment Check, and the Advanced Toolbox. Windows internal beta builds can install the managed backend into the user-local PyForestScan folder after confirmation. "
-            "Linux and macOS installation remain planned/experimental until smoke tested. Preview Install shows the manifest-driven transaction; Repair proposes actions and logs failures. "
-            "PBM will not modify QGIS Python, the QGIS install directory, system Python, PATH, shell profiles, or user environment variables. "
-            "Processing integration is still explicit: tools that have not been routed through PBM continue to require QGIS Python dependencies."
+            "Normal beta path: install or verify PBM, then run Environment Check. "
+            "PBM writes only to the user-local PyForestScan backend folder and does not modify QGIS Python, system Python, PATH, shell profiles, or QGIS folders. "
+            "Advanced install plans, module registry, and logs are available from Preview Install, Advanced, or View Logs."
         )
 
     def verify_backend(self) -> None:

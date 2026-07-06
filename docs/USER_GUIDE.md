@@ -7,19 +7,20 @@ so the main page stack can use the full window, and each page uses one
 predictable vertical scroll area. It provides guided pages for the current
 workflows:
 
-- Home: workflow dashboard with workspace status, last dataset, output context, generated products, completion, recent activity, recommended next action, recent run folder, and Start Single Dataset / Start Batch actions.
+- Home: compact workflow dashboard with backend status, environment status, current dataset or batch context, last output folder, and Start Single Dataset / Start Batch / Continue Last Run actions.
 - Workspace: continue the last workspace, start a new workspace, reopen recent workspaces, view status/runs/timeline/outputs, edit notes, and reset workspace progress.
-- Environment: refresh dependency checks.
+- Environment: refresh execution readiness, see PBM backend status first, and expand QGIS Python fallback or technical dependency details only when needed.
 - Dataset: select a lidar dataset and output folder, inspect the dataset, and preview its spatial footprint.
 - Planning: build a product plan from the active Dataset Explorer result.
 - Processing: run implemented product jobs from the active Product Planner result.
-- Batch: discover and process multiple lidar files sequentially with shared settings.
+- Batch: follow the three-step Discover Files, Preflight, and Run Batch flow. Parallel Safe and retry tuning remain available under Advanced Batch Options.
 - Results: open friendly Dataset Report, Product Plan, Job Summary, Output Folder,
   and Products links.
 - Settings: choose a default output folder for Mission Control runs.
 
 Mission Control creates a timestamped run folder and manages internal JSON/CSV
-files automatically. Processing Toolbox tools remain available for expert users who want explicit file paths and PyForestScan parameter controls.
+files automatically.
+The beta workflow is intentionally linear: check backend, select a dataset or batch folder, review the recommendation, choose products, run, and review outputs. Technical logs, fallback dependency rows, and internal report paths are collapsed by default. Processing Toolbox tools remain available for expert users who want explicit file paths and PyForestScan parameter controls.
 
 # User Guide
 

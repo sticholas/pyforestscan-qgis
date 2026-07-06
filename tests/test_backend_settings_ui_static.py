@@ -70,6 +70,10 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
         self.assertIn('self.status_label.setText(f"Status: {report.readiness.value}")', source)
         self.assertIn("self.environmentChanged.emit(report.readiness.value)", source)
 
+        self.assertIn('QPushButton("Open Backend Settings")', source)
+        self.assertIn("QGIS Python fallback environment", source)
+        self.assertIn("Technical dependency details", source)
+
     def test_environment_check_algorithm_uses_shared_report_formatter(self) -> None:
         source = (ROOT / "pyforestscan_qgis/algorithms/placeholder_algorithms.py").read_text(encoding="utf-8")
 

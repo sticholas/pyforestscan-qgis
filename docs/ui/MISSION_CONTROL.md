@@ -25,15 +25,16 @@ flowchart TD
 
 ## Pages
 
-- Home: workflow dashboard with environment status, active dataset, workspace status,
-  generated products, batch status, recommended next action, recent run folder,
-  and primary Start Single Dataset / Start Batch actions. Version details are
-  collapsed by default.
+- Home: compact workflow dashboard with backend status, environment status,
+  current dataset or batch context, last output folder, next action guidance, and
+  primary Start Single Dataset / Start Batch / Continue Last Run actions. Version
+  details and recent activity are collapsed by default.
 - Workspace: welcome/resume surface with Continue Last Workspace, Start New
   Workspace, Recent Workspaces, status, recent runs, key output links, timeline,
   notes, and clear/reset controls.
-- Environment: adapter-backed runtime checks for QGIS, Python, PyForestScan,
-  PDAL, GDAL, rasterio, and numpy.
+- Environment: execution-readiness summary with PBM backend status first,
+  active execution backend, a Refresh action, and an Open Backend Settings action.
+  QGIS Python fallback checks and technical dependency details are collapsed by default.
 - Scientific Advisor: deterministic Knowledge Engine guidance after Dataset Explorer, including warnings, product explanations, parameter suggestions, and QGIS QA tools.
 - Dataset: choose LAS, LAZ, COPC, or EPT plus an output folder, create the active
   run folder, write Dataset Explorer reports, show a spatial footprint preview,
@@ -134,6 +135,8 @@ recommended/shared settings are enough for the normal workflow.
 ## Processing Footprint
 
 Mission Control does not predict runtime in the primary UI. The Processing page
+explicitly shows the active execution backend. For the internal beta, PBM is the preferred backend when READY; QGIS Python remains a fallback for workflows that have not been routed.
+
 instead displays a Processing Footprint based on Product Planner raster
 dimensions, selected products, height-bin count, and a conservative float32
 assumption of 4 bytes per raster cell. CHM, Canopy Cover, PAI, and FHD count as
@@ -162,7 +165,7 @@ Batch defaults to Sequential. Parallel Safe mode is explicit, capped at six work
 
 ## Batch Preflight And Resume UI
 
-The Batch page uses a three-step flow: Preflight, Run Batch, and Review Results. The Run button stays disabled until preflight passes. If preflight reports warnings, the user must explicitly acknowledge them before running. Preflight shows ready status, blockers, warnings, estimated output storage, free disk space, files to process, completed files, skipped files, retry files, manifest path, execution mode, and max workers.
+The Batch page uses a three-step flow: Discover Files, Preflight, and Run Batch / Review Results. The Run button stays disabled until preflight passes. If preflight reports warnings, the user must explicitly acknowledge them before running. Preflight shows ready status, blockers, warnings, estimated output storage, free disk space, files to process, completed files, skipped files, retry files, manifest path, execution mode, and max workers.
 
 When `batch_manifest.json` exists, Mission Control exposes Resume Batch. Completed files are skipped by default and failed files can be retried with the current shared settings.
 

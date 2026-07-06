@@ -7,6 +7,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ## Unreleased
 
+- Phase 24B simplifies Mission Control for internal beta users: Home is a compact dashboard, Environment foregrounds PBM execution readiness with QGIS fallback details collapsed, Processing shows the active backend, Results exposes output-first actions, Batch reads as Discover / Preflight / Run, and developer-heavy PBM details stay under Advanced/Troubleshooting.
 - Phase 24A prepares the internal beta release candidate by recording final ZIP SHA-256, release QA pass/pending fields, clean-machine tester checklist updates, and tag/release command preparation without creating a GitHub release.
 - Phase 23N aligns Environment Check with PBM execution readiness: PBM READY now reports overall `READY`, makes QGIS Python scientific packages an optional fallback section, and prevents missing QGIS Python PyForestScan/PDAL from appearing as blocking failures when routed PBM processing is available.
 - Phase 23M corrected the first PBM/QGIS Python readiness distinction and added PBM installation progress UX with a Qt worker, estimated staged progress, elapsed-time/current-action UI, hidden technical logs, disabled install/repair controls while running, and Windows no-console subprocess flags.
