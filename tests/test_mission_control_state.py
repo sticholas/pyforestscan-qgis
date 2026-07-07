@@ -40,6 +40,37 @@ class MissionControlStateTests(unittest.TestCase):
 
         self.assertEqual(state.latest_report_paths, (path,))
 
+    def test_dataset_pending_clears_downstream_run_state(self) -> None:
+        state = MissionControlState()
+        context = create_run_context("old.laz", "outputs")
+
+        populated = (
+            state.with_active_run(context)
+            .with_planning("Ready")
+            .with_report_path(Path("old_report.html"))
+            .with_activity("Old run", "complete")
+        )
+        pending = populated.with_dataset_pending("new.laz")
+
+        self.assertEqual(pending.latest_dataset, "new.laz")
+        self.assertIsNone(pending.latest_project)
+        self.assertIsNone(pending.active_run)
+        self.assertEqual(pending.latest_report_paths, ())
+        self.assertEqual(pending.planning_status, "Not started")
+        self.assertEqual(pending.activities, populated.activities)
+
+    def test_without_active_run_clears_results_but_keeps_dataset(self) -> None:
+        context = create_run_context("plot.laz", "outputs")
+        state = MissionControlState().with_active_run(context).with_planning("Ready").with_report_path(Path("report.html"))
+
+        cleared = state.without_active_run()
+
+        self.assertEqual(cleared.latest_dataset, "plot.laz")
+        self.assertIsNone(cleared.latest_project)
+        self.assertIsNone(cleared.active_run)
+        self.assertEqual(cleared.latest_report_paths, ())
+        self.assertEqual(cleared.planning_status, "Not started")
+
     def test_active_run_and_default_output_folder_are_immutable(self) -> None:
         state = MissionControlState()
         context = create_run_context("plot.laz", "outputs")

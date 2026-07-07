@@ -175,7 +175,7 @@ class MissionControlDock(QDockWidget):
         self.ui.navigationList.currentRowChanged.connect(self.ui.pageStack.setCurrentIndex)
         self.ui.navigationList.currentRowChanged.connect(lambda _row: self._refresh_guided_workflow())
         self.home_page.continueWorkflowRequested.connect(self._continue_guided_workflow)
-        self.home_page.checkEnvironmentRequested.connect(lambda: self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Environment")))
+        self.home_page.checkEnvironmentRequested.connect(self._open_environment_and_refresh)
         self.home_page.continueLastRequested.connect(self._continue_last_workspace)
         self.environment_page.backendSettingsRequested.connect(lambda: self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Settings")))
         self.workspace_page.continueLastRequested.connect(self._continue_last_workspace)
@@ -185,12 +185,16 @@ class MissionControlDock(QDockWidget):
         self.workspace_page.resetWorkspaceRequested.connect(self._reset_current_workspace)
         self.workspace_page.notesSaveRequested.connect(self._save_workspace_notes)
         self.environment_page.environmentChanged.connect(self._set_environment_status)
+        self.dataset_page.datasetSelectionChanged.connect(self._set_dataset_pending)
         self.dataset_page.datasetExplored.connect(self._set_dataset_report)
         self.planning_page.planningChanged.connect(self._set_planning_status)
         self.processing_page.jobUpdated.connect(self._set_job_status)
         self.batch_page.jobUpdated.connect(self._set_job_status)
         self.batch_page.batchCompleted.connect(self._set_batch_status)
+        self.results_page.outputsLoaded.connect(self._set_outputs_loaded_status)
+        self.results_page.currentRunCleared.connect(self._clear_current_run_state)
         self.settings_page.defaultOutputFolderChanged.connect(self._set_default_output_folder)
+        self.settings_page.backendStateChanged.connect(self._set_backend_page_status)
         self.workspace_page.nextStepRequested.connect(lambda: self._go_to_guided_next_step("Workspace"))
         self.dataset_page.nextStepRequested.connect(lambda: self._go_to_guided_next_step("Dataset"))
         self.planning_page.nextStepRequested.connect(lambda: self._go_to_guided_next_step("Planning"))
@@ -244,12 +248,62 @@ class MissionControlDock(QDockWidget):
             """
         )
 
+
+    def _open_environment_and_refresh(self) -> None:
+        """Open Environment and immediately refresh readiness."""
+        self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Environment"))
+        self.environment_page.refresh()
+
+    def _notify(self, message: str, level: str = "info") -> None:
+        """Show a lightweight QGIS message bar notification when available."""
+        bar_getter = getattr(self.iface, "messageBar", None)
+        bar = bar_getter() if callable(bar_getter) else None
+        if bar is None or not hasattr(bar, "pushMessage"):
+            return
+        try:
+            from qgis.core import Qgis
+
+            qgis_level = {
+                "success": getattr(Qgis, "Success", getattr(Qgis, "Info", 0)),
+                "warning": getattr(Qgis, "Warning", 1),
+                "error": getattr(Qgis, "Critical", 2),
+                "info": getattr(Qgis, "Info", 0),
+            }.get(level, getattr(Qgis, "Info", 0))
+        except Exception:  # noqa: BLE001 - QGIS level constants vary by runtime.
+            qgis_level = 0
+        try:
+            bar.pushMessage("PyForestScan", message, level=qgis_level, duration=5)
+        except TypeError:
+            try:
+                bar.pushMessage("PyForestScan", message)
+            except Exception:  # noqa: BLE001 - notifications must never break workflow actions.
+                return
+        except Exception:  # noqa: BLE001 - notifications must never break workflow actions.
+            return
+
     def _set_environment_status(self, status: str) -> None:
-        self.state = self.state.with_environment(status).with_activity("Environment refreshed", status)
-        self._record_workspace_event("environment_refreshed", f"Environment refreshed: {status}")
+        self.state = self.state.with_environment(status).with_activity("Environment verified", status)
+        self._record_workspace_event("environment_refreshed", f"Environment verified: {status}")
+        if self.ui.navigationList.currentRow() != self.PAGE_NAMES.index("Settings"):
+            self.settings_page.refresh_backend_summary()
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
+        self._notify("Environment verified.", "success" if environment_is_ready(status) else "warning")
+
+    def _set_dataset_pending(self, dataset_path: str) -> None:
+        """Clear downstream workflow state when the selected dataset changes."""
+        self.state = self.state.with_dataset_pending(dataset_path).with_activity("Dataset selected", Path(dataset_path).name)
+        self.job_history = ()
+        self.batch_status = "Not started"
+        self.planning_page.reset_for_new_dataset(Path(dataset_path).name)
+        self.processing_page.set_run_context(None)
+        self.results_page.set_run_context(None)
+        self.advisor_page.reset_for_new_dataset()
+        self._save_workspace_session()
+        self._refresh_home()
+        self._update_status_bar()
+        self._notify("Dataset selected. Analyze it to continue.", "info")
 
     def _set_dataset_report(self, report: object, dataset_path: str, context: RunContext) -> None:
         self.planning_page.set_dataset_report(report, context)  # type: ignore[arg-type]
@@ -275,6 +329,7 @@ class MissionControlDock(QDockWidget):
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
+        self._notify("Dataset loaded.", "success")
 
     def _set_planning_status(self, status: str, plan: object | None = None) -> None:
         state = self.state.with_planning(status).with_activity("Planning updated", status)
@@ -292,6 +347,7 @@ class MissionControlDock(QDockWidget):
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
+        self._notify("Product plan updated." if planning_complete else "Product plan needs review.", "success" if planning_complete else "warning")
 
     def _set_default_output_folder(self, folder: object) -> None:
         path = folder if isinstance(folder, Path) else None
@@ -318,6 +374,12 @@ class MissionControlDock(QDockWidget):
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
+        if job.status == JobStatus.COMPLETED:
+            self._notify("Processing completed.", "success")
+        elif job.status == JobStatus.FAILED:
+            self._notify("Processing failed. Review Technical Details.", "error")
+        elif job.status == JobStatus.CANCELLED:
+            self._notify("Processing cancelled.", "warning")
 
     def _set_batch_status(self, result: object) -> None:
         """Record a completed batch summary in Mission Control results."""
@@ -341,6 +403,34 @@ class MissionControlDock(QDockWidget):
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
+        self._notify("Batch completed." if failure_count == 0 else "Batch completed with files to review.", "success" if failure_count == 0 else "warning")
+
+    def _set_outputs_loaded_status(self, message: str, loaded_count: int, candidate_count: int) -> None:
+        """Record Load Outputs feedback and show a lightweight notification."""
+        level = "success" if loaded_count else ("warning" if candidate_count else "info")
+        self.state = self.state.with_activity("Outputs loaded" if loaded_count else "Load outputs", message)
+        self._refresh_home()
+        self.results_page._set_load_message(message)
+        self._update_status_bar()
+        self._notify(message, level)
+
+    def _clear_current_run_state(self) -> None:
+        """Clear active run state after the Results page is reset."""
+        self.state = self.state.without_active_run().with_activity("Results cleared", "Current run cleared")
+        self.job_history = ()
+        self._save_workspace_session()
+        self._refresh_home()
+        self._update_status_bar()
+        self._notify("Current run cleared.", "info")
+
+    def _set_backend_page_status(self, status: str, message: str) -> None:
+        """Keep Environment and Home synchronized after Backend page actions."""
+        self.environment_page.refresh()
+        self._refresh_home()
+        self._update_status_bar()
+        normalized = status.lower()
+        level = "success" if "ready" in normalized else ("error" if "fail" in normalized else "warning")
+        self._notify(message, level)
 
 
     def _ensure_workspace_for_context(self, context: RunContext) -> None:
@@ -491,6 +581,7 @@ class MissionControlDock(QDockWidget):
         self._refresh_home()
         self._update_status_bar()
         self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Workspace"))
+        self._notify("Workspace opened.", "success")
 
     def _open_workspace_path(self, workspace_path: object) -> None:
         """Open a recent workspace path."""
@@ -519,6 +610,7 @@ class MissionControlDock(QDockWidget):
         self._refresh_home()
         self._update_status_bar()
         self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Workspace"))
+        self._notify("Workspace opened.", "success")
 
     def _remove_recent_workspace(self, workspace_path: object) -> None:
         """Remove a workspace from the recent list."""
@@ -555,6 +647,7 @@ class MissionControlDock(QDockWidget):
             return
         self.state = self.state.with_activity("Notes saved", self.workspace.name)
         self._refresh_home()
+        self._notify("Notes saved.", "success")
 
 
     def _load_job_outputs(self, job: JobRecord) -> None:

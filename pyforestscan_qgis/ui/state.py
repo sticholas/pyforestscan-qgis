@@ -69,6 +69,32 @@ class MissionControlState:
             activities=self.activities,
         )
 
+    def with_dataset_pending(self, dataset: str) -> "MissionControlState":
+        """Return a state for a newly selected dataset before analysis completes."""
+        return MissionControlState(
+            environment_status=self.environment_status,
+            latest_dataset=dataset,
+            latest_project=None,
+            latest_report_paths=(),
+            planning_status="Not started",
+            default_output_folder=self.default_output_folder,
+            active_run=None,
+            activities=self.activities,
+        )
+
+    def without_active_run(self) -> "MissionControlState":
+        """Return a state with downstream run outputs cleared."""
+        return MissionControlState(
+            environment_status=self.environment_status,
+            latest_dataset=self.latest_dataset,
+            latest_project=None,
+            latest_report_paths=(),
+            planning_status="Not started",
+            default_output_folder=self.default_output_folder,
+            active_run=None,
+            activities=self.activities,
+        )
+
     def with_planning(self, status: str) -> "MissionControlState":
         """Return a new state with planning status changed."""
         return MissionControlState(

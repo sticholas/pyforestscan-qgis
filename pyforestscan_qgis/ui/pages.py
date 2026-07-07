@@ -497,8 +497,14 @@ class EnvironmentPage(MissionPage):
 
     def refresh(self) -> None:
         """Run adapter-backed environment validation."""
-        report = self.adapter.check_environment()
-        self.set_report(report)
+        self.refresh_button.setEnabled(False)
+        _set_status_badge(self.status_label, "RUNNING", readiness_status_text("RUNNING", "Status: Running - checking environment."))
+        QApplication.processEvents()
+        try:
+            report = self.adapter.check_environment()
+            self.set_report(report)
+        finally:
+            self.refresh_button.setEnabled(True)
 
     def set_report(self, report: EnvironmentReport) -> None:
         """Display an environment report."""
@@ -536,6 +542,7 @@ class DatasetPage(MissionPage):
     """Dataset inspection page with automatic run-folder creation."""
 
     datasetExplored = pyqtSignal(object, str, object)
+    datasetSelectionChanged = pyqtSignal(str)
 
     def __init__(self, adapter: PyForestScanAdapter, iface: object | None = None, parent: QWidget | None = None) -> None:
         """Create the dataset page."""
@@ -548,10 +555,10 @@ class DatasetPage(MissionPage):
         row = QHBoxLayout()
         self.dataset_path_edit = QLineEdit()
         self.dataset_path_edit.setPlaceholderText("Choose LAS, LAZ, COPC, or ept.json")
-        browse = QPushButton("Browse")
-        browse.clicked.connect(self.browse_dataset)
+        self.browse_dataset_button = QPushButton("Select Dataset")
+        self.browse_dataset_button.clicked.connect(self.browse_dataset)
         row.addWidget(self.dataset_path_edit)
-        row.addWidget(browse)
+        row.addWidget(self.browse_dataset_button)
         picker.addLayout(row)
 
         output_row = QHBoxLayout()
@@ -563,10 +570,10 @@ class DatasetPage(MissionPage):
         output_row.addWidget(output_browse)
         picker.addLayout(output_row)
 
-        run = QPushButton(primary_action_label("dataset"))
-        run.clicked.connect(self.run_explorer)
-        _apply_button_role(run, "primary")
-        picker.addWidget(run)
+        self.analyze_button = QPushButton(primary_action_label("dataset"))
+        self.analyze_button.clicked.connect(self.run_explorer)
+        _apply_button_role(self.analyze_button, "primary")
+        picker.addWidget(self.analyze_button)
 
         summary = self.add_section("Dataset Summary")
         self.summary_section = summary.parentWidget()
@@ -617,7 +624,14 @@ class DatasetPage(MissionPage):
             "Point cloud datasets (*.las *.laz *.copc *.copc.laz *ept.json);;All files (*.*)",
         )
         if path:
+            previous = self.dataset_path_edit.text().strip()
             self.dataset_path_edit.setText(path)
+            self.browse_dataset_button.setText("Change Dataset")
+            _apply_button_role(self.browse_dataset_button, "secondary")
+            self.analyze_button.setText("Analyze Dataset")
+            if path != previous:
+                self._reset_dataset_outputs()
+                self.datasetSelectionChanged.emit(path)
 
     def browse_output_folder(self) -> None:
         """Choose the root output folder for Mission Control runs."""
@@ -637,6 +651,10 @@ class DatasetPage(MissionPage):
             return
         context = create_run_context(path, output_root).ensure_directories()
         try:
+            self.analyze_button.setEnabled(False)
+            self.browse_dataset_button.setEnabled(False)
+            self._set_dataset_message("Preparing dataset inspection...")
+            QApplication.processEvents()
             inspection = self.adapter.inspect_dataset(path)
             report = build_dataset_explorer_report(inspection)
             write_json_report(report, context.dataset_report_json)
@@ -676,6 +694,19 @@ class DatasetPage(MissionPage):
         """Show a compact Dataset page empty or warning state."""
         self.summary_text.setText(message)
         self.summary_section.setVisible(True)
+
+    def _reset_dataset_outputs(self) -> None:
+        """Clear analysis-dependent UI when the selected dataset changes."""
+        self.active_run = None
+        self.footprint_preview = None
+        self.summary_text.setText("Dataset selected. Click Analyze Dataset to inspect it.")
+        self.summary_section.setVisible(True)
+        self.dataset_technical_text.setText("Dataset technical metadata appears after analysis.")
+        self.footprint_text.clear()
+        self.spatial_section.setVisible(False)
+        self.add_footprint_button.setEnabled(False)
+        self.zoom_footprint_button.setEnabled(False)
+        self.open_report_button.setEnabled(False)
 
     def set_footprint_preview(self, report: DatasetExplorerReport, dataset_path: str, context: RunContext | None = None) -> None:
         """Display a footprint preview built from Dataset Explorer bounds."""
@@ -835,6 +866,17 @@ class ScientificAdvisorPage(MissionPage):
     def set_run_context(self, context: RunContext | None) -> None:
         """Store active run context for output-folder actions."""
         self.run_context = context
+
+    def reset_for_new_dataset(self) -> None:
+        """Clear recommendation content when a different dataset is selected."""
+        self.run_context = None
+        self.completed_products = ()
+        self.executive_summary_label.setText("Dataset selected. Analyze it to receive recommendations.")
+        self.notes_summary.setText("Recommendations will appear after Dataset Explorer runs.")
+        self.notes_details.setText("")
+        self.next_steps_label.setText("Run Dataset Explorer to generate top-priority next steps.")
+        for card in (self.overview_card, self.recommendations_card, self.warnings_card, self.products_card, self.parameters_card, self.qgis_tools_card, self.next_steps_card):
+            card.setVisible(False)
 
     def set_recommendation_report(self, report: RecommendationReport) -> None:
         """Display a Knowledge Engine recommendation report."""
@@ -1081,11 +1123,12 @@ class PlanningPage(MissionPage):
         _wire_collapsible_group(product_params_group)
 
         summary = self.add_section("Plan Summary")
-        build = QPushButton("Build Plan")
-        build.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
-        build.clicked.connect(self.build_plan)
-        _apply_button_role(build, "primary")
-        summary.addWidget(build)
+        self.build_plan_button = QPushButton("Build Plan")
+        self.build_plan_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
+        self.build_plan_button.clicked.connect(self.build_plan)
+        _apply_button_role(self.build_plan_button, "primary")
+        self.build_plan_button.setEnabled(False)
+        summary.addWidget(self.build_plan_button)
         self.plan_text = QTextEdit()
         self.plan_text.setReadOnly(True)
         self.plan_text.setMinimumHeight(COMPACT_LIST_HEIGHT)
@@ -1109,7 +1152,18 @@ class PlanningPage(MissionPage):
         )
         if context is not None:
             self.output_folder_edit.setText(str(context.outputs_dir))
-        self.plan_text.setPlainText("Dataset report loaded. Choose products and build a plan.")
+        self.plan_text.setPlainText("Dataset loaded. Choose products and build a plan.")
+        self.build_plan_button.setEnabled(True)
+
+    def reset_for_new_dataset(self, dataset_name: str = "selected dataset") -> None:
+        """Clear plan state when the selected dataset changes."""
+        self.dataset_report = None
+        self.run_context = None
+        self.latest_plan = None
+        self.dataset_context_label.setText(f"Dataset selected: {dataset_name}\nAnalyze the dataset before choosing products.")
+        self.output_folder_edit.clear()
+        self.plan_text.setPlainText("Analyze the selected dataset before building a product plan.")
+        self.build_plan_button.setEnabled(False)
 
     def apply_recommendation_report(self, report: RecommendationReport) -> None:
         """Adopt practical Advisor parameter recommendations into planning controls."""
@@ -1139,6 +1193,9 @@ class PlanningPage(MissionPage):
         if self.dataset_report is None:
             self.plan_text.setPlainText("Run Dataset Explorer before building a product plan.")
             return
+        self.build_plan_button.setEnabled(False)
+        self.plan_text.setPlainText("Preparing product plan...")
+        QApplication.processEvents()
         selected = tuple(product for product, check in self.product_checks.items() if check.isChecked())
         output_folder = self.run_context.outputs_dir if self.run_context is not None else Path(self.output_folder_edit.text().strip() or "planned_outputs")
         height_bin_size = self.height_bin_spin.value() if self.height_bin_spin.value() > 0 else None
@@ -1164,6 +1221,7 @@ class PlanningPage(MissionPage):
             plan = build_product_plan(report_to_dict(self.dataset_report), request)
         except ProductPlanError as exc:
             self.plan_text.setPlainText(f"Product plan failed: {exc}")
+            self.build_plan_button.setEnabled(True)
             self.planningChanged.emit("Needs review", None)
             return
         try:
@@ -1173,6 +1231,7 @@ class PlanningPage(MissionPage):
                 write_plan_html(plan, self.run_context.product_plan_html)
         except OSError as exc:
             self.plan_text.setPlainText(f"Product plan reports could not be written: {exc}")
+            self.build_plan_button.setEnabled(True)
             self.planningChanged.emit("Needs review", None)
             return
         self.latest_plan = plan
@@ -1200,6 +1259,7 @@ class PlanningPage(MissionPage):
         ]
         lines.extend(f"- {item.label}: {item.plan_status}" for item in plan.products)
         self.plan_text.setPlainText("\n".join(lines))
+        self.build_plan_button.setEnabled(True)
         self.planningChanged.emit("Ready" if blocked == 0 else "Needs review", plan)
 
 
@@ -1255,6 +1315,8 @@ class ProcessingPage(MissionPage):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         progress.addWidget(self.progress_bar)
+        self.processing_stage_label = _body_label("Stage: Not started")
+        progress.addWidget(self.processing_stage_label)
         progress.addWidget(_body_label("Keep QGIS open until processing completes."))
 
         technical_group, technical = _collapsible_section(self.content_layout, "Technical Details", checked=False)
@@ -1295,6 +1357,7 @@ class ProcessingPage(MissionPage):
             self.selected_products_label.setText("Selected products: build a Product Plan first.")
             self.current_output_label.setText("Outputs: choose a dataset and output folder, then build a Product Plan.")
             self.footprint_label.setText("Processing footprint: build a Product Plan to see expected outputs, raster size, bands, and storage.")
+            self.processing_stage_label.setText("Stage: Not started")
             return
         self.product_plan_edit.setText(str(context.product_plan_json))
         self.job_output_folder_edit.setText(str(context.logs_dir))
@@ -1308,6 +1371,7 @@ class ProcessingPage(MissionPage):
         if plan_path is None or not plan_path.exists():
             self.selected_products_label.setText("Selected products: build a Product Plan first.")
             self.footprint_label.setText("Processing footprint: build a Product Plan to see expected outputs, raster size, bands, and storage.")
+            self.processing_stage_label.setText("Stage: Not started")
             return
         try:
             payload = json.loads(plan_path.read_text(encoding="utf-8"))
@@ -1355,6 +1419,8 @@ class ProcessingPage(MissionPage):
             return
         self.start_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
+        self.processing_stage_label.setText("Stage: Preparing")
+        self.progress_bar.setValue(5)
         self.log_text.clear()
         execution_backend = self.job_manager.execution_backend().replace("_", " ")
         self.execution_backend_label.setText(f"Execution backend: {execution_backend}")
@@ -1369,6 +1435,7 @@ class ProcessingPage(MissionPage):
         except JobExecutionError as exc:
             _set_status_badge(self.status_label, "FAILED", f"Status: Failed - processing job could not start: {exc}")
             self.log_text.setPlainText(f"Processing job could not start: {exc}")
+            self.processing_stage_label.setText("Stage: Failed")
             self.start_button.setEnabled(True)
             self.cancel_button.setEnabled(False)
             return
@@ -1390,6 +1457,7 @@ class ProcessingPage(MissionPage):
         self.current_job_id = job.job_id
         _set_status_badge(self.status_label, job.status.value, f"Status: {status_display_word(job.status.value)} - {job.status.value}")
         self.progress_bar.setValue(int(job.progress.percent))
+        self.processing_stage_label.setText(f"Stage: {_processing_lifecycle_stage(job)}")
         self.execution_backend_label.setText(f"Execution backend: {self.job_manager.execution_backend().replace('_', ' ')}")
         self.log_text.setPlainText("\n".join(f"{entry.level}: {entry.message}" for entry in job.logs))
         self.cancel_button.setEnabled(job.status in {JobStatus.PENDING, JobStatus.VALIDATING, JobStatus.RUNNING, JobStatus.CANCELLING})
@@ -1702,11 +1770,17 @@ class BatchPage(MissionPage):
         if not folder:
             _set_status_badge(self.status_label, "WARNING", "Status: Needs review - choose an input folder before discovery.")
             return
+        self.discover_button.setEnabled(False)
+        _set_status_badge(self.status_label, "RUNNING", "Status: Running - discovering files.")
+        QApplication.processEvents()
         try:
             datasets = discover_lidar_files(folder, self.recursive_check.isChecked())
         except ValueError as exc:
             _set_status_badge(self.status_label, "FAILED", f"Status: Failed - discovery failed: {exc}")
+            self.discover_button.setEnabled(True)
             return
+        finally:
+            self.discover_button.setEnabled(True)
         self.discovered_paths = [item.path for item in datasets]
         self.file_list.clear()
         for item in datasets:
@@ -1720,14 +1794,21 @@ class BatchPage(MissionPage):
 
     def run_preflight(self) -> None:
         """Run batch preflight and update readiness display."""
+        self.preflight_button.setEnabled(False)
+        self.preflight_text.setPlainText("Preparing preflight check...")
+        QApplication.processEvents()
         try:
             request = self._build_batch_request()
         except BatchExecutionError as exc:
             self.preflight_text.setPlainText(f"BLOCKER: {exc}")
             self.preflight_report = None
             self._update_run_button_enabled()
+            self.preflight_button.setEnabled(True)
             return
-        report = run_batch_preflight(request, adapter=self.adapter)
+        try:
+            report = run_batch_preflight(request, adapter=self.adapter)
+        finally:
+            self.preflight_button.setEnabled(True)
         self.preflight_report = report
         self.preflight_text.setPlainText(_format_preflight_report(report))
         self.acknowledge_warnings_check.setEnabled(report.has_warnings and not report.blockers)
@@ -2038,6 +2119,9 @@ class BatchPage(MissionPage):
 class ResultsPage(MissionPage):
     """Friendly report links and job history page."""
 
+    outputsLoaded = pyqtSignal(str, int, int)
+    currentRunCleared = pyqtSignal()
+
     def __init__(self, iface: object | None = None, parent: QWidget | None = None) -> None:
         """Create the results page."""
         super().__init__("Results", parent)
@@ -2176,22 +2260,33 @@ class ResultsPage(MissionPage):
 
     def load_outputs_to_qgis(self) -> None:
         """Load current run GeoTIFF and CSV outputs into QGIS without duplicates."""
+        self.load_outputs_button.setEnabled(False)
+        self._set_load_message("Loading outputs into QGIS...")
+        QApplication.processEvents()
         paths = [path for path in self._candidate_output_paths() if path.exists() and path.is_file()]
         all_candidates = collect_loadable_outputs(paths, self._job_result_types)
         existing_sources = tuple(self._loaded_output_paths) + self._project_layer_sources()
         candidates = collect_loadable_outputs(paths, self._job_result_types, existing_sources)
         if not candidates:
-            self._set_load_message(output_loading_summary(0, len(all_candidates)))
+            message = output_loading_summary(0, len(all_candidates))
+            self._set_load_message(message)
+            self.load_outputs_button.setEnabled(bool(all_candidates))
+            self.outputsLoaded.emit(message, 0, len(all_candidates))
             return
         if self.iface is None:
             self._set_load_message("QGIS interface unavailable.")
+            self.load_outputs_button.setEnabled(True)
+            self.outputsLoaded.emit("QGIS interface unavailable.", 0, len(candidates))
             return
         loaded = 0
         for output in candidates:
             if self._load_output(output):
                 self._loaded_output_paths.add(output.path)
                 loaded += 1
-        self._set_load_message(output_loading_summary(loaded, len(candidates)))
+        message = output_loading_summary(loaded, len(candidates))
+        self._set_load_message(message)
+        self.load_outputs_button.setEnabled(bool(self._candidate_output_paths()))
+        self.outputsLoaded.emit(message, loaded, len(candidates))
 
     def _candidate_output_paths(self) -> tuple[Path, ...]:
         """Return current run, report, and job paths that may be loadable."""
@@ -2274,6 +2369,7 @@ class ResultsPage(MissionPage):
         self.friendly_links.setVisible(False)
         self.results_empty_label.setVisible(True)
         self.jobs_section.setVisible(False)
+        self.currentRunCleared.emit()
 
     def open_report(self) -> None:
         """Open the selected advanced report with the desktop handler."""
@@ -2289,6 +2385,7 @@ class SettingsPage(MissionPage):
     """Plugin settings page."""
 
     defaultOutputFolderChanged = pyqtSignal(object)
+    backendStateChanged = pyqtSignal(str, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create the settings page."""
@@ -2555,7 +2652,13 @@ class SettingsPage(MissionPage):
 
     def verify_backend(self) -> None:
         """Run safe PBM verification and display dependency results."""
-        result = self.backend_service.verify_backend()
+        self.verify_backend_button.setEnabled(False)
+        _set_status_badge(self.backend_status_label, "RUNNING", readiness_status_text("RUNNING", "Backend Status: Running - verifying backend."))
+        QApplication.processEvents()
+        try:
+            result = self.backend_service.verify_backend()
+        finally:
+            self.verify_backend_button.setEnabled(True)
         _set_status_badge(self.backend_status_label, result.status.value, readiness_status_text(result.status.value, f"Backend Status: {status_badge_label(result.status.value)}"))
         python_dependency = _find_backend_dependency(result, "python")
         pdal_dependency = _find_backend_dependency(result, "pdal")
@@ -2563,8 +2666,11 @@ class SettingsPage(MissionPage):
         self.backend_pdal_label.setText(f"PDAL Version: {pdal_dependency.detected_version if pdal_dependency and pdal_dependency.detected_version else 'Not detected'}")
         required = result.registry.required_dependencies()
         verified_required = sum(1 for dependency in required if dependency.verification_status.value == "pass")
+        self.refresh_backend_summary()
+        _set_status_badge(self.backend_status_label, result.status.value, readiness_status_text(result.status.value, f"Backend Status: {status_badge_label(result.status.value)}"))
         self.backend_dependency_label.setText(f"Verification: {verified_required}/{len(required)} required checks passed")
         self.backend_details.setPlainText(self.backend_service.format_verification_report(result))
+        self.backendStateChanged.emit(result.status.value, "Backend verification complete.")
 
     def verify_qgis_compatibility(self) -> None:
         """Display defensive QGIS compatibility details."""
@@ -2718,6 +2824,8 @@ class SettingsPage(MissionPage):
             "Use Repair if installation failed. Technical logs are available under Troubleshooting or View Logs."
         )
         self._refresh_backend_technical_log()
+        notice = "Backend installed successfully." if success else "Backend installation needs review."
+        self.backendStateChanged.emit(status_value, notice)
 
     def _on_backend_install_failed(self, message: str) -> None:
         """Display unexpected installer worker failure."""
@@ -2733,6 +2841,7 @@ class SettingsPage(MissionPage):
             "Use View Logs for details. Technical logs are hidden under Troubleshooting."
         )
         self._refresh_backend_technical_log()
+        self.backendStateChanged.emit("Failed", "Backend installation failed. Use View Logs for details.")
 
     def _refresh_backend_install_elapsed(self) -> None:
         """Update elapsed install time without implying exact step duration."""
@@ -2761,8 +2870,10 @@ class SettingsPage(MissionPage):
         """Display the non-mutating backend repair plan."""
         result = self.backend_service.repair_backend()
         plan = self.backend_service.preview_repair_plan()
+        self.refresh_backend_summary()
         _set_status_badge(self.backend_status_label, result.status.value, readiness_status_text(result.status.value, f"Backend Status: {status_badge_label(result.status.value)}"))
         self.backend_details.setPlainText(self.backend_service.format_repair_plan(plan))
+        self.backendStateChanged.emit(result.status.value, "Backend repair plan updated.")
 
     def show_backend_advanced(self) -> None:
         """Display advanced PBM architecture details."""
@@ -2829,6 +2940,23 @@ class SettingsPage(MissionPage):
             lines.extend(entries or ("No log entries.",))
             lines.append("")
         self.backend_details.setPlainText("\n".join(lines).strip())
+
+def _processing_lifecycle_stage(job: JobRecord) -> str:
+    """Return the common user-facing processing lifecycle stage."""
+    if job.status in {JobStatus.PENDING, JobStatus.VALIDATING}:
+        return "Preparing"
+    if job.status is JobStatus.RUNNING:
+        return "Generating Outputs" if job.results else "Running"
+    if job.status is JobStatus.COMPLETED:
+        return "Complete"
+    if job.status is JobStatus.FAILED:
+        return "Failed"
+    if job.status is JobStatus.CANCELLING:
+        return "Cancelling"
+    if job.status is JobStatus.CANCELLED:
+        return "Cancelled"
+    return status_display_word(job.status.value)
+
 
 def _find_backend_dependency(result: object, name: str):
     """Return one backend dependency from a verification result by name."""

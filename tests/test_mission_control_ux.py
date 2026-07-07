@@ -257,6 +257,31 @@ class MissionControlUxTests(unittest.TestCase):
             self.assertIn(snippet, source)
             self.assertTrue(technical_wording_is_advanced(snippet), snippet)
 
+    def test_unified_interaction_model_static_hooks(self) -> None:
+        controller = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text(encoding="utf-8")
+        pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
+
+        self.assertIn("def _notify(self, message: str", controller)
+        self.assertIn("messageBar", controller)
+        self.assertIn("self.home_page.checkEnvironmentRequested.connect(self._open_environment_and_refresh)", controller)
+        self.assertIn("self.settings_page.backendStateChanged.connect(self._set_backend_page_status)", controller)
+        self.assertIn("self.results_page.outputsLoaded.connect(self._set_outputs_loaded_status)", controller)
+        self.assertIn("self.dataset_page.datasetSelectionChanged.connect(self._set_dataset_pending)", controller)
+        self.assertIn("self.environment_page.refresh()", controller)
+        self.assertIn("with_dataset_pending", controller)
+        self.assertIn("without_active_run", controller)
+        self.assertIn("datasetSelectionChanged = pyqtSignal(str)", pages)
+        self.assertIn("outputsLoaded = pyqtSignal(str, int, int)", pages)
+        self.assertIn("backendStateChanged = pyqtSignal(str, str)", pages)
+        self.assertIn("self.refresh_button.setEnabled(False)", pages)
+        self.assertIn("self.analyze_button.setEnabled(False)", pages)
+        self.assertIn("self.build_plan_button.setEnabled(False)", pages)
+        self.assertIn("self.load_outputs_button.setEnabled(False)", pages)
+        self.assertIn("self.discover_button.setEnabled(False)", pages)
+        self.assertIn("self.preflight_button.setEnabled(False)", pages)
+        self.assertIn("Stage: Preparing", pages)
+        self.assertIn("return \"Complete\"", pages)
+
     def test_workflow_buttons_and_results_buttons_are_present(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 

@@ -19,6 +19,10 @@ Primary single-dataset workflow pages are Home, Workspace when needed, Dataset, 
 
 Primary workflow pages may show a subtle step indicator using completed, current, and upcoming markers. Batch may show its own controls when users explicitly choose Batch, but it should be omitted from the default single-dataset indicator. Readiness markers are small text-adjacent markers and never replace status words.
 
+## Interaction Lifecycle
+
+Mission Control actions should behave like one application, not unrelated forms. When an action starts, disable the triggering button and any conflicting action buttons, show a concise running status, and keep technical logs collapsed. When the action completes, refresh dependent pages automatically, restore available controls, and show one clear success, warning, or error message through the QGIS message bar when available. Dataset changes clear downstream plan, processing, advisor, and result state. Backend changes refresh Environment and Home. Processing and batch completion update Results and Home.
+
 ## Layout Rules
 
 - Do not show empty sections. If a section has no meaningful content, hide it.

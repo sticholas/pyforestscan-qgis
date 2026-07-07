@@ -66,7 +66,7 @@ runtime stretch factors so the page stack expands horizontally and vertically.
 Each page uses one full-width vertical scroll area; individual pages should avoid
 adding nested scroll areas unless there is a specific interaction reason.
 
-Mission Control follows the permanent [Mission Control UX Standard](../development/MISSION_CONTROL_UX_STANDARD.md): one primary action per page, no empty sections, collapsed technical details, concise empty states, and consistent workflow terminology. Visual hierarchy, status badges, dialogs, notifications, tables, icons, and future module integration follow the [PyForestScan Design System](../development/PYFORESTSCAN_DESIGN_SYSTEM.md). Phase 24F applies that system with shared spacing tokens, button role styling, status-badge tones, compact empty states, and calmer Backend/Processing/Batch/Results layouts. Phase 25A tightens workflow continuity by collapsing rarely used reset/output/backend details and keeping empty states compact. Phase 25B adds guided workflow continuity with subtle step indicators and one Next Step card on each primary workflow page. Phase 25C corrects the default route to Home -> Workspace if needed -> Dataset -> Planning -> Processing -> Results, keeps Batch optional, keeps Scientific Advisor as support guidance, and adds subtle readiness markers beside existing readiness text. Phase 25D makes Results output loading functional and tightens content-driven card sizing. Phase 26A adds the first product-readiness audit: native action icon intents, calmer backend copy, status wording consistency, and developer terminology kept under advanced/troubleshooting disclosure; see the [Visual Polish Audit](../development/VISUAL_POLISH_AUDIT.md) and [Product Readiness Audit I](../development/PRODUCT_READINESS_AUDIT_I.md).
+Mission Control follows the permanent [Mission Control UX Standard](../development/MISSION_CONTROL_UX_STANDARD.md): one primary action per page, no empty sections, collapsed technical details, concise empty states, and consistent workflow terminology. Visual hierarchy, status badges, dialogs, notifications, tables, icons, and future module integration follow the [PyForestScan Design System](../development/PYFORESTSCAN_DESIGN_SYSTEM.md). Phase 24F applies that system with shared spacing tokens, button role styling, status-badge tones, compact empty states, and calmer Backend/Processing/Batch/Results layouts. Phase 25A tightens workflow continuity by collapsing rarely used reset/output/backend details and keeping empty states compact. Phase 25B adds guided workflow continuity with subtle step indicators and one Next Step card on each primary workflow page. Phase 25C corrects the default route to Home -> Workspace if needed -> Dataset -> Planning -> Processing -> Results, keeps Batch optional, keeps Scientific Advisor as support guidance, and adds subtle readiness markers beside existing readiness text. Phase 25D makes Results output loading functional and tightens content-driven card sizing. Phase 26A adds the first product-readiness audit: native action icon intents, calmer backend copy, status wording consistency, and developer terminology kept under advanced/troubleshooting disclosure; see the [Visual Polish Audit](../development/VISUAL_POLISH_AUDIT.md) and [Product Readiness Audit I](../development/PRODUCT_READINESS_AUDIT_I.md). Phase 26B standardizes action lifecycle behavior so Environment, Dataset, Planning, Processing, Batch, Results, and Backend actions disable while running, show concise progress, refresh dependent pages automatically, and surface completion/failure via QGIS message-bar notifications.
 
 - `pyforestscan_qgis/ui/forms/mission_control.ui`: Qt Designer shell for the
   dock header, sidebar, page stack, and status bar.
@@ -81,6 +81,8 @@ Mission Control follows the permanent [Mission Control UX Standard](../developme
 
 The primary single-dataset path is Home -> Workspace if needed -> Dataset -> Planning -> Processing -> Results. Home summarizes backend/environment readiness, selected data, workflow status, and output location, then uses Continue to move to the next incomplete step. If readiness is not established, Continue and Check Environment route to Environment. Dataset routes to Planning, Planning routes to Processing, and Processing completion points to Results. Batch is optional and is never inserted into the default Continue path. Scientific Advisor is support guidance and is not required before Processing.
 
+Mission Control keeps pages synchronized as the workflow changes. Choosing a new dataset clears stale Planning, Processing, Advisor, and Results content until Dataset Explorer runs again. Backend verification or install completion refreshes Environment and Home. Processing completion updates Results and Home, and Load Outputs records a concise result message without exposing raw logs in the primary UI.
+
 ## Signal And Slot Architecture
 
 ```mermaid
@@ -94,11 +96,15 @@ flowchart LR
     H["Plan built"] --> I["planningChanged"]
     K["Job update"] --> L["jobUpdated"]
     N["Batch complete"] --> O["batchCompleted"]
+    P["Results Load Outputs"] --> Q["outputsLoaded"]
+    R["Backend action"] --> S["backendStateChanged"]
     D --> J["Status bar and Home"]
     F --> J
     I --> J
     L --> J
     L --> M["Results job history"]
+    Q --> J
+    S --> D
 ```
 
 ## Scope Boundary

@@ -109,6 +109,8 @@ Progress UI should show:
 
 Use explicit wording such as `Step progress is estimated` when percentage is staged rather than measured.
 
+Action buttons that start validation, dataset inspection, planning, processing, batch discovery/preflight, output loading, or backend verification should disable while the work is running and restore themselves after completion or failure. Primary UI should show the current stage or latest concise message; raw command output and detailed logs stay behind Advanced, Technical Details, or Troubleshooting.
+
 ## Empty States
 
 Every empty page or section should have a short explanation and one primary action. Hide everything else.
