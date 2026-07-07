@@ -27,16 +27,16 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
         self.assertIn('QPushButton("Verify QGIS Compatibility")', source)
         self.assertIn("preview_install_plan", source)
         self.assertIn("verify_qgis_compatibility", source)
-        self.assertIn("Windows internal beta builds can install a user-local backend", source)
+        self.assertIn("Windows beta builds can install a user-local backend", source)
 
     def test_release_readiness_and_manual_setup_guidance_are_present(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 
         self.assertIn('QPushButton("Manual Setup Instructions")', source)
-        self.assertIn("ZIP install ready", source)
-        self.assertIn("Backend auto-install ready", source)
-        self.assertIn("Manual dependency setup required", source)
-        self.assertIn("Backend auto-install ready: yes for Windows internal beta builds after confirmation", source)
+        self.assertIn("Plugin ZIP", source)
+        self.assertIn("Backend installer", source)
+        self.assertIn("Manual setup", source)
+        self.assertIn("Backend installer: available on Windows beta builds after confirmation", source)
 
     def test_backend_install_progress_ui_and_worker_are_present(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
@@ -44,12 +44,12 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
         self.assertIn("class _BackendInstallWorker(QObject)", source)
         self.assertIn("progressUpdated = pyqtSignal(object)", source)
         self.assertIn("self.backend_install_progress_bar", source)
-        self.assertIn("Install stage:", source)
-        self.assertIn("Current package/action:", source)
+        self.assertIn("Stage:", source)
+        self.assertIn("Current step:", source)
         self.assertIn("Elapsed time:", source)
         self.assertIn("Latest message:", source)
         self.assertIn("Step progress is estimated.", source)
-        self.assertIn("Advanced / Troubleshooting: technical log", source)
+        self.assertIn("Troubleshooting: technical log", source)
 
     def test_install_running_state_disables_backend_action_buttons(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")

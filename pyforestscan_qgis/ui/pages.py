@@ -33,6 +33,7 @@ from qgis.PyQt.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QStyle,
     QSizePolicy,
     QSpinBox,
     QDoubleSpinBox,
@@ -90,7 +91,7 @@ from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
 from .output_loading import LoadableOutput, collect_loadable_outputs, compact_dataset_summary_lines, output_loading_summary
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
 from .raster_styling import apply_generated_raster_renderer, layer_display_name
-from .ux_summary import backend_summary_from_environment, button_role_for_label, design_spacing_tokens, empty_state_message, environment_headline, home_environment_action_label, home_environment_readiness, primary_action_label, qgis_fallback_summary, readiness_status_text, routed_products_summary, status_badge_label, status_badge_tone, workflow_action_labels
+from .ux_summary import action_icon_intent, backend_summary_from_environment, button_role_for_label, design_spacing_tokens, empty_state_message, environment_headline, home_environment_action_label, home_environment_readiness, primary_action_label, qgis_fallback_summary, readiness_status_text, routed_products_summary, status_badge_label, status_badge_tone, status_display_word, workflow_action_labels
 
 ActivityCallback = Callable[[str, str], None]
 
@@ -462,7 +463,7 @@ class EnvironmentPage(MissionPage):
         """Create the environment page."""
         super().__init__("Environment", parent)
         self.adapter = adapter
-        controls = self.add_section("Runtime")
+        controls = self.add_section("Readiness")
         button_row = QHBoxLayout()
         self.refresh_button = QPushButton(primary_action_label("environment"))
         self.refresh_button.clicked.connect(self.refresh)
@@ -475,7 +476,7 @@ class EnvironmentPage(MissionPage):
         button_row.addStretch(1)
         controls.addLayout(button_row)
         self.status_label = QLabel()
-        _set_status_badge(self.status_label, "NOT CONFIGURED", readiness_status_text("NOT CONFIGURED", "Status: NOT CONFIGURED - refresh to check readiness."))
+        _set_status_badge(self.status_label, "NOT CONFIGURED", readiness_status_text("NOT CONFIGURED", "Status: Not set up - refresh to check readiness."))
         self.pbm_status_label = _body_label("PBM backend status: not checked")
         self.execution_label = _body_label("Execution backend: not checked")
         self.scope_label = _body_label(routed_products_summary())
@@ -484,7 +485,7 @@ class EnvironmentPage(MissionPage):
             controls.addWidget(label)
 
         fallback_group, fallback = _collapsible_section(self.content_layout, "QGIS Python fallback environment", checked=False)
-        fallback.addWidget(_details_label("Optional when PBM backend is READY. Expand only for QGIS-Python-only tools or troubleshooting."))
+        fallback.addWidget(_details_label("Optional when PBM backend is READY. Expand only for tools that still use QGIS Python or for troubleshooting."))
         self.fallback_checks_list = QListWidget()
         fallback.addWidget(self.fallback_checks_list)
         _wire_collapsible_group(fallback_group)
@@ -780,7 +781,7 @@ class ScientificAdvisorPage(MissionPage):
 
         qgis_tools = self._add_card("Recommended Next Actions")
         self.qgis_tools_card = qgis_tools.parentWidget()
-        self.qgis_tools_summary = _body_label("After processing, inspect generated layers in QGIS Layer Styling and Histogram before publication or interpretation.")
+        self.qgis_tools_summary = _body_label("After processing, inspect generated layers in QGIS Layer Styling and Histogram before sharing results.")
         qgis_tools.addWidget(self.qgis_tools_summary)
         self.open_output_folder_button = QPushButton("Open Output Folder")
         self.open_output_folder_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
@@ -905,7 +906,7 @@ class ScientificAdvisorPage(MissionPage):
             completed = ", ".join(_product_label(product) for product in products)
             self.next_steps_label.setText(
                 f"Completed products: {completed}\n\n"
-                "Next: inspect loaded layers with Layer Styling and Histogram, compare extents/CRS, open the final job summary, and only then prepare layouts or derived analyses."
+                "Next: inspect loaded layers with Layer Styling and Histogram, compare extents/CRS, and open the final run summary."
             )
 
     def open_processing_toolbox(self) -> None:
@@ -947,8 +948,8 @@ class ScientificAdvisorPage(MissionPage):
             first = report.warnings[0]
             text = f"Start here: {first.suggested_action}"
         else:
-            text = "Start here: build a Product Planner report using the recommended products and parameter notes, then run one small validation workflow before production use."
-        self.next_steps_label.setText(text + "\n\nUse QGIS QA tools after processing rather than treating outputs as publication-ready immediately.")
+            text = "Start here: build a product plan with the recommended products and settings."
+        self.next_steps_label.setText(text + "\n\nUse QGIS review tools after processing before sharing outputs.")
 
 
 class PlanningPage(MissionPage):
@@ -977,7 +978,7 @@ class PlanningPage(MissionPage):
         folder_row.setSpacing(ACTION_ROW_SPACING)
         folder_row.addWidget(self.output_folder_edit, 1)
         folder_row.addWidget(folder_button, 0)
-        output.addWidget(_body_label("Mission Control normally uses the active run folder automatically. Advanced users can override the output folder before building a plan."))
+        output.addWidget(_body_label("Mission Control normally uses the active run folder. Override it only when you need a different output location."))
         output.addLayout(folder_row)
         _wire_collapsible_group(output_group)
 
@@ -1079,7 +1080,7 @@ class PlanningPage(MissionPage):
         product_params.addLayout(params_grid)
         _wire_collapsible_group(product_params_group)
 
-        summary = self.add_section("Run Summary")
+        summary = self.add_section("Plan Summary")
         build = QPushButton("Build Plan")
         build.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         build.clicked.connect(self.build_plan)
@@ -1220,7 +1221,7 @@ class ProcessingPage(MissionPage):
         self.current_output_label = _body_label("Outputs: choose a dataset and output folder, then build a Product Plan.")
         self.footprint_label = _body_label("Processing footprint: build a Product Plan to see expected outputs, raster size, bands, and storage.")
         self.status_label = QLabel()
-        _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: NOT CONFIGURED - build a Product Plan first.")
+        _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: Not set up - build a Product Plan first.")
         overview.addWidget(self.selected_products_label)
         overview.addWidget(self.current_output_label)
         overview.addWidget(self.footprint_label)
@@ -1254,10 +1255,10 @@ class ProcessingPage(MissionPage):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         progress.addWidget(self.progress_bar)
-        progress.addWidget(_body_label("All implemented products can run together. Keep QGIS open until the job completes or fails cleanly."))
+        progress.addWidget(_body_label("Keep QGIS open until processing completes."))
 
         technical_group, technical = _collapsible_section(self.content_layout, "Technical Details", checked=False)
-        technical.addWidget(_details_label("Run files, Product Planner JSON paths, pipeline stages, and logs are shown here for troubleshooting and reproducibility."))
+        technical.addWidget(_details_label("Run files, plan paths, processing stages, and logs are shown here for troubleshooting."))
         self.current_plan_label = QLabel("Product plan file: none")
         self.current_plan_label.setWordWrap(True)
         technical.addWidget(self.current_plan_label)
@@ -1341,15 +1342,15 @@ class ProcessingPage(MissionPage):
         output_folder = self.job_output_folder_edit.text().strip()
         summary_path = self.run_context.job_summary_json if self.run_context is not None else None
         if not plan_path:
-            _set_status_badge(self.status_label, "WARNING", "Status: WARNING - build a product plan before starting.")
+            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - build a product plan before starting.")
             self.log_text.setPlainText("Build a product plan before starting a processing job.")
             return
         if not Path(plan_path).exists():
-            _set_status_badge(self.status_label, "WARNING", "Status: WARNING - build a product plan before starting.")
+            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - build a product plan before starting.")
             self.log_text.setPlainText("Build a product plan before starting a processing job.")
             return
         if not output_folder:
-            _set_status_badge(self.status_label, "WARNING", "Status: WARNING - choose an output folder before starting.")
+            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - choose an output folder before starting.")
             self.log_text.setPlainText("Choose an output folder for the job summary JSON.")
             return
         self.start_button.setEnabled(False)
@@ -1366,7 +1367,7 @@ class ProcessingPage(MissionPage):
                 summary_path=summary_path,
             )
         except JobExecutionError as exc:
-            _set_status_badge(self.status_label, "FAILED", f"Status: FAILED - processing job could not start: {exc}")
+            _set_status_badge(self.status_label, "FAILED", f"Status: Failed - processing job could not start: {exc}")
             self.log_text.setPlainText(f"Processing job could not start: {exc}")
             self.start_button.setEnabled(True)
             self.cancel_button.setEnabled(False)
@@ -1387,7 +1388,7 @@ class ProcessingPage(MissionPage):
     def _on_job_update(self, job: JobRecord) -> None:
         """Bridge core job progress into Qt widgets."""
         self.current_job_id = job.job_id
-        _set_status_badge(self.status_label, job.status.value, f"Status: {status_badge_label(job.status.value)} - {job.status.value}")
+        _set_status_badge(self.status_label, job.status.value, f"Status: {status_display_word(job.status.value)} - {job.status.value}")
         self.progress_bar.setValue(int(job.progress.percent))
         self.execution_backend_label.setText(f"Execution backend: {self.job_manager.execution_backend().replace('_', ' ')}")
         self.log_text.setPlainText("\n".join(f"{entry.level}: {entry.message}" for entry in job.logs))
@@ -1581,7 +1582,7 @@ class BatchPage(MissionPage):
         advanced_batch.addWidget(mode_help)
         self.stop_on_error_check = QCheckBox("Stop batch when a file fails")
         self.load_outputs_check = QCheckBox("Load generated outputs into QGIS")
-        self.load_outputs_check.setToolTip("Off by default for batches so QGIS is not overwhelmed by many layers.")
+        self.load_outputs_check.setToolTip("Leave off for large batches; load selected results from the Results page when ready.")
         self.confirm_parallel_check = QCheckBox("Allow parallel safe mode for this workload after reviewing warnings")
         self.confirm_parallel_check.toggled.connect(lambda _checked: self._refresh_footprint_label())
         self.skip_completed_check = QCheckBox("Skip already-completed files on resume")
@@ -1660,7 +1661,7 @@ class BatchPage(MissionPage):
         self.progress_bar.setValue(0)
         run_section.addWidget(self.progress_bar)
         self.status_label = QLabel()
-        _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: NOT CONFIGURED - discover files and run preflight.")
+        _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: Not set up - discover files and run preflight.")
         run_section.addWidget(self.status_label)
         self.worker_status_label = _body_label("Active workers: 0")
         run_section.addWidget(self.worker_status_label)
@@ -1699,12 +1700,12 @@ class BatchPage(MissionPage):
         """Discover supported lidar datasets for batch selection."""
         folder = self.input_folder_edit.text().strip()
         if not folder:
-            _set_status_badge(self.status_label, "WARNING", "Status: WARNING - choose an input folder before discovery.")
+            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - choose an input folder before discovery.")
             return
         try:
             datasets = discover_lidar_files(folder, self.recursive_check.isChecked())
         except ValueError as exc:
-            _set_status_badge(self.status_label, "FAILED", f"Status: FAILED - discovery failed: {exc}")
+            _set_status_badge(self.status_label, "FAILED", f"Status: Failed - discovery failed: {exc}")
             return
         self.discovered_paths = [item.path for item in datasets]
         self.file_list.clear()
@@ -1714,7 +1715,7 @@ class BatchPage(MissionPage):
             row.setCheckState(Qt.Checked if item.selected else Qt.Unchecked)
             row.setSizeHint(QSize(0, 72))
             self.file_list.addItem(row)
-        _set_status_badge(self.status_label, "READY", f"Status: READY - discovered {len(datasets)} supported dataset(s).")
+        _set_status_badge(self.status_label, "READY", f"Status: Ready - discovered {len(datasets)} supported dataset(s).")
         self._refresh_footprint_label()
 
     def run_preflight(self) -> None:
@@ -1737,18 +1738,18 @@ class BatchPage(MissionPage):
     def run_batch(self) -> None:
         """Run selected datasets through preflight-approved batch execution."""
         if self.preflight_report is None:
-            _set_status_badge(self.status_label, "WARNING", "Status: WARNING - run preflight before starting the batch.")
+            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - run preflight before starting the batch.")
             return
         if self.preflight_report.blockers:
-            _set_status_badge(self.status_label, "FAILED", "Status: FAILED - preflight blockers must be resolved before running.")
+            _set_status_badge(self.status_label, "FAILED", "Status: Failed - preflight blockers must be resolved before running.")
             return
         if self.preflight_report.warnings and not self.acknowledge_warnings_check.isChecked():
-            _set_status_badge(self.status_label, "WARNING", "Status: WARNING - review and acknowledge preflight warnings before running.")
+            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - review and acknowledge preflight warnings before running.")
             return
         try:
             request = self._build_batch_request(self.preflight_report.batch_folder, self.preflight_report.files_to_process)
         except BatchExecutionError as exc:
-            _set_status_badge(self.status_label, "FAILED", f"Status: FAILED - batch could not start: {exc}")
+            _set_status_badge(self.status_label, "FAILED", f"Status: Failed - batch could not start: {exc}")
             return
         selected = list(request.datasets)
         self.batch_items = []
@@ -1763,21 +1764,21 @@ class BatchPage(MissionPage):
         self.pause_button.setEnabled(True)
         self.cancel_button.setEnabled(True)
         self.retry_failed_button.setEnabled(False)
-        _set_status_badge(self.status_label, "RUNNING", f"Status: RUNNING - {len(selected)} dataset(s).")
+        _set_status_badge(self.status_label, "RUNNING", f"Status: Running - {len(selected)} dataset(s).")
         self._processed_items = 0
         self._total_items = max(1, len(selected) + len(self.preflight_report.files_to_skip))
         executor = BatchExecutor(adapter_factory=PyForestScanAdapter)
         try:
             guardrail = executor.guardrails(request)
         except BatchExecutionError as exc:
-            _set_status_badge(self.status_label, "FAILED", f"Status: FAILED - batch could not start: {exc}")
+            _set_status_badge(self.status_label, "FAILED", f"Status: Failed - batch could not start: {exc}")
             self._finish_batch_run()
             return
         self.active_workers = guardrail.max_workers if guardrail.is_parallel else 1
         mode_label = guardrail.effective_mode.replace("_", " ")
         self.worker_status_label.setText(f"Active workers: {self.active_workers} ({mode_label})")
         backend_label = PyForestScanAdapter().selected_execution_backend().replace("_", " ")
-        _set_status_badge(self.status_label, "RUNNING", f"Status: RUNNING - {len(selected)} dataset(s) in {mode_label}. Execution backend: {backend_label}.")
+        _set_status_badge(self.status_label, "RUNNING", f"Status: Running - {len(selected)} dataset(s) in {mode_label}. Execution backend: {backend_label}.")
         self.batch_thread = QThread(self)
         self.batch_worker = _BatchExecutionWorker(request, self._batch_control_state)
         self.batch_worker.moveToThread(self.batch_thread)
@@ -1846,7 +1847,7 @@ class BatchPage(MissionPage):
         _set_status_badge(
             self.status_label,
             completion_badge,
-            f"Status: {completion_badge} - batch complete. Completed {getattr(result, 'success_count', 0)}; failed {getattr(result, 'failure_count', 0)}. Summary: {getattr(result, 'summary_html', '')}",
+            f"Status: {status_display_word(completion_badge)} - batch complete. Completed {getattr(result, 'success_count', 0)}; failed {getattr(result, 'failure_count', 0)}. Summary: {getattr(result, 'summary_html', '')}",
         )
         self._set_batch_summary(result)
         self.open_batch_folder_button.setEnabled(True)
@@ -1856,7 +1857,7 @@ class BatchPage(MissionPage):
 
     def _on_batch_failed(self, message: str) -> None:
         """Display an executor-level batch failure."""
-        _set_status_badge(self.status_label, "FAILED", f"Status: FAILED - batch could not start: {message}")
+        _set_status_badge(self.status_label, "FAILED", f"Status: Failed - batch could not start: {message}")
         self._finish_batch_run()
 
     def _finish_batch_run(self) -> None:
@@ -1941,7 +1942,7 @@ class BatchPage(MissionPage):
         if status == "failed":
             self.failed_paths.append(Path(getattr(item, "dataset_path")))
         self._refresh_batch_results()
-        _set_status_badge(self.status_label, "RUNNING", f"Status: RUNNING - {self._processed_items}/{total} dataset(s) processed.")
+        _set_status_badge(self.status_label, "RUNNING", f"Status: Running - {self._processed_items}/{total} dataset(s) processed.")
         QApplication.processEvents()
 
     def _on_batch_job_update(self, job: JobRecord) -> None:
@@ -1961,19 +1962,19 @@ class BatchPage(MissionPage):
         """Pause or resume between batch files."""
         self.pause_requested = not self.pause_requested
         self.pause_button.setText("Resume Batch" if self.pause_requested else "Pause After Current File")
-        _set_status_badge(self.status_label, "RUNNING", "Status: RUNNING - batch will pause after the current file." if self.pause_requested else "Status: RUNNING - batch resumed.")
+        _set_status_badge(self.status_label, "RUNNING", "Status: Running - batch will pause after the current file." if self.pause_requested else "Status: Running - batch resumed.")
 
     def cancel_remaining(self) -> None:
         """Cancel files that have not started yet."""
         self.cancel_requested = True
         self.pause_requested = False
         self.pause_button.setText("Pause After Current File")
-        _set_status_badge(self.status_label, "RUNNING", "Status: RUNNING - cancelling remaining files after the current file.")
+        _set_status_badge(self.status_label, "RUNNING", "Status: Running - cancelling remaining files after the current file.")
 
     def retry_failed_files(self) -> None:
         """Retry failed files from the last batch with current settings."""
         if not self.failed_paths:
-            _set_status_badge(self.status_label, "WARNING", "Status: WARNING - no failed files are available to retry.")
+            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - no failed files are available to retry.")
             return
         self.discovered_paths = list(self.failed_paths)
         self.file_list.clear()
@@ -1985,7 +1986,7 @@ class BatchPage(MissionPage):
             self.file_list.addItem(row)
         self.failed_paths = []
         self.retry_failed_button.setEnabled(False)
-        _set_status_badge(self.status_label, "WARNING", "Status: WARNING - failed files are queued for retry. Click Run Batch.")
+        _set_status_badge(self.status_label, "WARNING", "Status: Needs review - failed files are queued for retry. Click Run Batch.")
         self._refresh_footprint_label()
 
     def open_batch_output_folder(self) -> None:
@@ -2327,8 +2328,8 @@ class SettingsPage(MissionPage):
         workspace_form.addRow("Recent item limit", self.maximum_recent_items_spin)
         workspace.addLayout(workspace_form)
 
-        backend = self.add_section("PyForestScan Backend Manager")
-        backend.addWidget(_body_label("Windows internal beta builds can install a user-local backend. PBM does not modify QGIS Python, the QGIS installation, system Python, PATH, or user environment variables."))
+        backend = self.add_section("Backend")
+        backend.addWidget(_body_label("Windows beta builds can install a user-local backend. This does not modify QGIS Python, system Python, PATH, shell profiles, or QGIS folders."))
         self.backend_service = BackendService()
         self.backend_install_running = False
         self.backend_install_thread: QThread | None = None
@@ -2338,20 +2339,20 @@ class SettingsPage(MissionPage):
         self.backend_install_timer.setInterval(1000)
         self.backend_install_timer.timeout.connect(self._refresh_backend_install_elapsed)
         self.backend_status_label = _body_label("")
-        _set_status_badge(self.backend_status_label, "NOT CONFIGURED", readiness_status_text("NOT CONFIGURED", "Backend Status: NOT CONFIGURED - verify backend."))
+        _set_status_badge(self.backend_status_label, "NOT CONFIGURED", readiness_status_text("NOT CONFIGURED", "Backend Status: Not set up - verify backend."))
         self.backend_location_label = _body_label("Backend Location: Unknown")
         self.backend_environment_label = _body_label("Environment Location: Unknown")
         self.backend_installed_version_label = _body_label("Installed Version: Not installed")
         self.backend_plugin_version_label = _body_label("Plugin Version: Unknown")
-        self.backend_manifest_version_label = _body_label("Manifest Version: Unknown")
+        self.backend_manifest_version_label = _body_label("Backend recipe version: Unknown")
         self.backend_python_label = _body_label("Python Version: Not detected")
         self.backend_pdal_label = _body_label("PDAL Version: Not detected")
-        self.backend_dependency_label = _body_label("Dependency summary: Not verified")
-        self.zip_install_ready_label = _body_label("ZIP install ready: pending clean-machine smoke test")
-        self.backend_auto_install_ready_label = _body_label("Backend auto-install ready: No")
-        self.manual_dependency_setup_label = _body_label("Manual dependency setup required: Yes, unless QGIS Python already has required dependencies")
-        self.qgis_compatibility_label = _body_label("QGIS Compatibility: Not checked")
-        self.backend_install_readiness_label = _body_label("Install readiness: Platform check pending")
+        self.backend_dependency_label = _body_label("Verification: Not checked")
+        self.zip_install_ready_label = _body_label("Plugin ZIP: not checked")
+        self.backend_auto_install_ready_label = _body_label("Backend installer: Not checked")
+        self.manual_dependency_setup_label = _body_label("Manual setup: Required until the backend is ready")
+        self.qgis_compatibility_label = _body_label("QGIS compatibility: Not checked")
+        self.backend_install_readiness_label = _body_label("Backend setup: Not checked")
         for label in (
             self.backend_status_label,
             self.backend_dependency_label,
@@ -2380,8 +2381,8 @@ class SettingsPage(MissionPage):
         self.backend_install_progress_bar.setRange(0, 100)
         self.backend_install_progress_bar.setValue(0)
         backend.addWidget(self.backend_install_progress_bar)
-        self.backend_install_stage_label = _body_label("Install stage: Not running")
-        self.backend_install_action_label = _body_label("Current package/action: None")
+        self.backend_install_stage_label = _body_label("Stage: Not running")
+        self.backend_install_action_label = _body_label("Current step: None")
         self.backend_install_elapsed_label = _body_label("Elapsed time: 00:00")
         self.backend_install_message_label = _body_label("Latest message: No backend install is running.")
         self.backend_install_estimate_label = _body_label("Step progress is estimated.")
@@ -2455,9 +2456,9 @@ class SettingsPage(MissionPage):
         self.backend_details = QTextEdit()
         self.backend_details.setReadOnly(True)
         self.backend_details.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)
-        self.backend_details.setPlainText("Verify or install PBM from this page. Advanced reports and logs stay under Advanced / Troubleshooting.")
+        self.backend_details.setPlainText("Verify or install the user-local backend from this page. Technical reports and logs stay under Advanced / Troubleshooting.")
         backend.addWidget(self.backend_details)
-        self.backend_technical_log_group = QGroupBox("Advanced / Troubleshooting: technical log")
+        self.backend_technical_log_group = QGroupBox("Troubleshooting: technical log")
         self.backend_technical_log_group.setCheckable(True)
         self.backend_technical_log_group.setChecked(False)
         technical_layout = QVBoxLayout()
@@ -2524,21 +2525,21 @@ class SettingsPage(MissionPage):
         self.backend_environment_label.setText(f"Environment Location: {paths.environment_path}")
         self.backend_installed_version_label.setText(f"Installed Version: {'configured' if state.config_exists else 'Not installed'}")
         self.backend_plugin_version_label.setText(f"Plugin Version: {self.backend_service.plugin_version}")
-        self.backend_manifest_version_label.setText(f"Manifest Version: {manifest.backend_version if manifest else 'Unavailable'}")
+        self.backend_manifest_version_label.setText(f"Backend recipe version: {manifest.backend_version if manifest else 'Unavailable'}")
         required_count = len(registry.required_dependencies())
         total_count = len(registry.dependencies)
-        self.backend_dependency_label.setText(f"Dependencies: {required_count} required, {total_count - required_count} optional/future")
-        self.zip_install_ready_label.setText("ZIP install ready: yes for plugin loading; clean Windows/QGIS smoke test still required before broad distribution")
-        auto_ready = "yes, Windows internal beta" if availability.enabled else f"no; {availability.reason}"
-        self.backend_auto_install_ready_label.setText(f"Backend auto-install ready: {auto_ready}")
+        self.backend_dependency_label.setText(f"Verification: {required_count} required checks; {total_count - required_count} optional checks")
+        self.zip_install_ready_label.setText("Plugin ZIP: ready for QGIS Plugin Manager installs")
+        auto_ready = "available on Windows beta builds" if availability.enabled else f"not available; {availability.reason}"
+        self.backend_auto_install_ready_label.setText(f"Backend installer: {auto_ready}")
         if state.status.value == "Ready":
-            manual_text = "Manual dependency setup required: no for backend verification; processing integration is reported per workflow"
+            manual_text = "Manual setup: not required for PBM-routed products"
         else:
-            manual_text = "Manual dependency setup required: no after a successful PBM install; workflows not routed through PBM still require QGIS Python dependencies"
+            manual_text = "Manual setup: not required after PBM is ready; QGIS-Python-only tools still show their own requirements"
         self.manual_dependency_setup_label.setText(manual_text)
-        compat_text = version.message if version else "Manifest unavailable"
-        self.qgis_compatibility_label.setText(f"Compatibility: QGIS {compatibility.summary()}; backend {compat_text}")
-        self.backend_install_readiness_label.setText(f"Install readiness: {availability.reason}; manifest includes {len(plan.required_package_names())} packages")
+        compat_text = version.message if version else "Backend recipe unavailable"
+        self.qgis_compatibility_label.setText(f"QGIS compatibility: {compatibility.summary()}; backend {compat_text}")
+        self.backend_install_readiness_label.setText(f"Backend setup: {availability.reason}; {len(plan.required_package_names())} packages planned")
         if not self.backend_install_running:
             self.install_backend_button.setText(availability.button_label)
             self.install_backend_button.setEnabled(availability.enabled)
@@ -2549,7 +2550,7 @@ class SettingsPage(MissionPage):
             f"{state.message}\n\n"
             "Normal beta path: install or verify PBM, then run Environment Check. "
             "PBM writes only to the user-local PyForestScan backend folder and does not modify QGIS Python, system Python, PATH, shell profiles, or QGIS folders. "
-            "Advanced install plans, module registry, and logs are available from Preview Install, Advanced, or View Logs."
+            "Technical plans and logs are available from Preview Install, Advanced, or View Logs."
         )
 
     def verify_backend(self) -> None:
@@ -2562,33 +2563,33 @@ class SettingsPage(MissionPage):
         self.backend_pdal_label.setText(f"PDAL Version: {pdal_dependency.detected_version if pdal_dependency and pdal_dependency.detected_version else 'Not detected'}")
         required = result.registry.required_dependencies()
         verified_required = sum(1 for dependency in required if dependency.verification_status.value == "pass")
-        self.backend_dependency_label.setText(f"Dependency summary: {verified_required}/{len(required)} required dependencies verified")
+        self.backend_dependency_label.setText(f"Verification: {verified_required}/{len(required)} required checks passed")
         self.backend_details.setPlainText(self.backend_service.format_verification_report(result))
 
     def verify_qgis_compatibility(self) -> None:
         """Display defensive QGIS compatibility details."""
         report = build_qgis_compatibility_report()
-        self.qgis_compatibility_label.setText(f"QGIS Compatibility: {report.summary()}")
+        self.qgis_compatibility_label.setText(f"QGIS compatibility: {report.summary()}")
         self.backend_details.setPlainText(format_qgis_compatibility_report(report))
 
     def preview_install_plan(self) -> None:
         """Display the dry-run backend installation plan."""
         plan = self.backend_service.preview_install_plan()
         availability = self.backend_service.install_availability()
-        self.backend_install_readiness_label.setText(f"Install readiness: {availability.reason}; manifest includes {len(plan.required_package_names())} packages")
+        self.backend_install_readiness_label.setText(f"Backend setup: {availability.reason}; {len(plan.required_package_names())} packages planned")
         self.backend_details.setPlainText(self.backend_service.format_install_plan(plan))
 
     def install_backend_internal_beta(self) -> None:
         """Confirm and run the Windows internal beta backend installer."""
         availability = self.backend_service.install_availability()
         if not availability.enabled:
-            self.backend_details.setPlainText(f"Install Backend is not available on this platform/build.\n\n{availability.reason}")
+            self.backend_details.setPlainText(f"Install Backend is not available for this platform.\n\n{availability.reason}")
             return
         message = (
             "This will install PyForestScan backend packages into your user-local PyForestScan folder. "
             "It will not modify QGIS or system Python.\n\n"
             f"Backend folder: {self.backend_service.paths.backend_root}\n"
-            "The installer downloads Micromamba, creates a managed environment, verifies imports/executables, and writes PBM config only under that folder."
+            "The installer downloads Micromamba, creates the backend, verifies it, and writes settings only under that folder."
         )
         reply = QMessageBox.question(
             self,
@@ -2629,16 +2630,16 @@ class SettingsPage(MissionPage):
             self._set_backend_progress_visible(True)
             self.backend_install_started_at = time.monotonic()
             self.backend_install_timer.start()
-            _set_status_badge(self.backend_status_label, "RUNNING", readiness_status_text("RUNNING", "Backend Status: RUNNING - installation in progress."))
+            _set_status_badge(self.backend_status_label, "RUNNING", readiness_status_text("RUNNING", "Backend Status: Running - installation in progress."))
             self.backend_install_progress_bar.setValue(5)
-            self.backend_install_stage_label.setText("Install stage: Preparing")
-            self.backend_install_action_label.setText("Current package/action: staging")
+            self.backend_install_stage_label.setText("Stage: Preparing")
+            self.backend_install_action_label.setText("Current step: preparing files")
             self.backend_install_message_label.setText("Latest message: Installation is running. Please wait for this step to finish.")
             self.backend_install_estimate_label.setText("Step progress is estimated.")
             self.backend_details.setPlainText(
                 "Backend installation is running in the background.\n\n"
                 "Installation is running. Please wait for this step to finish.\n"
-                "Step progress is estimated. Technical logs are hidden under Advanced / Troubleshooting."
+                "Step progress is estimated. Technical logs are hidden under Troubleshooting."
             )
         else:
             self.backend_install_timer.stop()
@@ -2682,8 +2683,8 @@ class SettingsPage(MissionPage):
         current = getattr(update, "current_package", "") or "current step"
         message = getattr(update, "message", "") or "Working..."
         estimate = getattr(update, "estimated_remaining_step", "") or "Step progress is estimated."
-        self.backend_install_stage_label.setText(f"Install stage: {stage}")
-        self.backend_install_action_label.setText(f"Current package/action: {current}")
+        self.backend_install_stage_label.setText(f"Stage: {stage}")
+        self.backend_install_action_label.setText(f"Current step: {current}")
         self.backend_install_message_label.setText(f"Latest message: {message}")
         self.backend_install_estimate_label.setText(estimate)
         self._refresh_backend_install_elapsed()
@@ -2703,7 +2704,7 @@ class SettingsPage(MissionPage):
         else:
             final_state = "Install Failed"
         _set_status_badge(self.backend_status_label, final_state, readiness_status_text(final_state, f"Backend Status: {status_badge_label(final_state)} - {final_state}"))
-        self.backend_install_stage_label.setText(f"Install stage: {final_state}")
+        self.backend_install_stage_label.setText(f"Stage: {final_state}")
         self.backend_install_message_label.setText(f"Latest message: {getattr(result, 'message', '')}")
         self.backend_details.setPlainText(
             "PBM Backend Install Result\n\n"
@@ -2714,7 +2715,7 @@ class SettingsPage(MissionPage):
             f"Modified user-local backend files: {getattr(result, 'modified_system', False)}\n"
             f"Log path: {getattr(result, 'log_path', None) or self.backend_service.paths.install_log}\n"
             f"Message: {getattr(result, 'message', '')}\n\n"
-            "Use Repair if installation failed. Technical logs are available under Advanced / Troubleshooting or View Logs."
+            "Use Repair if installation failed. Technical logs are available under Troubleshooting or View Logs."
         )
         self._refresh_backend_technical_log()
 
@@ -2722,14 +2723,14 @@ class SettingsPage(MissionPage):
         """Display unexpected installer worker failure."""
         self._set_backend_install_running(False)
         self._set_backend_progress_visible(True)
-        _set_status_badge(self.backend_status_label, "FAILED", readiness_status_text("FAILED", "Backend Status: FAILED - install failed."))
-        self.backend_install_stage_label.setText("Install stage: Install Failed")
+        _set_status_badge(self.backend_status_label, "FAILED", readiness_status_text("FAILED", "Backend Status: Failed - install failed."))
+        self.backend_install_stage_label.setText("Stage: Install Failed")
         self.backend_install_message_label.setText(f"Latest message: {message}")
         self.backend_details.setPlainText(
             "PBM Backend Install Result\n\n"
             "Final state: Install Failed\n"
             f"Message: {message}\n\n"
-            "Use View Logs for details. Technical logs are hidden under Advanced / Troubleshooting."
+            "Use View Logs for details. Technical logs are hidden under Troubleshooting."
         )
         self._refresh_backend_technical_log()
 
@@ -2769,19 +2770,19 @@ class SettingsPage(MissionPage):
         manifest = self.backend_service.backend_manifest()
         version = self.backend_service.version_compatibility()
         lines = [
-            "PBM Advanced",
-            f"Internal beta install: {'enabled' if self.backend_service.backend_install_enabled() else 'off'}",
+            "Backend Technical Details",
+            f"Installer availability: {'enabled' if self.backend_service.backend_install_enabled() else 'off'}",
             f"Manifest backend version: {manifest.backend_version if manifest else 'Unavailable'}",
             f"Manifest environment version: {manifest.environment_version if manifest else 'Unavailable'}",
             f"Version compatibility: {version.message if version else 'Unavailable'}",
             "",
-            "Structured logs:",
+            "Logs:",
             f"- Install: {self.backend_service.paths.install_log}",
             f"- Download: {self.backend_service.paths.download_log}",
             f"- Verify: {self.backend_service.paths.verify_log}",
             f"- Repair: {self.backend_service.paths.repair_log}",
             "",
-            "Future modules:",
+            "Planned modules:",
             *[f"- {name}" for name in modules.names()],
         ]
         if version and version.warnings:
@@ -2796,14 +2797,14 @@ class SettingsPage(MissionPage):
             "Manual Setup Instructions\n\n"
             "ZIP installation installs only the QGIS plugin. PBM backend installation creates an isolated, user-local PyForestScan backend and does not install packages into QGIS Python, system Python, PATH, shell profiles, or QGIS folders.\n\n"
             "Current release status:\n"
-            "- ZIP install ready: yes for plugin loading and diagnostics; clean Windows/QGIS smoke testing remains required before broad distribution.\n"
-            "- Backend auto-install ready: yes for Windows internal beta builds after confirmation.\n"
-            "- Manual dependency setup required: no after PBM backend installation verifies successfully; workflows not routed through PBM still report QGIS Python requirements clearly.\n\n"
+            "- Plugin ZIP: ready for QGIS Plugin Manager installs.\n"
+            "- Backend installer: available on Windows beta builds after confirmation.\n"
+            "- Manual setup: not required after PBM backend installation verifies successfully; QGIS-Python-only tools still show their own requirements.\n\n"
             "Next steps:\n"
             "1. Install the ZIP through QGIS Plugin Manager.\n"
             "2. Open Mission Control and run Environment Check.\n"
-            "3. Open Backend settings and click Install Backend on Windows internal beta builds.\n"
-            "4. Verify Backend until status is Ready before trying Guided, Advanced, or Batch workflows.\n\n"
+            "3. Open Backend settings and click Install Backend on Windows beta builds.\n"
+            "4. Verify Backend until status is Ready before running Guided, Advanced, or Batch workflows.\n\n"
             "Reference docs: docs/INSTALLATION_STRATEGY.md, docs/releases/CLEAN_MACHINE_SMOKE_TEST.md, and docs/releases/PBM_INTERNAL_BETA_SMOKE_TEST.md."
         )
 
@@ -2815,8 +2816,8 @@ class SettingsPage(MissionPage):
         else:
             self.backend_details.setPlainText(
                 f"Backend folder does not exist yet: {folder}\n\n"
-                "Windows internal beta installation will create only this user-local directory after confirmation. "
-                "Use Preview Install to review the manifest-driven backend layout before installing."
+                "Backend installation will create only this user-local directory after confirmation. "
+                "Use Preview Install to review the backend layout before installing."
             )
 
     def view_backend_logs(self) -> None:
@@ -2905,18 +2906,95 @@ def _processing_footprint_text(footprint: ProcessingFootprint) -> str:
 
 
 def _apply_button_role(button: QPushButton, role: str | None = None) -> QPushButton:
-    """Apply design-system button role metadata for stylesheet selectors."""
+    """Apply design-system button role metadata and native action icons."""
     requested = (role or button_role_for_label(button.text())).strip().lower()
     if requested not in {"primary", "secondary", "neutral", "danger"}:
         requested = button_role_for_label(button.text())
     if requested not in {"primary", "secondary", "neutral", "danger"}:
         requested = "secondary"
     button.setProperty("buttonRole", requested)
+    _apply_action_icon(button)
     style = button.style()
     if style is not None:
         style.unpolish(button)
         style.polish(button)
     return button
+
+
+def _apply_action_icon(button: QPushButton) -> None:
+    """Prefer QGIS theme icons, then Qt standard icons for important actions."""
+    intent = action_icon_intent(button.text())
+    if not intent:
+        return
+    icon = _qgis_theme_icon(intent) or _qt_standard_icon(button, intent)
+    if icon is not None and not icon.isNull():
+        button.setIcon(icon)
+        button.setIconSize(QSize(16, 16))
+
+
+def _qgis_theme_icon(intent: str):
+    """Return a QGIS theme icon when QGIS exposes one for the action intent."""
+    candidates = {
+        "cancel": ("/mActionCancel.svg", "/mIconClose.svg"),
+        "clear": ("/mActionDeleteSelected.svg", "/mIconClearText.svg"),
+        "folder": ("/mActionFileOpen.svg", "/mIconFolder.svg"),
+        "forward": ("/mActionArrowRight.svg", "/mIconForward.svg"),
+        "help": ("/mActionHelpContents.svg", "/mIconHelp.svg"),
+        "install": ("/mActionInstallPlugin.svg", "/mIconPlugin.svg"),
+        "load": ("/mActionAddRasterLayer.svg", "/mActionAddLayer.svg"),
+        "log": ("/mActionOpenTable.svg", "/mIconTableLayer.svg"),
+        "open": ("/mActionFileOpen.svg",),
+        "preview": ("/mActionShowAllLayers.svg", "/mActionIdentify.svg"),
+        "refresh": ("/mActionRefresh.svg",),
+        "repair": ("/mActionToggleEditing.svg", "/mIconWarning.svg"),
+        "run": ("/mActionStart.svg", "/mIconRun.svg"),
+        "save": ("/mActionFileSave.svg",),
+        "search": ("/mActionZoomIn.svg", "/mActionIdentify.svg"),
+        "select": ("/mActionSelect.svg",),
+        "settings": ("/mActionOptions.svg", "/mIconProperties.svg"),
+        "verify": ("/mIconSuccess.svg", "/mActionIdentify.svg"),
+        "inspect": ("/mActionIdentify.svg",),
+    }.get(intent, ())
+    try:
+        from qgis.core import QgsApplication
+
+        for name in candidates:
+            icon = QgsApplication.getThemeIcon(name)
+            if icon is not None and not icon.isNull():
+                return icon
+    except Exception:  # noqa: BLE001 - tests and non-QGIS contexts fall back to Qt icons.
+        return None
+    return None
+
+
+def _qt_standard_icon(button: QPushButton, intent: str):
+    """Return a Qt standard icon for action intents not covered by QGIS."""
+    style = button.style()
+    if style is None:
+        return None
+    pixmap_name = {
+        "cancel": "SP_DialogCancelButton",
+        "clear": "SP_DialogDiscardButton",
+        "folder": "SP_DirOpenIcon",
+        "forward": "SP_ArrowForward",
+        "help": "SP_DialogHelpButton",
+        "install": "SP_DriveHDIcon",
+        "load": "SP_FileDialogNewFolder",
+        "log": "SP_FileIcon",
+        "open": "SP_DialogOpenButton",
+        "preview": "SP_FileDialogContentsView",
+        "refresh": "SP_BrowserReload",
+        "repair": "SP_MessageBoxWarning",
+        "run": "SP_MediaPlay",
+        "save": "SP_DialogSaveButton",
+        "search": "SP_FileDialogContentsView",
+        "select": "SP_DialogApplyButton",
+        "settings": "SP_FileDialogDetailedView",
+        "verify": "SP_DialogApplyButton",
+        "inspect": "SP_MessageBoxInformation",
+    }.get(intent)
+    pixmap = getattr(QStyle, pixmap_name, None) if pixmap_name else None
+    return style.standardIcon(pixmap) if pixmap is not None else None
 
 
 def _set_status_badge(label: QLabel, status: str, text: str | None = None) -> QLabel:
@@ -3101,11 +3179,7 @@ def _selected_layer(iface: object | None) -> object | None:
         return None
 
 def _status_icon(status: str) -> str:
-    if status == CheckStatus.PASS.value:
-        return "PASS"
-    if status == CheckStatus.FAIL.value:
-        return "FAIL"
-    return "WARN"
+    return status_display_word(status)
 
 
 def _format_bounds(report: DatasetExplorerReport) -> str:
@@ -3120,17 +3194,7 @@ def _format_bounds(report: DatasetExplorerReport) -> str:
 
 
 def _pipeline_status_icon(status: str) -> str:
-    if status == "passed":
-        return "PASS"
-    if status == "warning":
-        return "WARN"
-    if status == "failed":
-        return "FAIL"
-    if status == "skipped":
-        return "TODO"
-    if status == "not_implemented":
-        return "TODO"
-    return "WAIT"
+    return status_display_word(status)
 
 
 def _friendly_result_label(path: Path) -> str:

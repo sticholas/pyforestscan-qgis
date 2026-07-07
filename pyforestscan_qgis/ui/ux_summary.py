@@ -75,10 +75,62 @@ READINESS_MARKER_TOKENS: dict[str, tuple[str, str]] = {
 }
 
 BUTTON_ROLE_EXAMPLES: dict[str, tuple[str, ...]] = {
-    "primary": ("Continue", "Continue to Dataset", "Continue to Planning", "Continue to Processing", "Run Processing", "Run Batch", "Install Backend"),
-    "secondary": ("Open Batch", "Open Output Folder", "Load Outputs", "Preview Install Plan"),
-    "neutral": ("Check Environment", "Set Up Backend", "Refresh Environment", "Verify Backend", "Browse"),
-    "danger": ("Delete Workspace", "Clear Current Run", "Cancel Remaining"),
+    "primary": ("Continue", "Continue to Dataset", "Continue to Planning", "Continue to Processing", "Run Processing", "Run Batch", "Install Backend", "Analyze Dataset", "Build Plan"),
+    "secondary": ("Open Batch", "Open Output Folder", "Load Outputs", "Preview Install Plan", "Open Report", "Add Footprint Layer", "Zoom to Footprint", "Resume Batch", "Retry Failed Files"),
+    "neutral": ("Check Environment", "Set Up Backend", "Refresh Environment", "Verify Backend", "Browse", "Select All", "Clear", "Verify QGIS Compatibility"),
+    "danger": ("Delete Workspace", "Clear Current Run", "Cancel Remaining", "Repair Backend", "Clear / Reset Current Workspace"),
+}
+
+ACTION_ICON_INTENTS: dict[str, str] = {
+    "analyze dataset": "inspect",
+    "browse": "open",
+    "build plan": "run",
+    "cancel": "cancel",
+    "cancel remaining": "cancel",
+    "check environment": "verify",
+    "clear": "clear",
+    "clear current run": "clear",
+    "clear / reset current workspace": "clear",
+    "continue": "forward",
+    "continue to dataset": "forward",
+    "continue to planning": "forward",
+    "continue to processing": "forward",
+    "discover files": "search",
+    "install backend": "install",
+    "load outputs": "load",
+    "manual setup instructions": "help",
+    "open": "open",
+    "open backend folder": "folder",
+    "open backend settings": "settings",
+    "open batch output folder": "folder",
+    "open output folder": "folder",
+    "open report": "open",
+    "preview install plan": "preview",
+    "refresh environment": "refresh",
+    "repair": "repair",
+    "repair backend": "repair",
+    "resume batch": "run",
+    "retry failed files": "repair",
+    "run batch": "run",
+    "run preflight check": "verify",
+    "run processing": "run",
+    "save notes": "save",
+    "select all": "select",
+    "set up backend": "settings",
+    "use this folder": "folder",
+    "verify backend": "verify",
+    "verify qgis compatibility": "verify",
+    "view logs": "log",
+}
+
+STATUS_WORDING: dict[str, str] = {
+    "READY": "Ready",
+    "RUNNING": "Running",
+    "WARNING": "Needs review",
+    "FAILED": "Failed",
+    "NOT CONFIGURED": "Not set up",
+    "DISABLED": "Unavailable",
+    "PLANNED": "Planned",
 }
 
 EXPANDABLE_SECTION_LABELS: tuple[str, ...] = (
@@ -199,6 +251,24 @@ def button_role_for_label(label: str) -> str:
         if any(normalized == example.lower() for example in examples):
             return role
     return "secondary"
+
+
+def action_icon_intent(label: str) -> str | None:
+    """Return a native icon intent for a visible action label."""
+    normalized = " ".join((label or "").strip().lower().split())
+    return ACTION_ICON_INTENTS.get(normalized)
+
+
+def status_display_word(status: str) -> str:
+    """Return concise user-facing status wording for approved status labels."""
+    return STATUS_WORDING.get(status_badge_label(status), "Not set up")
+
+
+def technical_wording_is_advanced(text: str) -> bool:
+    """Return whether primary UI copy avoids developer terms."""
+    banned = ("manifest", "registry", "bootstrap", "implementation", "internal", "runtime")
+    lowered = (text or "").lower()
+    return not any(word in lowered for word in banned)
 
 
 def expandable_section_labels() -> tuple[str, ...]:

@@ -16,6 +16,11 @@ Phase 25A continues product polish without changing PBM, processing algorithms, 
 | Results | Empty results teach the next action, and output actions stay inactive until generated outputs exist. |
 | Settings / Backend | Developer-only install-mode display is hidden, and PBM progress UI appears only while install progress or final install state is useful. |
 
+
+## Phase 26A Product Readiness Audit
+
+Phase 26A extends visual polish into a product-readiness audit. Buttons now use standardized native icon intents, with QGIS theme icons preferred and Qt standard icons as fallback. Primary backend copy avoids developer terminology, PBM setup/progress labels use calmer product wording, PASS/FAIL/WARN row prefixes are replaced with Ready/Needs review/Failed wording, and technical recipe/log/module information remains behind Advanced or Troubleshooting. See [Product Readiness Audit I](PRODUCT_READINESS_AUDIT_I.md).
+
 ## Applied Changes
 
 | Area | Result |

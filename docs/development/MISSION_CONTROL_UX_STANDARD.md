@@ -10,6 +10,7 @@ This standard applies to every future Mission Control page, dialog, panel, and w
 - Show the essential decision first.
 - Collapse, hide, or move technical detail to Advanced, Technical Details, or Troubleshooting.
 - Use professional GIS terminology and consistent page structure.
+- Keep engineering terms such as manifest, registry, bootstrap, runtime, implementation, and internal out of the primary workflow; expose them only under Advanced, Technical Details, or Troubleshooting.
 - Preserve the Advanced Toolbox as the parameter-rich expert surface.
 
 ## Workflow Model

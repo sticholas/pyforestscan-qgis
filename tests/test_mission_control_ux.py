@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from pyforestscan_qgis.ui.ux_summary import (
+    action_icon_intent,
     backend_summary_from_environment,
     button_role_for_label,
     design_spacing_tokens,
@@ -22,6 +23,8 @@ from pyforestscan_qgis.ui.ux_summary import (
     readiness_status_text,
     status_badge_label,
     status_badge_tone,
+    status_display_word,
+    technical_wording_is_advanced,
     routed_products_summary,
     technical_sections_default_collapsed,
     workflow_action_labels,
@@ -68,9 +71,23 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertEqual(button_role_for_label("Continue to Planning"), "primary")
         self.assertEqual(button_role_for_label("Open Batch"), "secondary")
         self.assertEqual(button_role_for_label("Run Processing"), "primary")
+        self.assertEqual(button_role_for_label("Analyze Dataset"), "primary")
+        self.assertEqual(button_role_for_label("Build Plan"), "primary")
         self.assertEqual(button_role_for_label("Open Output Folder"), "secondary")
         self.assertEqual(button_role_for_label("Refresh Environment"), "neutral")
         self.assertEqual(button_role_for_label("Clear Current Run"), "danger")
+
+
+    def test_product_polish_icon_and_wording_helpers_are_standardized(self) -> None:
+        self.assertEqual(action_icon_intent("Install Backend"), "install")
+        self.assertEqual(action_icon_intent("Load Outputs"), "load")
+        self.assertEqual(action_icon_intent("Verify Backend"), "verify")
+        self.assertEqual(action_icon_intent("Open Output Folder"), "folder")
+        self.assertEqual(status_display_word("PASS"), "Ready")
+        self.assertEqual(status_display_word("FAIL"), "Failed")
+        self.assertEqual(status_display_word("Repair Required"), "Needs review")
+        self.assertTrue(technical_wording_is_advanced("Ready to process with PBM backend."))
+        self.assertFalse(technical_wording_is_advanced("Manifest registry details are visible."))
 
     def test_design_system_spacing_and_expandable_labels(self) -> None:
         self.assertEqual(design_spacing_tokens(), {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24})
@@ -81,6 +98,9 @@ class MissionControlUxTests(unittest.TestCase):
         stylesheet = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text(encoding="utf-8")
 
         self.assertIn("def _apply_button_role(button: QPushButton", source)
+        self.assertIn("def _apply_action_icon(button: QPushButton)", source)
+        self.assertIn("def _qgis_theme_icon(intent: str)", source)
+        self.assertIn("QgsApplication.getThemeIcon", source)
         self.assertIn("def _set_status_badge(label: QLabel", source)
         self.assertIn('requested not in {"primary", "secondary", "neutral", "danger"}', source)
         self.assertIn("DESIGN_SPACING = design_spacing_tokens()", source)
@@ -213,6 +233,7 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn('Advanced Batch Options', source)
         self.assertIn('Batch Footprint Estimate', source)
         self.assertIn('Advanced / Troubleshooting: backend details', source)
+        self.assertIn('Troubleshooting: technical log', source)
         self.assertIn('self.recommendations_card.setVisible(bool(report.suggested_next_actions))', source)
         self.assertIn('self.warnings_card.setVisible(bool(report.warnings))', source)
         self.assertIn('self.jobs_section.setVisible(False)', source)
@@ -220,6 +241,21 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn('self.dataset_technical_text', source)
         self.assertIn('self.developer_mode_button.setVisible(False)', source)
         self.assertIn('self._set_backend_progress_visible(False)', source)
+
+
+    def test_primary_backend_copy_hides_engineering_language(self) -> None:
+        source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
+
+        primary_snippets = (
+            "Windows beta builds can install a user-local backend.",
+            "Plugin ZIP: ready for QGIS Plugin Manager installs",
+            "Backend installer: available on Windows beta builds",
+            "Manual setup: not required for PBM-routed products",
+            "Verify or install the user-local backend from this page.",
+        )
+        for snippet in primary_snippets:
+            self.assertIn(snippet, source)
+            self.assertTrue(technical_wording_is_advanced(snippet), snippet)
 
     def test_workflow_buttons_and_results_buttons_are_present(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
@@ -230,6 +266,8 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn('QPushButton("Load Outputs")', source)
         self.assertIn('QPushButton("Clear Current Run")', source)
         self.assertIn("Execution backend: PBM when READY", source)
+        self.assertIn("Plugin ZIP: ready for QGIS Plugin Manager installs", source)
+        self.assertIn("Backend installer: available on Windows beta builds", source)
         self.assertIn("def set_workflow_indicator", source)
         self.assertIn("def set_next_step", source)
         self.assertIn("workflowStepIndicator", source)

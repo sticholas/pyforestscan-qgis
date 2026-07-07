@@ -94,7 +94,7 @@ Use icons to aid scanning, not as decoration.
 | Results | Folder, layer load, report. |
 | Diagnostics | Check, warning, log. |
 
-Avoid icon overload. A toolbar or action row should not become a row of unexplained symbols.
+Avoid icon overload. A toolbar or action row should not become a row of unexplained symbols. Phase 26A standardizes important Mission Control actions through QGIS theme icons first and Qt standard icons second; custom icons remain a last resort.
 
 ## Progress Indicators
 
@@ -156,7 +156,7 @@ Notifications are concise:
 - Error: what failed and where to find repair/log details.
 - Information: state change or completed background action.
 
-Do not use notifications for generic advice that belongs in documentation.
+Do not use notifications for generic advice that belongs in documentation. Avoid PASS/FAIL/WARN prefixes in user-facing UI; use the approved product wording behind the standard badge labels instead.
 
 ## Workflow Continuity
 
