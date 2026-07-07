@@ -105,14 +105,18 @@ class ReleasePipelineTests(unittest.TestCase):
         checklist = release_docs / "RC1_CHECKLIST.md"
         qa_script = release_docs / "RC1_MANUAL_QA_SCRIPT.md"
         triage = release_docs / "RELEASE_TRIAGE_POLICY.md"
+        qa_results = release_docs / "RC1_QA_RESULTS.md"
+        blockers = release_docs / "RC1_BLOCKERS.md"
 
-        for doc in (roadmap, checklist, qa_script, triage):
+        for doc in (roadmap, checklist, qa_script, triage, qa_results, blockers):
             self.assertTrue(doc.exists(), doc)
 
         roadmap_text = roadmap.read_text(encoding="utf-8")
         checklist_text = checklist.read_text(encoding="utf-8")
         qa_text = qa_script.read_text(encoding="utf-8")
         triage_text = triage.read_text(encoding="utf-8")
+        qa_results_text = qa_results.read_text(encoding="utf-8")
+        blockers_text = blockers.read_text(encoding="utf-8")
         docs_index = (root / "docs/README.md").read_text(encoding="utf-8")
         releases_index = (release_docs / "README.md").read_text(encoding="utf-8")
         readme = (root / "README.md").read_text(encoding="utf-8")
@@ -124,7 +128,16 @@ class ReleasePipelineTests(unittest.TestCase):
         self.assertIn("Advanced Toolbox", qa_text)
         self.assertIn("Blocker", triage_text)
         self.assertIn("Critical", triage_text)
-        for linked_name in ("RELEASE_ROADMAP.md", "RC1_CHECKLIST.md", "RC1_MANUAL_QA_SCRIPT.md", "RELEASE_TRIAGE_POLICY.md"):
+        self.assertIn("RC1 is **not ready for tag/release draft**", qa_results_text)
+        self.assertIn("Clean Windows/QGIS ZIP Install Evidence Missing", blockers_text)
+        for linked_name in (
+            "RELEASE_ROADMAP.md",
+            "RC1_CHECKLIST.md",
+            "RC1_MANUAL_QA_SCRIPT.md",
+            "RC1_QA_RESULTS.md",
+            "RC1_BLOCKERS.md",
+            "RELEASE_TRIAGE_POLICY.md",
+        ):
             self.assertIn(linked_name, docs_index)
             self.assertIn(linked_name, releases_index)
         self.assertIn("Release Roadmap", readme)

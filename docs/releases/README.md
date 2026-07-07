@@ -5,6 +5,8 @@ Release documentation describes how to package, validate, and evaluate PyForestS
 - [Release Roadmap](RELEASE_ROADMAP.md)
 - [RC1 Checklist](RC1_CHECKLIST.md)
 - [RC1 Manual QA Script](RC1_MANUAL_QA_SCRIPT.md)
+- [RC1 QA Results](RC1_QA_RESULTS.md)
+- [RC1 Blockers](RC1_BLOCKERS.md)
 - [Release Triage Policy](RELEASE_TRIAGE_POLICY.md)
 - [Packaging](PACKAGING.md)
 - [Internal Release Checklist](INTERNAL_RELEASE_CHECKLIST.md)
