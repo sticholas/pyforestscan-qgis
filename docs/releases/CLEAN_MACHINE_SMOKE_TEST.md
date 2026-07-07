@@ -100,7 +100,7 @@ Record the following after testing:
 
 ## Phase 24C Result Fields
 
-Artifact SHA-256: `85de00cf4798337c06fcd854004c37db5841543fa56537e1b5ef9d5b8771d6cf`
+Artifact SHA-256: `242060a292d732cb57b49b6fb7f69f2b1f2592d28c6e380b5dd2325d0a33453f`
 
 | QA item | Status | Notes |
 | --- | --- | --- |

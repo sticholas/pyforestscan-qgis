@@ -65,6 +65,9 @@ class MissionControlUxTests(unittest.TestCase):
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
         stylesheet = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text(encoding="utf-8")
 
+        self.assertIn("def _apply_button_role(button: QPushButton", source)
+        self.assertIn("def _set_status_badge(label: QLabel", source)
+        self.assertIn('requested not in {"primary", "secondary", "neutral", "danger"}', source)
         self.assertIn("DESIGN_SPACING = design_spacing_tokens()", source)
         self.assertIn("PAGE_MARGINS = (SPACING_XL, SPACING_MD, SPACING_XL, SPACING_XL)", source)
         self.assertIn("self.content_layout.setContentsMargins(*PAGE_MARGINS)", source)

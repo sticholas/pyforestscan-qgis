@@ -2730,6 +2730,36 @@ def _processing_footprint_text(footprint: ProcessingFootprint) -> str:
     return "\n".join(details)
 
 
+def _apply_button_role(button: QPushButton, role: str | None = None) -> QPushButton:
+    """Apply design-system button role metadata for stylesheet selectors."""
+    requested = (role or button_role_for_label(button.text())).strip().lower()
+    if requested not in {"primary", "secondary", "neutral", "danger"}:
+        requested = button_role_for_label(button.text())
+    if requested not in {"primary", "secondary", "neutral", "danger"}:
+        requested = "secondary"
+    button.setProperty("buttonRole", requested)
+    style = button.style()
+    if style is not None:
+        style.unpolish(button)
+        style.polish(button)
+    return button
+
+
+def _set_status_badge(label: QLabel, status: str, text: str | None = None) -> QLabel:
+    """Apply design-system status badge metadata for stylesheet selectors."""
+    badge = status_badge_label(status)
+    label.setObjectName("statusBadge")
+    label.setProperty("tone", status_badge_tone(badge))
+    label.setWordWrap(True)
+    label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+    label.setText(text or f"Status: {badge}")
+    style = label.style()
+    if style is not None:
+        style.unpolish(label)
+        style.polish(label)
+    return label
+
+
 def _collapsible_section(parent: QVBoxLayout, title: str, checked: bool = False) -> tuple[QGroupBox, QVBoxLayout]:
     """Add a checkable section whose contents are hidden until expanded."""
     group = QGroupBox(title)
