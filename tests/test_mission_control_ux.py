@@ -15,6 +15,7 @@ from pyforestscan_qgis.ui.ux_summary import (
     expandable_section_labels,
     primary_action_label,
     qgis_fallback_summary,
+    status_badge_label,
     status_badge_tone,
     routed_products_summary,
     technical_sections_default_collapsed,
@@ -42,6 +43,10 @@ class MissionControlUxTests(unittest.TestCase):
 
     def test_design_system_status_badges_are_standardized(self) -> None:
         self.assertEqual(design_status_labels(), ("READY", "RUNNING", "WARNING", "FAILED", "NOT CONFIGURED", "DISABLED", "PLANNED"))
+        self.assertEqual(status_badge_label("Ready"), "READY")
+        self.assertEqual(status_badge_label("Backend Ready"), "READY")
+        self.assertEqual(status_badge_label("Repair Required"), "WARNING")
+        self.assertEqual(status_badge_label("not started"), "NOT CONFIGURED")
         self.assertEqual(status_badge_tone("READY"), "success")
         self.assertEqual(status_badge_tone("not_configured"), "neutral")
         self.assertEqual(status_badge_tone("FAILED"), "danger")
@@ -55,6 +60,30 @@ class MissionControlUxTests(unittest.TestCase):
     def test_design_system_spacing_and_expandable_labels(self) -> None:
         self.assertEqual(design_spacing_tokens(), {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24})
         self.assertEqual(expandable_section_labels(), ("Advanced", "Technical Details", "Troubleshooting"))
+
+    def test_mission_control_uses_design_tokens_and_visual_hooks(self) -> None:
+        source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text(encoding="utf-8")
+
+        self.assertIn("DESIGN_SPACING = design_spacing_tokens()", source)
+        self.assertIn("PAGE_MARGINS = (SPACING_XL, SPACING_MD, SPACING_XL, SPACING_XL)", source)
+        self.assertIn("self.content_layout.setContentsMargins(*PAGE_MARGINS)", source)
+        self.assertIn("self.file_list.setMinimumHeight(COMPACT_LIST_HEIGHT)", source)
+        self.assertIn("self.backend_details.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)", source)
+        self.assertIn("_apply_button_role(self.start_single_button, \"primary\")", source)
+        self.assertIn("_apply_button_role(self.clear_current_run_button, \"danger\")", source)
+        self.assertIn("_set_status_badge(self.status_label, report.readiness.value", source)
+        self.assertIn('_set_status_badge(self.status_label, "RUNNING"', source)
+        self.assertIn("self.backend_primary_buttons = QHBoxLayout()", source)
+        self.assertIn('QPushButton[buttonRole="primary"]', stylesheet)
+        self.assertIn("QLabel#statusBadge", stylesheet)
+
+    def test_visual_polish_audit_exists(self) -> None:
+        audit = (ROOT / "docs/development/VISUAL_POLISH_AUDIT.md").read_text(encoding="utf-8")
+
+        self.assertIn("Phase 24F applied the PyForestScan Design System directly to Mission Control", audit)
+        self.assertIn("Backend status badge", audit)
+        self.assertIn("job history and run files/logs stay secondary or collapsed", audit)
 
     def test_backend_ready_summary_is_not_scary(self) -> None:
         self.assertEqual(backend_summary_from_environment("READY"), "Backend status: PBM ready for routed products")

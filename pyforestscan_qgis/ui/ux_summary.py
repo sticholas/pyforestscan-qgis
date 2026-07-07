@@ -93,6 +93,39 @@ def status_badge_tone(status: str) -> str:
     return STATUS_BADGE_TONES.get(normalized, "neutral")
 
 
+def status_badge_label(status: str) -> str:
+    """Return approved design-system wording for a raw status value."""
+    normalized = " ".join((status or "").replace("_", " ").replace("-", " ").upper().split())
+    aliases = {
+        "PASS": "READY",
+        "PASSED": "READY",
+        "READY WITH QGIS PYTHON": "READY",
+        "PARTIALLY READY": "WARNING",
+        "NEEDS REVIEW": "WARNING",
+        "REPAIR REQUIRED": "WARNING",
+        "INSTALLING": "RUNNING",
+        "VALIDATING": "RUNNING",
+        "PENDING": "RUNNING",
+        "CANCELLING": "RUNNING",
+        "COMPLETED": "READY",
+        "BACKEND READY": "READY",
+        "SUCCESS": "READY",
+        "FAILED": "FAILED",
+        "INSTALL FAILED": "FAILED",
+        "FAIL": "FAILED",
+        "ERROR": "FAILED",
+        "NOT READY": "FAILED",
+        "CANCELLED": "DISABLED",
+        "CANCELED": "DISABLED",
+        "SKIPPED": "DISABLED",
+        "NOT STARTED": "NOT CONFIGURED",
+        "UNKNOWN": "NOT CONFIGURED",
+    }
+    if normalized in STATUS_BADGE_TONES:
+        return normalized
+    return aliases.get(normalized, "NOT CONFIGURED")
+
+
 def button_role_for_label(label: str) -> str:
     """Return the standard button role for a known UI action label."""
     normalized = (label or "").strip().lower()

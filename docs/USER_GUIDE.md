@@ -20,7 +20,7 @@ workflows:
 
 Mission Control creates a timestamped run folder and manages internal JSON/CSV
 files automatically.
-The beta workflow is intentionally linear: check backend, select a dataset or batch folder, review the recommendation, choose products, run, and review outputs. Technical logs, fallback dependency rows, and internal report paths are collapsed by default. Empty downstream sections stay hidden until they have meaningful content. The visual language follows the [PyForestScan Design System](development/PYFORESTSCAN_DESIGN_SYSTEM.md). Processing Toolbox tools remain available for expert users who want explicit file paths and PyForestScan parameter controls.
+The beta workflow is intentionally linear: check backend, select a dataset or batch folder, review the recommendation, choose products, run, and review outputs. Technical logs, fallback dependency rows, and internal report paths are collapsed by default. Empty downstream sections stay hidden until they have meaningful content. The visual language follows the [PyForestScan Design System](development/PYFORESTSCAN_DESIGN_SYSTEM.md): primary actions are visually distinct, statuses use approved badge wording, and troubleshooting controls stay secondary. Processing Toolbox tools remain available for expert users who want explicit file paths and PyForestScan parameter controls.
 
 # User Guide
 

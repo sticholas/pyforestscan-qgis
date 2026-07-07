@@ -38,7 +38,6 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
         self.assertIn("Manual dependency setup required", source)
         self.assertIn("Backend auto-install ready: yes for Windows internal beta builds after confirmation", source)
 
-
     def test_backend_install_progress_ui_and_worker_are_present(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 
@@ -62,12 +61,10 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
         self.assertIn("Installation is running. Please wait for this step to finish.", source)
         self.assertNotIn('QPushButton("Cancel Backend Install")', source)
 
-
-
     def test_environment_page_status_uses_report_readiness(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 
-        self.assertIn('self.status_label.setText(f"Status: {report.readiness.value}")', source)
+        self.assertIn("_set_status_badge(self.status_label, report.readiness.value", source)
         self.assertIn("self.environmentChanged.emit(report.readiness.value)", source)
 
         self.assertIn('QPushButton("Open Backend Settings")', source)

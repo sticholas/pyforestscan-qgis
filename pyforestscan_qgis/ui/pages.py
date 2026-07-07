@@ -88,9 +88,24 @@ from ..core.workspace import (
 )
 from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
-from .ux_summary import backend_summary_from_environment, empty_state_message, environment_headline, primary_action_label, qgis_fallback_summary, routed_products_summary, workflow_action_labels
+from .ux_summary import backend_summary_from_environment, button_role_for_label, design_spacing_tokens, empty_state_message, environment_headline, primary_action_label, qgis_fallback_summary, routed_products_summary, status_badge_label, status_badge_tone, workflow_action_labels
 
 ActivityCallback = Callable[[str, str], None]
+
+DESIGN_SPACING = design_spacing_tokens()
+SPACING_XS = DESIGN_SPACING["xs"]
+SPACING_SM = DESIGN_SPACING["sm"]
+SPACING_MD = DESIGN_SPACING["md"]
+SPACING_LG = DESIGN_SPACING["lg"]
+SPACING_XL = DESIGN_SPACING["xl"]
+PAGE_MARGINS = (SPACING_XL, SPACING_MD, SPACING_XL, SPACING_XL)
+SECTION_MARGINS = (SPACING_MD, SPACING_LG, SPACING_MD, SPACING_MD)
+SECTION_SPACING = SPACING_MD
+ACTION_ROW_SPACING = SPACING_SM
+PRIMARY_BUTTON_HEIGHT = 40
+SECONDARY_BUTTON_HEIGHT = 34
+COMPACT_LIST_HEIGHT = 128
+TECHNICAL_DETAIL_HEIGHT = 112
 
 
 class MissionPage(QWidget):
@@ -118,8 +133,8 @@ class MissionPage(QWidget):
         self.content_widget.setObjectName("pageContent")
         self.content_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
         self.content_layout = QVBoxLayout(self.content_widget)
-        self.content_layout.setContentsMargins(18, 12, 22, 22)
-        self.content_layout.setSpacing(16)
+        self.content_layout.setContentsMargins(*PAGE_MARGINS)
+        self.content_layout.setSpacing(SPACING_LG)
         self.scroll_area.setWidget(self.content_widget)
         self.main_layout.addWidget(self.scroll_area, 1)
 
@@ -128,8 +143,8 @@ class MissionPage(QWidget):
         group = QGroupBox(title)
         group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         layout = QVBoxLayout(group)
-        layout.setContentsMargins(14, 16, 14, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(*SECTION_MARGINS)
+        layout.setSpacing(SECTION_SPACING)
         self.content_layout.addWidget(group)
         return layout
 
@@ -158,15 +173,18 @@ class HomePage(MissionPage):
         single_label, batch_label, continue_label = workflow_action_labels()
         actions = QHBoxLayout()
         self.start_single_button = QPushButton(single_label)
-        self.start_single_button.setMinimumHeight(42)
+        self.start_single_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.start_single_button.clicked.connect(self.startSingleDatasetRequested.emit)
+        _apply_button_role(self.start_single_button, "primary")
         self.start_batch_button = QPushButton(batch_label)
-        self.start_batch_button.setMinimumHeight(42)
+        self.start_batch_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.start_batch_button.clicked.connect(self.startBatchRequested.emit)
+        _apply_button_role(self.start_batch_button, "secondary")
         self.continue_last_button = QPushButton(continue_label)
-        self.continue_last_button.setMinimumHeight(42)
+        self.continue_last_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.continue_last_button.setEnabled(False)
         self.continue_last_button.clicked.connect(self.continueLastRequested.emit)
+        _apply_button_role(self.continue_last_button, "secondary")
         actions.addWidget(self.start_single_button)
         actions.addWidget(self.start_batch_button)
         actions.addWidget(self.continue_last_button)
@@ -244,11 +262,13 @@ class WorkspacePage(MissionPage):
         welcome.addWidget(self.workspace_status_card)
         action_row = QHBoxLayout()
         self.continue_button = QPushButton(primary_action_label("workspace"))
-        self.continue_button.setMinimumHeight(40)
+        self.continue_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.continue_button.clicked.connect(self.continueLastRequested.emit)
+        _apply_button_role(self.continue_button, "primary")
         self.start_new_button = QPushButton("Start New Workspace")
-        self.start_new_button.setMinimumHeight(40)
+        self.start_new_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.start_new_button.clicked.connect(self.startNewRequested.emit)
+        _apply_button_role(self.start_new_button, "secondary")
         action_row.addWidget(self.continue_button)
         action_row.addWidget(self.start_new_button)
         action_row.addStretch(1)
@@ -264,6 +284,7 @@ class WorkspacePage(MissionPage):
         open_recent.clicked.connect(self.open_selected_workspace)
         remove_recent = QPushButton("Remove Missing/Selected")
         remove_recent.clicked.connect(self.remove_selected_workspace)
+        _apply_button_role(remove_recent, "danger")
         recent_row.addWidget(open_recent)
         recent_row.addWidget(remove_recent)
         recent_row.addStretch(1)
@@ -298,7 +319,7 @@ class WorkspacePage(MissionPage):
         notes_group, notes = _collapsible_section(self.content_layout, "Notes", checked=False)
         self.notes_section = notes_group
         self.notes_edit = QTextEdit()
-        self.notes_edit.setMinimumHeight(96)
+        self.notes_edit.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)
         notes.addWidget(self.notes_edit)
         save_notes = QPushButton("Save Notes")
         save_notes.clicked.connect(lambda: self.notesSaveRequested.emit(self.notes_edit.toPlainText()))
@@ -310,6 +331,7 @@ class WorkspacePage(MissionPage):
         reset.addWidget(_body_label("Clear the current workspace from Mission Control or reset its progress/history. Workspace files remain local."))
         self.reset_button = QPushButton("Clear / Reset Current Workspace")
         self.reset_button.clicked.connect(self.resetWorkspaceRequested.emit)
+        _apply_button_role(self.reset_button, "danger")
         reset.addWidget(self.reset_button)
         for section in (self.status_section, self.runs_section, self.outputs_section, self.timeline_section, self.notes_section, self.reset_section):
             section.setVisible(False)
@@ -407,15 +429,16 @@ class EnvironmentPage(MissionPage):
         button_row = QHBoxLayout()
         self.refresh_button = QPushButton(primary_action_label("environment"))
         self.refresh_button.clicked.connect(self.refresh)
+        _apply_button_role(self.refresh_button, "primary")
         self.open_backend_settings_button = QPushButton("Open Backend Settings")
         self.open_backend_settings_button.clicked.connect(self.backendSettingsRequested.emit)
+        _apply_button_role(self.open_backend_settings_button, "secondary")
         button_row.addWidget(self.refresh_button)
         button_row.addWidget(self.open_backend_settings_button)
         button_row.addStretch(1)
         controls.addLayout(button_row)
-        self.status_label = QLabel("Status: Unknown")
-        self.status_label.setObjectName("advisorMetric")
-        self.status_label.setWordWrap(True)
+        self.status_label = QLabel()
+        _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: NOT CONFIGURED - refresh to check readiness.")
         self.pbm_status_label = _body_label("PBM backend status: not checked")
         self.execution_label = _body_label("Execution backend: not checked")
         self.scope_label = _body_label(routed_products_summary())
@@ -441,8 +464,7 @@ class EnvironmentPage(MissionPage):
 
     def set_report(self, report: EnvironmentReport) -> None:
         """Display an environment report."""
-        self.status_label.setText(f"Status: {report.readiness.value}")
-        self.status_label.setText(environment_headline(report.readiness.value))
+        _set_status_badge(self.status_label, report.readiness.value, environment_headline(report.readiness.value))
         self.checks_list.clear()
         self.fallback_checks_list.clear()
         pbm_message = "PBM backend status: not checked"
@@ -505,6 +527,7 @@ class DatasetPage(MissionPage):
 
         run = QPushButton(primary_action_label("dataset"))
         run.clicked.connect(self.run_explorer)
+        _apply_button_role(run, "primary")
         picker.addWidget(run)
 
         summary = self.add_section("Dataset Summary")
@@ -523,12 +546,15 @@ class DatasetPage(MissionPage):
         spatial_buttons = QHBoxLayout()
         self.add_footprint_button = QPushButton("Add Footprint Layer")
         self.add_footprint_button.clicked.connect(self.add_footprint_layer)
+        _apply_button_role(self.add_footprint_button, "secondary")
         self.add_footprint_button.setEnabled(False)
         self.zoom_footprint_button = QPushButton("Zoom to Footprint")
         self.zoom_footprint_button.clicked.connect(self.zoom_to_footprint)
+        _apply_button_role(self.zoom_footprint_button, "secondary")
         self.zoom_footprint_button.setEnabled(False)
         self.open_report_button = QPushButton("Open Report")
         self.open_report_button.clicked.connect(self.open_report)
+        _apply_button_role(self.open_report_button, "secondary")
         self.open_report_button.setEnabled(False)
         spatial_buttons.addWidget(self.add_footprint_button)
         spatial_buttons.addWidget(self.zoom_footprint_button)
@@ -619,7 +645,7 @@ class DatasetPage(MissionPage):
         crs = preview.crs or "Unknown"
         report_path = f"\nReport: {context.dataset_report_html}" if context is not None else ""
         lines = [
-            "Footprint status: Ready",
+            "Footprint status: READY",
             f"CRS: {crs}",
             f"Coordinate extent: {preview.extent_text}",
             f"Approximate area: {preview.area:g} square map units",
@@ -670,8 +696,8 @@ class ScientificAdvisorPage(MissionPage):
 
         self.content_widget.setObjectName("advisorBody")
         self.advisor_layout = self.content_layout
-        self.advisor_layout.setContentsMargins(18, 12, 22, 22)
-        self.advisor_layout.setSpacing(16)
+        self.advisor_layout.setContentsMargins(*PAGE_MARGINS)
+        self.advisor_layout.setSpacing(SPACING_LG)
 
         executive = self._add_card("Executive Summary")
         self.executive_summary_label = _body_label(empty_state_message("advisor"))
@@ -680,7 +706,7 @@ class ScientificAdvisorPage(MissionPage):
         overview = self._add_card("Dataset Health")
         self.overview_card = overview.parentWidget()
         metrics_row = QHBoxLayout()
-        metrics_row.setSpacing(12)
+        metrics_row.setSpacing(SECTION_SPACING)
         self.score_label = _advisor_metric_card("Dataset score", "Run Dataset Explorer to evaluate.")
         self.confidence_label = _advisor_metric_card("Confidence / readiness", "Unknown")
         metrics_row.addWidget(self.score_label)
@@ -713,8 +739,9 @@ class ScientificAdvisorPage(MissionPage):
         self.qgis_tools_summary = _body_label("After processing, inspect generated layers in QGIS Layer Styling and Histogram before publication or interpretation.")
         qgis_tools.addWidget(self.qgis_tools_summary)
         self.open_output_folder_button = QPushButton("Open Output Folder")
-        self.open_output_folder_button.setMinimumHeight(34)
+        self.open_output_folder_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
         self.open_output_folder_button.clicked.connect(self.open_output_folder)
+        _apply_button_role(self.open_output_folder_button, "primary")
         qgis_tools.addWidget(self.open_output_folder_button)
         tools_group, tools_layout = _collapsible_section(self.advisor_layout, "QGIS Tool Instructions", checked=False)
         self.qgis_tools_details = _details_label(_tool_instruction_text())
@@ -730,7 +757,7 @@ class ScientificAdvisorPage(MissionPage):
 
         cards_group, cards = _collapsible_section(self.advisor_layout, "Product Explanations", checked=False)
         product_grid = QVBoxLayout()
-        product_grid.setSpacing(10)
+        product_grid.setSpacing(SECTION_SPACING)
         for explanation in PRODUCT_EXPLANATIONS:
             product_grid.addWidget(_product_explanation_card(explanation))
         cards.addLayout(product_grid)
@@ -751,8 +778,8 @@ class ScientificAdvisorPage(MissionPage):
         frame.setFrameShape(QFrame.StyledPanel)
         frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(16, 14, 16, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(SPACING_LG, SPACING_MD, SPACING_LG, SPACING_LG)
+        layout.setSpacing(SECTION_SPACING)
         heading = QLabel(title)
         heading.setObjectName("advisorSectionHeading")
         heading.setWordWrap(True)
@@ -891,10 +918,10 @@ class PlanningPage(MissionPage):
         self.output_folder_edit = QLineEdit()
         self.output_folder_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         folder_button = QPushButton("Browse")
-        folder_button.setMinimumHeight(34)
+        folder_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
         folder_button.clicked.connect(self.browse_folder)
         folder_row = QHBoxLayout()
-        folder_row.setSpacing(10)
+        folder_row.setSpacing(ACTION_ROW_SPACING)
         folder_row.addWidget(self.output_folder_edit, 1)
         folder_row.addWidget(folder_button, 0)
         output.addWidget(_body_label("Mission Control normally uses the active run folder automatically. Advanced users can override the output folder before building a plan."))
@@ -903,24 +930,26 @@ class PlanningPage(MissionPage):
         products = self.add_section("Product Selection")
         self.product_checks: dict[ProductType, QCheckBox] = {}
         product_grid = QGridLayout()
-        product_grid.setHorizontalSpacing(22)
-        product_grid.setVerticalSpacing(8)
+        product_grid.setHorizontalSpacing(SPACING_XL)
+        product_grid.setVerticalSpacing(SPACING_SM)
         for index, (product, label) in enumerate(PRODUCT_LABELS.items()):
             check = QCheckBox(label)
-            check.setMinimumHeight(28)
+            check.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
             if product is ProductType.CHM:
                 check.setChecked(True)
             self.product_checks[product] = check
             product_grid.addWidget(check, index // 2, index % 2)
         products.addLayout(product_grid)
         product_button_row = QHBoxLayout()
-        product_button_row.setSpacing(10)
+        product_button_row.setSpacing(ACTION_ROW_SPACING)
         select_all = QPushButton("Select All Products")
-        select_all.setMinimumHeight(34)
+        select_all.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
         select_all.clicked.connect(lambda: self._set_all_products(True))
+        _apply_button_role(select_all, "neutral")
         clear_all = QPushButton("Clear Products")
-        clear_all.setMinimumHeight(34)
+        clear_all.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
         clear_all.clicked.connect(lambda: self._set_all_products(False))
+        _apply_button_role(clear_all, "neutral")
         product_button_row.addWidget(select_all)
         product_button_row.addWidget(clear_all)
         product_button_row.addStretch(1)
@@ -930,8 +959,8 @@ class PlanningPage(MissionPage):
         shared_form = QFormLayout()
         shared_form.setLabelAlignment(Qt.AlignLeft)
         shared_form.setFormAlignment(Qt.AlignLeft | Qt.AlignTop)
-        shared_form.setHorizontalSpacing(18)
-        shared_form.setVerticalSpacing(10)
+        shared_form.setHorizontalSpacing(SPACING_LG)
+        shared_form.setVerticalSpacing(SECTION_SPACING)
         self.resolution_spin = QDoubleSpinBox()
         self.resolution_spin.setDecimals(3)
         self.resolution_spin.setMinimum(0.01)
@@ -948,11 +977,11 @@ class PlanningPage(MissionPage):
         product_params_group, product_params = _collapsible_section(self.content_layout, "Advanced Product Settings", checked=False)
         product_params.addWidget(_details_label("Expand only when you need to change product-specific filenames, CHM interpolation options, or canopy-cover threshold. Recommended/shared settings above are enough for the default workflow."))
         params_grid = QGridLayout()
-        params_grid.setHorizontalSpacing(20)
-        params_grid.setVerticalSpacing(12)
+        params_grid.setHorizontalSpacing(SPACING_XL)
+        params_grid.setVerticalSpacing(SECTION_SPACING)
         chm_box = QGroupBox("CHM")
         chm_layout = QFormLayout(chm_box)
-        chm_layout.setVerticalSpacing(8)
+        chm_layout.setVerticalSpacing(SPACING_SM)
         self.chm_interpolation_combo = QComboBox()
         self.chm_interpolation_combo.addItems(("linear", "nearest", "cubic"))
         self.chm_valid_region_check = QCheckBox("Interpolate valid region")
@@ -965,7 +994,7 @@ class PlanningPage(MissionPage):
 
         canopy_box = QGroupBox("Canopy Cover")
         canopy_layout = QFormLayout(canopy_box)
-        canopy_layout.setVerticalSpacing(8)
+        canopy_layout.setVerticalSpacing(SPACING_SM)
         self.canopy_cover_threshold_spin = QDoubleSpinBox()
         self.canopy_cover_threshold_spin.setDecimals(3)
         self.canopy_cover_threshold_spin.setMinimum(0.0)
@@ -976,7 +1005,7 @@ class PlanningPage(MissionPage):
 
         raster_box = QGroupBox("PAD / PAI / FHD / Rumple")
         raster_layout = QFormLayout(raster_box)
-        raster_layout.setVerticalSpacing(8)
+        raster_layout.setVerticalSpacing(SPACING_SM)
         self.pad_output_filename_edit = QLineEdit("pad.tif")
         self.pai_output_filename_edit = QLineEdit("pai.tif")
         self.fhd_output_filename_edit = QLineEdit("fhd.tif")
@@ -998,12 +1027,13 @@ class PlanningPage(MissionPage):
 
         summary = self.add_section("Run Summary")
         build = QPushButton("Build Plan")
-        build.setMinimumHeight(38)
+        build.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         build.clicked.connect(self.build_plan)
+        _apply_button_role(build, "primary")
         summary.addWidget(build)
         self.plan_text = QTextEdit()
         self.plan_text.setReadOnly(True)
-        self.plan_text.setMinimumHeight(180)
+        self.plan_text.setMinimumHeight(COMPACT_LIST_HEIGHT)
         self.plan_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         summary.addWidget(self.plan_text)
 
@@ -1134,9 +1164,8 @@ class ProcessingPage(MissionPage):
         self.selected_products_label = _body_label("Selected products: build a Product Plan first.")
         self.current_output_label = _body_label("Outputs: choose a dataset and output folder, then build a Product Plan.")
         self.footprint_label = _body_label("Processing footprint: build a Product Plan to see expected outputs, raster size, bands, and storage.")
-        self.status_label = QLabel("Status: Not started")
-        self.status_label.setObjectName("advisorMetric")
-        self.status_label.setWordWrap(True)
+        self.status_label = QLabel()
+        _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: NOT CONFIGURED - build a Product Plan first.")
         overview.addWidget(self.selected_products_label)
         overview.addWidget(self.current_output_label)
         overview.addWidget(self.footprint_label)
@@ -1150,13 +1179,15 @@ class ProcessingPage(MissionPage):
         overview.addWidget(self.job_title_edit)
 
         button_row = QHBoxLayout()
-        button_row.setSpacing(10)
+        button_row.setSpacing(ACTION_ROW_SPACING)
         self.start_button = QPushButton(primary_action_label("processing"))
-        self.start_button.setMinimumHeight(40)
+        self.start_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.start_button.clicked.connect(self.start_job)
+        _apply_button_role(self.start_button, "primary")
         self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.setMinimumHeight(40)
+        self.cancel_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.cancel_button.clicked.connect(self.cancel_current_job)
+        _apply_button_role(self.cancel_button, "danger")
         self.cancel_button.setEnabled(False)
         button_row.addWidget(self.start_button)
         button_row.addWidget(self.cancel_button)
@@ -1192,11 +1223,11 @@ class ProcessingPage(MissionPage):
         output_row.addWidget(output_browse, 0)
         technical.addLayout(output_row)
         self.pipeline_list = QListWidget()
-        self.pipeline_list.setMinimumHeight(120)
+        self.pipeline_list.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)
         technical.addWidget(self.pipeline_list)
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMinimumHeight(120)
+        self.log_text.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)
         technical.addWidget(self.log_text)
         _wire_collapsible_group(technical_group)
 
@@ -1255,15 +1286,15 @@ class ProcessingPage(MissionPage):
         output_folder = self.job_output_folder_edit.text().strip()
         summary_path = self.run_context.job_summary_json if self.run_context is not None else None
         if not plan_path:
-            self.status_label.setText("Status: Build a product plan before starting a processing job.")
+            _set_status_badge(self.status_label, "WARNING", "Status: WARNING - build a product plan before starting.")
             self.log_text.setPlainText("Build a product plan before starting a processing job.")
             return
         if not Path(plan_path).exists():
-            self.status_label.setText("Status: Build a product plan before starting a processing job.")
+            _set_status_badge(self.status_label, "WARNING", "Status: WARNING - build a product plan before starting.")
             self.log_text.setPlainText("Build a product plan before starting a processing job.")
             return
         if not output_folder:
-            self.status_label.setText("Status: Choose an output folder before starting.")
+            _set_status_badge(self.status_label, "WARNING", "Status: WARNING - choose an output folder before starting.")
             self.log_text.setPlainText("Choose an output folder for the job summary JSON.")
             return
         self.start_button.setEnabled(False)
@@ -1280,7 +1311,7 @@ class ProcessingPage(MissionPage):
                 summary_path=summary_path,
             )
         except JobExecutionError as exc:
-            self.status_label.setText(f"Status: Processing job could not start: {exc}")
+            _set_status_badge(self.status_label, "FAILED", f"Status: FAILED - processing job could not start: {exc}")
             self.log_text.setPlainText(f"Processing job could not start: {exc}")
             self.start_button.setEnabled(True)
             self.cancel_button.setEnabled(False)
@@ -1301,7 +1332,7 @@ class ProcessingPage(MissionPage):
     def _on_job_update(self, job: JobRecord) -> None:
         """Bridge core job progress into Qt widgets."""
         self.current_job_id = job.job_id
-        self.status_label.setText(f"Status: {job.status.value}")
+        _set_status_badge(self.status_label, job.status.value, f"Status: {status_badge_label(job.status.value)} - {job.status.value}")
         self.progress_bar.setValue(int(job.progress.percent))
         self.execution_backend_label.setText(f"Execution backend: {self.job_manager.execution_backend().replace('_', ' ')}")
         self.log_text.setPlainText("\n".join(f"{entry.level}: {entry.message}" for entry in job.logs))
@@ -1407,17 +1438,20 @@ class BatchPage(MissionPage):
         discover_row = QHBoxLayout()
         self.discover_button = QPushButton("Discover Files")
         self.discover_button.clicked.connect(self.discover_files)
+        _apply_button_role(self.discover_button, "primary")
         select_all = QPushButton("Select All")
         select_all.clicked.connect(lambda: self._set_all_files(True))
+        _apply_button_role(select_all, "neutral")
         clear_all = QPushButton("Clear")
         clear_all.clicked.connect(lambda: self._set_all_files(False))
+        _apply_button_role(clear_all, "neutral")
         discover_row.addWidget(self.discover_button)
         discover_row.addWidget(select_all)
         discover_row.addWidget(clear_all)
         discover_row.addStretch(1)
         source.addLayout(discover_row)
         self.file_list = QListWidget()
-        self.file_list.setMinimumHeight(180)
+        self.file_list.setMinimumHeight(COMPACT_LIST_HEIGHT)
         source.addWidget(self.file_list)
 
         output = self.add_section("Output")
@@ -1438,18 +1472,18 @@ class BatchPage(MissionPage):
         products = self.add_section("Products and Shared Settings")
         self.product_checks: dict[ProductType, QCheckBox] = {}
         product_grid = QGridLayout()
-        product_grid.setHorizontalSpacing(22)
-        product_grid.setVerticalSpacing(8)
+        product_grid.setHorizontalSpacing(SPACING_XL)
+        product_grid.setVerticalSpacing(SPACING_SM)
         for index, (product, label) in enumerate(PRODUCT_LABELS.items()):
             check = QCheckBox(label)
-            check.setMinimumHeight(28)
+            check.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
             if product is ProductType.CHM:
                 check.setChecked(True)
             self.product_checks[product] = check
             product_grid.addWidget(check, index // 2, index % 2)
         products.addLayout(product_grid)
         settings_form = QFormLayout()
-        settings_form.setVerticalSpacing(10)
+        settings_form.setVerticalSpacing(SECTION_SPACING)
         self.resolution_spin = QDoubleSpinBox()
         self.resolution_spin.setDecimals(3)
         self.resolution_spin.setMinimum(0.01)
@@ -1472,7 +1506,7 @@ class BatchPage(MissionPage):
         products.addLayout(settings_form)
         advanced_batch_group, advanced_batch = _collapsible_section(self.content_layout, "Advanced Batch Options", checked=False)
         advanced_form = QFormLayout()
-        advanced_form.setVerticalSpacing(10)
+        advanced_form.setVerticalSpacing(SECTION_SPACING)
         self.execution_mode_combo = QComboBox()
         self.execution_mode_combo.addItem("Sequential", SEQUENTIAL_MODE)
         self.execution_mode_combo.addItem("Parallel safe mode", PARALLEL_SAFE_MODE)
@@ -1522,8 +1556,9 @@ class BatchPage(MissionPage):
 
         preflight = self.add_section("2. Preflight")
         self.preflight_button = QPushButton("Run Preflight Check")
-        self.preflight_button.setMinimumHeight(38)
+        self.preflight_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.preflight_button.clicked.connect(self.run_preflight)
+        _apply_button_role(self.preflight_button, "primary")
         preflight.addWidget(self.preflight_button)
         self.acknowledge_warnings_check = QCheckBox("I reviewed the warnings and want to run anyway")
         self.acknowledge_warnings_check.toggled.connect(lambda _checked: self._update_run_button_enabled())
@@ -1531,30 +1566,35 @@ class BatchPage(MissionPage):
         preflight.addWidget(self.acknowledge_warnings_check)
         self.preflight_text = QTextEdit()
         self.preflight_text.setReadOnly(True)
-        self.preflight_text.setMinimumHeight(150)
+        self.preflight_text.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)
         self.preflight_text.setPlainText("Run preflight before starting a batch.")
         preflight.addWidget(self.preflight_text)
 
         run_section = self.add_section("3. Run Batch / Review Results")
         self.run_button = QPushButton(primary_action_label("batch"))
-        self.run_button.setMinimumHeight(40)
+        self.run_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.run_button.clicked.connect(self.run_batch)
+        _apply_button_role(self.run_button, "primary")
         self.run_button.setEnabled(False)
         button_row = QHBoxLayout()
         button_row.addWidget(self.run_button)
         self.resume_button = QPushButton("Resume Batch")
         self.resume_button.setEnabled(False)
         self.resume_button.clicked.connect(self.run_batch)
+        _apply_button_role(self.resume_button, "secondary")
         button_row.addWidget(self.resume_button)
         self.pause_button = QPushButton("Pause After Current File")
         self.pause_button.setEnabled(False)
         self.pause_button.clicked.connect(self.toggle_pause)
+        _apply_button_role(self.pause_button, "secondary")
         self.cancel_button = QPushButton("Cancel Remaining")
         self.cancel_button.setEnabled(False)
         self.cancel_button.clicked.connect(self.cancel_remaining)
+        _apply_button_role(self.cancel_button, "danger")
         self.retry_failed_button = QPushButton("Retry Failed Files")
         self.retry_failed_button.setEnabled(False)
         self.retry_failed_button.clicked.connect(self.retry_failed_files)
+        _apply_button_role(self.retry_failed_button, "secondary")
         button_row.addWidget(self.pause_button)
         button_row.addWidget(self.cancel_button)
         button_row.addWidget(self.retry_failed_button)
@@ -1564,9 +1604,8 @@ class BatchPage(MissionPage):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         run_section.addWidget(self.progress_bar)
-        self.status_label = QLabel("Status: Not started")
-        self.status_label.setObjectName("advisorMetric")
-        self.status_label.setWordWrap(True)
+        self.status_label = QLabel()
+        _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: NOT CONFIGURED - discover files and run preflight.")
         run_section.addWidget(self.status_label)
         self.worker_status_label = _body_label("Active workers: 0")
         run_section.addWidget(self.worker_status_label)
@@ -1581,7 +1620,7 @@ class BatchPage(MissionPage):
         self.summary_label = _body_label("4. Review Results after the batch completes.")
         run_section.addWidget(self.summary_label)
         self.batch_results = QListWidget()
-        self.batch_results.setMinimumHeight(220)
+        self.batch_results.setMinimumHeight(COMPACT_LIST_HEIGHT)
         run_section.addWidget(self.batch_results)
 
     def set_default_output_folder(self, folder: Path | None) -> None:
@@ -1605,12 +1644,12 @@ class BatchPage(MissionPage):
         """Discover supported lidar datasets for batch selection."""
         folder = self.input_folder_edit.text().strip()
         if not folder:
-            self.status_label.setText("Status: Choose an input folder before discovery.")
+            _set_status_badge(self.status_label, "WARNING", "Status: WARNING - choose an input folder before discovery.")
             return
         try:
             datasets = discover_lidar_files(folder, self.recursive_check.isChecked())
         except ValueError as exc:
-            self.status_label.setText(f"Status: Discovery failed: {exc}")
+            _set_status_badge(self.status_label, "FAILED", f"Status: FAILED - discovery failed: {exc}")
             return
         self.discovered_paths = [item.path for item in datasets]
         self.file_list.clear()
@@ -1620,7 +1659,7 @@ class BatchPage(MissionPage):
             row.setCheckState(Qt.Checked if item.selected else Qt.Unchecked)
             row.setSizeHint(QSize(0, 72))
             self.file_list.addItem(row)
-        self.status_label.setText(f"Status: Discovered {len(datasets)} supported dataset(s).")
+        _set_status_badge(self.status_label, "READY", f"Status: READY - discovered {len(datasets)} supported dataset(s).")
         self._refresh_footprint_label()
 
     def run_preflight(self) -> None:
@@ -1643,18 +1682,18 @@ class BatchPage(MissionPage):
     def run_batch(self) -> None:
         """Run selected datasets through preflight-approved batch execution."""
         if self.preflight_report is None:
-            self.status_label.setText("Status: Run preflight before starting the batch.")
+            _set_status_badge(self.status_label, "WARNING", "Status: WARNING - run preflight before starting the batch.")
             return
         if self.preflight_report.blockers:
-            self.status_label.setText("Status: Preflight blockers must be resolved before running.")
+            _set_status_badge(self.status_label, "FAILED", "Status: FAILED - preflight blockers must be resolved before running.")
             return
         if self.preflight_report.warnings and not self.acknowledge_warnings_check.isChecked():
-            self.status_label.setText("Status: Review and acknowledge preflight warnings before running.")
+            _set_status_badge(self.status_label, "WARNING", "Status: WARNING - review and acknowledge preflight warnings before running.")
             return
         try:
             request = self._build_batch_request(self.preflight_report.batch_folder, self.preflight_report.files_to_process)
         except BatchExecutionError as exc:
-            self.status_label.setText(f"Status: Batch could not start: {exc}")
+            _set_status_badge(self.status_label, "FAILED", f"Status: FAILED - batch could not start: {exc}")
             return
         selected = list(request.datasets)
         self.batch_items = []
@@ -1669,21 +1708,21 @@ class BatchPage(MissionPage):
         self.pause_button.setEnabled(True)
         self.cancel_button.setEnabled(True)
         self.retry_failed_button.setEnabled(False)
-        self.status_label.setText(f"Status: Running {len(selected)} dataset(s).")
+        _set_status_badge(self.status_label, "RUNNING", f"Status: RUNNING - {len(selected)} dataset(s).")
         self._processed_items = 0
         self._total_items = max(1, len(selected) + len(self.preflight_report.files_to_skip))
         executor = BatchExecutor(adapter_factory=PyForestScanAdapter)
         try:
             guardrail = executor.guardrails(request)
         except BatchExecutionError as exc:
-            self.status_label.setText(f"Status: Batch could not start: {exc}")
+            _set_status_badge(self.status_label, "FAILED", f"Status: FAILED - batch could not start: {exc}")
             self._finish_batch_run()
             return
         self.active_workers = guardrail.max_workers if guardrail.is_parallel else 1
         mode_label = guardrail.effective_mode.replace("_", " ")
         self.worker_status_label.setText(f"Active workers: {self.active_workers} ({mode_label})")
         backend_label = PyForestScanAdapter().selected_execution_backend().replace("_", " ")
-        self.status_label.setText(f"Status: Running {len(selected)} dataset(s) in {mode_label}. Execution backend: {backend_label}.")
+        _set_status_badge(self.status_label, "RUNNING", f"Status: RUNNING - {len(selected)} dataset(s) in {mode_label}. Execution backend: {backend_label}.")
         self.batch_thread = QThread(self)
         self.batch_worker = _BatchExecutionWorker(request, self._batch_control_state)
         self.batch_worker.moveToThread(self.batch_thread)
@@ -1748,8 +1787,11 @@ class BatchPage(MissionPage):
         """Finalize UI state after a worker-thread batch completes."""
         self.latest_result = result
         self.progress_bar.setValue(100 if getattr(result, "items", ()) else 0)
-        self.status_label.setText(
-            f"Status: Batch complete. Completed {getattr(result, 'success_count', 0)}; failed {getattr(result, 'failure_count', 0)}. Summary: {getattr(result, 'summary_html', '')}"
+        completion_badge = "READY" if getattr(result, "failure_count", 0) == 0 else "WARNING"
+        _set_status_badge(
+            self.status_label,
+            completion_badge,
+            f"Status: {completion_badge} - batch complete. Completed {getattr(result, 'success_count', 0)}; failed {getattr(result, 'failure_count', 0)}. Summary: {getattr(result, 'summary_html', '')}",
         )
         self._set_batch_summary(result)
         self.open_batch_folder_button.setEnabled(True)
@@ -1759,7 +1801,7 @@ class BatchPage(MissionPage):
 
     def _on_batch_failed(self, message: str) -> None:
         """Display an executor-level batch failure."""
-        self.status_label.setText(f"Status: Batch could not start: {message}")
+        _set_status_badge(self.status_label, "FAILED", f"Status: FAILED - batch could not start: {message}")
         self._finish_batch_run()
 
     def _finish_batch_run(self) -> None:
@@ -1844,7 +1886,7 @@ class BatchPage(MissionPage):
         if status == "failed":
             self.failed_paths.append(Path(getattr(item, "dataset_path")))
         self._refresh_batch_results()
-        self.status_label.setText(f"Status: {self._processed_items}/{total} dataset(s) processed.")
+        _set_status_badge(self.status_label, "RUNNING", f"Status: RUNNING - {self._processed_items}/{total} dataset(s) processed.")
         QApplication.processEvents()
 
     def _on_batch_job_update(self, job: JobRecord) -> None:
@@ -1864,19 +1906,19 @@ class BatchPage(MissionPage):
         """Pause or resume between batch files."""
         self.pause_requested = not self.pause_requested
         self.pause_button.setText("Resume Batch" if self.pause_requested else "Pause After Current File")
-        self.status_label.setText("Status: Batch will pause after the current file." if self.pause_requested else "Status: Batch resumed.")
+        _set_status_badge(self.status_label, "RUNNING", "Status: RUNNING - batch will pause after the current file." if self.pause_requested else "Status: RUNNING - batch resumed.")
 
     def cancel_remaining(self) -> None:
         """Cancel files that have not started yet."""
         self.cancel_requested = True
         self.pause_requested = False
         self.pause_button.setText("Pause After Current File")
-        self.status_label.setText("Status: Cancelling remaining files after the current file.")
+        _set_status_badge(self.status_label, "RUNNING", "Status: RUNNING - cancelling remaining files after the current file.")
 
     def retry_failed_files(self) -> None:
         """Retry failed files from the last batch with current settings."""
         if not self.failed_paths:
-            self.status_label.setText("Status: No failed files are available to retry.")
+            _set_status_badge(self.status_label, "WARNING", "Status: WARNING - no failed files are available to retry.")
             return
         self.discovered_paths = list(self.failed_paths)
         self.file_list.clear()
@@ -1888,7 +1930,7 @@ class BatchPage(MissionPage):
             self.file_list.addItem(row)
         self.failed_paths = []
         self.retry_failed_button.setEnabled(False)
-        self.status_label.setText("Status: Failed files are queued for retry. Click Run Selected Files.")
+        _set_status_badge(self.status_label, "WARNING", "Status: WARNING - failed files are queued for retry. Click Run Batch.")
         self._refresh_footprint_label()
 
     def open_batch_output_folder(self) -> None:
@@ -1957,11 +1999,14 @@ class ResultsPage(MissionPage):
         self.open_output_folder_button = QPushButton("Open Output Folder")
         self.open_output_folder_button.setEnabled(False)
         self.open_output_folder_button.clicked.connect(self.open_output_folder)
+        _apply_button_role(self.open_output_folder_button, "primary")
         self.load_outputs_button = QPushButton("Load Outputs")
         self.load_outputs_button.setToolTip("Select an output link, then load/open it for review.")
         self.load_outputs_button.clicked.connect(self.open_selected_link)
+        _apply_button_role(self.load_outputs_button, "secondary")
         self.clear_current_run_button = QPushButton("Clear Current Run")
         self.clear_current_run_button.clicked.connect(self.clear_current_run)
+        _apply_button_role(self.clear_current_run_button, "danger")
         button_row.addWidget(self.open_output_folder_button)
         button_row.addWidget(self.load_outputs_button)
         button_row.addWidget(self.clear_current_run_button)
@@ -2135,7 +2180,8 @@ class SettingsPage(MissionPage):
         self.backend_install_timer = QTimer(self)
         self.backend_install_timer.setInterval(1000)
         self.backend_install_timer.timeout.connect(self._refresh_backend_install_elapsed)
-        self.backend_status_label = _body_label("Backend Status: Unknown")
+        self.backend_status_label = _body_label("")
+        _set_status_badge(self.backend_status_label, "NOT CONFIGURED", "Backend Status: NOT CONFIGURED - verify backend.")
         self.backend_location_label = _body_label("Backend Location: Unknown")
         self.backend_environment_label = _body_label("Environment Location: Unknown")
         self.backend_installed_version_label = _body_label("Installed Version: Not installed")
@@ -2191,49 +2237,65 @@ class SettingsPage(MissionPage):
         ):
             backend.addWidget(label)
 
-        backend_buttons = QHBoxLayout()
+        install_availability = self.backend_service.install_availability()
         self.verify_backend_button = QPushButton(primary_action_label("settings"))
         self.verify_backend_button.clicked.connect(self.verify_backend)
-        self.verify_qgis_button = QPushButton("Verify QGIS Compatibility")
-        self.verify_qgis_button.clicked.connect(self.verify_qgis_compatibility)
-        self.preview_install_plan_button = QPushButton("Preview Install Plan")
-        self.preview_install_plan_button.clicked.connect(self.preview_install_plan)
-        install_availability = self.backend_service.install_availability()
+        _apply_button_role(self.verify_backend_button, "primary")
         self.install_backend_button = QPushButton(install_availability.button_label)
         self.install_backend_button.setEnabled(install_availability.enabled)
+        _apply_button_role(self.install_backend_button, "primary" if install_availability.enabled else "neutral")
         if install_availability.enabled:
             self.install_backend_button.clicked.connect(self.install_backend_internal_beta)
         self.repair_backend_button = QPushButton("Repair")
         self.repair_backend_button.clicked.connect(self.repair_backend_preview)
-        self.advanced_backend_button = QPushButton("Advanced")
-        self.advanced_backend_button.clicked.connect(self.show_backend_advanced)
-        self.developer_mode_button = QPushButton("Internal Beta Install: On" if install_availability.enabled else "Internal Beta Install: Off")
-        self.developer_mode_button.setEnabled(False)
+        _apply_button_role(self.repair_backend_button, "secondary")
+        self.preview_install_plan_button = QPushButton("Preview Install Plan")
+        self.preview_install_plan_button.clicked.connect(self.preview_install_plan)
+        _apply_button_role(self.preview_install_plan_button, "secondary")
+        self.verify_qgis_button = QPushButton("Verify QGIS Compatibility")
+        self.verify_qgis_button.clicked.connect(self.verify_qgis_compatibility)
+        _apply_button_role(self.verify_qgis_button, "neutral")
         self.manual_setup_button = QPushButton("Manual Setup Instructions")
         self.manual_setup_button.clicked.connect(self.show_manual_setup_instructions)
+        _apply_button_role(self.manual_setup_button, "secondary")
         self.open_backend_folder_button = QPushButton("Open Backend Folder")
         self.open_backend_folder_button.clicked.connect(self.open_backend_folder)
+        _apply_button_role(self.open_backend_folder_button, "secondary")
         self.view_backend_logs_button = QPushButton("View Logs")
         self.view_backend_logs_button.clicked.connect(self.view_backend_logs)
+        _apply_button_role(self.view_backend_logs_button, "secondary")
+        self.advanced_backend_button = QPushButton("Advanced")
+        self.advanced_backend_button.clicked.connect(self.show_backend_advanced)
+        _apply_button_role(self.advanced_backend_button, "secondary")
+        self.developer_mode_button = QPushButton("Internal Beta Install: On" if install_availability.enabled else "Internal Beta Install: Off")
+        self.developer_mode_button.setEnabled(False)
+        _apply_button_role(self.developer_mode_button, "neutral")
+
+        self.backend_primary_buttons = QHBoxLayout()
+        self.backend_primary_buttons.setSpacing(ACTION_ROW_SPACING)
+        for button in (self.verify_backend_button, self.install_backend_button, self.repair_backend_button):
+            self.backend_primary_buttons.addWidget(button)
+        self.backend_primary_buttons.addStretch(1)
+        backend.addLayout(self.backend_primary_buttons)
+
+        self.backend_secondary_buttons = QHBoxLayout()
+        self.backend_secondary_buttons.setSpacing(ACTION_ROW_SPACING)
         for button in (
-            self.verify_backend_button,
-            self.verify_qgis_button,
             self.preview_install_plan_button,
-            self.install_backend_button,
-            self.repair_backend_button,
+            self.verify_qgis_button,
             self.manual_setup_button,
             self.open_backend_folder_button,
             self.view_backend_logs_button,
             self.advanced_backend_button,
             self.developer_mode_button,
         ):
-            backend_buttons.addWidget(button)
-        backend_buttons.addStretch(1)
-        backend.addLayout(backend_buttons)
+            self.backend_secondary_buttons.addWidget(button)
+        self.backend_secondary_buttons.addStretch(1)
+        backend.addLayout(self.backend_secondary_buttons)
 
         self.backend_details = QTextEdit()
         self.backend_details.setReadOnly(True)
-        self.backend_details.setMinimumHeight(220)
+        self.backend_details.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)
         self.backend_details.setPlainText("Backend controls are ready. Use Verify Backend or Install Backend for the normal beta path; advanced reports and logs stay under Advanced / Troubleshooting.")
         backend.addWidget(self.backend_details)
         self.backend_technical_log_group = QGroupBox("Advanced / Troubleshooting: technical log")
@@ -2298,7 +2360,7 @@ class SettingsPage(MissionPage):
         version = self.backend_service.version_compatibility()
         compatibility = build_qgis_compatibility_report()
         availability = self.backend_service.install_availability()
-        self.backend_status_label.setText(f"Backend Status: {state.status.value}")
+        _set_status_badge(self.backend_status_label, state.status.value, f"Backend Status: {status_badge_label(state.status.value)} - {state.message}")
         self.backend_location_label.setText(f"Storage Location: {paths.backend_root}")
         self.backend_environment_label.setText(f"Environment Location: {paths.environment_path}")
         self.backend_installed_version_label.setText(f"Installed Version: {'configured' if state.config_exists else 'Not installed'}")
@@ -2334,7 +2396,7 @@ class SettingsPage(MissionPage):
     def verify_backend(self) -> None:
         """Run safe PBM verification and display dependency results."""
         result = self.backend_service.verify_backend()
-        self.backend_status_label.setText(f"Backend Status: {result.status.value}")
+        _set_status_badge(self.backend_status_label, result.status.value, f"Backend Status: {status_badge_label(result.status.value)}")
         python_dependency = _find_backend_dependency(result, "python")
         pdal_dependency = _find_backend_dependency(result, "pdal")
         self.backend_python_label.setText(f"Python Version: {python_dependency.detected_version if python_dependency and python_dependency.detected_version else 'Not detected'}")
@@ -2407,7 +2469,7 @@ class SettingsPage(MissionPage):
         if running:
             self.backend_install_started_at = time.monotonic()
             self.backend_install_timer.start()
-            self.backend_status_label.setText("Backend Status: Installing")
+            _set_status_badge(self.backend_status_label, "RUNNING", "Backend Status: RUNNING - installation in progress.")
             self.backend_install_progress_bar.setValue(5)
             self.backend_install_stage_label.setText("Install stage: Preparing")
             self.backend_install_action_label.setText("Current package/action: staging")
@@ -2467,7 +2529,7 @@ class SettingsPage(MissionPage):
             final_state = "Repair Required"
         else:
             final_state = "Install Failed"
-        self.backend_status_label.setText(f"Backend Status: {final_state}")
+        _set_status_badge(self.backend_status_label, final_state, f"Backend Status: {status_badge_label(final_state)} - {final_state}")
         self.backend_install_stage_label.setText(f"Install stage: {final_state}")
         self.backend_install_message_label.setText(f"Latest message: {getattr(result, 'message', '')}")
         self.backend_details.setPlainText(
@@ -2486,7 +2548,7 @@ class SettingsPage(MissionPage):
     def _on_backend_install_failed(self, message: str) -> None:
         """Display unexpected installer worker failure."""
         self._set_backend_install_running(False)
-        self.backend_status_label.setText("Backend Status: Install Failed")
+        _set_status_badge(self.backend_status_label, "FAILED", "Backend Status: FAILED - install failed.")
         self.backend_install_stage_label.setText("Install stage: Install Failed")
         self.backend_install_message_label.setText(f"Latest message: {message}")
         self.backend_details.setPlainText(
@@ -2524,7 +2586,7 @@ class SettingsPage(MissionPage):
         """Display the non-mutating backend repair plan."""
         result = self.backend_service.repair_backend()
         plan = self.backend_service.preview_repair_plan()
-        self.backend_status_label.setText(f"Backend Status: {result.status.value}")
+        _set_status_badge(self.backend_status_label, result.status.value, f"Backend Status: {status_badge_label(result.status.value)}")
         self.backend_details.setPlainText(self.backend_service.format_repair_plan(plan))
 
     def show_backend_advanced(self) -> None:
@@ -2675,8 +2737,8 @@ def _collapsible_section(parent: QVBoxLayout, title: str, checked: bool = False)
     group.setChecked(checked)
     group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
     layout = QVBoxLayout(group)
-    layout.setContentsMargins(14, 16, 14, 14)
-    layout.setSpacing(10)
+    layout.setContentsMargins(*SECTION_MARGINS)
+    layout.setSpacing(SECTION_SPACING)
     parent.addWidget(group)
     return group, layout
 
@@ -2752,7 +2814,7 @@ def _advisor_metric_card(title: str, value: str) -> QLabel:
     label = QLabel(f"<b>{escape(title)}</b><br>{escape(value)}")
     label.setObjectName("advisorMetric")
     label.setWordWrap(True)
-    label.setMinimumHeight(56)
+    label.setMinimumHeight(SECONDARY_BUTTON_HEIGHT + SPACING_XL)
     label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
     return label
 
@@ -2762,8 +2824,8 @@ def _product_explanation_card(item: object) -> QFrame:
     frame = QFrame()
     frame.setObjectName("advisorNestedCard")
     layout = QVBoxLayout(frame)
-    layout.setContentsMargins(12, 10, 12, 12)
-    layout.setSpacing(7)
+    layout.setContentsMargins(SPACING_MD, SPACING_SM, SPACING_MD, SPACING_MD)
+    layout.setSpacing(SPACING_SM)
     title = QLabel(getattr(item, "label"))
     title.setObjectName("advisorCardTitle")
     title.setWordWrap(True)
