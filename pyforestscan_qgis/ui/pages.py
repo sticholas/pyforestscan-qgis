@@ -326,13 +326,14 @@ class WorkspacePage(MissionPage):
         notes.addWidget(save_notes)
         _wire_collapsible_group(notes_group)
 
-        reset = self.add_section("Reset")
-        self.reset_section = reset.parentWidget()
+        reset_group, reset = _collapsible_section(self.content_layout, "Troubleshooting: reset workspace", checked=False)
+        self.reset_section = reset_group
         reset.addWidget(_body_label("Clear the current workspace from Mission Control or reset its progress/history. Workspace files remain local."))
         self.reset_button = QPushButton("Clear / Reset Current Workspace")
         self.reset_button.clicked.connect(self.resetWorkspaceRequested.emit)
         _apply_button_role(self.reset_button, "danger")
         reset.addWidget(self.reset_button)
+        _wire_collapsible_group(reset_group)
         for section in (self.status_section, self.runs_section, self.outputs_section, self.timeline_section, self.notes_section, self.reset_section):
             section.setVisible(False)
 
@@ -534,8 +535,17 @@ class DatasetPage(MissionPage):
         self.summary_section = summary.parentWidget()
         self.summary_text = QTextEdit()
         self.summary_text.setReadOnly(True)
+        self.summary_text.setMinimumHeight(COMPACT_LIST_HEIGHT)
         summary.addWidget(self.summary_text)
         self.summary_section.setVisible(False)
+
+        metadata_group, metadata = _collapsible_section(self.content_layout, "Technical Metadata", checked=False)
+        self.dataset_technical_text = QTextEdit()
+        self.dataset_technical_text.setReadOnly(True)
+        self.dataset_technical_text.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)
+        self.dataset_technical_text.setPlainText("Dataset technical metadata appears after analysis.")
+        metadata.addWidget(self.dataset_technical_text)
+        _wire_collapsible_group(metadata_group)
 
         spatial = self.add_section("Spatial Preview")
         self.spatial_section = spatial.parentWidget()
@@ -588,10 +598,10 @@ class DatasetPage(MissionPage):
         path = self.dataset_path_edit.text().strip()
         output_root = self.output_folder_edit.text().strip()
         if not path:
-            self.summary_text.setPlainText("Choose a dataset before running Dataset Explorer.")
+            self._set_dataset_message(empty_state_message("dataset"))
             return
         if not output_root:
-            self.summary_text.setPlainText("Choose an output folder before running Dataset Explorer.")
+            self._set_dataset_message("No output folder selected.\nChoose where Mission Control should write reports and products.")
             return
         context = create_run_context(path, output_root).ensure_directories()
         try:
@@ -601,10 +611,10 @@ class DatasetPage(MissionPage):
             write_html_report(report, context.dataset_report_html)
             write_csv_summary(report, context.dataset_summary_csv)
         except AdapterError as exc:
-            self.summary_text.setPlainText(f"Dataset inspection failed: {exc}")
+            self._set_dataset_message(f"Dataset inspection failed.\n{exc}")
             return
         except OSError as exc:
-            self.summary_text.setPlainText(f"Dataset reports could not be written: {exc}")
+            self._set_dataset_message(f"Dataset reports could not be written.\n{exc}")
             return
         self.active_run = context
         self.set_report(report, context)
@@ -613,22 +623,30 @@ class DatasetPage(MissionPage):
 
     def set_report(self, report: DatasetExplorerReport, context: RunContext | None = None) -> None:
         """Display a Dataset Explorer report summary."""
-        products = "\n".join(f"- {item.label}: {item.status}" for item in report.products)
         lines = [
             f"Point count: {format_count_for_display(report.point_count)}",
             f"CRS: {format_crs_for_display(report.crs)}",
             f"Density: {format_density_for_display(report.estimated_density)}",
             f"Bounds: {_format_bounds(report)}",
         ]
-        if report.dimensions:
-            lines.append(f"Dimensions: {', '.join(report.dimensions)}")
         if report.warnings:
-            lines.extend(("", "Warnings:", *[f"- {warning.code}: {warning.message}" for warning in report.warnings]))
-        if products:
-            lines.extend(("", "Available products:", products))
-        if context:
-            lines.extend(("", f"Run folder: {context.run_folder}", f"Dataset Report: {context.dataset_report_html}"))
+            lines.append(f"Warnings: {len(report.warnings)} item(s). Expand Technical Metadata for details.")
         self.summary_text.setPlainText("\n".join(lines))
+        technical_lines = []
+        if report.dimensions:
+            technical_lines.append(f"Dimensions: {', '.join(report.dimensions)}")
+        if report.warnings:
+            technical_lines.extend(("Warnings:", *[f"- {warning.code}: {warning.message}" for warning in report.warnings], ""))
+        if report.products:
+            technical_lines.extend(("Available products:", *[f"- {item.label}: {item.status}" for item in report.products], ""))
+        if context:
+            technical_lines.extend((f"Run folder: {context.run_folder}", f"Dataset Report: {context.dataset_report_html}"))
+        self.dataset_technical_text.setPlainText("\n".join(technical_lines).strip() or "No technical metadata warnings.")
+        self.summary_section.setVisible(True)
+
+    def _set_dataset_message(self, message: str) -> None:
+        """Show a compact Dataset page empty or warning state."""
+        self.summary_text.setPlainText(message)
         self.summary_section.setVisible(True)
 
     def set_footprint_preview(self, report: DatasetExplorerReport, dataset_path: str, context: RunContext | None = None) -> None:
@@ -643,7 +661,6 @@ class DatasetPage(MissionPage):
             return
         preview = self.footprint_preview
         crs = preview.crs or "Unknown"
-        report_path = f"\nReport: {context.dataset_report_html}" if context is not None else ""
         lines = [
             "Footprint status: READY",
             f"CRS: {crs}",
@@ -653,7 +670,7 @@ class DatasetPage(MissionPage):
         ]
         if preview.warnings:
             lines.extend(f"Warning: {message}" for message in preview.warnings)
-        self.footprint_text.setPlainText("\n".join(lines) + report_path)
+        self.footprint_text.setPlainText("\n".join(lines))
         self.spatial_section.setVisible(True)
         self.add_footprint_button.setEnabled(True)
         self.zoom_footprint_button.setEnabled(bool(preview.crs))
@@ -793,6 +810,15 @@ class ScientificAdvisorPage(MissionPage):
 
     def set_recommendation_report(self, report: RecommendationReport) -> None:
         """Display a Knowledge Engine recommendation report."""
+        has_guidance = bool(report.suggested_next_actions or report.warnings or report.recommended_products or report.recommended_parameters)
+        if not has_guidance:
+            self.executive_summary_label.setText(
+                "Dataset analyzed. No recommendations were produced for this dataset.\n"
+                "Next: continue to Planning and choose products manually."
+            )
+            for card in (self.overview_card, self.recommendations_card, self.warnings_card, self.products_card, self.parameters_card, self.qgis_tools_card, self.next_steps_card):
+                card.setVisible(False)
+            return
         self.overview_card.setVisible(True)
         self.score_label.setText(f"<b>Dataset score</b><br>{report.dataset_score}/100")
         self.confidence_label.setText(f"<b>Confidence / readiness</b><br>{_stars(report.confidence_stars)} ({report.confidence_stars}/5)")
@@ -828,7 +854,7 @@ class ScientificAdvisorPage(MissionPage):
             calibration = " Calibration required." if parameter.calibration_required else ""
             _add_advisor_item(self.parameter_list, f"{parameter.product} {parameter.name}: {parameter.value} {parameter.unit}\n{parameter.reason}{calibration}", 68)
         self.parameters_card.setVisible(bool(report.recommended_parameters))
-        self.qgis_tools_card.setVisible(True)
+        self.qgis_tools_card.setVisible(bool(report.recommended_products))
         self.next_steps_card.setVisible(True)
 
         note_count = len(report.scientific_notes)
@@ -914,7 +940,7 @@ class PlanningPage(MissionPage):
         self.dataset_context_label = _body_label("Run Dataset Explorer to load an active dataset report for planning.")
         dataset.addWidget(self.dataset_context_label)
 
-        output = self.add_section("Output")
+        output_group, output = _collapsible_section(self.content_layout, "Advanced Output Folder", checked=False)
         self.output_folder_edit = QLineEdit()
         self.output_folder_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         folder_button = QPushButton("Browse")
@@ -926,6 +952,7 @@ class PlanningPage(MissionPage):
         folder_row.addWidget(folder_button, 0)
         output.addWidget(_body_label("Mission Control normally uses the active run folder automatically. Advanced users can override the output folder before building a plan."))
         output.addLayout(folder_row)
+        _wire_collapsible_group(output_group)
 
         products = self.add_section("Product Selection")
         self.product_checks: dict[ProductType, QCheckBox] = {}
@@ -1035,6 +1062,7 @@ class PlanningPage(MissionPage):
         self.plan_text.setReadOnly(True)
         self.plan_text.setMinimumHeight(COMPACT_LIST_HEIGHT)
         self.plan_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.plan_text.setPlainText(empty_state_message("planning"))
         summary.addWidget(self.plan_text)
 
     def _set_all_products(self, checked: bool) -> None:
@@ -2001,10 +2029,12 @@ class ResultsPage(MissionPage):
         self.open_output_folder_button.clicked.connect(self.open_output_folder)
         _apply_button_role(self.open_output_folder_button, "primary")
         self.load_outputs_button = QPushButton("Load Outputs")
+        self.load_outputs_button.setEnabled(False)
         self.load_outputs_button.setToolTip("Select an output link, then load/open it for review.")
         self.load_outputs_button.clicked.connect(self.open_selected_link)
         _apply_button_role(self.load_outputs_button, "secondary")
         self.clear_current_run_button = QPushButton("Clear Current Run")
+        self.clear_current_run_button.setEnabled(False)
         self.clear_current_run_button.clicked.connect(self.clear_current_run)
         _apply_button_role(self.clear_current_run_button, "danger")
         button_row.addWidget(self.open_output_folder_button)
@@ -2044,18 +2074,22 @@ class ResultsPage(MissionPage):
         self._advanced_paths = []
         self._current_output_folder = None
         self.open_output_folder_button.setEnabled(False)
+        self.load_outputs_button.setEnabled(False)
+        self.clear_current_run_button.setEnabled(False)
         self.friendly_links.setVisible(False)
         self.results_empty_label.setVisible(True)
         if context is None:
             return
         self._current_output_folder = context.outputs_dir
-        self.open_output_folder_button.setEnabled(True)
+        self.clear_current_run_button.setEnabled(True)
         for label, path in context.friendly_links:
             self._friendly_paths.append(path)
             self.friendly_links.addItem(f"{label}: {path}")
         has_outputs = bool(self._friendly_paths)
         self.friendly_links.setVisible(has_outputs)
         self.results_empty_label.setVisible(not has_outputs)
+        self.open_output_folder_button.setEnabled(has_outputs)
+        self.load_outputs_button.setEnabled(has_outputs)
         for label, path in context.advanced_paths:
             self._advanced_paths.append(path)
             self.previous_reports.addItem(f"{label}: {path}")
@@ -2079,6 +2113,8 @@ class ResultsPage(MissionPage):
                 self.friendly_links.setVisible(True)
                 self.results_empty_label.setVisible(False)
                 self.open_output_folder_button.setEnabled(self._current_output_folder is not None)
+                self.load_outputs_button.setEnabled(True)
+                self.clear_current_run_button.setEnabled(True)
             if not any(self.previous_reports.item(index).text().endswith(text) for index in range(self.previous_reports.count())):
                 self.previous_reports.addItem(text)
                 self._advanced_paths.append(path)
@@ -2113,6 +2149,8 @@ class ResultsPage(MissionPage):
         self._advanced_paths = []
         self._current_output_folder = None
         self.open_output_folder_button.setEnabled(False)
+        self.load_outputs_button.setEnabled(False)
+        self.clear_current_run_button.setEnabled(False)
         self.friendly_links.setVisible(False)
         self.results_empty_label.setVisible(True)
         self.jobs_section.setVisible(False)
@@ -2236,6 +2274,7 @@ class SettingsPage(MissionPage):
             self.backend_install_estimate_label,
         ):
             backend.addWidget(label)
+        self._set_backend_progress_visible(False)
 
         install_availability = self.backend_service.install_availability()
         self.verify_backend_button = QPushButton(primary_action_label("settings"))
@@ -2269,6 +2308,7 @@ class SettingsPage(MissionPage):
         _apply_button_role(self.advanced_backend_button, "secondary")
         self.developer_mode_button = QPushButton("Internal Beta Install: On" if install_availability.enabled else "Internal Beta Install: Off")
         self.developer_mode_button.setEnabled(False)
+        self.developer_mode_button.setVisible(False)
         _apply_button_role(self.developer_mode_button, "neutral")
 
         self.backend_primary_buttons = QHBoxLayout()
@@ -2296,7 +2336,7 @@ class SettingsPage(MissionPage):
         self.backend_details = QTextEdit()
         self.backend_details.setReadOnly(True)
         self.backend_details.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)
-        self.backend_details.setPlainText("Backend controls are ready. Use Verify Backend or Install Backend for the normal beta path; advanced reports and logs stay under Advanced / Troubleshooting.")
+        self.backend_details.setPlainText("Verify or install PBM from this page. Advanced reports and logs stay under Advanced / Troubleshooting.")
         backend.addWidget(self.backend_details)
         self.backend_technical_log_group = QGroupBox("Advanced / Troubleshooting: technical log")
         self.backend_technical_log_group.setCheckable(True)
@@ -2467,6 +2507,7 @@ class SettingsPage(MissionPage):
         """Disable install/repair/update-style controls while PBM installation runs."""
         self.backend_install_running = running
         if running:
+            self._set_backend_progress_visible(True)
             self.backend_install_started_at = time.monotonic()
             self.backend_install_timer.start()
             _set_status_badge(self.backend_status_label, "RUNNING", "Backend Status: RUNNING - installation in progress.")
@@ -2489,6 +2530,18 @@ class SettingsPage(MissionPage):
         if not running:
             self.install_backend_button.setText(availability.button_label)
             self.install_backend_button.setEnabled(availability.enabled)
+
+    def _set_backend_progress_visible(self, visible: bool) -> None:
+        """Show PBM progress UI only while it is useful."""
+        for widget in (
+            self.backend_install_progress_bar,
+            self.backend_install_stage_label,
+            self.backend_install_action_label,
+            self.backend_install_elapsed_label,
+            self.backend_install_message_label,
+            self.backend_install_estimate_label,
+        ):
+            widget.setVisible(visible)
 
     def _backend_install_action_buttons(self) -> tuple[QPushButton, ...]:
         """Return controls disabled while install is running."""
@@ -2519,6 +2572,7 @@ class SettingsPage(MissionPage):
     def _on_backend_install_complete(self, result: object) -> None:
         """Render final PBM install state after background worker completion."""
         self._set_backend_install_running(False)
+        self._set_backend_progress_visible(True)
         self.refresh_backend_summary()
         status_value = getattr(getattr(result, "status", None), "value", str(getattr(result, "status", "Unknown")))
         success = bool(getattr(result, "success", False))
@@ -2548,6 +2602,7 @@ class SettingsPage(MissionPage):
     def _on_backend_install_failed(self, message: str) -> None:
         """Display unexpected installer worker failure."""
         self._set_backend_install_running(False)
+        self._set_backend_progress_visible(True)
         _set_status_badge(self.backend_status_label, "FAILED", "Backend Status: FAILED - install failed.")
         self.backend_install_stage_label.setText("Install stage: Install Failed")
         self.backend_install_message_label.setText(f"Latest message: {message}")

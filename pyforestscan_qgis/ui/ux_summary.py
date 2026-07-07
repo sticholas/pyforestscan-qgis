@@ -144,9 +144,9 @@ def empty_state_message(page: str) -> str:
     """Return concise guidance for empty Mission Control pages."""
     messages = {
         "advisor": "Analyze a dataset to receive recommendations.",
-        "results": "Run processing to generate output products.",
+        "results": "No outputs yet.\nRun processing to generate scientific products.",
         "workspace": "Open or create a workspace to begin.",
-        "dataset": "Select a lidar dataset, then analyze it.",
+        "dataset": "No dataset selected.\nSelect a LAS, LAZ, or COPC dataset to begin.",
         "planning": "Analyze a dataset before choosing products.",
     }
     return messages.get(page.lower(), "Choose the next action to continue.")

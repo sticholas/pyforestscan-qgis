@@ -2,6 +2,20 @@
 
 Phase 24F applied the PyForestScan Design System directly to Mission Control without changing processing, PBM installer behavior, scientific calculations, Advanced Toolbox behavior, or product coverage.
 
+
+## Phase 25A Refinement
+
+Phase 25A continues product polish without changing PBM, processing algorithms, execution routing, scientific calculations, External Worker guardrails, or the Advanced Processing Toolbox.
+
+| Area | Refinement |
+| --- | --- |
+| Workspace | Reset controls now live under Troubleshooting so normal resume/start work stays dominant. |
+| Dataset | The primary summary shows point count, CRS, density, bounds, and actionable warning count; dimensions, report paths, product feasibility, and warning details live under Technical Metadata. |
+| Scientific Advisor | When the Knowledge Engine has no populated recommendations, the page shows one compact professional placeholder and hides empty analysis/recommendation cards. |
+| Planning | Output-folder override is collapsed under Advanced Output Folder so product choice and shared settings remain the main workflow. |
+| Results | Empty results teach the next action, and output actions stay inactive until generated outputs exist. |
+| Settings / Backend | Developer-only install-mode display is hidden, and PBM progress UI appears only while install progress or final install state is useful. |
+
 ## Applied Changes
 
 | Area | Result |

@@ -33,8 +33,9 @@ class MissionControlUxTests(unittest.TestCase):
 
     def test_empty_states_are_concise_guidance(self) -> None:
         self.assertEqual(empty_state_message("advisor"), "Analyze a dataset to receive recommendations.")
-        self.assertEqual(empty_state_message("results"), "Run processing to generate output products.")
+        self.assertEqual(empty_state_message("results"), "No outputs yet.\nRun processing to generate scientific products.")
         self.assertEqual(empty_state_message("workspace"), "Open or create a workspace to begin.")
+        self.assertEqual(empty_state_message("dataset"), "No dataset selected.\nSelect a LAS, LAZ, or COPC dataset to begin.")
 
     def test_primary_action_labels_are_standardized(self) -> None:
         self.assertEqual(primary_action_label("dataset"), "Analyze Dataset")
@@ -110,6 +111,10 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn('self.recommendations_card.setVisible(bool(report.suggested_next_actions))', source)
         self.assertIn('self.warnings_card.setVisible(bool(report.warnings))', source)
         self.assertIn('self.jobs_section.setVisible(False)', source)
+        self.assertIn('self.reset_section = reset_group', source)
+        self.assertIn('self.dataset_technical_text', source)
+        self.assertIn('self.developer_mode_button.setVisible(False)', source)
+        self.assertIn('self._set_backend_progress_visible(False)', source)
 
     def test_workflow_buttons_and_results_buttons_are_present(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")

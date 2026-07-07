@@ -27,9 +27,9 @@ This standard applies to every future Mission Control page, dialog, panel, and w
 Empty states are compact guidance, not substitute sections.
 
 - Scientific Advisor: `Analyze a dataset to receive recommendations.`
-- Results: `Run processing to generate output products.`
+- Results: `No outputs yet. Run processing to generate scientific products.`
 - Workspace: `Open or create a workspace to begin.`
-- Dataset: `Select a lidar dataset, then analyze it.`
+- Dataset: `No dataset selected. Select a LAS, LAZ, or COPC dataset to begin.`
 - Planning: `Analyze a dataset before choosing products.`
 
 If the user has not reached a workflow step, the page should show the one next action and hide downstream panels.

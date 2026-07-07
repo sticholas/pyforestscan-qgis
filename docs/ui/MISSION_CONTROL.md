@@ -31,16 +31,18 @@ flowchart TD
   details and recent activity are collapsed by default.
 - Workspace: welcome/resume surface with Resume Workspace, Start New
   Workspace, Recent Workspaces, status, recent runs, key output links, timeline,
-  notes, and clear/reset controls.
+  notes, and reset controls collapsed under Troubleshooting.
 - Environment: execution-readiness summary with PBM backend status first,
   active execution backend, a Refresh action, and an Open Backend Settings action.
   QGIS Python fallback checks and technical dependency details are collapsed by default.
 - Scientific Advisor: deterministic Knowledge Engine guidance after Dataset Explorer, including warnings, product explanations, parameter suggestions, and QGIS QA tools.
 - Dataset: choose LAS, LAZ, COPC, or EPT plus an output folder, analyze the dataset, create the active
-  run folder, write Dataset Explorer reports, show a spatial footprint preview,
-  add the footprint to QGIS, and zoom the main map canvas.
-- Planning: Product Planner uses the active Dataset Explorer report and writes
-  plan reports into the run folder. No product execution is performed.
+  run folder, show a compact dataset summary and spatial footprint preview,
+  keep dimensions/report paths under Technical Metadata, add the footprint to
+  QGIS, and zoom the main map canvas.
+- Planning: Product Planner uses the active Dataset Explorer report, keeps the
+  normal product/settings path first, and collapses output-folder overrides under
+  Advanced Output Folder. No product execution is performed.
 - Processing: start implemented product jobs from the active Product Planner
   report, view selected products, output folder, Processing Footprint, current status,
   and progress by default. Product Plan JSON paths, pipeline stages, and logs are
@@ -50,8 +52,9 @@ flowchart TD
   by default or through guarded Parallel safe mode, filter results, retry
   failures, cancel remaining files, and optionally load generated outputs into
   QGIS.
-- Results: view friendly Dataset Report, Product Plan, Job Summary, Output
-  Folder, and Products links first, with raw paths under Run files and logs.
+- Results: show a compact teaching empty state until outputs exist, then make
+  Open Output Folder and Load Outputs dominant, with raw paths under Run files
+  and logs.
 - Settings: default output folder for Mission Control runs.
 
 ## UI Architecture
@@ -61,7 +64,7 @@ runtime stretch factors so the page stack expands horizontally and vertically.
 Each page uses one full-width vertical scroll area; individual pages should avoid
 adding nested scroll areas unless there is a specific interaction reason.
 
-Mission Control follows the permanent [Mission Control UX Standard](../development/MISSION_CONTROL_UX_STANDARD.md): one primary action per page, no empty sections, collapsed technical details, concise empty states, and consistent workflow terminology. Visual hierarchy, status badges, dialogs, notifications, tables, icons, and future module integration follow the [PyForestScan Design System](../development/PYFORESTSCAN_DESIGN_SYSTEM.md). Phase 24F applies that system with shared spacing tokens, button role styling, status-badge tones, compact empty states, and calmer Backend/Processing/Batch/Results layouts; see the [Visual Polish Audit](../development/VISUAL_POLISH_AUDIT.md).
+Mission Control follows the permanent [Mission Control UX Standard](../development/MISSION_CONTROL_UX_STANDARD.md): one primary action per page, no empty sections, collapsed technical details, concise empty states, and consistent workflow terminology. Visual hierarchy, status badges, dialogs, notifications, tables, icons, and future module integration follow the [PyForestScan Design System](../development/PYFORESTSCAN_DESIGN_SYSTEM.md). Phase 24F applies that system with shared spacing tokens, button role styling, status-badge tones, compact empty states, and calmer Backend/Processing/Batch/Results layouts. Phase 25A tightens workflow continuity by collapsing rarely used reset/output/backend details and keeping empty states compact; see the [Visual Polish Audit](../development/VISUAL_POLISH_AUDIT.md).
 
 - `pyforestscan_qgis/ui/forms/mission_control.ui`: Qt Designer shell for the
   dock header, sidebar, page stack, and status bar.
@@ -129,10 +132,11 @@ default so users see the next useful decision before deeper rationale.
 
 ## Planning Layout
 
-The Planning page is grouped into Dataset, Output, Product Selection, Shared
-Parameters, Advanced Product Settings, and Run Summary sections. Product-specific
-filenames and CHM / Canopy Cover controls are collapsed by default because the
-recommended/shared settings are enough for the normal workflow.
+The Planning page is grouped into Dataset, Product Selection, Shared
+Parameters, Advanced Output Folder, Advanced Product Settings, and Run Summary
+sections. Product-specific filenames, output overrides, and CHM / Canopy Cover
+controls are collapsed by default because the recommended/shared settings are
+enough for the normal workflow.
 
 ## Processing Footprint
 
