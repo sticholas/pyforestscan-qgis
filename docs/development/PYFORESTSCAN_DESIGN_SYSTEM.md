@@ -55,7 +55,7 @@ Cards naturally resize. A card with no meaningful content should be hidden, not 
 
 | Role | Examples | Use |
 | --- | --- | --- |
-| Primary | Run Processing, Run Batch, Open Dataset, Install Backend | The one obvious next action. |
+| Primary | Continue, Continue to Planning, Open Batch, Run Processing, Run Batch, Install Backend | The one obvious next action. |
 | Secondary | Open Output Folder, Load Outputs, Preview Install Plan | Useful follow-up or supportive action. |
 | Neutral | Refresh Environment, Verify Backend, Browse | Safe utility action. |
 | Danger | Delete Workspace, Clear Current Run, Cancel Remaining | Destructive or interrupting action. |
@@ -164,21 +164,23 @@ The expected guided flow is:
 
 ```mermaid
 flowchart TD
-    Home --> Workspace
-    Workspace --> Environment
-    Environment --> Dataset
-    Dataset --> Advisor["Scientific Advisor"]
-    Advisor --> Planning
-    Planning --> Processing
-    Processing --> Results
+    Home --> Dataset
+    Dataset --> Planning
+    Planning --> Advisor["Scientific Advisor"]
+    Advisor --> Batch
+    Batch --> Results
     Results --> Home
+    Home -. support .-> Environment
+    Home -. support .-> Settings
+    Home -. support .-> Workspace
 ```
 
-Every future module must either fit this path or be clearly placed in the Expert Processing Toolbox.
+Primary workflow pages use subtle completed/current/upcoming orientation and one concise Next Step card. Environment, Settings, and Workspace are support pages. Every future module must either fit this path or be clearly placed in the Expert Processing Toolbox.
 
 ## Mission Control Principles
 
 - Keep one obvious action.
+- Show one next step on primary workflow pages.
 - Hide technical details.
 - Avoid duplicate status.
 - Reduce scrolling.
@@ -210,7 +212,7 @@ Future integrations such as WhiteboxTools, Open3D, SAM, PyTorch, CloudCompare, P
 
 | Surface | Finding | Recommendation |
 | --- | --- | --- |
-| Mission Control Home | Primary actions and dashboard language are now consistent. | Keep version/recent activity collapsed. |
+| Mission Control Home | Primary actions and dashboard language are now consistent. Phase 25B reduces Home to backend status, dataset, workflow status, output folder, and Continue. | Keep version/recent activity collapsed. |
 | Workspace | Empty sections are hidden after Phase 24D. | Keep reset/history controls secondary or collapsed. |
 | Environment | PBM readiness is prominent and QGIS fallback detail is collapsed. | Continue using execution-readiness language rather than legacy dependency failure language. |
 | Dataset | Analyze Dataset is the primary action. | Keep metadata/report paths out of the primary view. |

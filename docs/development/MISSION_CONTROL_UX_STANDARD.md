@@ -6,11 +6,17 @@ This standard applies to every future Mission Control page, dialog, panel, and w
 
 ## Design Philosophy
 
-- Guide the user through one clear path: check backend, select data, review recommendations, choose products, run, review outputs.
+- Guide the user through one clear path: Home, Dataset, Planning, Scientific Advisor, Batch, Results.
 - Show the essential decision first.
 - Collapse, hide, or move technical detail to Advanced, Technical Details, or Troubleshooting.
 - Use professional GIS terminology and consistent page structure.
 - Preserve the Advanced Toolbox as the parameter-rich expert surface.
+
+## Workflow Model
+
+Primary workflow pages are Home, Dataset, Planning, Scientific Advisor, Batch, and Results. Environment, Settings, and Workspace are support pages. They remain available from navigation, but the primary UI should make the next workflow step obvious without forcing a wizard.
+
+Primary workflow pages may show a subtle step indicator using completed, current, and upcoming markers. Each primary workflow page should end with one concise Next Step card that names the recommended action and moves to the next page when possible.
 
 ## Layout Rules
 
@@ -38,12 +44,12 @@ If the user has not reached a workflow step, the page should show the one next a
 
 | Page | Primary action |
 | --- | --- |
-| Home | Open Dataset |
+| Home | Continue |
 | Workspace | Resume Workspace |
 | Environment | Refresh Environment |
 | Dataset | Analyze Dataset |
-| Scientific Advisor | Continue to Planning |
-| Planning | Continue to Processing |
+| Planning | Review Recommendations |
+| Scientific Advisor | Open Batch |
 | Processing | Run Processing |
 | Batch | Run Batch |
 | Results | Open Output Folder |
@@ -53,15 +59,15 @@ If the user has not reached a workflow step, the page should show the one next a
 
 | Page | Show first | Collapse or hide |
 | --- | --- | --- |
-| Home | Backend status, environment status, current workspace/dataset, recent output folder, primary actions | Version details, recent activity |
+| Home | Backend status, selected dataset, workflow status, current output folder, Continue | Version details, recent activity |
 | Workspace | Current workspace, last activity, compact timeline summary, recent datasets | History/version detail, reset controls |
 | Environment | Overall status, PBM status, execution backend, Refresh, Backend Settings | QGIS fallback, dependency details, technical checks/logs |
 | Dataset | Selected dataset, Analyze Dataset action, dataset summary after analysis | Metadata and report paths |
-| Scientific Advisor | Executive summary, populated recommendations/products/actionable warnings | Empty recommendation/warning cards, product explanations, scientific notes |
+| Scientific Advisor | Executive summary, populated recommendations/products/actionable warnings, Next Step to Batch | Empty recommendation/warning cards, product explanations, scientific notes |
 | Planning | Selected products, shared settings, estimated outputs | Advanced product settings and parameter explanations |
 | Processing | Current job, progress, execution backend, output folder, Run Processing | Backend logs, technical output, job JSON |
 | Batch | Discover Files, Preflight, Run Batch, Review Results | Advanced options, footprint estimate, parallel diagnostics |
-| Results | Generated outputs, output folder actions | Technical logs and processing metadata |
+| Results | Generated outputs, Open Output Folder, Load Outputs, or compact guidance back to Batch | Technical logs and processing metadata |
 | Settings | Backend, Workspace, General | Manifest registry, module registry, logs, developer-only information |
 
 ## Technical Disclosure

@@ -32,6 +32,7 @@ from .pages import (
 from .advisor import completed_products_from_job
 from .raster_styling import apply_generated_raster_renderer, is_raster_result, layer_display_name
 from .state import MissionControlState
+from .ux_summary import guided_next_step, guided_workflow_indicator, guided_workflow_status_lines, guided_workflow_pages
 
 FORM_CLASS, _ = uic.loadUiType(str(plugin_root() / "ui" / "forms" / "mission_control.ui"))
 
@@ -41,15 +42,15 @@ class MissionControlDock(QDockWidget):
 
     PAGE_NAMES = (
         "Home",
-        "Workspace",
-        "Environment",
         "Dataset",
-        "Scientific Advisor",
         "Planning",
-        "Processing",
+        "Scientific Advisor",
         "Batch",
         "Results",
+        "Processing",
+        "Environment",
         "Settings",
+        "Workspace",
     )
 
     def __init__(self, iface: Any, parent: QWidget | None = None) -> None:
@@ -105,15 +106,15 @@ class MissionControlDock(QDockWidget):
         self.settings_page.set_workspace_session(self.workspace_session)
         self.pages = (
             self.home_page,
-            self.workspace_page,
-            self.environment_page,
             self.dataset_page,
-            self.advisor_page,
             self.planning_page,
-            self.processing_page,
+            self.advisor_page,
             self.batch_page,
             self.results_page,
+            self.processing_page,
+            self.environment_page,
             self.settings_page,
+            self.workspace_page,
         )
 
         self._configure_style()
@@ -172,8 +173,8 @@ class MissionControlDock(QDockWidget):
 
     def _wire_signals(self) -> None:
         self.ui.navigationList.currentRowChanged.connect(self.ui.pageStack.setCurrentIndex)
-        self.home_page.startSingleDatasetRequested.connect(lambda: self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Dataset")))
-        self.home_page.startBatchRequested.connect(lambda: self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Batch")))
+        self.ui.navigationList.currentRowChanged.connect(lambda _row: self._refresh_guided_workflow())
+        self.home_page.continueWorkflowRequested.connect(self._continue_guided_workflow)
         self.home_page.continueLastRequested.connect(self._continue_last_workspace)
         self.environment_page.backendSettingsRequested.connect(lambda: self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Settings")))
         self.workspace_page.continueLastRequested.connect(self._continue_last_workspace)
@@ -189,6 +190,11 @@ class MissionControlDock(QDockWidget):
         self.batch_page.jobUpdated.connect(self._set_job_status)
         self.batch_page.batchCompleted.connect(self._set_batch_status)
         self.settings_page.defaultOutputFolderChanged.connect(self._set_default_output_folder)
+        self.dataset_page.nextStepRequested.connect(lambda: self._go_to_guided_next_step("Dataset"))
+        self.planning_page.nextStepRequested.connect(lambda: self._go_to_guided_next_step("Planning"))
+        self.advisor_page.nextStepRequested.connect(lambda: self._go_to_guided_next_step("Scientific Advisor"))
+        self.batch_page.nextStepRequested.connect(lambda: self._go_to_guided_next_step("Batch"))
+        self.results_page.nextStepRequested.connect(lambda: self._go_to_guided_next_step("Results"))
 
     def _configure_style(self) -> None:
         self.root_widget.setStyleSheet(
@@ -198,7 +204,8 @@ class MissionControlDock(QDockWidget):
             #titleLabel { font-size: 20px; font-weight: 700; }
             #subtitleLabel { color: #5f6f77; }
             #statusFrame { background: #f2f5f6; border-top: 1px solid #dbe3e6; }
-            #pageHeading { font-size: 21px; font-weight: 700; margin: 12px 24px; color: #22323a; }
+            #pageHeading { font-size: 21px; font-weight: 700; margin: 12px 24px 6px 24px; color: #22323a; }
+            #workflowStepIndicator { margin: 0 24px 6px 24px; color: #667780; font-size: 12px; background: transparent; }
             #pageScroll { border: 0; background: #f7f8f9; }
             #pageContent { background: #f7f8f9; }
             #advisorBody { background: #f7f8f9; }
@@ -602,6 +609,63 @@ class MissionControlDock(QDockWidget):
         self.advisor_page.set_run_context(self.state.active_run)
         self.results_page.set_report_paths(self.state.latest_report_paths)
         self.results_page.set_jobs(self.job_history)
+        self._refresh_guided_workflow()
+
+    def _workflow_flags(self) -> dict[str, bool]:
+        """Return compact workflow completion flags for guidance UI."""
+        return {
+            "dataset_loaded": bool(self.state.latest_dataset),
+            "planning_ready": self.state.planning_status == "Ready",
+            "batch_complete": self.batch_status != "Not started",
+            "outputs_available": self._has_outputs(),
+        }
+
+    def _has_outputs(self) -> bool:
+        """Return whether generated output products are available for review."""
+        return any(job.results for job in self.job_history)
+
+    def _refresh_guided_workflow(self) -> None:
+        """Update subtle workflow orientation and next-step cards."""
+        flags = self._workflow_flags()
+        for page_name, page in zip(self.PAGE_NAMES, self.pages):
+            if page_name in guided_workflow_pages():
+                page.set_workflow_indicator(guided_workflow_indicator(page_name, **flags))
+                message, button, _target, enabled = guided_next_step(page_name, **flags)
+                page.set_next_step(message, button, enabled)
+            else:
+                page.set_workflow_indicator(None)
+        message, button, _target, enabled = guided_next_step("Home", **flags)
+        backend_ready = self.state.environment_status not in {"NOT READY", "Unknown"}
+        workflow_status = "; ".join(
+            guided_workflow_status_lines(
+                backend_ready=backend_ready,
+                dataset_loaded=flags["dataset_loaded"],
+                planning_ready=flags["planning_ready"],
+                batch_complete=flags["batch_complete"],
+                outputs_available=flags["outputs_available"],
+            )
+        )
+        recent_run = str(self.state.active_run.run_folder) if self.state.active_run is not None else None
+        self.home_page.set_summary(
+            self.state.environment_status,
+            self.state.latest_dataset,
+            self.state.latest_project,
+            self.batch_status,
+            recent_run,
+            workflow_status=workflow_status,
+            continue_label=button,
+            continue_enabled=enabled,
+        )
+
+    def _go_to_guided_next_step(self, page_name: str) -> None:
+        """Move to the recommended workflow page without forcing work to run."""
+        _message, _button, target, enabled = guided_next_step(page_name, **self._workflow_flags())
+        if enabled and target in self.PAGE_NAMES:
+            self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index(target))
+
+    def _continue_guided_workflow(self) -> None:
+        """Continue from Home to the next incomplete workflow step."""
+        self._go_to_guided_next_step("Home")
 
     def _update_status_bar(self) -> None:
         self.ui.environmentStatusLabel.setText(f"Environment: {self.state.environment_status}")

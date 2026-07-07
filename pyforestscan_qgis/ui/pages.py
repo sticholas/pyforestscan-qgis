@@ -111,6 +111,8 @@ TECHNICAL_DETAIL_HEIGHT = 112
 class MissionPage(QWidget):
     """Base class for Mission Control pages with one full-page scroll region."""
 
+    nextStepRequested = pyqtSignal()
+
     def __init__(self, title: str, parent: QWidget | None = None) -> None:
         """Create a page with a title and full-width scrollable content."""
         super().__init__(parent)
@@ -123,6 +125,14 @@ class MissionPage(QWidget):
         heading.setObjectName("pageHeading")
         heading.setWordWrap(True)
         self.main_layout.addWidget(heading)
+        self.workflow_indicator_label = QLabel("")
+        self.workflow_indicator_label.setObjectName("workflowStepIndicator")
+        self.workflow_indicator_label.setWordWrap(True)
+        self.workflow_indicator_label.setVisible(False)
+        self.main_layout.addWidget(self.workflow_indicator_label)
+        self.next_step_section: QGroupBox | None = None
+        self.next_step_label: QLabel | None = None
+        self.next_step_button: QPushButton | None = None
 
         self.scroll_area = QScrollArea()
         self.scroll_area.setObjectName("pageScroll")
@@ -148,6 +158,34 @@ class MissionPage(QWidget):
         self.content_layout.addWidget(group)
         return layout
 
+    def set_workflow_indicator(self, text: str | None) -> None:
+        """Show or hide subtle completed/current/upcoming workflow context."""
+        self.workflow_indicator_label.setText(text or "")
+        self.workflow_indicator_label.setVisible(bool(text))
+
+    def set_next_step(self, message: str, button_label: str, enabled: bool = True) -> None:
+        """Show one concise next-step recommendation at the bottom of the page."""
+        if self.next_step_section is None:
+            layout = self.add_section("Next Step")
+            self.next_step_section = layout.parentWidget()
+            self.next_step_label = _body_label("")
+            layout.addWidget(self.next_step_label)
+            row = QHBoxLayout()
+            row.setSpacing(ACTION_ROW_SPACING)
+            self.next_step_button = QPushButton(button_label)
+            self.next_step_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
+            self.next_step_button.clicked.connect(self.nextStepRequested.emit)
+            row.addWidget(self.next_step_button)
+            row.addStretch(1)
+            layout.addLayout(row)
+        assert self.next_step_label is not None
+        assert self.next_step_button is not None
+        self.next_step_label.setText(f"Next: {message}")
+        self.next_step_button.setText(button_label)
+        self.next_step_button.setEnabled(enabled)
+        _apply_button_role(self.next_step_button, "primary" if enabled else "neutral")
+        self.next_step_section.setVisible(True)
+
 
 class HomePage(MissionPage):
     """Mission Control workflow dashboard."""
@@ -155,39 +193,25 @@ class HomePage(MissionPage):
     startSingleDatasetRequested = pyqtSignal()
     startBatchRequested = pyqtSignal()
     continueLastRequested = pyqtSignal()
+    continueWorkflowRequested = pyqtSignal()
 
     def __init__(self, plugin_version: str, parent: QWidget | None = None) -> None:
         """Create the home dashboard."""
         super().__init__("Home", parent)
-        dashboard = self.add_section("Workflow Dashboard")
-        self.backend_label = _body_label("Backend status: unknown")
-        self.environment_label = _body_label("Environment status: Unknown")
-        self.dataset_label = _body_label("Current dataset/batch: None")
-        self.output_label = _body_label("Last output folder: None")
-        self.next_action_label = QLabel("Next: check backend, then start a dataset or batch workflow.")
-        self.next_action_label.setObjectName("advisorMetric")
-        self.next_action_label.setWordWrap(True)
-        for label in (self.backend_label, self.environment_label, self.dataset_label, self.output_label, self.next_action_label):
+        dashboard = self.add_section("Workflow Overview")
+        self.backend_label = _body_label("Backend: unknown")
+        self.dataset_label = _body_label("Dataset: Not selected")
+        self.environment_label = _body_label("Workflow: Not started")
+        self.output_label = _body_label("Current output folder: None")
+        for label in (self.backend_label, self.dataset_label, self.environment_label, self.output_label):
             dashboard.addWidget(label)
 
-        single_label, batch_label, continue_label = workflow_action_labels()
         actions = QHBoxLayout()
-        self.start_single_button = QPushButton(single_label)
-        self.start_single_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
-        self.start_single_button.clicked.connect(self.startSingleDatasetRequested.emit)
-        _apply_button_role(self.start_single_button, "primary")
-        self.start_batch_button = QPushButton(batch_label)
-        self.start_batch_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
-        self.start_batch_button.clicked.connect(self.startBatchRequested.emit)
-        _apply_button_role(self.start_batch_button, "secondary")
-        self.continue_last_button = QPushButton(continue_label)
-        self.continue_last_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
-        self.continue_last_button.setEnabled(False)
-        self.continue_last_button.clicked.connect(self.continueLastRequested.emit)
-        _apply_button_role(self.continue_last_button, "secondary")
-        actions.addWidget(self.start_single_button)
-        actions.addWidget(self.start_batch_button)
-        actions.addWidget(self.continue_last_button)
+        self.continue_button = QPushButton("Continue")
+        self.continue_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
+        self.continue_button.clicked.connect(self.continueWorkflowRequested.emit)
+        _apply_button_role(self.continue_button, "primary")
+        actions.addWidget(self.continue_button)
         actions.addStretch(1)
         dashboard.addLayout(actions)
 
@@ -208,29 +232,29 @@ class HomePage(MissionPage):
         """Update version labels."""
         self.pyforestscan_version_label.setText(f"PyForestScan version: {pyforestscan_version or 'Unknown'}")
 
-    def set_summary(self, environment: str, dataset: str | None, project: str | None, batch_status: str = "Not started", recent_run: str | None = None) -> None:
+    def set_summary(self, environment: str, dataset: str | None, project: str | None, batch_status: str = "Not started", recent_run: str | None = None, workflow_status: str | None = None, continue_label: str = "Continue", continue_enabled: bool = True) -> None:
         """Update dashboard labels."""
-        current = Path(dataset).name if dataset else ("Batch ready" if batch_status != "Not started" else "None")
-        self.backend_label.setText(backend_summary_from_environment(environment))
-        self.environment_label.setText(f"Environment status: {environment}")
-        self.dataset_label.setText(f"Current dataset/batch: {current}")
-        self.output_label.setText(f"Last output folder: {recent_run or 'None'}")
-        self.next_action_label.setText(f"Next: {_next_home_action(environment, dataset, batch_status)}")
+        current = Path(dataset).name if dataset else ("Batch ready" if batch_status != "Not started" else "Not selected")
+        self.backend_label.setText(backend_summary_from_environment(environment).replace("Backend status", "Backend"))
+        self.dataset_label.setText(f"Dataset: {current}")
+        self.environment_label.setText(f"Workflow: {workflow_status or _next_home_action(environment, dataset, batch_status)}")
+        self.output_label.setText(f"Current output folder: {recent_run or 'None'}")
+        self.continue_button.setText(continue_label)
+        self.continue_button.setEnabled(continue_enabled)
 
     def set_workspace(self, workspace: Workspace | None) -> None:
         """Display active workspace status on Home."""
         if workspace is None:
-            self.continue_last_button.setEnabled(False)
             return
         session = workspace.session
-        self.continue_last_button.setEnabled(True)
-        self.dataset_label.setText(f"Current dataset/batch: {Path(session.last_selected_dataset).name if session.last_selected_dataset else workspace.name}")
-        self.output_label.setText(f"Last output folder: {session.last_output_folder or workspace.output_root}")
-        self.next_action_label.setText(f"Next: {workspace_primary_action(workspace)}")
+        self.dataset_label.setText(f"Dataset: {Path(session.last_selected_dataset).name if session.last_selected_dataset else workspace.name}")
+        self.output_label.setText(f"Current output folder: {session.last_output_folder or workspace.output_root}")
+        self.environment_label.setText(f"Workflow: {workspace_primary_action(workspace)}")
 
     def set_continue_available(self, available: bool) -> None:
         """Enable Continue Last Run when a current or recent workspace exists."""
-        self.continue_last_button.setEnabled(available)
+        if not available and not self.continue_button.isEnabled():
+            self.continue_button.setEnabled(False)
 
     def set_activities(self, activities: tuple[tuple[str, str], ...]) -> None:
         """Display recent activity."""

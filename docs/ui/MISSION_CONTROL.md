@@ -25,9 +25,8 @@ flowchart TD
 
 ## Pages
 
-- Home: compact workflow dashboard with backend status, environment status,
-  current dataset or batch context, last output folder, next action guidance, and
-  primary Open Dataset / Start Batch / Continue Previous Session actions. Version
+- Home: compact workflow overview with backend status, selected dataset,
+  workflow status, current output folder, and one Continue action. Version
   details and recent activity are collapsed by default.
 - Workspace: welcome/resume surface with Resume Workspace, Start New
   Workspace, Recent Workspaces, status, recent runs, key output links, timeline,
@@ -35,7 +34,6 @@ flowchart TD
 - Environment: execution-readiness summary with PBM backend status first,
   active execution backend, a Refresh action, and an Open Backend Settings action.
   QGIS Python fallback checks and technical dependency details are collapsed by default.
-- Scientific Advisor: deterministic Knowledge Engine guidance after Dataset Explorer, including warnings, product explanations, parameter suggestions, and QGIS QA tools.
 - Dataset: choose LAS, LAZ, COPC, or EPT plus an output folder, analyze the dataset, create the active
   run folder, show a compact dataset summary and spatial footprint preview,
   keep dimensions/report paths under Technical Metadata, add the footprint to
@@ -43,6 +41,7 @@ flowchart TD
 - Planning: Product Planner uses the active Dataset Explorer report, keeps the
   normal product/settings path first, and collapses output-folder overrides under
   Advanced Output Folder. No product execution is performed.
+- Scientific Advisor: deterministic Knowledge Engine guidance after Dataset Explorer, including warnings, product explanations, parameter suggestions, and QGIS QA tools. Empty recommendation cards are hidden until recommendations exist.
 - Processing: start implemented product jobs from the active Product Planner
   report, view selected products, output folder, Processing Footprint, current status,
   and progress by default. Product Plan JSON paths, pipeline stages, and logs are
@@ -64,7 +63,7 @@ runtime stretch factors so the page stack expands horizontally and vertically.
 Each page uses one full-width vertical scroll area; individual pages should avoid
 adding nested scroll areas unless there is a specific interaction reason.
 
-Mission Control follows the permanent [Mission Control UX Standard](../development/MISSION_CONTROL_UX_STANDARD.md): one primary action per page, no empty sections, collapsed technical details, concise empty states, and consistent workflow terminology. Visual hierarchy, status badges, dialogs, notifications, tables, icons, and future module integration follow the [PyForestScan Design System](../development/PYFORESTSCAN_DESIGN_SYSTEM.md). Phase 24F applies that system with shared spacing tokens, button role styling, status-badge tones, compact empty states, and calmer Backend/Processing/Batch/Results layouts. Phase 25A tightens workflow continuity by collapsing rarely used reset/output/backend details and keeping empty states compact; see the [Visual Polish Audit](../development/VISUAL_POLISH_AUDIT.md).
+Mission Control follows the permanent [Mission Control UX Standard](../development/MISSION_CONTROL_UX_STANDARD.md): one primary action per page, no empty sections, collapsed technical details, concise empty states, and consistent workflow terminology. Visual hierarchy, status badges, dialogs, notifications, tables, icons, and future module integration follow the [PyForestScan Design System](../development/PYFORESTSCAN_DESIGN_SYSTEM.md). Phase 24F applies that system with shared spacing tokens, button role styling, status-badge tones, compact empty states, and calmer Backend/Processing/Batch/Results layouts. Phase 25A tightens workflow continuity by collapsing rarely used reset/output/backend details and keeping empty states compact. Phase 25B adds guided workflow continuity with subtle step indicators and one Next Step card on each primary workflow page; see the [Visual Polish Audit](../development/VISUAL_POLISH_AUDIT.md).
 
 - `pyforestscan_qgis/ui/forms/mission_control.ui`: Qt Designer shell for the
   dock header, sidebar, page stack, and status bar.
@@ -74,6 +73,10 @@ Mission Control follows the permanent [Mission Control UX Standard](../developme
   in-memory footprint layer integration, and main-canvas zoom helpers.
 - `pyforestscan_qgis/ui/state.py`: plain-Python immutable Mission Control state.
 - `pyforestscan_qgis/core/workspace/`: QGIS-free workspace package containing run-folder context, workspace persistence, session/state/history/timeline/notes models, and display helpers.
+
+## Guided Workflow Continuity
+
+The primary path is Home -> Dataset -> Planning -> Scientific Advisor -> Batch -> Results. Home summarizes backend readiness, selected data, workflow status, and output location, then uses Continue to move to the next incomplete step. Dataset, Planning, Scientific Advisor, Batch, and Results show a subtle completed/current/upcoming step indicator and one Next Step card at the bottom of the page. Environment, Settings, and Workspace remain support pages and do not interrupt the primary path.
 
 ## Signal And Slot Architecture
 
@@ -159,7 +162,7 @@ Mission Control includes a Batch page for sequential folder-to-products workflow
 
 ## UX Streamlining
 
-The Home page is intentionally a workflow dashboard rather than a documentation landing page. The former Open Documentation button was removed from Home because it competed with the primary actions. Users start work through Start Single Dataset or Start Batch, while technical paths and internal files remain collapsed on their respective pages.
+The Home page is intentionally a workflow overview rather than a documentation landing page. It shows only backend readiness, selected dataset, workflow status, current output folder, and Continue. Continue routes to the next incomplete workflow page whenever possible, while technical paths and internal files remain collapsed on their respective pages.
 
 Batch v2 keeps the default workflow focused on the choices users need: input folder, selected files, output folder, products, shared settings, and run controls. Internal reports remain available through Results and run-folder summaries.
 

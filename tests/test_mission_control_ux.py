@@ -20,6 +20,10 @@ from pyforestscan_qgis.ui.ux_summary import (
     routed_products_summary,
     technical_sections_default_collapsed,
     workflow_action_labels,
+    guided_next_step,
+    guided_workflow_indicator,
+    guided_workflow_pages,
+    guided_workflow_status_lines,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,7 +33,7 @@ class MissionControlUxTests(unittest.TestCase):
     """Verify compact workflow labels without importing QGIS."""
 
     def test_home_action_labels_match_beta_workflow(self) -> None:
-        self.assertEqual(workflow_action_labels(), ("Open Dataset", "Start Batch", "Continue Previous Session"))
+        self.assertEqual(workflow_action_labels(), ("Continue", "Continue to Dataset", "Continue to Planning"))
 
     def test_empty_states_are_concise_guidance(self) -> None:
         self.assertEqual(empty_state_message("advisor"), "Analyze a dataset to receive recommendations.")
@@ -39,6 +43,9 @@ class MissionControlUxTests(unittest.TestCase):
 
     def test_primary_action_labels_are_standardized(self) -> None:
         self.assertEqual(primary_action_label("dataset"), "Analyze Dataset")
+        self.assertEqual(primary_action_label("home"), "Continue")
+        self.assertEqual(primary_action_label("planning"), "Review Recommendations")
+        self.assertEqual(primary_action_label("advisor"), "Open Batch")
         self.assertEqual(primary_action_label("processing"), "Run Processing")
         self.assertEqual(primary_action_label("settings"), "Verify Backend")
 
@@ -53,6 +60,8 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertEqual(status_badge_tone("FAILED"), "danger")
 
     def test_design_system_button_roles_are_standardized(self) -> None:
+        self.assertEqual(button_role_for_label("Continue to Planning"), "primary")
+        self.assertEqual(button_role_for_label("Open Batch"), "primary")
         self.assertEqual(button_role_for_label("Run Processing"), "primary")
         self.assertEqual(button_role_for_label("Open Output Folder"), "secondary")
         self.assertEqual(button_role_for_label("Refresh Environment"), "neutral")
@@ -74,13 +83,63 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn("self.content_layout.setContentsMargins(*PAGE_MARGINS)", source)
         self.assertIn("self.file_list.setMinimumHeight(COMPACT_LIST_HEIGHT)", source)
         self.assertIn("self.backend_details.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)", source)
-        self.assertIn("_apply_button_role(self.start_single_button, \"primary\")", source)
+        self.assertIn("continueWorkflowRequested = pyqtSignal()", source)
+        self.assertIn("self.continue_button = QPushButton(\"Continue\")", source)
+        self.assertIn("_apply_button_role(self.continue_button, \"primary\")", source)
         self.assertIn("_apply_button_role(self.clear_current_run_button, \"danger\")", source)
         self.assertIn("_set_status_badge(self.status_label, report.readiness.value", source)
         self.assertIn('_set_status_badge(self.status_label, "RUNNING"', source)
         self.assertIn("self.backend_primary_buttons = QHBoxLayout()", source)
         self.assertIn('QPushButton[buttonRole="primary"]', stylesheet)
         self.assertIn("QLabel#statusBadge", stylesheet)
+
+    def test_guided_workflow_model_is_compact_and_contextual(self) -> None:
+        self.assertEqual(guided_workflow_pages(), ("Dataset", "Planning", "Scientific Advisor", "Batch", "Results"))
+        controller_source = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text(encoding="utf-8")
+        self.assertIn(
+            'PAGE_NAMES = (\n        "Home",\n        "Dataset",\n        "Planning",\n        "Scientific Advisor",\n        "Batch",\n        "Results",',
+            controller_source,
+        )
+        self.assertEqual(
+            guided_workflow_indicator(
+                "Planning",
+                dataset_loaded=True,
+                planning_ready=False,
+                batch_complete=False,
+                outputs_available=False,
+            ),
+            "✓ Dataset  ● Planning  ○ Scientific Advisor  ○ Batch  ○ Results",
+        )
+        self.assertEqual(
+            guided_workflow_status_lines(
+                backend_ready=True,
+                dataset_loaded=True,
+                planning_ready=True,
+                batch_complete=False,
+                outputs_available=False,
+            ),
+            ("Backend: READY", "Dataset: Loaded", "Planning: Configured", "Batch: Not run", "Results: None"),
+        )
+        self.assertEqual(
+            guided_next_step(
+                "Dataset",
+                dataset_loaded=True,
+                planning_ready=False,
+                batch_complete=False,
+                outputs_available=False,
+            ),
+            ("Build a product plan for this dataset.", "Continue to Planning", "Planning", True),
+        )
+        self.assertEqual(
+            guided_next_step(
+                "Results",
+                dataset_loaded=True,
+                planning_ready=True,
+                batch_complete=True,
+                outputs_available=True,
+            ),
+            ("Load outputs into QGIS for review.", "Load Outputs", "Results", False),
+        )
 
     def test_visual_polish_audit_exists(self) -> None:
         audit = (ROOT / "docs/development/VISUAL_POLISH_AUDIT.md").read_text(encoding="utf-8")
@@ -125,6 +184,9 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn('QPushButton("Load Outputs")', source)
         self.assertIn('QPushButton("Clear Current Run")', source)
         self.assertIn("Execution backend: PBM when READY", source)
+        self.assertIn("def set_workflow_indicator", source)
+        self.assertIn("def set_next_step", source)
+        self.assertIn("workflowStepIndicator", source)
 
 
 if __name__ == "__main__":
