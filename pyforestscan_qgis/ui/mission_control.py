@@ -31,7 +31,7 @@ from .pages import (
 )
 from .advisor import completed_products_from_job
 from .raster_styling import apply_generated_raster_renderer, is_raster_result, layer_display_name
-from .state import MissionControlState
+from .state import MissionControlState, ProjectSummary, build_project_summary
 from .ux_summary import environment_is_ready, guided_next_step, guided_workflow_indicator, guided_workflow_status_lines, guided_workflow_pages, readiness_marker_label
 
 FORM_CLASS, _ = uic.loadUiType(str(plugin_root() / "ui" / "forms" / "mission_control.ui"))
@@ -295,6 +295,7 @@ class MissionControlDock(QDockWidget):
         """Clear downstream workflow state when the selected dataset changes."""
         self.state = self.state.with_dataset_pending(dataset_path).with_activity("Dataset selected", Path(dataset_path).name)
         self.job_history = ()
+        self.loaded_result_paths = set()
         self.batch_status = "Not started"
         self.planning_page.reset_for_new_dataset(Path(dataset_path).name)
         self.processing_page.set_run_context(None)
@@ -408,6 +409,7 @@ class MissionControlDock(QDockWidget):
     def _set_outputs_loaded_status(self, message: str, loaded_count: int, candidate_count: int) -> None:
         """Record Load Outputs feedback and show a lightweight notification."""
         level = "success" if loaded_count else ("warning" if candidate_count else "info")
+        self.loaded_result_paths.update(self.results_page.loaded_output_paths())
         self.state = self.state.with_activity("Outputs loaded" if loaded_count else "Load outputs", message)
         self._refresh_home()
         self.results_page._set_load_message(message)
@@ -418,6 +420,7 @@ class MissionControlDock(QDockWidget):
         """Clear active run state after the Results page is reset."""
         self.state = self.state.without_active_run().with_activity("Results cleared", "Current run cleared")
         self.job_history = ()
+        self.loaded_result_paths = set()
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
@@ -425,6 +428,7 @@ class MissionControlDock(QDockWidget):
 
     def _set_backend_page_status(self, status: str, message: str) -> None:
         """Keep Environment and Home synchronized after Backend page actions."""
+        self.state = self.state.with_backend(status)
         self.environment_page.refresh()
         self._refresh_home()
         self._update_status_bar()
@@ -621,6 +625,9 @@ class MissionControlDock(QDockWidget):
         """Reset current workspace state/history or clear the UI if no workspace exists."""
         if self.workspace is None:
             self.state = MissionControlState()
+            self.job_history = ()
+            self.loaded_result_paths = set()
+            self.batch_status = "Not started"
             self.workspace_session = WorkspaceSession()
             self._save_workspace_session()
             self._refresh_home()
@@ -631,8 +638,9 @@ class MissionControlDock(QDockWidget):
         except Exception:  # noqa: BLE001 - reset should fail softly.
             return
         self.job_history = ()
+        self.loaded_result_paths = set()
         self.batch_status = "Not started"
-        self.state = self.state.with_activity("Workspace reset", self.workspace.name)
+        self.state = self.state.without_active_run().with_activity("Workspace reset", self.workspace.name)
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
@@ -683,8 +691,31 @@ class MissionControlDock(QDockWidget):
         except Exception:  # noqa: BLE001 - styling should never break layer loading.
             return
 
+    def _project_summary(self) -> ProjectSummary:
+        """Return the shared current-session project summary."""
+        return build_project_summary(
+            self.state,
+            jobs=self.job_history,
+            loaded_paths=self.loaded_result_paths,
+            workspace=self.workspace.name if self.workspace is not None else None,
+            project_crs=self._current_project_crs(),
+        )
+
+    def _current_project_crs(self) -> str | None:
+        """Return the current QGIS project CRS label when QGIS exposes one."""
+        try:
+            from qgis.core import QgsProject
+
+            crs = QgsProject.instance().crs()
+            authid = crs.authid() if hasattr(crs, "authid") else ""
+            description = crs.description() if hasattr(crs, "description") else ""
+            return authid or description or None
+        except Exception:  # noqa: BLE001 - QGIS-free tests and unusual projects should degrade softly.
+            return None
+
     def _refresh_home(self) -> None:
         self.home_page.set_versions(self._pyforestscan_version())
+        summary = self._project_summary()
         recent_run = str(self.state.active_run.run_folder) if self.state.active_run is not None else None
         self.home_page.set_summary(
             self.state.environment_status,
@@ -694,15 +725,20 @@ class MissionControlDock(QDockWidget):
             recent_run,
         )
         self.home_page.set_workspace(self.workspace)
+        self.home_page.set_project_summary(summary)
         recent = summarize_recent_workspaces(self.workspace_manager.list_recent_workspace_paths(), self.workspace_session.maximum_recent_items)
         self.home_page.set_continue_available(self.workspace is not None or bool(recent))
         self.workspace_page.set_workspace(self.workspace)
+        self.workspace_page.set_project_summary(summary)
         self.workspace_page.set_recent_workspaces(recent)
         self.home_page.set_activities(tuple((item.label, item.detail) for item in self.state.activities))
         self.results_page.set_run_context(self.state.active_run)
         self.advisor_page.set_run_context(self.state.active_run)
         self.results_page.set_report_paths(self.state.latest_report_paths)
         self.results_page.set_jobs(self.job_history)
+        self.processing_page.set_project_summary(summary)
+        self.results_page.set_project_summary(summary)
+        self.advisor_page.set_project_summary(summary)
         self._refresh_guided_workflow()
 
     def _workflow_flags(self) -> dict[str, bool]:
@@ -754,6 +790,7 @@ class MissionControlDock(QDockWidget):
             continue_label=button,
             continue_enabled=enabled,
         )
+        self.home_page.set_project_summary(self._project_summary())
 
     def _go_to_guided_next_step(self, page_name: str) -> None:
         """Move to the recommended workflow page without forcing work to run."""

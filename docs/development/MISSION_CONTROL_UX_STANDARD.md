@@ -23,6 +23,8 @@ Primary workflow pages may show a subtle step indicator using completed, current
 
 Mission Control actions should behave like one application, not unrelated forms. When an action starts, disable the triggering button and any conflicting action buttons, show a concise running status, and keep technical logs collapsed. When the action completes, refresh dependent pages automatically, restore available controls, and show one clear success, warning, or error message through the QGIS message bar when available. Dataset changes clear downstream plan, processing, advisor, and result state. Backend changes refresh Environment and Home. Processing and batch completion update Results and Home.
 
+Session-aware pages should render from the shared Project Summary rather than duplicating product/load-state logic. Current-session state is in memory only: no recent-project database, autosave, or saved-session behavior should be added under this standard without a separate phase.
+
 ## Layout Rules
 
 - Do not show empty sections. If a section has no meaningful content, hide it.

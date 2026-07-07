@@ -89,6 +89,7 @@ from ..core.workspace import (
 )
 from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
 from .output_loading import LoadableOutput, collect_loadable_outputs, compact_dataset_summary_lines, output_loading_summary
+from .state import ProjectSummary
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
 from .raster_styling import apply_generated_raster_renderer, layer_display_name
 from .ux_summary import action_icon_intent, backend_summary_from_environment, button_role_for_label, design_spacing_tokens, empty_state_message, environment_headline, home_environment_action_label, home_environment_readiness, primary_action_label, qgis_fallback_summary, readiness_status_text, routed_products_summary, status_badge_label, status_badge_tone, status_display_word, workflow_action_labels
@@ -208,7 +209,19 @@ class HomePage(MissionPage):
         self.dataset_label = _body_label("Dataset: Not selected")
         self.workflow_label = _body_label("Workflow: Not started")
         self.output_label = _body_label("Current output folder: None")
-        for label in (self.backend_label, self.environment_label, self.dataset_label, self.workflow_label, self.output_label):
+        self.products_generated_label = _body_label("Products generated: None")
+        self.products_loaded_label = _body_label("Products loaded: None")
+        self.last_run_label = _body_label("Last run: None")
+        for label in (
+            self.backend_label,
+            self.environment_label,
+            self.dataset_label,
+            self.workflow_label,
+            self.output_label,
+            self.products_generated_label,
+            self.products_loaded_label,
+            self.last_run_label,
+        ):
             dashboard.addWidget(label)
 
         actions = QHBoxLayout()
@@ -263,6 +276,14 @@ class HomePage(MissionPage):
         self.dataset_label.setText(f"Dataset: {Path(session.last_selected_dataset).name if session.last_selected_dataset else workspace.name}")
         self.output_label.setText(f"Current output folder: {session.last_output_folder or workspace.output_root}")
         self.workflow_label.setText(f"Workflow: {workspace_primary_action(workspace)}")
+
+    def set_project_summary(self, summary: ProjectSummary) -> None:
+        """Display the shared current-session project summary."""
+        self.dataset_label.setText(f"Dataset: {summary.dataset_name} ({summary.dataset_type})")
+        self.output_label.setText(f"Current output folder: {summary.output_folder or 'None'}")
+        self.products_generated_label.setText(summary.generated_summary())
+        self.products_loaded_label.setText(summary.loaded_summary())
+        self.last_run_label.setText(f"Last run: {summary.last_processing_time or 'None'}")
 
     def set_continue_available(self, available: bool) -> None:
         """Enable Continue Last Run when a current or recent workspace exists."""
@@ -335,7 +356,19 @@ class WorkspacePage(MissionPage):
         self.dataset_label = _body_label("Last dataset: None")
         self.output_label = _body_label("Last output folder: None")
         self.primary_action_label = _body_label("Primary next action: start or continue a workspace.")
-        for label in (self.current_step_label, self.completion_label, self.dataset_label, self.output_label, self.primary_action_label):
+        self.current_project_label = _body_label("Current project: Unknown")
+        self.products_label = _body_label("Products: None")
+        self.session_status_label = _body_label("Session: not started")
+        for label in (
+            self.current_step_label,
+            self.completion_label,
+            self.current_project_label,
+            self.dataset_label,
+            self.output_label,
+            self.products_label,
+            self.session_status_label,
+            self.primary_action_label,
+        ):
             status.addWidget(label)
 
         runs = self.add_section("Recent Runs")
@@ -384,6 +417,9 @@ class WorkspacePage(MissionPage):
             self.dataset_label.setText("Last dataset: None")
             self.output_label.setText("Last output folder: None")
             self.primary_action_label.setText("Primary next action: start or continue a workspace.")
+            self.current_project_label.setText("Current project: Unknown")
+            self.products_label.setText("Products: None")
+            self.session_status_label.setText("Session: not started")
             self.runs_list.clear()
             self.output_links_list.clear()
             self.timeline_list.clear()
@@ -404,6 +440,18 @@ class WorkspacePage(MissionPage):
         self._set_runs(workspace)
         self._set_outputs(workspace)
         self._set_timeline(workspace)
+
+    def set_project_summary(self, summary: ProjectSummary) -> None:
+        """Display compact current-session state independent of persisted history."""
+        for section in (self.status_section,):
+            section.setVisible(True)
+        project = summary.workspace or "Current QGIS project"
+        crs = summary.project_crs or "Unknown CRS"
+        self.current_project_label.setText(f"Current project: {project}; CRS: {crs}")
+        self.dataset_label.setText(f"Dataset: {summary.dataset_name} ({summary.dataset_type})")
+        self.output_label.setText(f"Output folder: {summary.output_folder or 'None'}")
+        self.products_label.setText(summary.generated_summary())
+        self.session_status_label.setText(summary.compact_status())
 
     def set_recent_workspaces(self, recent_workspaces: tuple[RecentWorkspaceSummary, ...]) -> None:
         """Display recent workspace choices."""
@@ -777,7 +825,9 @@ class ScientificAdvisorPage(MissionPage):
 
         executive = self._add_card("Executive Summary")
         self.executive_summary_label = _body_label(empty_state_message("advisor"))
+        self.session_context_label = _details_label("Session: no active dataset or products yet.")
         executive.addWidget(self.executive_summary_label)
+        executive.addWidget(self.session_context_label)
 
         overview = self._add_card("Dataset Health")
         self.overview_card = overview.parentWidget()
@@ -867,11 +917,18 @@ class ScientificAdvisorPage(MissionPage):
         """Store active run context for output-folder actions."""
         self.run_context = context
 
+    def set_project_summary(self, summary: ProjectSummary) -> None:
+        """Display compact session context for Advisor recommendations."""
+        self.session_context_label.setText(
+            f"Session: {summary.dataset_name}; {summary.generated_summary()}; {summary.loaded_summary()}"
+        )
+
     def reset_for_new_dataset(self) -> None:
         """Clear recommendation content when a different dataset is selected."""
         self.run_context = None
         self.completed_products = ()
         self.executive_summary_label.setText("Dataset selected. Analyze it to receive recommendations.")
+        self.session_context_label.setText("Session: dataset changed; recommendations are pending.")
         self.notes_summary.setText("Recommendations will appear after Dataset Explorer runs.")
         self.notes_details.setText("")
         self.next_steps_label.setText("Run Dataset Explorer to generate top-priority next steps.")
@@ -1280,9 +1337,11 @@ class ProcessingPage(MissionPage):
         self.selected_products_label = _body_label("Selected products: build a Product Plan first.")
         self.current_output_label = _body_label("Outputs: choose a dataset and output folder, then build a Product Plan.")
         self.footprint_label = _body_label("Processing footprint: build a Product Plan to see expected outputs, raster size, bands, and storage.")
+        self.already_generated_label = _body_label("Already generated: None")
         self.status_label = QLabel()
         _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: Not set up - build a Product Plan first.")
         overview.addWidget(self.selected_products_label)
+        overview.addWidget(self.already_generated_label)
         overview.addWidget(self.current_output_label)
         overview.addWidget(self.footprint_label)
         overview.addWidget(self.status_label)
@@ -1385,6 +1444,14 @@ class ProcessingPage(MissionPage):
         self.current_footprint = footprint
         self.selected_products_label.setText("Selected products: " + (", ".join(labels) if labels else "none"))
         self.footprint_label.setText(_processing_footprint_text(footprint))
+
+    def set_project_summary(self, summary: ProjectSummary) -> None:
+        """Display generated-product awareness before users rerun processing."""
+        if summary.generated_products:
+            labels = ", ".join(item.label for item in summary.generated_products)
+            self.already_generated_label.setText(f"Already generated: {labels}")
+        else:
+            self.already_generated_label.setText("Already generated: None")
 
     def browse_product_plan(self) -> None:
         """Choose a Product Planner JSON report for advanced troubleshooting."""
@@ -2158,6 +2225,8 @@ class ResultsPage(MissionPage):
         button_row.addWidget(self.clear_current_run_button)
         button_row.addStretch(1)
         links.addLayout(button_row)
+        self.product_status_label = _body_label("Generated Products: None\nLoaded Products: None\nAvailable Products: None")
+        links.addWidget(self.product_status_label)
         self.load_message_label = _body_label("")
         self.load_message_label.setVisible(False)
         links.addWidget(self.load_message_label)
@@ -2185,6 +2254,23 @@ class ResultsPage(MissionPage):
         advanced_layout.addWidget(self.previous_reports)
         _wire_collapsible_group(advanced)
 
+    def set_project_summary(self, summary: ProjectSummary) -> None:
+        """Display generated, loaded, and available product state."""
+        generated = ", ".join(item.label for item in summary.generated_products) or "None"
+        loaded = ", ".join(item.label for item in summary.loaded_products) or "None"
+        available = ", ".join(item.label for item in summary.available_products) or "None"
+        missing = ", ".join(item.label for item in summary.missing_products) or "None"
+        self.product_status_label.setText(
+            f"Generated Products: {generated}\n"
+            f"Loaded Products: {loaded}\n"
+            f"Available Products: {available}\n"
+            f"Missing Requested Products: {missing}"
+        )
+
+    def loaded_output_paths(self) -> tuple[Path, ...]:
+        """Return outputs loaded through the Results page in this session."""
+        return tuple(self._loaded_output_paths)
+
     def set_run_context(self, context: RunContext | None) -> None:
         """Display friendly run links for the active context."""
         self.friendly_links.clear()
@@ -2193,7 +2279,6 @@ class ResultsPage(MissionPage):
         self._advanced_paths = []
         self._job_result_paths = []
         self._job_result_types = {}
-        self._loaded_output_paths = set()
         self._current_output_folder = None
         self.open_output_folder_button.setEnabled(False)
         self.load_outputs_button.setEnabled(False)
@@ -2202,6 +2287,7 @@ class ResultsPage(MissionPage):
         self.results_empty_label.setVisible(True)
         self.load_message_label.setVisible(False)
         if context is None:
+            self._loaded_output_paths = set()
             return
         self._current_output_folder = context.outputs_dir
         self.clear_current_run_button.setEnabled(True)

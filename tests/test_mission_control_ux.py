@@ -282,6 +282,32 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn("Stage: Preparing", pages)
         self.assertIn("return \"Complete\"", pages)
 
+
+    def test_session_awareness_static_hooks_are_present(self) -> None:
+        controller = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text(encoding="utf-8")
+        pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
+        state = (ROOT / "pyforestscan_qgis/ui/state.py").read_text(encoding="utf-8")
+
+        self.assertIn("class ProjectSummary", state)
+        self.assertIn("class ProductSessionStatus", state)
+        self.assertIn("def build_project_summary", state)
+        self.assertIn("SESSION_PRODUCT_LABELS", state)
+        self.assertIn("def _project_summary(self) -> ProjectSummary", controller)
+        self.assertIn("self.home_page.set_project_summary(summary)", controller)
+        self.assertIn("self.workspace_page.set_project_summary(summary)", controller)
+        self.assertIn("self.processing_page.set_project_summary(summary)", controller)
+        self.assertIn("self.results_page.set_project_summary(summary)", controller)
+        self.assertIn("self.advisor_page.set_project_summary(summary)", controller)
+        self.assertIn("self.loaded_result_paths.update", controller)
+        self.assertIn("self.loaded_result_paths = set()", controller)
+        self.assertIn("Products generated:", pages)
+        self.assertIn("Already generated:", pages)
+        self.assertIn("Generated Products:", pages)
+        self.assertIn("Loaded Products:", pages)
+        self.assertIn("Available Products:", pages)
+        self.assertIn("Missing Requested Products:", pages)
+        self.assertIn("def loaded_output_paths", pages)
+
     def test_workflow_buttons_and_results_buttons_are_present(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 
