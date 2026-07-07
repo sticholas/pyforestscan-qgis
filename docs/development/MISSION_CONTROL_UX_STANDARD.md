@@ -6,7 +6,7 @@ This standard applies to every future Mission Control page, dialog, panel, and w
 
 ## Design Philosophy
 
-- Guide the user through one clear path: Home, Dataset, Planning, Scientific Advisor, Batch, Results.
+- Guide the user through one clear single-dataset path: Home, Workspace if needed, Dataset, Planning, Processing, Results.
 - Show the essential decision first.
 - Collapse, hide, or move technical detail to Advanced, Technical Details, or Troubleshooting.
 - Use professional GIS terminology and consistent page structure.
@@ -14,9 +14,9 @@ This standard applies to every future Mission Control page, dialog, panel, and w
 
 ## Workflow Model
 
-Primary workflow pages are Home, Dataset, Planning, Scientific Advisor, Batch, and Results. Environment, Settings, and Workspace are support pages. They remain available from navigation, but the primary UI should make the next workflow step obvious without forcing a wizard.
+Primary single-dataset workflow pages are Home, Workspace when needed, Dataset, Planning, Processing, and Results. Batch is optional and must not be part of the default Continue path. Scientific Advisor is supporting guidance and must not be forced before Processing. Environment and Settings are readiness/support pages. They remain available from navigation, but the primary UI should make the next workflow step obvious without forcing a wizard.
 
-Primary workflow pages may show a subtle step indicator using completed, current, and upcoming markers. Each primary workflow page should end with one concise Next Step card that names the recommended action and moves to the next page when possible.
+Primary workflow pages may show a subtle step indicator using completed, current, and upcoming markers. Batch may show its own controls when users explicitly choose Batch, but it should be omitted from the default single-dataset indicator. Readiness markers are small text-adjacent markers and never replace status words.
 
 ## Layout Rules
 
@@ -46,28 +46,28 @@ If the user has not reached a workflow step, the page should show the one next a
 | --- | --- |
 | Home | Continue |
 | Workspace | Resume Workspace |
-| Environment | Refresh Environment |
 | Dataset | Analyze Dataset |
-| Planning | Review Recommendations |
-| Scientific Advisor | Open Batch |
+| Planning | Continue to Processing |
 | Processing | Run Processing |
 | Batch | Run Batch |
 | Results | Open Output Folder |
+| Scientific Advisor | Review Recommendations |
+| Environment | Refresh Environment |
 | Settings | Verify Backend |
 
 ## Page Structure
 
 | Page | Show first | Collapse or hide |
 | --- | --- | --- |
-| Home | Backend status, selected dataset, workflow status, current output folder, Continue | Version details, recent activity |
+| Home | Backend/environment readiness, selected dataset, workflow status, current output folder, Continue, Check Environment | Version details, recent activity |
 | Workspace | Current workspace, last activity, compact timeline summary, recent datasets | History/version detail, reset controls |
-| Environment | Overall status, PBM status, execution backend, Refresh, Backend Settings | QGIS fallback, dependency details, technical checks/logs |
 | Dataset | Selected dataset, Analyze Dataset action, dataset summary after analysis | Metadata and report paths |
-| Scientific Advisor | Executive summary, populated recommendations/products/actionable warnings, Next Step to Batch | Empty recommendation/warning cards, product explanations, scientific notes |
-| Planning | Selected products, shared settings, estimated outputs | Advanced product settings and parameter explanations |
-| Processing | Current job, progress, execution backend, output folder, Run Processing | Backend logs, technical output, job JSON |
+| Planning | Selected products, shared settings, estimated outputs, Continue to Processing | Advanced product settings and parameter explanations |
+| Processing | Current job, progress, execution backend, output folder, Run Processing, Next Step to Results after completion | Backend logs, technical output, job JSON |
 | Batch | Discover Files, Preflight, Run Batch, Review Results | Advanced options, footprint estimate, parallel diagnostics |
-| Results | Generated outputs, Open Output Folder, Load Outputs, or compact guidance back to Batch | Technical logs and processing metadata |
+| Results | Generated outputs, Open Output Folder, Load Outputs, or compact guidance back to Processing | Technical logs and processing metadata |
+| Scientific Advisor | Executive summary, populated recommendations/products/actionable warnings | Empty recommendation/warning cards, product explanations, scientific notes |
+| Environment | Overall status, PBM status, execution backend, Refresh, Backend Settings | QGIS fallback, dependency details, technical checks/logs |
 | Settings | Backend, Workspace, General | Manifest registry, module registry, logs, developer-only information |
 
 ## Technical Disclosure

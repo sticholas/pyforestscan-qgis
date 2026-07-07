@@ -21,20 +21,21 @@ QGIS_FALLBACK_PRODUCT_LABELS: tuple[str, ...] = (
 )
 
 MISSION_WORKFLOW_STEPS: tuple[str, ...] = (
-    "Check backend",
+    "Check environment",
+    "Open workspace if needed",
     "Select dataset",
     "Choose products",
-    "Review recommendations",
-    "Run batch",
+    "Run processing",
     "Review outputs",
 )
 
 
 GUIDED_WORKFLOW_PAGES: tuple[str, ...] = (
+    "Home",
+    "Workspace",
     "Dataset",
     "Planning",
-    "Scientific Advisor",
-    "Batch",
+    "Processing",
     "Results",
 )
 
@@ -67,10 +68,16 @@ STATUS_BADGE_TONES: dict[str, str] = {
     "PLANNED": "planned",
 }
 
+READINESS_MARKER_TOKENS: dict[str, tuple[str, str]] = {
+    "ready": ("●", "#3f7f52"),
+    "not_ready": ("○", "#b45b52"),
+    "unknown": ("●", "#8b969b"),
+}
+
 BUTTON_ROLE_EXAMPLES: dict[str, tuple[str, ...]] = {
-    "primary": ("Continue", "Continue to Dataset", "Continue to Planning", "Open Batch", "Run Processing", "Run Batch", "Install Backend"),
-    "secondary": ("Open Output Folder", "Load Outputs", "Preview Install Plan"),
-    "neutral": ("Refresh Environment", "Verify Backend", "Browse"),
+    "primary": ("Continue", "Continue to Dataset", "Continue to Planning", "Continue to Processing", "Run Processing", "Run Batch", "Install Backend"),
+    "secondary": ("Open Batch", "Open Output Folder", "Load Outputs", "Preview Install Plan"),
+    "neutral": ("Check Environment", "Set Up Backend", "Refresh Environment", "Verify Backend", "Browse"),
     "danger": ("Delete Workspace", "Clear Current Run", "Cancel Remaining"),
 }
 
@@ -83,7 +90,7 @@ EXPANDABLE_SECTION_LABELS: tuple[str, ...] = (
 
 def workflow_action_labels() -> tuple[str, str, str]:
     """Return Home continuation labels for the guided workflow."""
-    return ("Continue", "Continue to Dataset", "Continue to Planning")
+    return ("Continue", "Check Environment", "Continue to Dataset")
 
 
 def design_spacing_tokens() -> dict[str, int]:
@@ -135,6 +142,56 @@ def status_badge_label(status: str) -> str:
     return aliases.get(normalized, "NOT CONFIGURED")
 
 
+def readiness_marker_tokens() -> dict[str, tuple[str, str]]:
+    """Return subtle readiness marker glyph and color tokens."""
+    return dict(READINESS_MARKER_TOKENS)
+
+
+def readiness_marker_kind(status: str) -> str:
+    """Return ready, not_ready, or unknown for a raw readiness status."""
+    badge = status_badge_label(status)
+    if badge == "READY":
+        return "ready"
+    if badge in {"FAILED", "WARNING"}:
+        return "not_ready"
+    return "unknown"
+
+
+def readiness_marker_label(status: str) -> str:
+    """Return a small rich-text marker that sits beside readiness words."""
+    glyph, color = READINESS_MARKER_TOKENS[readiness_marker_kind(status)]
+    return f'<span style="color: {color}; font-size: 11px;">{glyph}</span>'
+
+
+def readiness_status_text(status: str, text: str) -> str:
+    """Prefix readiness text with a subtle marker without replacing words."""
+    return f"{readiness_marker_label(status)}&nbsp;{text}"
+
+
+def environment_is_ready(status: str) -> bool:
+    """Return whether the environment status can run default guided processing."""
+    return status_badge_label(status) == "READY"
+
+
+def home_environment_readiness(status: str) -> str:
+    """Return concise Home readiness copy."""
+    normalized = (status or "").upper()
+    if normalized == "READY":
+        return "Ready to process with PBM backend."
+    if normalized == "READY WITH QGIS PYTHON":
+        return "Ready with QGIS Python fallback; PBM optional."
+    if normalized == "NOT READY":
+        return "Backend setup needed before processing."
+    if normalized == "PARTIALLY READY":
+        return "Review environment warnings before processing."
+    return "Check environment readiness."
+
+
+def home_environment_action_label(status: str) -> str:
+    """Return the compact Home environment action label."""
+    return "Check Environment" if environment_is_ready(status) else "Set Up Backend"
+
+
 def button_role_for_label(label: str) -> str:
     """Return the standard button role for a known UI action label."""
     normalized = (label or "").strip().lower()
@@ -167,8 +224,8 @@ def primary_action_label(page: str) -> str:
         "home": "Continue",
         "environment": "Refresh Environment",
         "dataset": "Analyze Dataset",
-        "advisor": "Open Batch",
-        "planning": "Review Recommendations",
+        "advisor": "Review Recommendations",
+        "planning": "Continue to Processing",
         "processing": "Run Processing",
         "batch": "Run Batch",
         "results": "Open Output Folder",
@@ -231,15 +288,19 @@ def guided_workflow_indicator(
     *,
     dataset_loaded: bool,
     planning_ready: bool,
-    batch_complete: bool,
     outputs_available: bool,
+    environment_ready: bool = True,
+    workspace_ready: bool = True,
+    processing_complete: bool = False,
+    batch_complete: bool = False,
 ) -> str:
-    """Return a compact completed/current/upcoming step indicator."""
+    """Return a compact completed/current/upcoming single-dataset step indicator."""
     completed = {
+        "Home": environment_ready,
+        "Workspace": workspace_ready,
         "Dataset": dataset_loaded,
         "Planning": planning_ready,
-        "Scientific Advisor": planning_ready,
-        "Batch": batch_complete,
+        "Processing": processing_complete or outputs_available,
         "Results": outputs_available,
     }
     parts: list[str] = []
@@ -259,15 +320,16 @@ def guided_workflow_status_lines(
     backend_ready: bool,
     dataset_loaded: bool,
     planning_ready: bool,
-    batch_complete: bool,
     outputs_available: bool,
+    processing_ready: bool = False,
+    batch_complete: bool = False,
 ) -> tuple[str, ...]:
     """Return the compact Home workflow status summary."""
     return (
         f"Backend: {'READY' if backend_ready else 'Needs attention'}",
         f"Dataset: {'Loaded' if dataset_loaded else 'Not selected'}",
         f"Planning: {'Configured' if planning_ready else 'Not configured'}",
-        f"Batch: {'Complete' if batch_complete else 'Not run'}",
+        f"Processing: {'Ready to run' if processing_ready else 'Not ready'}",
         f"Results: {'Available' if outputs_available else 'None'}",
     )
 
@@ -277,20 +339,27 @@ def guided_next_step(
     *,
     dataset_loaded: bool,
     planning_ready: bool,
-    batch_complete: bool,
     outputs_available: bool,
+    environment_ready: bool = True,
+    workspace_ready: bool = True,
+    processing_complete: bool = False,
+    batch_complete: bool = False,
 ) -> tuple[str, str, str, bool]:
     """Return next-step text, button label, target page, and enabled state."""
     if page == "Home":
+        if not environment_ready:
+            return ("Check environment readiness before processing.", "Check Environment", "Environment", True)
+        if not workspace_ready:
+            return ("Open or create a workspace before selecting data.", "Open Workspace", "Workspace", True)
+        if outputs_available:
+            return ("Review generated outputs.", "Open Results", "Results", True)
         if not dataset_loaded:
             return ("Select a dataset to begin.", "Continue to Dataset", "Dataset", True)
         if not planning_ready:
             return ("Build a product plan for the selected dataset.", "Continue to Planning", "Planning", True)
-        if not batch_complete:
-            return ("Review guidance, then configure batch processing.", "Continue to Scientific Advisor", "Scientific Advisor", True)
-        if outputs_available:
-            return ("Review generated outputs.", "Open Results", "Results", True)
-        return ("Review batch results and generated reports.", "Continue to Results", "Results", True)
+        return ("Run processing for the selected products.", "Continue to Processing", "Processing", True)
+    if page == "Workspace":
+        return ("Select a dataset for this workspace.", "Continue to Dataset", "Dataset", True)
     if page == "Dataset":
         if dataset_loaded:
             return ("Build a product plan for this dataset.", "Continue to Planning", "Planning", True)
@@ -299,20 +368,26 @@ def guided_next_step(
         if not dataset_loaded:
             return ("Select a dataset before planning products.", "Select Dataset", "Dataset", True)
         if planning_ready:
-            return ("Review scientific guidance before processing.", "Review Recommendations", "Scientific Advisor", True)
+            return ("Run processing for the selected products.", "Continue to Processing", "Processing", True)
         return ("Choose products and build the plan.", "Build Plan", "Planning", False)
+    if page == "Processing":
+        if outputs_available or processing_complete:
+            return ("Review generated outputs and reports.", "Open Results", "Results", True)
+        if planning_ready:
+            return ("Run processing when the product plan is ready.", "Run Processing", "Processing", False)
+        return ("Finish product planning before processing.", "Finish Planning", "Planning", True)
+    if page == "Results":
+        if outputs_available:
+            return ("Load outputs into QGIS for review.", "Load Outputs", "Results", False)
+        return ("Run processing to generate scientific products.", "Open Processing", "Processing", True)
     if page == "Scientific Advisor":
         if not dataset_loaded:
             return ("Analyze a dataset to receive recommendations.", "Select Dataset", "Dataset", True)
-        return ("Configure batch settings for the selected products.", "Open Batch", "Batch", True)
+        return ("Use recommendations to refine planning.", "Open Planning", "Planning", True)
     if page == "Batch":
         if not planning_ready:
             return ("Finish product planning before batch processing.", "Finish Planning", "Planning", True)
         if batch_complete:
             return ("Review generated outputs and reports.", "Open Results", "Results", True)
-        return ("Run processing when discovery and preflight are ready.", "Run Batch", "Batch", False)
-    if page == "Results":
-        if outputs_available:
-            return ("Load outputs into QGIS for review.", "Load Outputs", "Results", False)
-        return ("Run a processing job to generate scientific products.", "Open Batch", "Batch", True)
+        return ("Run batch only when you choose the batch workflow.", "Run Batch", "Batch", False)
     return ("Choose the next workflow step.", "Continue", "Home", True)

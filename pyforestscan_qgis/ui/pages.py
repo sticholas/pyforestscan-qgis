@@ -88,7 +88,7 @@ from ..core.workspace import (
 )
 from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
-from .ux_summary import backend_summary_from_environment, button_role_for_label, design_spacing_tokens, empty_state_message, environment_headline, primary_action_label, qgis_fallback_summary, routed_products_summary, status_badge_label, status_badge_tone, workflow_action_labels
+from .ux_summary import backend_summary_from_environment, button_role_for_label, design_spacing_tokens, empty_state_message, environment_headline, home_environment_action_label, home_environment_readiness, primary_action_label, qgis_fallback_summary, readiness_status_text, routed_products_summary, status_badge_label, status_badge_tone, workflow_action_labels
 
 ActivityCallback = Callable[[str, str], None]
 
@@ -194,16 +194,18 @@ class HomePage(MissionPage):
     startBatchRequested = pyqtSignal()
     continueLastRequested = pyqtSignal()
     continueWorkflowRequested = pyqtSignal()
+    checkEnvironmentRequested = pyqtSignal()
 
     def __init__(self, plugin_version: str, parent: QWidget | None = None) -> None:
         """Create the home dashboard."""
         super().__init__("Home", parent)
         dashboard = self.add_section("Workflow Overview")
         self.backend_label = _body_label("Backend: unknown")
+        self.environment_label = _body_label("Environment: Check readiness")
         self.dataset_label = _body_label("Dataset: Not selected")
-        self.environment_label = _body_label("Workflow: Not started")
+        self.workflow_label = _body_label("Workflow: Not started")
         self.output_label = _body_label("Current output folder: None")
-        for label in (self.backend_label, self.dataset_label, self.environment_label, self.output_label):
+        for label in (self.backend_label, self.environment_label, self.dataset_label, self.workflow_label, self.output_label):
             dashboard.addWidget(label)
 
         actions = QHBoxLayout()
@@ -211,7 +213,12 @@ class HomePage(MissionPage):
         self.continue_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.continue_button.clicked.connect(self.continueWorkflowRequested.emit)
         _apply_button_role(self.continue_button, "primary")
+        self.check_environment_button = QPushButton("Check Environment")
+        self.check_environment_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
+        self.check_environment_button.clicked.connect(self.checkEnvironmentRequested.emit)
+        _apply_button_role(self.check_environment_button, "neutral")
         actions.addWidget(self.continue_button)
+        actions.addWidget(self.check_environment_button)
         actions.addStretch(1)
         dashboard.addLayout(actions)
 
@@ -234,13 +241,16 @@ class HomePage(MissionPage):
 
     def set_summary(self, environment: str, dataset: str | None, project: str | None, batch_status: str = "Not started", recent_run: str | None = None, workflow_status: str | None = None, continue_label: str = "Continue", continue_enabled: bool = True) -> None:
         """Update dashboard labels."""
-        current = Path(dataset).name if dataset else ("Batch ready" if batch_status != "Not started" else "Not selected")
-        self.backend_label.setText(backend_summary_from_environment(environment).replace("Backend status", "Backend"))
+        current = Path(dataset).name if dataset else "Not selected"
+        backend_text = backend_summary_from_environment(environment).replace("Backend status", "Backend")
+        self.backend_label.setText(readiness_status_text(environment, backend_text))
+        self.environment_label.setText(readiness_status_text(environment, f"Environment: {home_environment_readiness(environment)}"))
         self.dataset_label.setText(f"Dataset: {current}")
-        self.environment_label.setText(f"Workflow: {workflow_status or _next_home_action(environment, dataset, batch_status)}")
+        self.workflow_label.setText(f"Workflow: {workflow_status or _next_home_action(environment, dataset, batch_status)}")
         self.output_label.setText(f"Current output folder: {recent_run or 'None'}")
         self.continue_button.setText(continue_label)
         self.continue_button.setEnabled(continue_enabled)
+        self.check_environment_button.setText(home_environment_action_label(environment))
 
     def set_workspace(self, workspace: Workspace | None) -> None:
         """Display active workspace status on Home."""
@@ -249,7 +259,7 @@ class HomePage(MissionPage):
         session = workspace.session
         self.dataset_label.setText(f"Dataset: {Path(session.last_selected_dataset).name if session.last_selected_dataset else workspace.name}")
         self.output_label.setText(f"Current output folder: {session.last_output_folder or workspace.output_root}")
-        self.environment_label.setText(f"Workflow: {workspace_primary_action(workspace)}")
+        self.workflow_label.setText(f"Workflow: {workspace_primary_action(workspace)}")
 
     def set_continue_available(self, available: bool) -> None:
         """Enable Continue Last Run when a current or recent workspace exists."""
@@ -463,7 +473,7 @@ class EnvironmentPage(MissionPage):
         button_row.addStretch(1)
         controls.addLayout(button_row)
         self.status_label = QLabel()
-        _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: NOT CONFIGURED - refresh to check readiness.")
+        _set_status_badge(self.status_label, "NOT CONFIGURED", readiness_status_text("NOT CONFIGURED", "Status: NOT CONFIGURED - refresh to check readiness."))
         self.pbm_status_label = _body_label("PBM backend status: not checked")
         self.execution_label = _body_label("Execution backend: not checked")
         self.scope_label = _body_label(routed_products_summary())
@@ -489,7 +499,7 @@ class EnvironmentPage(MissionPage):
 
     def set_report(self, report: EnvironmentReport) -> None:
         """Display an environment report."""
-        _set_status_badge(self.status_label, report.readiness.value, environment_headline(report.readiness.value))
+        _set_status_badge(self.status_label, report.readiness.value, readiness_status_text(report.readiness.value, environment_headline(report.readiness.value)))
         self.checks_list.clear()
         self.fallback_checks_list.clear()
         pbm_message = "PBM backend status: not checked"
@@ -2243,7 +2253,7 @@ class SettingsPage(MissionPage):
         self.backend_install_timer.setInterval(1000)
         self.backend_install_timer.timeout.connect(self._refresh_backend_install_elapsed)
         self.backend_status_label = _body_label("")
-        _set_status_badge(self.backend_status_label, "NOT CONFIGURED", "Backend Status: NOT CONFIGURED - verify backend.")
+        _set_status_badge(self.backend_status_label, "NOT CONFIGURED", readiness_status_text("NOT CONFIGURED", "Backend Status: NOT CONFIGURED - verify backend."))
         self.backend_location_label = _body_label("Backend Location: Unknown")
         self.backend_environment_label = _body_label("Environment Location: Unknown")
         self.backend_installed_version_label = _body_label("Installed Version: Not installed")
@@ -2424,7 +2434,7 @@ class SettingsPage(MissionPage):
         version = self.backend_service.version_compatibility()
         compatibility = build_qgis_compatibility_report()
         availability = self.backend_service.install_availability()
-        _set_status_badge(self.backend_status_label, state.status.value, f"Backend Status: {status_badge_label(state.status.value)} - {state.message}")
+        _set_status_badge(self.backend_status_label, state.status.value, readiness_status_text(state.status.value, f"Backend Status: {status_badge_label(state.status.value)} - {state.message}"))
         self.backend_location_label.setText(f"Storage Location: {paths.backend_root}")
         self.backend_environment_label.setText(f"Environment Location: {paths.environment_path}")
         self.backend_installed_version_label.setText(f"Installed Version: {'configured' if state.config_exists else 'Not installed'}")
@@ -2460,7 +2470,7 @@ class SettingsPage(MissionPage):
     def verify_backend(self) -> None:
         """Run safe PBM verification and display dependency results."""
         result = self.backend_service.verify_backend()
-        _set_status_badge(self.backend_status_label, result.status.value, f"Backend Status: {status_badge_label(result.status.value)}")
+        _set_status_badge(self.backend_status_label, result.status.value, readiness_status_text(result.status.value, f"Backend Status: {status_badge_label(result.status.value)}"))
         python_dependency = _find_backend_dependency(result, "python")
         pdal_dependency = _find_backend_dependency(result, "pdal")
         self.backend_python_label.setText(f"Python Version: {python_dependency.detected_version if python_dependency and python_dependency.detected_version else 'Not detected'}")
@@ -2534,7 +2544,7 @@ class SettingsPage(MissionPage):
             self._set_backend_progress_visible(True)
             self.backend_install_started_at = time.monotonic()
             self.backend_install_timer.start()
-            _set_status_badge(self.backend_status_label, "RUNNING", "Backend Status: RUNNING - installation in progress.")
+            _set_status_badge(self.backend_status_label, "RUNNING", readiness_status_text("RUNNING", "Backend Status: RUNNING - installation in progress."))
             self.backend_install_progress_bar.setValue(5)
             self.backend_install_stage_label.setText("Install stage: Preparing")
             self.backend_install_action_label.setText("Current package/action: staging")
@@ -2607,7 +2617,7 @@ class SettingsPage(MissionPage):
             final_state = "Repair Required"
         else:
             final_state = "Install Failed"
-        _set_status_badge(self.backend_status_label, final_state, f"Backend Status: {status_badge_label(final_state)} - {final_state}")
+        _set_status_badge(self.backend_status_label, final_state, readiness_status_text(final_state, f"Backend Status: {status_badge_label(final_state)} - {final_state}"))
         self.backend_install_stage_label.setText(f"Install stage: {final_state}")
         self.backend_install_message_label.setText(f"Latest message: {getattr(result, 'message', '')}")
         self.backend_details.setPlainText(
@@ -2627,7 +2637,7 @@ class SettingsPage(MissionPage):
         """Display unexpected installer worker failure."""
         self._set_backend_install_running(False)
         self._set_backend_progress_visible(True)
-        _set_status_badge(self.backend_status_label, "FAILED", "Backend Status: FAILED - install failed.")
+        _set_status_badge(self.backend_status_label, "FAILED", readiness_status_text("FAILED", "Backend Status: FAILED - install failed."))
         self.backend_install_stage_label.setText("Install stage: Install Failed")
         self.backend_install_message_label.setText(f"Latest message: {message}")
         self.backend_details.setPlainText(
@@ -2665,7 +2675,7 @@ class SettingsPage(MissionPage):
         """Display the non-mutating backend repair plan."""
         result = self.backend_service.repair_backend()
         plan = self.backend_service.preview_repair_plan()
-        _set_status_badge(self.backend_status_label, result.status.value, f"Backend Status: {status_badge_label(result.status.value)}")
+        _set_status_badge(self.backend_status_label, result.status.value, readiness_status_text(result.status.value, f"Backend Status: {status_badge_label(result.status.value)}"))
         self.backend_details.setPlainText(self.backend_service.format_repair_plan(plan))
 
     def show_backend_advanced(self) -> None:

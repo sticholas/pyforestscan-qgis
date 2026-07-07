@@ -14,7 +14,12 @@ from pyforestscan_qgis.ui.ux_summary import (
     environment_headline,
     expandable_section_labels,
     primary_action_label,
+    home_environment_action_label,
+    home_environment_readiness,
     qgis_fallback_summary,
+    readiness_marker_label,
+    readiness_marker_tokens,
+    readiness_status_text,
     status_badge_label,
     status_badge_tone,
     routed_products_summary,
@@ -33,7 +38,7 @@ class MissionControlUxTests(unittest.TestCase):
     """Verify compact workflow labels without importing QGIS."""
 
     def test_home_action_labels_match_beta_workflow(self) -> None:
-        self.assertEqual(workflow_action_labels(), ("Continue", "Continue to Dataset", "Continue to Planning"))
+        self.assertEqual(workflow_action_labels(), ("Continue", "Check Environment", "Continue to Dataset"))
 
     def test_empty_states_are_concise_guidance(self) -> None:
         self.assertEqual(empty_state_message("advisor"), "Analyze a dataset to receive recommendations.")
@@ -44,8 +49,8 @@ class MissionControlUxTests(unittest.TestCase):
     def test_primary_action_labels_are_standardized(self) -> None:
         self.assertEqual(primary_action_label("dataset"), "Analyze Dataset")
         self.assertEqual(primary_action_label("home"), "Continue")
-        self.assertEqual(primary_action_label("planning"), "Review Recommendations")
-        self.assertEqual(primary_action_label("advisor"), "Open Batch")
+        self.assertEqual(primary_action_label("planning"), "Continue to Processing")
+        self.assertEqual(primary_action_label("advisor"), "Review Recommendations")
         self.assertEqual(primary_action_label("processing"), "Run Processing")
         self.assertEqual(primary_action_label("settings"), "Verify Backend")
 
@@ -61,7 +66,7 @@ class MissionControlUxTests(unittest.TestCase):
 
     def test_design_system_button_roles_are_standardized(self) -> None:
         self.assertEqual(button_role_for_label("Continue to Planning"), "primary")
-        self.assertEqual(button_role_for_label("Open Batch"), "primary")
+        self.assertEqual(button_role_for_label("Open Batch"), "secondary")
         self.assertEqual(button_role_for_label("Run Processing"), "primary")
         self.assertEqual(button_role_for_label("Open Output Folder"), "secondary")
         self.assertEqual(button_role_for_label("Refresh Environment"), "neutral")
@@ -94,21 +99,23 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn("QLabel#statusBadge", stylesheet)
 
     def test_guided_workflow_model_is_compact_and_contextual(self) -> None:
-        self.assertEqual(guided_workflow_pages(), ("Dataset", "Planning", "Scientific Advisor", "Batch", "Results"))
+        self.assertEqual(guided_workflow_pages(), ("Home", "Workspace", "Dataset", "Planning", "Processing", "Results"))
         controller_source = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text(encoding="utf-8")
         self.assertIn(
-            'PAGE_NAMES = (\n        "Home",\n        "Dataset",\n        "Planning",\n        "Scientific Advisor",\n        "Batch",\n        "Results",',
+            'PAGE_NAMES = (\n        "Home",\n        "Workspace",\n        "Dataset",\n        "Planning",\n        "Processing",\n        "Batch",\n        "Results",\n        "Scientific Advisor",\n        "Environment",\n        "Settings",',
             controller_source,
         )
         self.assertEqual(
             guided_workflow_indicator(
                 "Planning",
+                environment_ready=True,
+                workspace_ready=True,
                 dataset_loaded=True,
                 planning_ready=False,
                 batch_complete=False,
                 outputs_available=False,
             ),
-            "✓ Dataset  ● Planning  ○ Scientific Advisor  ○ Batch  ○ Results",
+            "✓ Home  ✓ Workspace  ✓ Dataset  ● Planning  ○ Processing  ○ Results",
         )
         self.assertEqual(
             guided_workflow_status_lines(
@@ -117,8 +124,9 @@ class MissionControlUxTests(unittest.TestCase):
                 planning_ready=True,
                 batch_complete=False,
                 outputs_available=False,
+                processing_ready=True,
             ),
-            ("Backend: READY", "Dataset: Loaded", "Planning: Configured", "Batch: Not run", "Results: None"),
+            ("Backend: READY", "Dataset: Loaded", "Planning: Configured", "Processing: Ready to run", "Results: None"),
         )
         self.assertEqual(
             guided_next_step(
@@ -140,6 +148,44 @@ class MissionControlUxTests(unittest.TestCase):
             ),
             ("Load outputs into QGIS for review.", "Load Outputs", "Results", False),
         )
+
+    def test_default_continue_path_excludes_batch_and_advisor(self) -> None:
+        home_missing_env = guided_next_step(
+            "Home",
+            environment_ready=False,
+            dataset_loaded=False,
+            planning_ready=False,
+            outputs_available=False,
+        )
+        self.assertEqual(home_missing_env, ("Check environment readiness before processing.", "Check Environment", "Environment", True))
+        home_ready = guided_next_step(
+            "Home",
+            environment_ready=True,
+            dataset_loaded=True,
+            planning_ready=True,
+            outputs_available=False,
+        )
+        self.assertEqual(home_ready, ("Run processing for the selected products.", "Continue to Processing", "Processing", True))
+        self.assertNotIn(home_ready[2], {"Batch", "Scientific Advisor"})
+        self.assertEqual(
+            guided_next_step("Planning", dataset_loaded=True, planning_ready=True, outputs_available=False),
+            ("Run processing for the selected products.", "Continue to Processing", "Processing", True),
+        )
+        self.assertEqual(
+            guided_next_step("Results", dataset_loaded=True, planning_ready=True, outputs_available=False),
+            ("Run processing to generate scientific products.", "Open Processing", "Processing", True),
+        )
+
+    def test_home_readiness_copy_and_markers_keep_words(self) -> None:
+        self.assertEqual(home_environment_readiness("READY"), "Ready to process with PBM backend.")
+        self.assertEqual(home_environment_action_label("READY"), "Check Environment")
+        self.assertEqual(home_environment_action_label("NOT READY"), "Set Up Backend")
+        tokens = readiness_marker_tokens()
+        self.assertEqual(tokens["ready"], ("●", "#3f7f52"))
+        self.assertEqual(tokens["not_ready"], ("○", "#b45b52"))
+        self.assertIn("●", readiness_marker_label("READY"))
+        marked = readiness_status_text("READY", "Environment: Ready to process with PBM backend.")
+        self.assertIn("Environment: Ready to process with PBM backend.", marked)
 
     def test_visual_polish_audit_exists(self) -> None:
         audit = (ROOT / "docs/development/VISUAL_POLISH_AUDIT.md").read_text(encoding="utf-8")
