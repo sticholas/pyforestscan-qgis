@@ -88,6 +88,10 @@ This documentation is organized for users, scientists, developers, maintainers, 
 ## Releases
 
 - [Release Documentation](releases/README.md)
+- [Release Roadmap](releases/RELEASE_ROADMAP.md)
+- [RC1 Checklist](releases/RC1_CHECKLIST.md)
+- [RC1 Manual QA Script](releases/RC1_MANUAL_QA_SCRIPT.md)
+- [Release Triage Policy](releases/RELEASE_TRIAGE_POLICY.md)
 - [Internal Release Checklist](releases/INTERNAL_RELEASE_CHECKLIST.md)
 - [PBM Internal Beta Smoke Test](releases/PBM_INTERNAL_BETA_SMOKE_TEST.md)
 - [No-Manual-Setup Beta Smoke Test](releases/NO_MANUAL_SETUP_BETA_SMOKE_TEST.md)

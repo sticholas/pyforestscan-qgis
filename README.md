@@ -136,6 +136,8 @@ Key entry points:
 - [QGIS Compatibility Layer](docs/development/QGIS_COMPATIBILITY_LAYER.md)
 - [Mission Control UX Standard](docs/development/MISSION_CONTROL_UX_STANDARD.md)
 - [PyForestScan Design System](docs/development/PYFORESTSCAN_DESIGN_SYSTEM.md)
+- [Release Roadmap](docs/releases/RELEASE_ROADMAP.md)
+- [RC1 Checklist](docs/releases/RC1_CHECKLIST.md)
 - [Release Checklist](docs/releases/INTERNAL_RELEASE_CHECKLIST.md)
 - [PBM Internal Beta Smoke Test](docs/releases/PBM_INTERNAL_BETA_SMOKE_TEST.md)
 - [No-Manual-Setup Beta Smoke Test](docs/releases/NO_MANUAL_SETUP_BETA_SMOKE_TEST.md)
@@ -143,12 +145,14 @@ Key entry points:
 
 ## Roadmap
 
+The project is moving from feature-building phases into formal release-candidate management. See the [Release Roadmap](docs/releases/RELEASE_ROADMAP.md), [RC1 Checklist](docs/releases/RC1_CHECKLIST.md), [RC1 Manual QA Script](docs/releases/RC1_MANUAL_QA_SCRIPT.md), and [Release Triage Policy](docs/releases/RELEASE_TRIAGE_POLICY.md).
+
 Near-term release priorities:
 
-- Internal v1.0 QA across QGIS 3.44.x on Windows.
-- Manual screenshots and sample-data validation notes.
-- Product-level crop/bounds workflow design.
-- Safer large EPT tiling workflow design.
+- RC1 clean Windows/QGIS ZIP install and PBM backend acceptance.
+- RC1 smoke coverage for Guided Mode, Batch, Results loading, and Advanced Toolbox.
+- RC2 repeatability, repair/retry validation, and documentation evidence.
+- v1.0 public-quality readiness review after RC blockers and critical issues are resolved.
 - Public QGIS Plugin Repository readiness review.
 
 ## Contributing

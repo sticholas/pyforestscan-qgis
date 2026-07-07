@@ -98,6 +98,37 @@ class ReleasePipelineTests(unittest.TestCase):
         self.assertIn("Backend auto-install ready", smoke.read_text(encoding="utf-8"))
 
 
+    def test_release_candidate_gate_docs_are_linked(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        release_docs = root / "docs/releases"
+        roadmap = release_docs / "RELEASE_ROADMAP.md"
+        checklist = release_docs / "RC1_CHECKLIST.md"
+        qa_script = release_docs / "RC1_MANUAL_QA_SCRIPT.md"
+        triage = release_docs / "RELEASE_TRIAGE_POLICY.md"
+
+        for doc in (roadmap, checklist, qa_script, triage):
+            self.assertTrue(doc.exists(), doc)
+
+        roadmap_text = roadmap.read_text(encoding="utf-8")
+        checklist_text = checklist.read_text(encoding="utf-8")
+        qa_text = qa_script.read_text(encoding="utf-8")
+        triage_text = triage.read_text(encoding="utf-8")
+        docs_index = (root / "docs/README.md").read_text(encoding="utf-8")
+        releases_index = (release_docs / "README.md").read_text(encoding="utf-8")
+        readme = (root / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("RC1 Definition", roadmap_text)
+        self.assertIn("RC2 Definition", roadmap_text)
+        self.assertIn("v1.0 Definition", roadmap_text)
+        self.assertIn("PBM installs on clean Windows QGIS", checklist_text)
+        self.assertIn("Advanced Toolbox", qa_text)
+        self.assertIn("Blocker", triage_text)
+        self.assertIn("Critical", triage_text)
+        for linked_name in ("RELEASE_ROADMAP.md", "RC1_CHECKLIST.md", "RC1_MANUAL_QA_SCRIPT.md", "RELEASE_TRIAGE_POLICY.md"):
+            self.assertIn(linked_name, docs_index)
+            self.assertIn(linked_name, releases_index)
+        self.assertIn("Release Roadmap", readme)
+
 
 if __name__ == "__main__":
     unittest.main()

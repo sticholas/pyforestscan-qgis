@@ -26,7 +26,7 @@ This document records current limitations for the internal release candidate. It
 
 ## Release Scope
 
-`v0.1.0-beta.2` is intended for controlled QGIS testing, workflow validation, and scientific QA. It is not a public QGIS Plugin Repository release candidate. Versioned ZIP artifacts are traceable through `dist/release_manifest.json`.
+`v0.1.0-beta.2` is intended for controlled QGIS testing, workflow validation, and scientific QA. It is not a public QGIS Plugin Repository release candidate. Formal RC1 readiness is gated by the [Release Roadmap](releases/RELEASE_ROADMAP.md), [RC1 Checklist](releases/RC1_CHECKLIST.md), [RC1 Manual QA Script](releases/RC1_MANUAL_QA_SCRIPT.md), and [Release Triage Policy](releases/RELEASE_TRIAGE_POLICY.md). Versioned ZIP artifacts are traceable through `dist/release_manifest.json`.
 
 
 ## PyForestScan Backend Manager
