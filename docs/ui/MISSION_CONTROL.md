@@ -61,7 +61,7 @@ runtime stretch factors so the page stack expands horizontally and vertically.
 Each page uses one full-width vertical scroll area; individual pages should avoid
 adding nested scroll areas unless there is a specific interaction reason.
 
-Mission Control follows the permanent [Mission Control UX Standard](../development/MISSION_CONTROL_UX_STANDARD.md): one primary action per page, no empty sections, collapsed technical details, concise empty states, and consistent workflow terminology.
+Mission Control follows the permanent [Mission Control UX Standard](../development/MISSION_CONTROL_UX_STANDARD.md): one primary action per page, no empty sections, collapsed technical details, concise empty states, and consistent workflow terminology. Visual hierarchy, status badges, dialogs, notifications, tables, icons, and future module integration follow the [PyForestScan Design System](../development/PYFORESTSCAN_DESIGN_SYSTEM.md).
 
 - `pyforestscan_qgis/ui/forms/mission_control.ui`: Qt Designer shell for the
   dock header, sidebar, page stack, and status bar.

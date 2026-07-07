@@ -6,6 +6,8 @@ This directory contains implementation notes for contributors working on PyFores
 
 - [Adapter Design](ADAPTER_DESIGN.md)
 - [Advanced Processing Toolbox](ADVANCED_PROCESSING_TOOLBOX.md)
+- [Mission Control UX Standard](MISSION_CONTROL_UX_STANDARD.md)
+- [PyForestScan Design System](PYFORESTSCAN_DESIGN_SYSTEM.md)
 - [Batch Processing](BATCH_PROCESSING.md)
 - [External Workers](EXTERNAL_WORKERS.md)
 - [Job Execution](JOB_EXECUTION.md)

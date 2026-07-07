@@ -68,7 +68,7 @@ flowchart TD
     K --> L["Workspace timeline and results"]
 ```
 
-Mission Control hides internal JSON handoff files by default. Advanced run files, logs, manifests, and diagnostic reports remain available under technical details.
+Mission Control hides internal JSON handoff files by default. Advanced run files, logs, manifests, and diagnostic reports remain available under technical details. UI implementation follows the [PyForestScan Design System](development/PYFORESTSCAN_DESIGN_SYSTEM.md), which is treated as an architecture-level contract for visual language and interaction patterns.
 
 ## Run Folder Contract
 

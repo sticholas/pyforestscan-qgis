@@ -4,7 +4,7 @@ Use this checklist before sharing an internal PyForestScan QGIS build with teste
 
 ## Phase 24C Release Candidate Status
 
-Artifact SHA-256: `19549977f373efa5c2c7804fe5222e2d999f12d9cf1c5f0823ac81de9e81c51e`
+Artifact SHA-256: `348e5f5d3bb1e874f453bd3a5dca5acdce65bbec042a3ecf626309ec1e399de7`
 
 | Area | Status | Evidence / next action |
 | --- | --- | --- |

@@ -7,10 +7,15 @@ from pathlib import Path
 
 from pyforestscan_qgis.ui.ux_summary import (
     backend_summary_from_environment,
-    environment_headline,
-    qgis_fallback_summary,
+    button_role_for_label,
+    design_spacing_tokens,
+    design_status_labels,
     empty_state_message,
+    environment_headline,
+    expandable_section_labels,
     primary_action_label,
+    qgis_fallback_summary,
+    status_badge_tone,
     routed_products_summary,
     technical_sections_default_collapsed,
     workflow_action_labels,
@@ -34,6 +39,22 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertEqual(primary_action_label("dataset"), "Analyze Dataset")
         self.assertEqual(primary_action_label("processing"), "Run Processing")
         self.assertEqual(primary_action_label("settings"), "Verify Backend")
+
+    def test_design_system_status_badges_are_standardized(self) -> None:
+        self.assertEqual(design_status_labels(), ("READY", "RUNNING", "WARNING", "FAILED", "NOT CONFIGURED", "DISABLED", "PLANNED"))
+        self.assertEqual(status_badge_tone("READY"), "success")
+        self.assertEqual(status_badge_tone("not_configured"), "neutral")
+        self.assertEqual(status_badge_tone("FAILED"), "danger")
+
+    def test_design_system_button_roles_are_standardized(self) -> None:
+        self.assertEqual(button_role_for_label("Run Processing"), "primary")
+        self.assertEqual(button_role_for_label("Open Output Folder"), "secondary")
+        self.assertEqual(button_role_for_label("Refresh Environment"), "neutral")
+        self.assertEqual(button_role_for_label("Clear Current Run"), "danger")
+
+    def test_design_system_spacing_and_expandable_labels(self) -> None:
+        self.assertEqual(design_spacing_tokens(), {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24})
+        self.assertEqual(expandable_section_labels(), ("Advanced", "Technical Details", "Troubleshooting"))
 
     def test_backend_ready_summary_is_not_scary(self) -> None:
         self.assertEqual(backend_summary_from_environment("READY"), "Backend status: PBM ready for routed products")

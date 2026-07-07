@@ -51,6 +51,7 @@ This documentation is organized for users, scientists, developers, maintainers, 
 - [Workspace Architecture](development/WORKSPACE_ARCHITECTURE.md)
 - [QGIS Compatibility Layer](development/QGIS_COMPATIBILITY_LAYER.md)
 - [Mission Control UX Standard](development/MISSION_CONTROL_UX_STANDARD.md)
+- [PyForestScan Design System](development/PYFORESTSCAN_DESIGN_SYSTEM.md)
 - [Testing Strategy](TESTING_STRATEGY.md)
 
 ## Backend Manager

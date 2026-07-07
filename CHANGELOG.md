@@ -7,6 +7,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ## Unreleased
 
+- Phase 24E adds the PyForestScan Design System as the plugin-wide visual and interaction language, records a UI audit with recommendations, and adds QGIS-free tests for design-system status labels, button roles, spacing tokens, expandable sections, primary actions, and empty states without changing PBM, scientific processing, or Advanced Toolbox behavior.
 - Phase 24D standardizes Mission Control UX with a permanent design standard, primary-action terminology, hidden empty sections, collapsed technical/default detail, lighter Advisor/Workspace/Results pages, and QGIS-free UX regression tests while leaving PBM, processing algorithms, scientific calculations, and the Advanced Toolbox unchanged.
 
 ## 0.1.0-beta.2 - 2026-07-06

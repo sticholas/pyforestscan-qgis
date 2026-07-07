@@ -30,9 +30,81 @@ MISSION_WORKFLOW_STEPS: tuple[str, ...] = (
 )
 
 
+DESIGN_SPACING_TOKENS: tuple[tuple[str, int], ...] = (
+    ("xs", 4),
+    ("sm", 8),
+    ("md", 12),
+    ("lg", 16),
+    ("xl", 24),
+)
+
+DESIGN_STATUS_LABELS: tuple[str, ...] = (
+    "READY",
+    "RUNNING",
+    "WARNING",
+    "FAILED",
+    "NOT CONFIGURED",
+    "DISABLED",
+    "PLANNED",
+)
+
+STATUS_BADGE_TONES: dict[str, str] = {
+    "READY": "success",
+    "RUNNING": "progress",
+    "WARNING": "warning",
+    "FAILED": "danger",
+    "NOT CONFIGURED": "neutral",
+    "DISABLED": "muted",
+    "PLANNED": "planned",
+}
+
+BUTTON_ROLE_EXAMPLES: dict[str, tuple[str, ...]] = {
+    "primary": ("Open Dataset", "Run Processing", "Run Batch", "Install Backend"),
+    "secondary": ("Open Output Folder", "Load Outputs", "Preview Install Plan"),
+    "neutral": ("Refresh Environment", "Verify Backend", "Browse"),
+    "danger": ("Delete Workspace", "Clear Current Run", "Cancel Remaining"),
+}
+
+EXPANDABLE_SECTION_LABELS: tuple[str, ...] = (
+    "Advanced",
+    "Technical Details",
+    "Troubleshooting",
+)
+
+
 def workflow_action_labels() -> tuple[str, str, str]:
     """Return the primary Home action labels."""
     return ("Open Dataset", "Start Batch", "Continue Previous Session")
+
+
+def design_spacing_tokens() -> dict[str, int]:
+    """Return the standard PyForestScan UI spacing scale in pixels."""
+    return dict(DESIGN_SPACING_TOKENS)
+
+
+def design_status_labels() -> tuple[str, ...]:
+    """Return the approved status badge labels."""
+    return DESIGN_STATUS_LABELS
+
+
+def status_badge_tone(status: str) -> str:
+    """Return the design-system tone for a status label."""
+    normalized = " ".join((status or "").replace("_", " ").upper().split())
+    return STATUS_BADGE_TONES.get(normalized, "neutral")
+
+
+def button_role_for_label(label: str) -> str:
+    """Return the standard button role for a known UI action label."""
+    normalized = (label or "").strip().lower()
+    for role, examples in BUTTON_ROLE_EXAMPLES.items():
+        if any(normalized == example.lower() for example in examples):
+            return role
+    return "secondary"
+
+
+def expandable_section_labels() -> tuple[str, ...]:
+    """Return approved labels for collapsed technical disclosure sections."""
+    return EXPANDABLE_SECTION_LABELS
 
 
 def empty_state_message(page: str) -> str:

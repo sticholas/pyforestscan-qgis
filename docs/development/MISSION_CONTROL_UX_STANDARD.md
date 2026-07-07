@@ -2,7 +2,7 @@
 
 Mission Control should always answer one question: what is the next thing the user should do?
 
-This standard applies to every future Mission Control page, dialog, panel, and workflow. It is a presentation and information-architecture standard, not a processing standard.
+This standard applies to every future Mission Control page, dialog, panel, and workflow. It is a presentation and information-architecture standard, not a processing standard. The broader plugin visual language lives in the [PyForestScan Design System](PYFORESTSCAN_DESIGN_SYSTEM.md).
 
 ## Design Philosophy
 

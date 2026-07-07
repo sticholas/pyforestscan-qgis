@@ -11,6 +11,8 @@ Developer documentation focuses on architecture boundaries, QGIS-free core logic
 - [Job Execution](../development/JOB_EXECUTION.md)
 - [Batch Processing](../development/BATCH_PROCESSING.md)
 - [Workspace Architecture](../development/WORKSPACE_ARCHITECTURE.md)
+- [Mission Control UX Standard](../development/MISSION_CONTROL_UX_STANDARD.md)
+- [PyForestScan Design System](../development/PYFORESTSCAN_DESIGN_SYSTEM.md)
 - [Testing Strategy](../TESTING_STRATEGY.md)
 - [Manual QA Script](../development/MANUAL_QA_SCRIPT.md)
 
