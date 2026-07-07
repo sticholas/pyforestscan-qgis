@@ -49,7 +49,7 @@ Every card follows one structure:
 3. Primary action, when the card owns an action.
 4. Advanced, optional and collapsed by default.
 
-Cards naturally resize. A card with no meaningful content should be hidden, not shown as an empty panel.
+Cards naturally resize. A card with no meaningful content should be hidden, not shown as an empty panel. Small text-only cards should use content-sized labels; reserve fixed-height text boxes and lists for genuinely scrollable content.
 
 ## Button Hierarchy
 

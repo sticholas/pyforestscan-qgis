@@ -35,8 +35,8 @@ Results, Scientific Advisor, Environment, and Settings.
   Workspace, Recent Workspaces, status, recent runs, key output links, timeline,
   notes, and reset controls collapsed under Troubleshooting.
 - Dataset: choose LAS, LAZ, COPC, or EPT plus an output folder, analyze the dataset, create the active
-  run folder, show a compact dataset summary and spatial footprint preview,
-  keep dimensions/report paths under Technical Metadata, add the footprint to
+  run folder, show a compact key-facts dataset summary and spatial footprint preview,
+  keep lower-priority fields/report paths under content-sized Technical Metadata, add the footprint to
   QGIS, and zoom the main map canvas.
 - Planning: Product Planner uses the active Dataset Explorer report, keeps the
   normal product/settings path first, and collapses output-folder overrides under
@@ -48,8 +48,9 @@ Results, Scientific Advisor, Environment, and Settings.
 - Batch: optional folder-to-products workflow for users who explicitly choose
   batch processing. It is not part of the default Continue path.
 - Results: show a compact teaching empty state until outputs exist, then make
-  Open Output Folder and Load Outputs dominant, with raw paths under Run files
-  and logs.
+  Open Output Folder and Load Outputs dominant. Load Outputs adds current-run
+  `.tif`, `.tiff`, and supported `.csv` outputs to QGIS, skips duplicates, and
+  reuses product raster styling. Raw paths stay under Run files and logs.
 - Scientific Advisor: optional Knowledge Engine guidance after Dataset Explorer,
   including warnings, product explanations, parameter suggestions, and QGIS QA
   tools. Empty recommendation cards are hidden until recommendations exist.
@@ -65,7 +66,7 @@ runtime stretch factors so the page stack expands horizontally and vertically.
 Each page uses one full-width vertical scroll area; individual pages should avoid
 adding nested scroll areas unless there is a specific interaction reason.
 
-Mission Control follows the permanent [Mission Control UX Standard](../development/MISSION_CONTROL_UX_STANDARD.md): one primary action per page, no empty sections, collapsed technical details, concise empty states, and consistent workflow terminology. Visual hierarchy, status badges, dialogs, notifications, tables, icons, and future module integration follow the [PyForestScan Design System](../development/PYFORESTSCAN_DESIGN_SYSTEM.md). Phase 24F applies that system with shared spacing tokens, button role styling, status-badge tones, compact empty states, and calmer Backend/Processing/Batch/Results layouts. Phase 25A tightens workflow continuity by collapsing rarely used reset/output/backend details and keeping empty states compact. Phase 25B adds guided workflow continuity with subtle step indicators and one Next Step card on each primary workflow page. Phase 25C corrects the default route to Home -> Workspace if needed -> Dataset -> Planning -> Processing -> Results, keeps Batch optional, keeps Scientific Advisor as support guidance, and adds subtle readiness markers beside existing readiness text; see the [Visual Polish Audit](../development/VISUAL_POLISH_AUDIT.md).
+Mission Control follows the permanent [Mission Control UX Standard](../development/MISSION_CONTROL_UX_STANDARD.md): one primary action per page, no empty sections, collapsed technical details, concise empty states, and consistent workflow terminology. Visual hierarchy, status badges, dialogs, notifications, tables, icons, and future module integration follow the [PyForestScan Design System](../development/PYFORESTSCAN_DESIGN_SYSTEM.md). Phase 24F applies that system with shared spacing tokens, button role styling, status-badge tones, compact empty states, and calmer Backend/Processing/Batch/Results layouts. Phase 25A tightens workflow continuity by collapsing rarely used reset/output/backend details and keeping empty states compact. Phase 25B adds guided workflow continuity with subtle step indicators and one Next Step card on each primary workflow page. Phase 25C corrects the default route to Home -> Workspace if needed -> Dataset -> Planning -> Processing -> Results, keeps Batch optional, keeps Scientific Advisor as support guidance, and adds subtle readiness markers beside existing readiness text. Phase 25D makes Results output loading functional and tightens content-driven card sizing; see the [Visual Polish Audit](../development/VISUAL_POLISH_AUDIT.md).
 
 - `pyforestscan_qgis/ui/forms/mission_control.ui`: Qt Designer shell for the
   dock header, sidebar, page stack, and status bar.

@@ -101,7 +101,7 @@ class MissionControlDock(QDockWidget):
         self.planning_page = PlanningPage()
         self.processing_page = ProcessingPage()
         self.batch_page = BatchPage(self.adapter)
-        self.results_page = ResultsPage()
+        self.results_page = ResultsPage(iface=self.iface)
         self.settings_page = SettingsPage()
         self.settings_page.set_workspace_session(self.workspace_session)
         self.pages = (

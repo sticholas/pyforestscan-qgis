@@ -22,7 +22,7 @@ Primary workflow pages may show a subtle step indicator using completed, current
 
 - Do not show empty sections. If a section has no meaningful content, hide it.
 - Use one visually dominant primary action per page.
-- Cards size to content and avoid fixed-height empty panels.
+- Cards size to content and avoid fixed-height empty panels. Small text-only cards should use content-sized labels instead of large text boxes.
 - Keep status information in one place per page.
 - Minimize scrolling on a 1920 x 1080 display.
 - Use whitespace to separate ideas, not to reserve empty panel space.
@@ -65,7 +65,7 @@ If the user has not reached a workflow step, the page should show the one next a
 | Planning | Selected products, shared settings, estimated outputs, Continue to Processing | Advanced product settings and parameter explanations |
 | Processing | Current job, progress, execution backend, output folder, Run Processing, Next Step to Results after completion | Backend logs, technical output, job JSON |
 | Batch | Discover Files, Preflight, Run Batch, Review Results | Advanced options, footprint estimate, parallel diagnostics |
-| Results | Generated outputs, Open Output Folder, Load Outputs, or compact guidance back to Processing | Technical logs and processing metadata |
+| Results | Generated outputs, Open Output Folder, Load Outputs into QGIS, or compact guidance back to Processing | Technical logs and processing metadata |
 | Scientific Advisor | Executive summary, populated recommendations/products/actionable warnings | Empty recommendation/warning cards, product explanations, scientific notes |
 | Environment | Overall status, PBM status, execution backend, Refresh, Backend Settings | QGIS fallback, dependency details, technical checks/logs |
 | Settings | Backend, Workspace, General | Manifest registry, module registry, logs, developer-only information |

@@ -87,7 +87,9 @@ from ..core.workspace import (
     create_run_context,
 )
 from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
+from .output_loading import LoadableOutput, collect_loadable_outputs, compact_dataset_summary_lines, output_loading_summary
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
+from .raster_styling import apply_generated_raster_renderer, layer_display_name
 from .ux_summary import backend_summary_from_environment, button_role_for_label, design_spacing_tokens, empty_state_message, environment_headline, home_environment_action_label, home_environment_readiness, primary_action_label, qgis_fallback_summary, readiness_status_text, routed_products_summary, status_badge_label, status_badge_tone, workflow_action_labels
 
 ActivityCallback = Callable[[str, str], None]
@@ -104,8 +106,8 @@ SECTION_SPACING = SPACING_MD
 ACTION_ROW_SPACING = SPACING_SM
 PRIMARY_BUTTON_HEIGHT = 40
 SECONDARY_BUTTON_HEIGHT = 34
-COMPACT_LIST_HEIGHT = 128
-TECHNICAL_DETAIL_HEIGHT = 112
+COMPACT_LIST_HEIGHT = 96
+TECHNICAL_DETAIL_HEIGHT = 84
 
 
 class MissionPage(QWidget):
@@ -567,17 +569,12 @@ class DatasetPage(MissionPage):
 
         summary = self.add_section("Dataset Summary")
         self.summary_section = summary.parentWidget()
-        self.summary_text = QTextEdit()
-        self.summary_text.setReadOnly(True)
-        self.summary_text.setMinimumHeight(COMPACT_LIST_HEIGHT)
+        self.summary_text = _body_label(empty_state_message("dataset"))
         summary.addWidget(self.summary_text)
         self.summary_section.setVisible(False)
 
         metadata_group, metadata = _collapsible_section(self.content_layout, "Technical Metadata", checked=False)
-        self.dataset_technical_text = QTextEdit()
-        self.dataset_technical_text.setReadOnly(True)
-        self.dataset_technical_text.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)
-        self.dataset_technical_text.setPlainText("Dataset technical metadata appears after analysis.")
+        self.dataset_technical_text = _details_label("Dataset technical metadata appears after analysis.")
         metadata.addWidget(self.dataset_technical_text)
         _wire_collapsible_group(metadata_group)
 
@@ -657,16 +654,12 @@ class DatasetPage(MissionPage):
 
     def set_report(self, report: DatasetExplorerReport, context: RunContext | None = None) -> None:
         """Display a Dataset Explorer report summary."""
-        lines = [
-            f"Point count: {format_count_for_display(report.point_count)}",
-            f"CRS: {format_crs_for_display(report.crs)}",
+        self.summary_text.setText("\n".join(compact_dataset_summary_lines(report)))
+        technical_lines = [
             f"Density: {format_density_for_display(report.estimated_density)}",
-            f"Bounds: {_format_bounds(report)}",
+            f"Point format: {report.point_format or 'Unknown'}",
+            f"Metadata source: {report.metadata_source}",
         ]
-        if report.warnings:
-            lines.append(f"Warnings: {len(report.warnings)} item(s). Expand Technical Metadata for details.")
-        self.summary_text.setPlainText("\n".join(lines))
-        technical_lines = []
         if report.dimensions:
             technical_lines.append(f"Dimensions: {', '.join(report.dimensions)}")
         if report.warnings:
@@ -675,12 +668,12 @@ class DatasetPage(MissionPage):
             technical_lines.extend(("Available products:", *[f"- {item.label}: {item.status}" for item in report.products], ""))
         if context:
             technical_lines.extend((f"Run folder: {context.run_folder}", f"Dataset Report: {context.dataset_report_html}"))
-        self.dataset_technical_text.setPlainText("\n".join(technical_lines).strip() or "No technical metadata warnings.")
+        self.dataset_technical_text.setText("\n".join(technical_lines).strip() or "No technical metadata warnings.")
         self.summary_section.setVisible(True)
 
     def _set_dataset_message(self, message: str) -> None:
         """Show a compact Dataset page empty or warning state."""
-        self.summary_text.setPlainText(message)
+        self.summary_text.setText(message)
         self.summary_section.setVisible(True)
 
     def set_footprint_preview(self, report: DatasetExplorerReport, dataset_path: str, context: RunContext | None = None) -> None:
@@ -2044,11 +2037,15 @@ class BatchPage(MissionPage):
 class ResultsPage(MissionPage):
     """Friendly report links and job history page."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, iface: object | None = None, parent: QWidget | None = None) -> None:
         """Create the results page."""
         super().__init__("Results", parent)
+        self.iface = iface
         self._friendly_paths: list[Path] = []
         self._advanced_paths: list[Path] = []
+        self._job_result_paths: list[Path] = []
+        self._job_result_types: dict[Path, str] = {}
+        self._loaded_output_paths: set[Path] = set()
         self._current_output_folder: Path | None = None
 
         links = self.add_section("Generated Outputs")
@@ -2064,8 +2061,8 @@ class ResultsPage(MissionPage):
         _apply_button_role(self.open_output_folder_button, "primary")
         self.load_outputs_button = QPushButton("Load Outputs")
         self.load_outputs_button.setEnabled(False)
-        self.load_outputs_button.setToolTip("Select an output link, then load/open it for review.")
-        self.load_outputs_button.clicked.connect(self.open_selected_link)
+        self.load_outputs_button.setToolTip("Load GeoTIFF and CSV outputs into the current QGIS project.")
+        self.load_outputs_button.clicked.connect(self.load_outputs_to_qgis)
         _apply_button_role(self.load_outputs_button, "secondary")
         self.clear_current_run_button = QPushButton("Clear Current Run")
         self.clear_current_run_button.setEnabled(False)
@@ -2076,6 +2073,9 @@ class ResultsPage(MissionPage):
         button_row.addWidget(self.clear_current_run_button)
         button_row.addStretch(1)
         links.addLayout(button_row)
+        self.load_message_label = _body_label("")
+        self.load_message_label.setVisible(False)
+        links.addWidget(self.load_message_label)
 
         jobs = self.add_section("Job History")
         self.jobs_section = jobs.parentWidget()
@@ -2106,12 +2106,16 @@ class ResultsPage(MissionPage):
         self.previous_reports.clear()
         self._friendly_paths = []
         self._advanced_paths = []
+        self._job_result_paths = []
+        self._job_result_types = {}
+        self._loaded_output_paths = set()
         self._current_output_folder = None
         self.open_output_folder_button.setEnabled(False)
         self.load_outputs_button.setEnabled(False)
         self.clear_current_run_button.setEnabled(False)
         self.friendly_links.setVisible(False)
         self.results_empty_label.setVisible(True)
+        self.load_message_label.setVisible(False)
         if context is None:
             return
         self._current_output_folder = context.outputs_dir
@@ -2156,12 +2160,90 @@ class ResultsPage(MissionPage):
     def set_jobs(self, jobs: tuple[JobRecord, ...]) -> None:
         """Display job history."""
         self.job_history.clear()
+        self._job_result_paths = []
+        self._job_result_types = {}
         self.jobs_section.setVisible(bool(jobs))
         for job in jobs:
             detail = f"{job.title} - {job.status.value} - {job.progress.percent:.0f}%"
+            for result in job.results:
+                self._job_result_paths.append(result.path)
+                self._job_result_types[result.path] = result.result_type
             if job.results:
                 detail = f"{detail} - {job.results[-1].path}"
             self.job_history.addItem(detail)
+        self.load_outputs_button.setEnabled(bool(self._candidate_output_paths()))
+
+    def load_outputs_to_qgis(self) -> None:
+        """Load current run GeoTIFF and CSV outputs into QGIS without duplicates."""
+        paths = [path for path in self._candidate_output_paths() if path.exists() and path.is_file()]
+        all_candidates = collect_loadable_outputs(paths, self._job_result_types)
+        existing_sources = tuple(self._loaded_output_paths) + self._project_layer_sources()
+        candidates = collect_loadable_outputs(paths, self._job_result_types, existing_sources)
+        if not candidates:
+            self._set_load_message(output_loading_summary(0, len(all_candidates)))
+            return
+        if self.iface is None:
+            self._set_load_message("QGIS interface unavailable.")
+            return
+        loaded = 0
+        for output in candidates:
+            if self._load_output(output):
+                self._loaded_output_paths.add(output.path)
+                loaded += 1
+        self._set_load_message(output_loading_summary(loaded, len(candidates)))
+
+    def _candidate_output_paths(self) -> tuple[Path, ...]:
+        """Return current run, report, and job paths that may be loadable."""
+        paths: list[Path] = []
+        paths.extend(self._friendly_paths)
+        paths.extend(self._advanced_paths)
+        paths.extend(self._job_result_paths)
+        if self._current_output_folder is not None and self._current_output_folder.exists():
+            paths.extend(path for path in self._current_output_folder.rglob("*") if path.is_file())
+        return tuple(paths)
+
+    def _project_layer_sources(self) -> tuple[str, ...]:
+        """Return existing QGIS layer source paths, if QGIS APIs are available."""
+        try:
+            from qgis.core import QgsProject
+
+            layers = QgsProject.instance().mapLayers().values()
+        except Exception:  # noqa: BLE001 - tests and some QGIS states may not expose QgsProject.
+            return ()
+        sources: list[str] = []
+        for layer in layers:
+            source = getattr(layer, "source", None)
+            if callable(source):
+                try:
+                    sources.append(str(source()))
+                except Exception:  # noqa: BLE001 - one bad layer should not block loading.
+                    continue
+        return tuple(sources)
+
+    def _load_output(self, output: LoadableOutput) -> bool:
+        """Load one output into QGIS and apply product styling when relevant."""
+        layer_name = self._output_layer_name(output)
+        try:
+            if output.layer_kind == "raster":
+                layer = self.iface.addRasterLayer(str(output.path), layer_name)
+                if layer is not None:
+                    apply_generated_raster_renderer(layer, output.result_type)
+            else:
+                layer = self.iface.addVectorLayer(str(output.path), layer_name, "ogr")
+        except Exception:  # noqa: BLE001 - loading feedback should stay concise.
+            return False
+        return layer is not None
+
+    def _output_layer_name(self, output: LoadableOutput) -> str:
+        """Return a readable QGIS layer name for a loadable output."""
+        if output.layer_kind == "raster":
+            dataset_stem = output.path.parent.parent.name if output.path.parent.name == "outputs" else output.path.stem
+            return layer_display_name(output.result_type, dataset_stem)
+        return _friendly_result_label(output.path)
+
+    def _set_load_message(self, message: str) -> None:
+        self.load_message_label.setText(message)
+        self.load_message_label.setVisible(True)
 
     def open_selected_link(self) -> None:
         """Open the selected friendly result link."""
@@ -2181,6 +2263,9 @@ class ResultsPage(MissionPage):
         self.job_history.clear()
         self._friendly_paths = []
         self._advanced_paths = []
+        self._job_result_paths = []
+        self._job_result_types = {}
+        self._loaded_output_paths = set()
         self._current_output_folder = None
         self.open_output_folder_button.setEnabled(False)
         self.load_outputs_button.setEnabled(False)
