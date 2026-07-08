@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from .config import AdapterConfig, DatasetOpenOptions, InspectionOptions
 from .dependency_check import EnvironmentReport, collect_environment_report
 from .exceptions import AdapterError, DatasetError, EnvironmentError, ProcessingError
+from .ept_subset import EptSubsetRequest, EptSubsetResult, ept_read_lidar_kwargs
 from .types import (
     Bounds3D,
     CanopyCoverRequest,
@@ -901,6 +902,69 @@ class PyForestScanAdapter:
             raise ProcessingError(f"Point-cloud preprocessing failed: {exc}") from exc
 
 
+    def extract_lidar_subset(self, request: EptSubsetRequest) -> EptSubsetResult:
+        """Extract an EPT subset and write it as LAS/LAZ through the active backend."""
+        output_path = Path(request.output_path)
+        _validate_las_output_path(output_path)
+        pbm_result = self._run_pbm_ept_subset_if_selected(request)
+        if pbm_result is not None:
+            return pbm_result
+        self._progress.start("Reading EPT subset")
+        self._log(LogLevel.INFO, "Starting EPT subset extraction", input=str(request.input_path), output=str(output_path))
+        try:
+            handlers = _import_required("pyforestscan.handlers", ProcessingError)
+            kwargs = {key: value for key, value in ept_read_lidar_kwargs(request).items() if value is not None}
+            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **kwargs)
+            if point_cloud is None:
+                raise ProcessingError("PyForestScan returned no point data for EPT subset extraction.")
+            self._progress.update(70, "EPT subset read")
+            handlers.write_las(point_cloud, str(output_path), srs=request.crs, compress=request.compress)
+            _validate_created_point_cloud_output(output_path)
+            point_count = _point_count_from_point_cloud(point_cloud)
+            message = f"EPT subset written to {output_path}"
+            self._progress.complete("EPT subset written")
+            self._log(LogLevel.INFO, "EPT subset extraction complete", output=str(output_path))
+            return EptSubsetResult(output_path=output_path, point_count=point_count, written=True, message=message)
+        except ProcessingError:
+            self._progress.fail("EPT subset extraction failed")
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            self._progress.fail("EPT subset extraction failed")
+            raise ProcessingError(f"EPT subset extraction failed: {exc}") from exc
+
+    def _run_pbm_ept_subset_if_selected(self, request: EptSubsetRequest) -> EptSubsetResult | None:
+        if self.execution_mode == EXECUTION_MODE_QGIS_PYTHON:
+            return None
+        service = self._backend_service()
+        try:
+            availability = service.can_execute_processing()
+        except Exception as exc:  # noqa: BLE001 - fall back in auto, fail in forced PBM.
+            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
+                raise ProcessingError(f"PBM backend is not available for EPT subset extraction: {exc}") from exc
+            return None
+        if not availability.ready:
+            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
+                raise ProcessingError(availability.message)
+            return None
+        self._progress.start("Running EPT subset extraction through PyForestScan Backend Manager")
+        self._log(LogLevel.INFO, "Running EPT subset through PBM backend", backend_python=str(availability.backend_python))
+        try:
+            backend_result = service.run_product("ept_subset_extract", request)
+        except Exception as exc:  # noqa: BLE001 - convert backend subprocess errors at adapter boundary.
+            self._progress.fail("PBM backend EPT subset extraction failed")
+            raise ProcessingError(f"PBM backend EPT subset extraction failed: {exc}") from exc
+        metrics = getattr(backend_result, "product_metrics", {}) or {}
+        outputs = getattr(backend_result, "outputs", {}) or {}
+        output_path = Path(metrics.get("output_path") or outputs.get("primary") or request.output_path)
+        point_count = metrics.get("point_count")
+        self._progress.complete("PBM backend EPT subset extraction complete")
+        return EptSubsetResult(
+            output_path=output_path,
+            point_count=int(point_count) if point_count is not None else None,
+            written=bool(metrics.get("written", True)),
+            message=str(metrics.get("message") or f"EPT subset written to {output_path}"),
+        )
+
     def selected_execution_backend(self) -> str:
         """Return the currently selected processing backend label."""
         if self._can_use_pbm_backend():
@@ -1296,6 +1360,17 @@ def _validate_output_path(output_path: Path) -> None:
             probe.unlink()
         except OSError:
             pass
+
+
+def _validate_created_point_cloud_output(output_path: Path) -> None:
+    """Require the PyForestScan LAS/LAZ writer to create a usable file."""
+    if not output_path.exists():
+        raise ProcessingError(f"Point-cloud output was not created: {output_path}")
+    try:
+        if output_path.stat().st_size <= 0:
+            raise ProcessingError(f"Point-cloud output is empty: {output_path}")
+    except OSError as exc:
+        raise ProcessingError(f"Point-cloud output could not be inspected: {output_path}") from exc
 
 
 def _validate_created_output(output_path: Path) -> None:

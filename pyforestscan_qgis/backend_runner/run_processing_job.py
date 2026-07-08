@@ -13,6 +13,7 @@ from .job_result import BackendJobResult
 from .job_spec import BackendJobSpec
 from pyforestscan_qgis.core.adapter import PyForestScanAdapter
 from pyforestscan_qgis.core.config import InspectionOptions
+from pyforestscan_qgis.core.ept_subset import EptSubsetRequest
 from pyforestscan_qgis.core.types import (
     CanopyCoverRequest,
     ChmRequest,
@@ -35,6 +36,7 @@ PRODUCT_REQUESTS = {
     "dtm": (DtmRequest, "generate_dtm"),
     "point_density": (PointDensityRequest, "create_point_density"),
     "voxel_stat": (VoxelStatRequest, "create_voxel_stat"),
+    "ept_subset_extract": (EptSubsetRequest, "extract_lidar_subset"),
 }
 
 

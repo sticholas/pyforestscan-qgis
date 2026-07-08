@@ -96,7 +96,7 @@ def build_job_spec_from_request(product: str, request: Any, run_folder: Path | N
     else:
         dtm_path = None
     request_fields = {field.name for field in fields(request)}
-    hag_options = {key: params[key] for key in ("use_dtm", "reproject", "bounds", "thin_radius", "crop_polygon") if key in request_fields}
+    hag_options = {key: params[key] for key in ("use_dtm", "hag", "hag_dtm", "dtm_path", "reproject", "bounds", "thin_radius", "crop_polygon", "crop_poly", "poly") if key in request_fields}
     version = getattr(__version__, "full_version", lambda: "unknown")() if __version__ is not None else "unknown"
     return BackendJobSpec(
         job_id=identifier,

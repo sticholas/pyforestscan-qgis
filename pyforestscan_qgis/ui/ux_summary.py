@@ -77,7 +77,7 @@ READINESS_MARKER_TOKENS: dict[str, tuple[str, str]] = {
 BUTTON_ROLE_EXAMPLES: dict[str, tuple[str, ...]] = {
     "primary": ("Continue", "Continue to Dataset", "Continue to Planning", "Continue to Processing", "Run Processing", "Run Batch", "Install Backend", "Analyze Dataset", "Build Plan"),
     "secondary": ("Open Batch", "Open Output Folder", "Load Outputs", "Preview Install Plan", "Open Report", "Add Footprint Layer", "Zoom to Footprint", "Resume Batch", "Retry Failed Files"),
-    "neutral": ("Check Environment", "Set Up Backend", "Refresh Environment", "Verify Backend", "Browse", "Select All", "Clear", "Verify QGIS Compatibility"),
+    "neutral": ("Check Environment", "Set Up Backend", "Refresh Environment", "Refresh Summary", "Refresh Dataset Page", "Refresh Plan State", "Refresh Processing State", "Refresh Results", "Verify Backend", "Browse", "Select All", "Clear", "Verify QGIS Compatibility"),
     "danger": ("Delete Workspace", "Clear Current Run", "Cancel Remaining", "Repair Backend", "Clear / Reset Current Workspace"),
 }
 

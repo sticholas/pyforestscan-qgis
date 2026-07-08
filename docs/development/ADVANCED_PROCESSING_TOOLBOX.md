@@ -21,6 +21,26 @@ Expert algorithms are grouped in QGIS as `Input / I/O`, `Preprocessing / Filters
 
 ## Algorithms
 
+### Extract EPT Subset
+
+Group: `PyForestScan / Input / I/O`.
+
+Parameters map directly to `pyforestscan.handlers.read_lidar(input_file, srs, bounds=None, thin_radius=None, hag=False, hag_dtm=False, dtm=None, crop_poly=False, poly=None, reproject=False)`, followed by `pyforestscan.handlers.write_las` to write `.las` or `.laz` output.
+
+Parameters:
+
+- `input_file` EPT `ept.json` source
+- `srs` / CRS
+- `bounds` as `xmin,xmax,ymin,ymax[,zmin,zmax]`
+- `thin_radius`
+- `hag` / `hag_dtm` with mutual exclusion
+- `dtm` for DTM-backed HAG
+- `crop_poly` and `poly` polygon WKT or polygon file
+- `reproject`
+- `output_las_laz`
+
+Adapter call: `extract_lidar_subset(EptSubsetRequest(...))`. The PBM backend job type is `ept_subset_extract` when PBM is READY; QGIS Python remains the fallback only when PBM is unavailable and dependencies are present.
+
 ## Coverage Notes
 
 Phase 20B added Generate DTM and Preprocess Point Cloud, and expanded HAG/Normalize with read-time bounds, thinning radius, and crop polygon options. Phase 20C added exact `calculate.py` parameter parity for Point Density and Voxel Statistic. Phase 20D added a full documentation/source inventory and closes safe filter-parameter gaps including full SMRF classification parameters, PointSourceId filtering, outlier `remove`, and HAG method `auto`. The full site inventory lives in `docs/api/PYFORESTSCAN_FULL_DOCS_INVENTORY.md`; the detailed parity matrix lives in `docs/api/PYFORESTSCAN_FUNCTION_PARAMETER_PARITY.md`.

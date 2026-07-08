@@ -75,6 +75,10 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertEqual(button_role_for_label("Build Plan"), "primary")
         self.assertEqual(button_role_for_label("Open Output Folder"), "secondary")
         self.assertEqual(button_role_for_label("Refresh Environment"), "neutral")
+        self.assertEqual(button_role_for_label("Refresh Dataset Page"), "neutral")
+        self.assertEqual(button_role_for_label("Refresh Plan State"), "neutral")
+        self.assertEqual(button_role_for_label("Refresh Processing State"), "neutral")
+        self.assertEqual(button_role_for_label("Refresh Results"), "neutral")
         self.assertEqual(button_role_for_label("Clear Current Run"), "danger")
 
 
@@ -323,6 +327,20 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn("def set_next_step", source)
         self.assertIn("workflowStepIndicator", source)
 
+
+    def test_refresh_controls_are_available_for_ui_recovery(self) -> None:
+        source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
+        controller = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text(encoding="utf-8")
+
+        for label in ("Refresh Summary", "Refresh Dataset Page", "Refresh Plan State", "Refresh Processing State", "Refresh Results"):
+            self.assertIn(label, source)
+        self.assertIn("refreshSummaryRequested.connect(self._refresh_summary_from_home)", controller)
+        self.assertIn("def refresh_dataset_page(self) -> None:", source)
+        self.assertIn("def refresh_plan_state(self) -> None:", source)
+        self.assertIn("def refresh_processing_state(self) -> None:", source)
+        self.assertIn("def refresh_results(self) -> None:", source)
+        self.assertIn("self.browse_dataset_button.setEnabled(True)", source)
+        self.assertIn("finally:\n            self.analyze_button.setEnabled(True)\n            self.browse_dataset_button.setEnabled(True)", source)
 
 if __name__ == "__main__":
     unittest.main()

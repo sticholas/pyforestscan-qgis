@@ -176,6 +176,7 @@ class MissionControlDock(QDockWidget):
         self.ui.navigationList.currentRowChanged.connect(lambda _row: self._refresh_guided_workflow())
         self.home_page.continueWorkflowRequested.connect(self._continue_guided_workflow)
         self.home_page.checkEnvironmentRequested.connect(self._open_environment_and_refresh)
+        self.home_page.refreshSummaryRequested.connect(self._refresh_summary_from_home)
         self.home_page.continueLastRequested.connect(self._continue_last_workspace)
         self.environment_page.backendSettingsRequested.connect(lambda: self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Settings")))
         self.workspace_page.continueLastRequested.connect(self._continue_last_workspace)
@@ -253,6 +254,12 @@ class MissionControlDock(QDockWidget):
         """Open Environment and immediately refresh readiness."""
         self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Environment"))
         self.environment_page.refresh()
+
+    def _refresh_summary_from_home(self) -> None:
+        """Refresh Home summaries without changing workflow state."""
+        self._refresh_home()
+        self._update_status_bar()
+        self._notify("Mission Control summary refreshed.", "info")
 
     def _notify(self, message: str, level: str = "info") -> None:
         """Show a lightweight QGIS message bar notification when available."""

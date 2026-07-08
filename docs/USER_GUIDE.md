@@ -10,7 +10,7 @@ workflows:
 - Home: compact workflow dashboard with backend status, environment status, current dataset or batch context, last output folder, and Open Dataset / Start Batch / Continue Previous Session actions.
 - Workspace: continue the last workspace, start a new workspace, reopen recent workspaces, view status/runs/timeline/outputs, edit notes, and reset workspace progress.
 - Environment: refresh execution readiness, see PBM backend status first, and expand QGIS Python fallback or technical dependency details only when needed.
-- Dataset: select a lidar dataset and output folder, use Analyze Dataset, then review dataset summary and footprint details.
+- Dataset: select a lidar dataset and output folder, use Analyze Dataset, refresh stale page state when needed, optionally extract an EPT subset, then review dataset summary and footprint details.
 - Planning: build a product plan from the active Dataset Explorer result.
 - Processing: run implemented product jobs from the active Product Planner result with the active execution backend shown up front.
 - Batch: follow the three-step Discover Files, Preflight, and Run Batch flow. Parallel Safe and retry tuning remain available under Advanced Batch Options.
@@ -67,6 +67,8 @@ Expert users can run PyForestScan tools from QGIS Processing Toolbox under the `
 Toolbox raster outputs use the same loading/styling rules as Mission Control: CHM, Canopy Cover, PAI, and FHD load as grayscale when possible, while PAD loads as the documented RGB 5/3/2 composite when enough bands exist. Rumple writes a CSV summary because PyForestScan returns a scalar value.
 
 The HAG/Normalize tool reads lidar with PyForestScan HAG support and can optionally write LAS/LAZ through PyForestScan `write_las`. It also exposes expert read options such as bounds, thinning radius, and crop polygon/WKT. It does not invent unsupported normalized output formats.
+
+Extract EPT Subset appears under `PyForestScan / Input / I/O` and on the Dataset page. It reads an EPT `ept.json` source with optional bounds, polygon crop, thinning, reprojection, and HAG settings, then writes a user-controlled `.las` or `.laz` subset. See [EPT Subset Extraction](scientific/ept-subset-extraction.md).
 
 Generate DTM creates a GeoTIFF from ground-classified points. Point Density writes a single-band GeoTIFF from `calculate_point_density` with explicit `per_area` and optional `cell_area` controls. Voxel Statistic writes a single-band GeoTIFF from `calculate_voxel_stat` with exact `dimension`, `stat`, and optional `z_index_range` controls. Preprocess Point Cloud writes LAS/LAZ after selected PyForestScan filter steps such as outlier cleaning, full SMRF ground classification, ground filtering, PointSourceId filtering, HAG, HAG range filtering, Poisson thinning, and voxel-grid downsampling.
 

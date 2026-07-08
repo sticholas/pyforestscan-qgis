@@ -7,6 +7,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ## Unreleased
 
+- Phase 27C adds UI recovery refresh controls for Home, Dataset, Planning, Processing, and Results, plus EPT subset extraction through Mission Control Dataset and Advanced Toolbox Input / I/O with PBM job routing, strict read_lidar option validation, and QGIS-free regression tests without changing PBM installer behavior, scientific calculations, external workers, or existing LAS/LAZ/COPC workflows.
 - Phase 27B records RC1 QA evidence for the current artifact, adds the RC1 QA results and blocker ledger, marks clean Windows/QGIS manual QA as the remaining RC1 gate, and preserves release focus without changing PBM, processing, scientific calculations, Advanced Toolbox, or External Worker behavior.
 - Phase 27A starts formal release-candidate management by adding the release roadmap, RC1 checklist, RC1 manual QA script, release triage policy, documentation links, and release-doc regression coverage without adding features or changing processing, PBM, Advanced Toolbox, scientific calculations, or External Worker behavior.
 - Phase 26C adds intelligent current-session awareness to Mission Control with one shared Project Summary model for dataset/workspace/output/backend/environment state, generated versus loaded product tracking, smarter Home/Workspace/Processing/Results summaries, and automatic stale-state clearing when the active dataset or run changes without adding persistence, PBM changes, processing changes, Advanced Toolbox changes, or external workers.

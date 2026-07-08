@@ -12,6 +12,7 @@ This documentation is organized for users, scientists, developers, maintainers, 
 ## User Documentation
 
 - [User Guide](user-guide/README.md)
+- [Dataset Page](user-guide/dataset.md)
 - [Mission Control](ui/MISSION_CONTROL.md)
 - [Screen Flow](ui/SCREEN_FLOW.md)
 - [Run Folder Workflow](ui/USER_WORKFLOW.md)
@@ -20,6 +21,7 @@ This documentation is organized for users, scientists, developers, maintainers, 
 ## Scientific Methods
 
 - [Scientific Methods Index](scientific-methods/README.md)
+- [EPT Subset Extraction](scientific/ept-subset-extraction.md)
 - [Canopy Height Model](scientific-methods/CHM.md)
 - [Plant Area Density](scientific-methods/PAD.md)
 - [Plant Area Index](scientific-methods/PAI.md)

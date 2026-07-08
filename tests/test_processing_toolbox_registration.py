@@ -15,6 +15,7 @@ class ProcessingToolboxRegistrationTests(unittest.TestCase):
         provider = (ROOT / "pyforestscan_qgis/processing_provider.py").read_text(encoding="utf-8")
 
         self.assertIn("self.addAlgorithm(EnvironmentCheckAlgorithm())", provider)
+        self.assertIn("self.addAlgorithm(EptSubsetExtractAlgorithm())", provider)
         self.assertNotIn("self.addAlgorithm(DatasetExplorerAlgorithm())", provider)
         self.assertNotIn("self.addAlgorithm(ProductPlannerAlgorithm())", provider)
         self.assertNotIn("self.addAlgorithm(ForestMetricsPackAlgorithm())", provider)
@@ -62,6 +63,7 @@ class ProcessingToolboxRegistrationTests(unittest.TestCase):
             "Generate DTM",
             "Normalize Heights",
             "Preprocess Point Cloud",
+            "Extract EPT Subset",
         ):
             self.assertIn(f'return self.tr("{expected_name}")', combined)
 
@@ -84,6 +86,8 @@ class ProcessingToolboxRegistrationTests(unittest.TestCase):
             "SMRF cell",
             "voxel downsample cell",
             "HAG method",
+            "input_file (EPT ept.json)",
+            "output_las_laz",
             "resolution (map units)",
             "nodata",
         ):

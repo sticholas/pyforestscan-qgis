@@ -61,7 +61,8 @@ from ..core.dataset_report import (
     write_json_report,
 )
 from ..core.dependency_check import CheckStatus, EnvironmentReport
-from ..core.exceptions import AdapterError
+from ..core.exceptions import AdapterError, ProcessingError
+from ..core.ept_subset import build_ept_subset_request, compact_ept_subset_summary
 from ..core.job_manager import JobExecutionError, JobManager
 from ..core.knowledge import RecommendationReport
 from ..core.jobs import JobRecord, JobStatus
@@ -199,6 +200,7 @@ class HomePage(MissionPage):
     continueLastRequested = pyqtSignal()
     continueWorkflowRequested = pyqtSignal()
     checkEnvironmentRequested = pyqtSignal()
+    refreshSummaryRequested = pyqtSignal()
 
     def __init__(self, plugin_version: str, parent: QWidget | None = None) -> None:
         """Create the home dashboard."""
@@ -233,8 +235,13 @@ class HomePage(MissionPage):
         self.check_environment_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
         self.check_environment_button.clicked.connect(self.checkEnvironmentRequested.emit)
         _apply_button_role(self.check_environment_button, "neutral")
+        self.refresh_summary_button = QPushButton("Refresh Summary")
+        self.refresh_summary_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
+        self.refresh_summary_button.clicked.connect(self.refreshSummaryRequested.emit)
+        _apply_button_role(self.refresh_summary_button, "neutral")
         actions.addWidget(self.continue_button)
         actions.addWidget(self.check_environment_button)
+        actions.addWidget(self.refresh_summary_button)
         actions.addStretch(1)
         dashboard.addLayout(actions)
 
@@ -618,10 +625,18 @@ class DatasetPage(MissionPage):
         output_row.addWidget(output_browse)
         picker.addLayout(output_row)
 
+        dataset_actions = QHBoxLayout()
+        dataset_actions.setSpacing(ACTION_ROW_SPACING)
         self.analyze_button = QPushButton(primary_action_label("dataset"))
         self.analyze_button.clicked.connect(self.run_explorer)
         _apply_button_role(self.analyze_button, "primary")
-        picker.addWidget(self.analyze_button)
+        self.dataset_refresh_button = QPushButton("Refresh Dataset Page")
+        self.dataset_refresh_button.clicked.connect(self.refresh_dataset_page)
+        _apply_button_role(self.dataset_refresh_button, "neutral")
+        dataset_actions.addWidget(self.analyze_button)
+        dataset_actions.addWidget(self.dataset_refresh_button)
+        dataset_actions.addStretch(1)
+        picker.addLayout(dataset_actions)
 
         summary = self.add_section("Dataset Summary")
         self.summary_section = summary.parentWidget()
@@ -633,6 +648,65 @@ class DatasetPage(MissionPage):
         self.dataset_technical_text = _details_label("Dataset technical metadata appears after analysis.")
         metadata.addWidget(self.dataset_technical_text)
         _wire_collapsible_group(metadata_group)
+
+        ept_group, ept_layout = _collapsible_section(self.content_layout, "EPT Subset", checked=False)
+        ept_layout.addWidget(_body_label("Extract a bounded EPT subset to LAS/LAZ, then use it as the current dataset."))
+        ept_form = QFormLayout()
+        ept_form.setVerticalSpacing(SECTION_SPACING)
+        self.ept_srs_edit = QLineEdit("EPSG:4326")
+        self.ept_bounds_edit = QLineEdit()
+        self.ept_bounds_edit.setPlaceholderText("xmin,xmax,ymin,ymax[,zmin,zmax]")
+        self.ept_thin_radius_spin = QDoubleSpinBox()
+        self.ept_thin_radius_spin.setDecimals(3)
+        self.ept_thin_radius_spin.setMinimum(0.0)
+        self.ept_thin_radius_spin.setSpecialValueText("None")
+        self.ept_hag_combo = QComboBox()
+        self.ept_hag_combo.addItems(("None", "Delaunay HAG", "DTM-backed HAG"))
+        self.ept_dtm_edit = QLineEdit()
+        self.ept_dtm_edit.setPlaceholderText("Required only for DTM-backed HAG")
+        dtm_row = QHBoxLayout()
+        dtm_browse = QPushButton("Browse")
+        dtm_browse.clicked.connect(self.browse_ept_dtm)
+        dtm_row.addWidget(self.ept_dtm_edit, 1)
+        dtm_row.addWidget(dtm_browse, 0)
+        self.ept_crop_check = QCheckBox("Crop with polygon")
+        self.ept_poly_edit = QLineEdit()
+        self.ept_poly_edit.setPlaceholderText("Polygon WKT or polygon file path")
+        self.ept_reproject_check = QCheckBox("Reproject while reading")
+        self.ept_output_edit = QLineEdit()
+        self.ept_output_edit.setPlaceholderText("outputs/ept_subset.laz")
+        output_path_row = QHBoxLayout()
+        output_browse = QPushButton("Browse")
+        output_browse.clicked.connect(self.browse_ept_output)
+        output_path_row.addWidget(self.ept_output_edit, 1)
+        output_path_row.addWidget(output_browse, 0)
+        ept_form.addRow("SRS / CRS", self.ept_srs_edit)
+        ept_form.addRow("Bounds", self.ept_bounds_edit)
+        ept_form.addRow("Thin radius", self.ept_thin_radius_spin)
+        ept_form.addRow("HAG method", self.ept_hag_combo)
+        ept_form.addRow("DTM", dtm_row)
+        ept_form.addRow("Crop", self.ept_crop_check)
+        ept_form.addRow("Polygon", self.ept_poly_edit)
+        ept_form.addRow("Reproject", self.ept_reproject_check)
+        ept_form.addRow("Output LAS/LAZ", output_path_row)
+        ept_layout.addLayout(ept_form)
+        ept_actions = QHBoxLayout()
+        ept_actions.setSpacing(ACTION_ROW_SPACING)
+        self.ept_extract_button = QPushButton("Extract Subset")
+        self.ept_extract_button.clicked.connect(self.extract_ept_subset)
+        _apply_button_role(self.ept_extract_button, "primary")
+        self.ept_use_output_button = QPushButton("Use Extracted Subset as Dataset")
+        self.ept_use_output_button.clicked.connect(self.use_extracted_subset_as_dataset)
+        self.ept_use_output_button.setEnabled(False)
+        _apply_button_role(self.ept_use_output_button, "secondary")
+        ept_actions.addWidget(self.ept_extract_button)
+        ept_actions.addWidget(self.ept_use_output_button)
+        ept_actions.addStretch(1)
+        ept_layout.addLayout(ept_actions)
+        self.ept_message_label = _details_label("Select an ept.json source to enable subset extraction.")
+        ept_layout.addWidget(self.ept_message_label)
+        self.ept_subset_output_path: Path | None = None
+        _wire_collapsible_group(ept_group)
 
         spatial = self.add_section("Spatial Preview")
         self.spatial_section = spatial.parentWidget()
@@ -687,6 +761,97 @@ class DatasetPage(MissionPage):
         if path:
             self.output_folder_edit.setText(path)
 
+    def browse_ept_dtm(self) -> None:
+        """Choose a DTM raster for DTM-backed EPT HAG."""
+        path, _ = QFileDialog.getOpenFileName(self, "Choose DTM GeoTIFF", "", "GeoTIFF files (*.tif *.tiff);;All files (*.*)")
+        if path:
+            self.ept_dtm_edit.setText(path)
+
+    def browse_ept_output(self) -> None:
+        """Choose the LAS/LAZ output path for an extracted EPT subset."""
+        path, _ = QFileDialog.getSaveFileName(self, "Choose EPT subset output", str(self._default_ept_output_path()), "LAS/LAZ files (*.las *.laz);;All files (*.*)")
+        if path:
+            self.ept_output_edit.setText(path)
+
+    def refresh_dataset_page(self) -> None:
+        """Recover Dataset page button states without deleting outputs or backend state."""
+        has_dataset = bool(self.dataset_path_edit.text().strip())
+        self.browse_dataset_button.setEnabled(True)
+        self.browse_dataset_button.setText("Change Dataset" if has_dataset else "Select Dataset")
+        _apply_button_role(self.browse_dataset_button, "secondary" if has_dataset else "neutral")
+        self.analyze_button.setEnabled(True)
+        self.ept_extract_button.setEnabled(True)
+        self.ept_use_output_button.setEnabled(self.ept_subset_output_path is not None)
+        self._set_ept_message("Dataset page refreshed. EPT subset extraction is available for ept.json sources.")
+        if not self.summary_text.text().strip():
+            self._set_dataset_message(empty_state_message("dataset"))
+
+    def extract_ept_subset(self) -> None:
+        """Extract the selected EPT subset and offer it as the active dataset."""
+        source = self.dataset_path_edit.text().strip()
+        if not source:
+            self._set_ept_message("Select an ept.json source before extracting a subset.")
+            return
+        output = self.ept_output_edit.text().strip() or str(self._default_ept_output_path())
+        self.ept_output_edit.setText(output)
+        method = self.ept_hag_combo.currentText().lower()
+        thin_radius = self.ept_thin_radius_spin.value() if self.ept_thin_radius_spin.value() > 0 else None
+        try:
+            request = build_ept_subset_request(
+                input_path=source,
+                crs=self.ept_srs_edit.text(),
+                output_path=output,
+                bounds_text=self.ept_bounds_edit.text(),
+                thin_radius=thin_radius,
+                hag=method.startswith("delaunay"),
+                hag_dtm=method.startswith("dtm"),
+                dtm_path=self.ept_dtm_edit.text().strip() or None,
+                crop_poly=self.ept_crop_check.isChecked(),
+                poly=self.ept_poly_edit.text(),
+                reproject=self.ept_reproject_check.isChecked(),
+            )
+        except ProcessingError as exc:
+            self._set_ept_message(str(exc))
+            return
+        self.ept_extract_button.setEnabled(False)
+        self._set_ept_message("Extracting EPT subset...")
+        QApplication.processEvents()
+        try:
+            result = self.adapter.extract_lidar_subset(request)
+        except (AdapterError, ProcessingError) as exc:
+            self._set_ept_message(f"EPT subset extraction failed.\n{exc}")
+            return
+        finally:
+            self.ept_extract_button.setEnabled(True)
+        self.ept_subset_output_path = result.output_path
+        self.ept_use_output_button.setEnabled(True)
+        self._set_ept_message(compact_ept_subset_summary(result) + "\nNext: use the extracted subset as the current dataset or load it in QGIS.")
+
+    def use_extracted_subset_as_dataset(self) -> None:
+        """Switch the Dataset page to the extracted LAS/LAZ subset."""
+        if self.ept_subset_output_path is None:
+            self._set_ept_message("Extract an EPT subset before using it as the dataset.")
+            return
+        self.dataset_path_edit.setText(str(self.ept_subset_output_path))
+        self.browse_dataset_button.setText("Change Dataset")
+        _apply_button_role(self.browse_dataset_button, "secondary")
+        self.analyze_button.setText("Analyze Dataset")
+        self._reset_dataset_outputs()
+        self.datasetSelectionChanged.emit(str(self.ept_subset_output_path))
+        self._set_dataset_message("Extracted subset selected. Click Analyze Dataset to inspect it.")
+
+    def _default_ept_output_path(self) -> Path:
+        if self.active_run is not None:
+            return self.active_run.outputs_dir / "ept_subset.laz"
+        output_root = self.output_folder_edit.text().strip()
+        if output_root:
+            return Path(output_root) / "ept_subset.laz"
+        source = self.dataset_path_edit.text().strip()
+        return Path(source).parent / "ept_subset.laz" if source else Path("ept_subset.laz")
+
+    def _set_ept_message(self, message: str) -> None:
+        self.ept_message_label.setText(message)
+
     def run_explorer(self) -> None:
         """Run adapter-backed dataset inspection and write internal reports."""
         path = self.dataset_path_edit.text().strip()
@@ -714,6 +879,9 @@ class DatasetPage(MissionPage):
         except OSError as exc:
             self._set_dataset_message(f"Dataset reports could not be written.\n{exc}")
             return
+        finally:
+            self.analyze_button.setEnabled(True)
+            self.browse_dataset_button.setEnabled(True)
         self.active_run = context
         self.set_report(report, context)
         self.set_footprint_preview(report, path, context)
@@ -755,6 +923,7 @@ class DatasetPage(MissionPage):
         self.add_footprint_button.setEnabled(False)
         self.zoom_footprint_button.setEnabled(False)
         self.open_report_button.setEnabled(False)
+        self.ept_use_output_button.setEnabled(self.ept_subset_output_path is not None)
 
     def set_footprint_preview(self, report: DatasetExplorerReport, dataset_path: str, context: RunContext | None = None) -> None:
         """Display a footprint preview built from Dataset Explorer bounds."""
@@ -1180,12 +1349,20 @@ class PlanningPage(MissionPage):
         _wire_collapsible_group(product_params_group)
 
         summary = self.add_section("Plan Summary")
+        plan_actions = QHBoxLayout()
+        plan_actions.setSpacing(ACTION_ROW_SPACING)
         self.build_plan_button = QPushButton("Build Plan")
         self.build_plan_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.build_plan_button.clicked.connect(self.build_plan)
         _apply_button_role(self.build_plan_button, "primary")
         self.build_plan_button.setEnabled(False)
-        summary.addWidget(self.build_plan_button)
+        self.refresh_plan_button = QPushButton("Refresh Plan State")
+        self.refresh_plan_button.clicked.connect(self.refresh_plan_state)
+        _apply_button_role(self.refresh_plan_button, "neutral")
+        plan_actions.addWidget(self.build_plan_button)
+        plan_actions.addWidget(self.refresh_plan_button)
+        plan_actions.addStretch(1)
+        summary.addLayout(plan_actions)
         self.plan_text = QTextEdit()
         self.plan_text.setReadOnly(True)
         self.plan_text.setMinimumHeight(COMPACT_LIST_HEIGHT)
@@ -1197,6 +1374,15 @@ class PlanningPage(MissionPage):
         """Set all product checkboxes to a common state."""
         for check in self.product_checks.values():
             check.setChecked(checked)
+
+    def refresh_plan_state(self) -> None:
+        """Recover Planning page controls from the current dataset/run state."""
+        ready = self.dataset_report is not None
+        self.build_plan_button.setEnabled(ready)
+        if ready:
+            self.plan_text.setPlainText("Plan state refreshed. Choose products and build or rebuild the plan.")
+        else:
+            self.plan_text.setPlainText("Plan state refreshed. Run Dataset Explorer before building a product plan.")
 
     def set_dataset_report(self, report: DatasetExplorerReport, context: RunContext | None = None) -> None:
         """Store latest Dataset Explorer report and run context for planning."""
@@ -1364,8 +1550,12 @@ class ProcessingPage(MissionPage):
         self.cancel_button.clicked.connect(self.cancel_current_job)
         _apply_button_role(self.cancel_button, "danger")
         self.cancel_button.setEnabled(False)
+        self.refresh_processing_button = QPushButton("Refresh Processing State")
+        self.refresh_processing_button.clicked.connect(self.refresh_processing_state)
+        _apply_button_role(self.refresh_processing_button, "neutral")
         button_row.addWidget(self.start_button)
         button_row.addWidget(self.cancel_button)
+        button_row.addWidget(self.refresh_processing_button)
         button_row.addStretch(1)
         overview.addLayout(button_row)
 
@@ -1407,6 +1597,17 @@ class ProcessingPage(MissionPage):
         self.log_text.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)
         technical.addWidget(self.log_text)
         _wire_collapsible_group(technical_group)
+
+    def refresh_processing_state(self) -> None:
+        """Recover Processing controls from the current run context and job state."""
+        self._refresh_plan_summary()
+        job = self.job_manager.get_job(self.current_job_id) if self.current_job_id else None
+        running = job is not None and job.status in {JobStatus.PENDING, JobStatus.VALIDATING, JobStatus.RUNNING, JobStatus.CANCELLING}
+        self.start_button.setEnabled(not running)
+        self.cancel_button.setEnabled(bool(running))
+        if not running and self.processing_stage_label.text().strip() == "Stage: Not started":
+            self.processing_stage_label.setText("Stage: Ready when a Product Plan is available")
+        self.log_text.setPlainText((self.log_text.toPlainText().strip() + "\n" if self.log_text.toPlainText().strip() else "") + "Processing state refreshed.")
 
     def set_run_context(self, context: RunContext | None) -> None:
         """Use the active Mission Control run context."""
@@ -2216,12 +2417,16 @@ class ResultsPage(MissionPage):
         self.load_outputs_button.setToolTip("Load GeoTIFF and CSV outputs into the current QGIS project.")
         self.load_outputs_button.clicked.connect(self.load_outputs_to_qgis)
         _apply_button_role(self.load_outputs_button, "secondary")
+        self.refresh_results_button = QPushButton("Refresh Results")
+        self.refresh_results_button.clicked.connect(self.refresh_results)
+        _apply_button_role(self.refresh_results_button, "neutral")
         self.clear_current_run_button = QPushButton("Clear Current Run")
         self.clear_current_run_button.setEnabled(False)
         self.clear_current_run_button.clicked.connect(self.clear_current_run)
         _apply_button_role(self.clear_current_run_button, "danger")
         button_row.addWidget(self.open_output_folder_button)
         button_row.addWidget(self.load_outputs_button)
+        button_row.addWidget(self.refresh_results_button)
         button_row.addWidget(self.clear_current_run_button)
         button_row.addStretch(1)
         links.addLayout(button_row)
@@ -2270,6 +2475,18 @@ class ResultsPage(MissionPage):
     def loaded_output_paths(self) -> tuple[Path, ...]:
         """Return outputs loaded through the Results page in this session."""
         return tuple(self._loaded_output_paths)
+
+    def refresh_results(self) -> None:
+        """Refresh Results button states from current paths without clearing outputs."""
+        candidates = self._candidate_output_paths()
+        loadable = collect_loadable_outputs(tuple(path for path in candidates if path.exists() and path.is_file()), self._job_result_types)
+        has_paths = bool(candidates)
+        self.friendly_links.setVisible(bool(self._friendly_paths))
+        self.results_empty_label.setVisible(not self._friendly_paths)
+        self.open_output_folder_button.setEnabled(self._current_output_folder is not None and self._current_output_folder.exists())
+        self.load_outputs_button.setEnabled(bool(loadable))
+        self.clear_current_run_button.setEnabled(has_paths or self._current_output_folder is not None)
+        self._set_load_message("Results refreshed." if has_paths else "Results refreshed. No current outputs found.")
 
     def set_run_context(self, context: RunContext | None) -> None:
         """Display friendly run links for the active context."""
