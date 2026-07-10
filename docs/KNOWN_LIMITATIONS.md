@@ -8,7 +8,7 @@ This document records current limitations for the internal release candidate. It
 - CHM, Canopy Cover, PAD, PAI, FHD, and Rumple summary are implemented for single datasets, but outputs still require visual QA in QGIS before interpretation.
 - PAD is an authoritative multi-band height-bin volume. Mission Control displays a representative grayscale height slice by default; single-band PAD derivatives and RGB composites are visualizations, not replacements for the full PAD volume.
 - Rumple currently writes a CSV summary rather than a raster layer.
-- Polygon Area Processing now lives in Batch and can preflight a LiDAR folder, stage clipped point inputs, and run routed products through the standard Batch executor. Local LAS/LAZ/COPC files with unknown bounds are skipped until metadata inventory can prove intersection; exact raster masking to NoData outside the polygon, mosaicking, cataloging, folder monitoring, and project files remain deferred.
+- Polygon Area Processing now lives in Batch and uses a persistent SQLite/RTree LiDAR catalog for fast polygon source selection. Catalog building reads headers/metadata only and records failures explicitly. Local LAS/LAZ/COPC CRS extraction remains limited until PBM/PDAL metadata inspection is wired into the catalog worker. Raster masking outside the exact polygon is best-effort when rasterio/shapely are available; mosaicking, folder monitoring, and project files remain deferred.
 
 ## Batch Processing
 

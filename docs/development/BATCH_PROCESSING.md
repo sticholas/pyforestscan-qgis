@@ -21,7 +21,7 @@ Implemented:
 - Optional output loading into QGIS, disabled by default for batch safety.
 - Result filtering for all, completed, failed, and skipped files.
 - Summary counts for total files, completed, failed, skipped, output count, and observed output storage.
-- Polygon Area Processing mode with LiDAR folder discovery, polygon source selection, preflight, clipped-source staging, and standard Batch executor handoff.
+- Polygon Area Processing mode with LiDAR catalog build/update, indexed catalog query, polygon source selection, clipped-source staging, raster mask handoff, and standard Batch executor handoff.
 
 Not implemented yet:
 
@@ -61,11 +61,11 @@ The batch runner does not call PyForestScan directly. It creates normal per-data
 Batch has two user-facing modes:
 
 - **Standard File Batch**: the default workflow. It discovers supported lidar files, lets users select files, runs shared products/settings for each selected dataset, and writes normal batch summaries.
-- **Polygon Area Processing**: the polygon-driven workflow. It accepts a LiDAR folder plus a polygon source from selected QGIS features, a full QGIS polygon layer, a vector file, or Advanced WKT. Preflight selects sources whose known bounds intersect the polygon, writes `polygon_batch_manifest.json`, stages clipped LAZ sources, then runs the standard Batch executor against the staged inputs.
+- **Polygon Area Processing**: the polygon-driven workflow. It accepts a LiDAR repository/catalog plus a polygon source from selected QGIS features, a full QGIS polygon layer, a vector file, or Advanced WKT. Preflight queries the catalog for sources whose indexed bounds intersect the polygon envelope, writes `polygon_batch_manifest.json`, stages clipped LAZ sources, masks generated rasters outside the exact polygon where supported, then runs the standard Batch executor against the staged inputs.
 
 Polygon Area Processing deliberately lives in Batch rather than Dataset because it is a multi-source workflow. Dataset remains the single-dataset inspection and planning entry point.
 
-Current polygon execution clips point inputs before product generation. Dedicated raster masking to NoData outside the polygon and local LAS/LAZ/COPC metadata-bound extraction remain future improvements.
+Current polygon execution clips point inputs before product generation and applies best-effort raster masking after generation. PBM/PDAL-backed catalog CRS extraction and richer metadata retry tooling remain future improvements.
 
 ## Output Layout
 

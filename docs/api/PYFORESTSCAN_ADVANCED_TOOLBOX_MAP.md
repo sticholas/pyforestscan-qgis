@@ -55,5 +55,5 @@ Algorithm classes never import PyForestScan directly. They parse QGIS parameters
 | Group | Tool | Purpose | Status |
 | --- | --- | --- | --- |
 | `PyForestScan / Metrics` | PAD Derivative Raster | Derive a single-band height slice, maximum, mean, or integrated PAD visualization from the full multiband PAD volume. | Implemented |
-| `Mission Control / Batch` | Polygon Area Processing | Discover LiDAR folder sources, select polygon sources, preflight intersections, stage clipped inputs, and hand off to standard Batch execution. | Implemented with clipped-source staging; exact raster mask and unknown local bounds remain limited |
+| `Mission Control / Batch` | Polygon Area Processing | Build/query an indexed LiDAR catalog, select polygon sources, preflight intersections, stage clipped inputs, mask supported rasters, and hand off to standard Batch execution. | Implemented with SQLite/RTree catalog; PBM/PDAL CRS metadata enrichment remains limited |
 | `PyForestScan / Metrics` | Localized Rumple Raster | Windowed Rumple extension from CHM. | Math core implemented; QGIS raster execution deferred |

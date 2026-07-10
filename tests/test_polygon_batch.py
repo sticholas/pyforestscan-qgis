@@ -9,6 +9,7 @@ from pathlib import Path
 
 from pyforestscan_qgis.core.batch import BatchProductSettings
 from pyforestscan_qgis.core.batch import BatchResult
+from pyforestscan_qgis.core.lidar_catalog_builder import build_lidar_catalog
 from pyforestscan_qgis.core.polygon_batch import (
     POLYGON_MANIFEST_NAME,
     PolygonBatchRequest,
@@ -37,10 +38,11 @@ class PolygonBatchPreflightTests(unittest.TestCase):
             (root / "a" / "ept.json").write_text(json.dumps({"bounds": [0, 0, 0, 5, 5, 5], "srs": {"authority": "EPSG:32610"}, "points": 100}), encoding="utf-8")
             (root / "b" ).mkdir()
             (root / "b" / "ept.json").write_text(json.dumps({"bounds": [10, 10, 0, 15, 15, 5], "srs": {"authority": "EPSG:32610"}, "points": 200}), encoding="utf-8")
+            build_lidar_catalog(root)
             report = run_polygon_batch_preflight(self._request(root))
 
         self.assertTrue(report.ready)
-        self.assertEqual(len(report.inventory.sources), 2)
+        self.assertEqual(len(report.inventory.sources), 1)
         self.assertEqual(len(report.selected_sources), 1)
         self.assertEqual(report.estimated_point_count, 100)
         self.assertIn("a/ept.json", str(selected_source_paths(report)[0]))
@@ -50,24 +52,27 @@ class PolygonBatchPreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "ept.json").write_text(json.dumps({"bounds": [10, 10, 0, 15, 15, 5], "points": 100}), encoding="utf-8")
+            build_lidar_catalog(root)
             report = run_polygon_batch_preflight(self._request(root))
 
         self.assertFalse(report.ready)
-        self.assertTrue(any("No discovered LiDAR sources intersect" in item for item in report.blockers))
+        self.assertTrue(any("No cataloged LiDAR sources intersect" in item for item in report.blockers))
 
     def test_unknown_bounds_warn_and_are_not_selected(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "tile.laz").write_text("", encoding="utf-8")
+            build_lidar_catalog(root)
             report = run_polygon_batch_preflight(self._request(root))
 
         self.assertEqual(len(report.selected_sources), 0)
-        self.assertTrue(any("unknown bounds" in warning for warning in report.warnings))
+        self.assertTrue(any("metadata errors" in warning for warning in report.warnings))
 
     def test_polygon_manifest_records_polygon_and_source_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "ept.json").write_text(json.dumps({"bounds": [0, 0, 0, 5, 5, 5], "points": 100}), encoding="utf-8")
+            build_lidar_catalog(root)
             report = run_polygon_batch_preflight(self._request(root))
             path = write_polygon_batch_manifest(report)
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -93,6 +98,7 @@ class PolygonBatchPreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "ept.json").write_text(json.dumps({"bounds": [0, 0, 0, 5, 5, 5], "points": 100}), encoding="utf-8")
+            build_lidar_catalog(root)
             report = run_polygon_batch_preflight(self._request(root))
             fake_adapter = FakeAdapter()
             fake_executor = FakeExecutor()
@@ -121,7 +127,8 @@ class PolygonBatchUiStaticTests(unittest.TestCase):
         self.assertIn("Standard File Batch", batch_source)
         self.assertIn("Polygon Area Processing", batch_source)
         self.assertIn("Refresh Polygon Layers", batch_source)
-        self.assertIn("Refresh LiDAR Folder", batch_source)
+        self.assertIn("Refresh Catalog Status", batch_source)
+        self.assertIn("Build Catalog", batch_source)
         self.assertIn("Run Polygon Batch", batch_source)
         self.assertIn("_build_polygon_batch_request", batch_source)
 

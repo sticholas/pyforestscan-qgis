@@ -4,7 +4,7 @@ Phase 27F moves polygon-driven LiDAR folder processing into **Mission Control > 
 
 ## Guided Inputs
 
-- LiDAR folder containing LAS, LAZ, COPC, COPC LAZ, or local `ept.json` sources.
+- LiDAR repository/catalog containing LAS, LAZ, COPC, COPC LAZ, or local `ept.json` sources.
 - Polygon source:
   - selected features from a loaded QGIS polygon layer;
   - an entire loaded QGIS polygon layer;
@@ -22,7 +22,7 @@ WKT remains available under **Advanced WKT** for troubleshooting and reproducibl
 Mission Control > Batch has two modes:
 
 - **Standard File Batch**: the default folder-to-products workflow. Users select individual discovered files and run the same product plan across them.
-- **Polygon Area Processing**: the polygon-driven workflow. Users choose a LiDAR folder, polygon source, output folder, and products. Preflight selects intersecting sources, stages clipped inputs, then runs the normal Batch executor against those clipped inputs.
+- **Polygon Area Processing**: the polygon-driven workflow. Users choose a LiDAR repository, build or update its catalog, choose a polygon source, output folder, and products. Preflight queries the catalog for intersecting sources, stages clipped inputs, then runs the normal Batch executor against those clipped inputs.
 
 Batch is optional and is not part of the default single-dataset Continue path.
 
@@ -31,7 +31,7 @@ Batch is optional and is not part of the default single-dataset Continue path.
 1. Add a polygon or multipolygon layer to QGIS.
 2. Open Mission Control > Batch.
 3. Set Batch Mode to **Polygon Area Processing**.
-4. Choose the LiDAR folder and output folder.
+4. Choose the LiDAR Repository and output folder. Build or update the catalog if Mission Control shows **No Catalog**.
 5. Set Polygon source to **Use QGIS Layer**.
 6. Choose the polygon layer from the dropdown.
 7. Choose **Use Selected Features** or **Use Entire Layer**.
@@ -69,9 +69,10 @@ Preflight also compares intersecting LiDAR source CRS metadata when available an
 
 ## What Preflight Does
 
-- Recursively discovers `.las`, `.laz`, `.copc`, `.copc.laz`, and local `ept.json` sources.
+- Requires an existing LiDAR catalog; normal preflight does not recursively scan the repository.
 - Refuses arbitrary JSON as EPT.
-- Reads local `ept.json` metadata for bounds, CRS, and point count when present.
+- Queries the SQLite/RTree catalog with the polygon envelope.
+- Reports catalog query time, candidate count, metadata-error count, estimated points, and estimated bytes.
 - Normalizes the chosen polygon source into one Polygon/MultiPolygon geometry.
 - Attempts safe QGIS geometry repair when available.
 - Derives polygon bounds automatically.
@@ -85,4 +86,9 @@ After a successful preflight, **Run Polygon Batch** stages clipped source files 
 
 The current implementation clips point inputs before product generation. Exact raster masking outside the polygon is still a remaining limitation: products are generated from clipped points, but interpolated raster cells near the polygon envelope may still need visual QA before scientific interpretation.
 
-Local LAS/LAZ/COPC source bounds require metadata inventory. Sources with unknown bounds are skipped until the plugin can prove they intersect the polygon. Local EPT sources with readable metadata can be selected during preflight.
+Local LAS/LAZ/COPC source bounds are read during catalog building when the public header can be inspected. Metadata failures are recorded in the catalog and shown as warnings. Local EPT sources with readable metadata can be selected during preflight. See [LiDAR Catalogs](lidar-catalog.md).
+
+
+## Catalog Maintenance
+
+Use **Build Catalog** the first time you point Polygon Area Processing at a repository. Use **Update Catalog** after files are added, modified, moved, or deleted. Normal polygon preflight uses the catalog and does not trigger a complete rebuild.

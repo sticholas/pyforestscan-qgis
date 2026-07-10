@@ -47,7 +47,7 @@ Results, Scientific Advisor, Environment, and Settings.
   available under Technical Details.
 - Batch: optional folder-to-products workflow for users who explicitly choose
   batch processing. It defaults to Standard File Batch and offers Polygon Area
-  Processing for LiDAR-folder clipping by QGIS layer, vector file, or Advanced WKT.
+  Processing for catalog-backed LiDAR repository clipping by QGIS layer, vector file, or Advanced WKT.
   It is not part of the default Continue path.
 - Results: show a compact teaching empty state until outputs exist, then make
   Open Output Folder and Load Outputs dominant. Load Outputs adds current-run
@@ -170,14 +170,14 @@ selection.
 
 ## Batch Processing
 
-Mission Control includes a Batch page for folder-to-products workflows. Standard File Batch lets users choose an input folder, optional recursive discovery, selected files, one output folder, products, and shared settings. Polygon Area Processing lets users choose a LiDAR folder, polygon source, output folder, and products; preflight selects intersecting sources, execution stages clipped LAZ inputs, and the normal Batch executor processes those staged files. Batch creates one `pyforestscan_batch_<timestamp>` folder and one normal run folder per selected dataset or clipped source. Each dataset reuses Dataset Explorer, Product Planner, JobManager, the pipeline registry, and the adapter boundary. Failures are recorded per file and do not stop the whole batch unless the user enables stop-on-error. Batch summary JSON, CSV, and HTML files are shown in Results after completion.
+Mission Control includes a Batch page for folder-to-products workflows. Standard File Batch lets users choose an input folder, optional recursive discovery, selected files, one output folder, products, and shared settings. Polygon Area Processing lets users choose a LiDAR repository, build/update its catalog, choose a polygon source, output folder, and products; preflight queries intersecting catalog records, execution stages clipped LAZ inputs, masks supported rasters outside the exact polygon, and the normal Batch executor processes those staged files. Batch creates one `pyforestscan_batch_<timestamp>` folder and one normal run folder per selected dataset or clipped source. Each dataset reuses Dataset Explorer, Product Planner, JobManager, the pipeline registry, and the adapter boundary. Failures are recorded per file and do not stop the whole batch unless the user enables stop-on-error. Batch summary JSON, CSV, and HTML files are shown in Results after completion.
 
 
 ## UX Streamlining
 
 The Home page is intentionally a workflow overview rather than a documentation landing page. It shows only backend/environment readiness, selected dataset, workflow status, current output folder, Continue, and Check Environment. Continue routes to Environment when readiness needs attention, then Dataset, Planning, Processing, or Results as the run progresses. Technical paths and internal files remain collapsed on their respective pages.
 
-Batch keeps the default Standard File Batch workflow focused on the choices users need: input folder, selected files, output folder, products, shared settings, and run controls. Polygon Area Processing adds a separate mode for LiDAR folder plus polygon source workflows so Dataset remains a single-dataset page. Internal reports remain available through Results and run-folder summaries.
+Batch keeps the default Standard File Batch workflow focused on the choices users need: input folder, selected files, output folder, products, shared settings, and run controls. Polygon Area Processing adds a separate mode for catalog-backed LiDAR repository plus polygon source workflows so Dataset remains a single-dataset page. Internal reports remain available through Results and run-folder summaries.
 
 
 ## Batch Execution Modes

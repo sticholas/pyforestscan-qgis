@@ -63,10 +63,11 @@ from ..core.dataset_report import (
 from ..core.dependency_check import CheckStatus, EnvironmentReport
 from ..core.exceptions import AdapterError, ProcessingError
 from ..core.ept_subset import build_ept_subset_request, compact_ept_subset_summary
-from ..core.lidar_inventory import LidarFolderRequest, discover_lidar_sources
 from ..core.polygon_source import POLYGON_VECTOR_FILE_FILTER, PolygonSource, selected_feature_count_text
 from ..core.polygon_normalization import normalize_polygon_source
-from ..core.polygon_batch import PolygonBatchRequest, execute_polygon_batch, polygon_preflight_text, run_polygon_batch_preflight, write_polygon_batch_manifest
+from ..core.lidar_catalog_builder import build_lidar_catalog
+from ..core.lidar_catalog_models import default_lidar_catalog_path
+from ..core.polygon_batch import PolygonBatchRequest, catalog_status_text, execute_polygon_batch, polygon_preflight_text, run_polygon_batch_preflight, write_polygon_batch_manifest
 from ..core.job_manager import JobExecutionError, JobManager
 from ..core.knowledge import RecommendationReport
 from ..core.jobs import JobRecord, JobStatus
@@ -1778,6 +1779,31 @@ class _BatchExecutionWorker(QObject):
         self.completed.emit(result)
 
 
+class _CatalogBuildWorker(QObject):
+    """Worker-thread wrapper for LiDAR catalog build/update."""
+
+    progress = pyqtSignal(object)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, root_path: Path, catalog_path: Path) -> None:
+        super().__init__()
+        self.root_path = root_path
+        self.catalog_path = catalog_path
+
+    def run(self) -> None:
+        try:
+            result = build_lidar_catalog(
+                self.root_path,
+                self.catalog_path,
+                progress_callback=lambda payload: self.progress.emit(payload),
+            )
+        except Exception as exc:  # noqa: BLE001 - worker must report UI-safe message.
+            self.failed.emit(str(exc))
+            return
+        self.completed.emit(result)
+
+
 class _PolygonBatchExecutionWorker(QObject):
     """Qt worker that clips polygon sources and runs the normal BatchExecutor."""
 
@@ -1848,6 +1874,8 @@ class BatchPage(MissionPage):
         self.active_workers = 0
         self.batch_thread: QThread | None = None
         self.batch_worker: _BatchExecutionWorker | None = None
+        self.catalog_thread: QThread | None = None
+        self.catalog_worker: _CatalogBuildWorker | None = None
         self.preflight_report: object | None = None
 
         mode_section = self.add_section("Batch Mode")
@@ -1892,15 +1920,15 @@ class BatchPage(MissionPage):
 
         polygon_source = self.add_section("1. Polygon Area Processing")
         self.polygon_batch_section = polygon_source.parentWidget()
-        polygon_source.addWidget(_body_label("Choose a LiDAR folder and polygon. Batch will discover intersecting sources and clip them before product runs."))
+        polygon_source.addWidget(_body_label("Choose a LiDAR repository and polygon. Build or update the indexed catalog once, then Batch queries only intersecting sources."))
         polygon_form = QFormLayout()
         polygon_form.setVerticalSpacing(SECTION_SPACING)
         self.polygon_lidar_folder_edit = QLineEdit()
-        self.polygon_lidar_folder_edit.setPlaceholderText("Folder containing LAS, LAZ, COPC, or local ept.json sources")
+        self.polygon_lidar_folder_edit.setPlaceholderText("LiDAR repository containing LAS, LAZ, COPC, or local ept.json sources")
         polygon_folder_row = QHBoxLayout()
         polygon_folder_browse = QPushButton("Browse")
         polygon_folder_browse.clicked.connect(self.browse_polygon_lidar_folder)
-        self.polygon_refresh_folder_button = QPushButton("Refresh LiDAR Folder")
+        self.polygon_refresh_folder_button = QPushButton("Refresh Catalog Status")
         self.polygon_refresh_folder_button.clicked.connect(self.refresh_polygon_lidar_folder)
         _apply_button_role(self.polygon_refresh_folder_button, "neutral")
         polygon_folder_row.addWidget(self.polygon_lidar_folder_edit, 1)
@@ -1911,9 +1939,27 @@ class BatchPage(MissionPage):
         self.polygon_source_combo.addItem("Choose Vector File", "file")
         self.polygon_source_combo.addItem("Advanced WKT", "wkt")
         self.polygon_source_combo.currentIndexChanged.connect(self._update_polygon_source_visibility)
-        polygon_form.addRow("LiDAR folder", polygon_folder_row)
+        polygon_form.addRow("LiDAR Repository", polygon_folder_row)
         polygon_form.addRow("Polygon source", self.polygon_source_combo)
         polygon_source.addLayout(polygon_form)
+        self.polygon_catalog_status_label = _details_label("No Catalog - choose a LiDAR repository, then Build Catalog.")
+        polygon_source.addWidget(self.polygon_catalog_status_label)
+        catalog_actions = QHBoxLayout()
+        catalog_actions.setSpacing(ACTION_ROW_SPACING)
+        self.build_catalog_button = QPushButton("Build Catalog")
+        self.build_catalog_button.clicked.connect(self.build_polygon_catalog)
+        _apply_button_role(self.build_catalog_button, "primary")
+        self.update_catalog_button = QPushButton("Update Catalog")
+        self.update_catalog_button.clicked.connect(self.build_polygon_catalog)
+        _apply_button_role(self.update_catalog_button, "secondary")
+        self.open_catalog_folder_button = QPushButton("Open Catalog Folder")
+        self.open_catalog_folder_button.clicked.connect(self.open_polygon_catalog_folder)
+        _apply_button_role(self.open_catalog_folder_button, "neutral")
+        catalog_actions.addWidget(self.build_catalog_button)
+        catalog_actions.addWidget(self.update_catalog_button)
+        catalog_actions.addWidget(self.open_catalog_folder_button)
+        catalog_actions.addStretch(1)
+        polygon_source.addLayout(catalog_actions)
 
         self.polygon_qgis_source_frame = QFrame()
         qgis_source_layout = QVBoxLayout(self.polygon_qgis_source_frame)
@@ -2168,7 +2214,7 @@ class BatchPage(MissionPage):
         self.standard_batch_section.setVisible(not polygon)
         self.polygon_batch_section.setVisible(polygon)
         self.batch_mode_summary_label.setText(
-            "Polygon Area Processing: choose a LiDAR folder and polygon; Batch discovers intersecting sources and clips them before product runs."
+            "Polygon Area Processing: choose a LiDAR repository and polygon; Batch queries the catalog and clips intersecting sources before product runs."
             if polygon else
             "Standard File Batch: discover files, choose files, run preflight, then run Batch."
         )
@@ -2181,18 +2227,107 @@ class BatchPage(MissionPage):
         self.retry_failed_button.setText("Retry Failed" if polygon else "Retry Failed Files")
         self.summary_label.setText("Review Polygon Batch outputs after execution." if polygon else "4. Review Results after the batch completes.")
         self._update_polygon_source_visibility()
+        self.refresh_catalog_status()
         self._update_run_button_enabled()
 
     def browse_polygon_lidar_folder(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Choose polygon LiDAR folder")
+        path = QFileDialog.getExistingDirectory(self, "Choose LiDAR repository")
         if path:
             self.polygon_lidar_folder_edit.setText(path)
             self.refresh_polygon_lidar_folder()
 
     def refresh_polygon_lidar_folder(self) -> None:
         self.preflight_report = None
-        self.preflight_text.setPlainText("LiDAR folder refreshed. Re-run preflight to update intersecting sources.")
+        self.refresh_catalog_status()
+        self.preflight_text.setPlainText("Catalog status refreshed. Run polygon preflight to query intersecting sources.")
         self._update_run_button_enabled()
+
+    def _polygon_catalog_path(self) -> Path | None:
+        folder = self.polygon_lidar_folder_edit.text().strip()
+        if not folder:
+            return None
+        return default_lidar_catalog_path(Path(folder))
+
+    def refresh_catalog_status(self) -> None:
+        if not hasattr(self, "polygon_catalog_status_label"):
+            return
+        folder = self.polygon_lidar_folder_edit.text().strip()
+        if not folder:
+            self.polygon_catalog_status_label.setText("No Catalog - choose a LiDAR repository, then Build Catalog.")
+            self.build_catalog_button.setEnabled(False)
+            self.update_catalog_button.setEnabled(False)
+            self.open_catalog_folder_button.setEnabled(False)
+            return
+        path = self._polygon_catalog_path()
+        self.polygon_catalog_status_label.setText(catalog_status_text(Path(folder), path))
+        exists = bool(path and path.exists())
+        running = self.catalog_thread is not None
+        self.build_catalog_button.setEnabled(not running)
+        self.update_catalog_button.setEnabled(exists and not running)
+        self.open_catalog_folder_button.setEnabled(bool(path) and not running)
+
+    def build_polygon_catalog(self) -> None:
+        folder_text = self.polygon_lidar_folder_edit.text().strip()
+        if not folder_text:
+            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - choose a LiDAR repository before building a catalog.")
+            return
+        root = Path(folder_text)
+        catalog = self._polygon_catalog_path()
+        if catalog is None:
+            return
+        self.build_catalog_button.setEnabled(False)
+        self.update_catalog_button.setEnabled(False)
+        self.preflight_button.setEnabled(False)
+        self.polygon_catalog_status_label.setText(f"Catalog build running - indexing headers under {root}. Normal polygon runs will query {catalog}.")
+        _set_status_badge(self.status_label, "RUNNING", "Status: Running - building LiDAR catalog.")
+        self.catalog_thread = QThread(self)
+        self.catalog_worker = _CatalogBuildWorker(root, catalog)
+        self.catalog_worker.moveToThread(self.catalog_thread)
+        self.catalog_thread.started.connect(self.catalog_worker.run)
+        self.catalog_worker.progress.connect(self._on_catalog_build_progress)
+        self.catalog_worker.completed.connect(self._on_catalog_build_complete)
+        self.catalog_worker.failed.connect(self._on_catalog_build_failed)
+        self.catalog_worker.completed.connect(self.catalog_thread.quit)
+        self.catalog_worker.failed.connect(self.catalog_thread.quit)
+        self.catalog_thread.finished.connect(self.catalog_worker.deleteLater)
+        self.catalog_thread.finished.connect(self.catalog_thread.deleteLater)
+        self.catalog_thread.finished.connect(self._clear_catalog_thread)
+        self.catalog_thread.start()
+
+    def _on_catalog_build_progress(self, payload: object) -> None:
+        if isinstance(payload, dict):
+            self.polygon_catalog_status_label.setText(
+                "Catalog build running - "
+                f"discovered {payload.get('discovered', 0):,}; "
+                f"indexed {payload.get('indexed', 0):,}; "
+                f"unchanged {payload.get('unchanged', 0):,}; "
+                f"errors {payload.get('errors', 0):,}."
+            )
+
+    def _on_catalog_build_complete(self, result: object) -> None:
+        self.preflight_button.setEnabled(True)
+        self.preflight_report = None
+        _set_status_badge(self.status_label, "READY", f"Status: Ready - catalog indexed {getattr(result, 'indexed_count', 0):,}; unchanged {getattr(result, 'unchanged_count', 0):,}; errors {getattr(result, 'error_count', 0):,}.")
+        self.refresh_catalog_status()
+        self.preflight_text.setPlainText("Catalog ready. Run polygon preflight to query intersecting sources.")
+
+    def _on_catalog_build_failed(self, message: str) -> None:
+        self.preflight_button.setEnabled(True)
+        _set_status_badge(self.status_label, "FAILED", f"Status: Failed - catalog build failed: {message}")
+        self.polygon_catalog_status_label.setText(f"Catalog build failed: {message}")
+        self.refresh_catalog_status()
+
+    def _clear_catalog_thread(self) -> None:
+        self.catalog_thread = None
+        self.catalog_worker = None
+        self.refresh_catalog_status()
+
+    def open_polygon_catalog_folder(self) -> None:
+        path = self._polygon_catalog_path()
+        if path is None:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent)))
 
     def browse_polygon_vector_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Choose polygon vector file", "", POLYGON_VECTOR_FILE_FILTER)
@@ -2551,7 +2686,7 @@ class BatchPage(MissionPage):
         folder = self.polygon_lidar_folder_edit.text().strip()
         output_folder = self.output_folder_edit.text().strip()
         if not folder:
-            raise BatchExecutionError("Choose a LiDAR folder for Polygon Area Processing.")
+            raise BatchExecutionError("Choose a LiDAR repository for Polygon Area Processing.")
         if not output_folder:
             raise BatchExecutionError("Choose an output folder.")
         products = tuple(product for product, check in self.product_checks.items() if check.isChecked())
@@ -2581,6 +2716,7 @@ class BatchPage(MissionPage):
             settings=settings,
             recursive=True,
             title="PyForestScan Polygon Batch",
+            catalog_path=self._polygon_catalog_path(),
         )
 
     def _update_run_button_enabled(self) -> None:
