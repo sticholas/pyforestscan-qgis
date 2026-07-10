@@ -6,9 +6,9 @@ This document records current limitations for the internal release candidate. It
 
 - Product generation uses either PBM backend Python for routed products or QGIS Python for remaining QGIS-Python-only tools. Missing QGIS Python PyForestScan/PDAL packages are optional fallback warnings and do not block PBM-routed products when PBM is `Ready`.
 - CHM, Canopy Cover, PAD, PAI, FHD, and Rumple summary are implemented for single datasets, but outputs still require visual QA in QGIS before interpretation.
-- PAD is a multi-band height-bin raster. Mission Control loads it as an RGB 5/3/2 composite when enough bands exist; users may need to inspect individual bands manually.
+- PAD is an authoritative multi-band height-bin volume. Mission Control displays a representative grayscale height slice by default; single-band PAD derivatives and RGB composites are visualizations, not replacements for the full PAD volume.
 - Rumple currently writes a CSV summary rather than a raster layer.
-- Polygon summaries, mosaicking, cataloging, folder monitoring, and project files are not implemented.
+- Polygon-folder processing is currently a guarded preflight/planning workflow. Full clipped PBM/chunked product execution, selected-feature extraction, mosaicking, cataloging, folder monitoring, and project files remain deferred.
 
 ## Batch Processing
 

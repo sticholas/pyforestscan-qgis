@@ -134,7 +134,7 @@ QGIS-specific code is kept in UI or Processing integration modules. This include
 - Mission Control windows and page layouts.
 - Adding footprint layers and zooming the map canvas.
 - Loading product rasters and tables.
-- Applying default raster styling and PAD RGB band visualization.
+- Applying default raster styling, PAD grayscale height-slice visualization, and optional PAD derivative/composite labeling.
 - Opening folders, reports, or QGIS panels where safe.
 
 Core services and knowledge modules should remain importable in plain Python tests without QGIS.

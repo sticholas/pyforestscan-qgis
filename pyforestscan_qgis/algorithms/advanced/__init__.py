@@ -11,6 +11,7 @@ from .ept_subset import EptSubsetExtractAlgorithm
 from .advanced_rumple import AdvancedRumpleAlgorithm
 from .advanced_voxel_stat import AdvancedVoxelStatAlgorithm
 from .normalize_hag import NormalizeHagAlgorithm
+from .pad_derivative import PadDerivativeRasterAlgorithm
 from .point_cloud_preprocess import PointCloudPreprocessAlgorithm
 
 __all__ = [
@@ -25,5 +26,6 @@ __all__ = [
     "AdvancedRumpleAlgorithm",
     "AdvancedVoxelStatAlgorithm",
     "NormalizeHagAlgorithm",
+    "PadDerivativeRasterAlgorithm",
     "PointCloudPreprocessAlgorithm",
 ]

@@ -13,6 +13,7 @@ This documentation is organized for users, scientists, developers, maintainers, 
 
 - [User Guide](user-guide/README.md)
 - [Dataset Page](user-guide/dataset.md)
+- [Polygon Folder Processing](user-guide/polygon-folder-processing.md)
 - [Mission Control](ui/MISSION_CONTROL.md)
 - [Screen Flow](ui/SCREEN_FLOW.md)
 - [Run Folder Workflow](ui/USER_WORKFLOW.md)
@@ -22,6 +23,9 @@ This documentation is organized for users, scientists, developers, maintainers, 
 
 - [Scientific Methods Index](scientific-methods/README.md)
 - [EPT Subset Extraction](scientific/ept-subset-extraction.md)
+- [PAD Scientific Output](scientific/PAD.md)
+- [Rumple Scientific Output](scientific/RUMPLE.md)
+- [Localized Rumple Extension](scientific/localized-rumple.md)
 - [Canopy Height Model](scientific-methods/CHM.md)
 - [Plant Area Density](scientific-methods/PAD.md)
 - [Plant Area Index](scientific-methods/PAI.md)
@@ -46,6 +50,7 @@ This documentation is organized for users, scientists, developers, maintainers, 
 
 - [Developer Guide](developer/README.md)
 - [Processing Toolbox Expert Tools](development/ADVANCED_PROCESSING_TOOLBOX.md)
+- [Polygon LiDAR Processing Architecture](development/POLYGON_LIDAR_PROCESSING_ARCHITECTURE.md)
 - [Adapter Design](development/ADAPTER_DESIGN.md)
 - [Pipeline Framework](development/PIPELINE_FRAMEWORK.md)
 - [Job Execution](development/JOB_EXECUTION.md)

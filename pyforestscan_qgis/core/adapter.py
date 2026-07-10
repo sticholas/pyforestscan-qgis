@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from .config import AdapterConfig, DatasetOpenOptions, InspectionOptions
 from .dependency_check import EnvironmentReport, collect_environment_report
 from .exceptions import AdapterError, DatasetError, EnvironmentError, ProcessingError
+from .pad_products import pad_band_mapping, pad_metadata_tags
 from .ept_subset import EptSubsetRequest, EptSubsetResult, ept_read_lidar_kwargs
 from .types import (
     Bounds3D,
@@ -172,6 +173,7 @@ class PyForestScanAdapter:
         self._backend_service_factory = backend_service_factory
         self._progress = AdapterProgress()
         self._open_dataset: DatasetSource | None = None
+        self._chm_cache: dict[tuple[object, ...], tuple[object, object]] = {}
 
     def check_environment(self) -> EnvironmentReport:
         """Return the existing structured dependency environment report."""
@@ -308,6 +310,7 @@ class PyForestScanAdapter:
                 interp_clean_edges=request.interp_clean_edges,
             )
             self._progress.update(70, "CHM array calculated")
+            self._chm_cache[_chm_cache_key(request)] = (chm, extent)
             handlers.create_geotiff(chm, str(output_path), request.crs, extent)
             _validate_created_output(output_path)
             self._progress.complete("CHM GeoTIFF created")
@@ -359,7 +362,7 @@ class PyForestScanAdapter:
                 drop_ground=request.drop_ground,
             )
             self._progress.update(75, "PAD array calculated")
-            _write_multiband_geotiff(pad, output_path, request.crs, extent)
+            _write_multiband_geotiff(pad, output_path, request.crs, extent, voxel_height=request.voxel_height, beer_lambert_constant=request.beer_lambert_constant, drop_ground=request.drop_ground)
             _validate_created_output(output_path)
             self._progress.complete("PAD GeoTIFF created")
             self._log(LogLevel.INFO, "PAD generation complete", output=str(output_path), bands=pad.shape[2])
@@ -514,22 +517,30 @@ class PyForestScanAdapter:
         self._log(LogLevel.INFO, "Starting rumple generation", input=str(request.input_path), output=str(output_path))
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
-            point_array = self._read_hag_point_array(request.input_path, request.crs, "rumple")
-            chm, extent = pyforestscan.calculate_chm(
-                point_array,
-                _xy_resolution(request.grid_resolution, request.y_resolution),
-                interpolation=request.interpolation,
-                interp_valid_region=request.interp_valid_region,
-                interp_clean_edges=request.interp_clean_edges,
-            )
-            self._progress.update(65, "Internal CHM prerequisite calculated")
+            cache_key = _chm_cache_key(request)
+            if cache_key in self._chm_cache:
+                chm, extent = self._chm_cache[cache_key]
+                chm_source = "reused compatible CHM from current adapter session"
+                self._progress.update(55, "Compatible CHM reused")
+            else:
+                point_array = self._read_hag_point_array(request.input_path, request.crs, "rumple")
+                chm, extent = pyforestscan.calculate_chm(
+                    point_array,
+                    _xy_resolution(request.grid_resolution, request.y_resolution),
+                    interpolation=request.interpolation,
+                    interp_valid_region=request.interp_valid_region,
+                    interp_clean_edges=request.interp_clean_edges,
+                )
+                self._chm_cache[cache_key] = (chm, extent)
+                chm_source = "internally generated for Rumple"
+                self._progress.update(65, "Internal CHM prerequisite calculated")
             rumple_index = float(pyforestscan.calculate_rumple(
                 chm,
                 _xy_resolution(request.grid_resolution, request.y_resolution),
                 min_height=request.min_height,
             ))
             self._progress.update(85, "Rumple index calculated")
-            _write_rumple_csv(output_path, rumple_index, request, extent)
+            _write_rumple_csv(output_path, rumple_index, request, extent, chm_source=chm_source)
             _validate_created_output(output_path)
             self._progress.complete("Rumple summary created")
             self._log(LogLevel.INFO, "Rumple generation complete", output=str(output_path), rumple_index=rumple_index)
@@ -1084,6 +1095,7 @@ class PyForestScanAdapter:
         """Clear adapter-held dataset references."""
         self._open_dataset = None
         self._progress = AdapterProgress()
+        self._chm_cache.clear()
         self._log(LogLevel.INFO, "Adapter closed")
 
     def _coerce_dataset(self, dataset: DatasetSource | str | Path | None) -> DatasetSource:
@@ -1236,6 +1248,18 @@ def _adapter_result_from_backend(product: ProductType, request: object, backend_
     raise ProcessingError(f"Unsupported PBM backend result product: {product.value}")
 
 
+def _chm_cache_key(request: object) -> tuple[object, ...]:
+    return (
+        str(getattr(request, "input_path", "")),
+        str(getattr(request, "crs", "")),
+        float(getattr(request, "grid_resolution", 0.0)),
+        float(getattr(request, "y_resolution", getattr(request, "grid_resolution", 0.0)) or getattr(request, "grid_resolution", 0.0)),
+        getattr(request, "interpolation", None),
+        bool(getattr(request, "interp_valid_region", False)),
+        bool(getattr(request, "interp_clean_edges", False)),
+    )
+
+
 def _xy_resolution(x_resolution: float, y_resolution: float | None) -> tuple[float, float]:
     """Return explicit X/Y resolution while preserving guided-mode defaults."""
     return (float(x_resolution), float(y_resolution if y_resolution is not None else x_resolution))
@@ -1272,7 +1296,7 @@ def _validate_las_output_path(output_path: Path) -> None:
             pass
 
 
-def _write_rumple_csv(output_path: Path, rumple_index: float, request: RumpleRequest, spatial_extent: object) -> None:
+def _write_rumple_csv(output_path: Path, rumple_index: float, request: RumpleRequest, spatial_extent: object, *, chm_source: str = "internally generated for Rumple") -> None:
     """Write a scalar rumple result as a small CSV table."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     x_min, x_max, y_min, y_max = spatial_extent
@@ -1281,6 +1305,10 @@ def _write_rumple_csv(output_path: Path, rumple_index: float, request: RumpleReq
         ("rumple_index", f"{rumple_index:.12g}"),
         ("grid_resolution", f"{request.grid_resolution:.12g}"),
         ("min_height", "" if request.min_height is None else f"{request.min_height:.12g}"),
+        ("native_pyforestscan_output", "scalar"),
+        ("chm_source", chm_source),
+        ("supporting_chm_saved", "false"),
+        ("interpretation_note", "Native PyForestScan Rumple is a whole-area scalar calculated from a CHM; it is not a raster."),
         ("crs", request.crs),
         ("extent_x_min", f"{float(x_min):.12g}"),
         ("extent_x_max", f"{float(x_max):.12g}"),
@@ -1290,7 +1318,7 @@ def _write_rumple_csv(output_path: Path, rumple_index: float, request: RumpleReq
     output_path.write_text("\n".join(f"{name},{value}" for name, value in rows) + "\n", encoding="utf-8")
 
 
-def _write_multiband_geotiff(layer: object, output_path: Path, crs: str, spatial_extent: object, nodata: float = -9999.0) -> None:
+def _write_multiband_geotiff(layer: object, output_path: Path, crs: str, spatial_extent: object, nodata: float = -9999.0, *, voxel_height: float = 1.0, beer_lambert_constant: float = 1.0, drop_ground: bool = True) -> None:
     """Write a 3D X/Y/Z PAD array as a multi-band GeoTIFF."""
     rasterio = _import_required("rasterio", ProcessingError)
     numpy = _import_required("numpy", ProcessingError)
@@ -1320,8 +1348,18 @@ def _write_multiband_geotiff(layer: object, output_path: Path, crs: str, spatial
         transform=transform,
         nodata=nodata,
     ) as dataset:
-        for band_index in range(bands):
-            dataset.write(data[:, :, band_index].T, band_index + 1)
+        try:
+            dataset.update_tags(**pad_metadata_tags(voxel_height, beer_lambert_constant, drop_ground, bands))
+        except Exception:
+            pass
+        for mapping in pad_band_mapping(bands, voxel_height, drop_ground=drop_ground):
+            band_number = mapping.band_index
+            dataset.write(data[:, :, band_number - 1].T, band_number)
+            try:
+                dataset.set_band_description(band_number, mapping.description)
+                dataset.update_tags(band_number, height_min=f"{mapping.min_height:g}", height_max=f"{mapping.max_height:g}", units="map_units")
+            except Exception:
+                pass
 
 
 def _validate_csv_output_path(output_path: Path) -> None:

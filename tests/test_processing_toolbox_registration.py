@@ -16,6 +16,7 @@ class ProcessingToolboxRegistrationTests(unittest.TestCase):
 
         self.assertIn("self.addAlgorithm(EnvironmentCheckAlgorithm())", provider)
         self.assertIn("self.addAlgorithm(EptSubsetExtractAlgorithm())", provider)
+        self.assertIn("self.addAlgorithm(PadDerivativeRasterAlgorithm())", provider)
         self.assertNotIn("self.addAlgorithm(DatasetExplorerAlgorithm())", provider)
         self.assertNotIn("self.addAlgorithm(ProductPlannerAlgorithm())", provider)
         self.assertNotIn("self.addAlgorithm(ForestMetricsPackAlgorithm())", provider)
@@ -64,6 +65,7 @@ class ProcessingToolboxRegistrationTests(unittest.TestCase):
             "Normalize Heights",
             "Preprocess Point Cloud",
             "Extract EPT Subset",
+            "PAD Derivative Raster",
         ):
             self.assertIn(f'return self.tr("{expected_name}")', combined)
 
@@ -88,6 +90,8 @@ class ProcessingToolboxRegistrationTests(unittest.TestCase):
             "HAG method",
             "input_file (EPT ept.json)",
             "output_las_laz",
+            "Derivative type",
+            "Authoritative PAD multiband GeoTIFF",
             "resolution (map units)",
             "nodata",
         ):

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from pyforestscan_qgis.ui.raster_styling import layer_display_name, qgis_raster_display_range, safe_display_range, select_pad_rgb_bands
+from pyforestscan_qgis.ui.raster_styling import layer_display_name, qgis_raster_display_range, safe_display_range, select_pad_default_slice_band, select_pad_rgb_bands
 
 
 class RasterStylingTests(unittest.TestCase):
@@ -53,9 +53,14 @@ class RasterStylingTests(unittest.TestCase):
         self.assertEqual(9.5, display_range.maximum)
         self.assertEqual("observed", display_range.source)
 
-    def test_pad_layer_name_defaults_to_rgb_composite(self) -> None:
-        """PAD is named as an RGB composite because it is multi-band."""
-        self.assertEqual("PyForestScan PAD RGB 5-3-2 - tile_001", layer_display_name("pad_geotiff", "tile_001"))
+    def test_pad_layer_name_defaults_to_height_slice(self) -> None:
+        """PAD is named as a representative height slice, not an authoritative RGB metric."""
+        self.assertEqual("PyForestScan PAD height slice - tile_001", layer_display_name("pad_geotiff", "tile_001"))
+        self.assertEqual("PyForestScan PAD height composite 5/3/2 - tile_001", layer_display_name("pad_composite_geotiff", "tile_001"))
+
+    def test_pad_default_slice_band_is_representative_and_bounded(self) -> None:
+        self.assertEqual(select_pad_default_slice_band(20), 10)
+        self.assertEqual(select_pad_default_slice_band(4), 4)
 
     def test_pad_rgb_bands_use_requested_mapping_when_available(self) -> None:
         """PAD uses red 5, green 3, blue 2 when at least five bands exist."""

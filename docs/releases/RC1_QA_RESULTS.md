@@ -89,7 +89,7 @@ Automated repository validation is expected to pass as part of this Phase 27B co
 ## Results Loading Evidence
 
 - Result: Pending
-- Notes: Must verify GeoTIFF/CSV load, duplicate avoidance, PAD RGB composite when applicable, and grayscale styling for other rasters.
+- Notes: Must verify GeoTIFF/CSV load, duplicate avoidance, PAD grayscale height-slice display, optional PAD derivative/composite labeling, and grayscale styling for other rasters.
 - Screenshots needed: Results page message and QGIS Layers panel.
 - Blocker status: Blocker until executed and passed.
 

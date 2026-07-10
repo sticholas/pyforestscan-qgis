@@ -2,7 +2,7 @@
 
 ## What It Measures
 
-Vertical plant area distribution as a multi-band GeoTIFF.
+Vertical plant area distribution as a 3D X/Y/height-bin volume.
 
 ## PyForestScan API Used
 
@@ -12,18 +12,22 @@ Vertical plant area distribution as a multi-band GeoTIFF.
 
 X/Y resolution, `voxel_height`, `beer_lambert_constant`, `drop_ground`.
 
-## When To Use
+## Authoritative Output
 
-Use PAD to inspect vertical canopy structure by height bin.
+The plugin writes PAD as a multiband GeoTIFF. Each band is one vertical height bin. Phase 27D records band descriptions and dataset-level metadata for voxel height, Beer-Lambert constant, `drop_ground`, height-bin count, band-to-height mapping, and units.
 
-## Output
+## Derived Visualizations
 
-The plugin writes the output into the active run folder or selected Processing Toolbox output path. Raster outputs are loaded into QGIS when requested; Rumple is written as CSV.
+PAD height slices, maximum projections, mean projections, and integrated PAD rasters are plugin-derived visualizations from the complete PAD volume. They are single-band GeoTIFFs for display and review; they do not replace the authoritative multiband PAD output.
+
+## QGIS Display
+
+PAD loads as a representative grayscale height slice by default. Optional RGB height-band composites must be interpreted as visualization composites, not as the authoritative metric.
 
 ## Quality Checks
 
-PAD bands are height bins; review band count and QGIS band mapping before interpretation.
+Review band count, band descriptions, height-bin metadata, and derivative settings before interpretation.
 
 ## Reproducibility
 
-Record the input dataset, CRS, grid or voxel resolution, height thresholds, PyForestScan version, QGIS version, and plugin version when using this product in analysis.
+Record the input dataset, CRS, XY resolution, voxel height, Beer-Lambert constant, `drop_ground`, PyForestScan version, QGIS version, and plugin version when using this product in analysis.

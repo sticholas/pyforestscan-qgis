@@ -64,7 +64,7 @@ Windows internal beta users can click **Install Backend** from Mission Control S
 
 Expert users can run PyForestScan tools from QGIS Processing Toolbox under the `PyForestScan / Diagnostics`, `PyForestScan / Input / I/O`, `PyForestScan / Preprocessing / Filters`, `PyForestScan / Terrain`, and `PyForestScan / Metrics` groups. These tools expose explicit X/Y resolution, interpolation, voxel, height-range, Beer-Lambert, canopy-cover, rumple, and HAG/normalization controls. Mission Control remains the recommended guided workflow for normal use.
 
-Toolbox raster outputs use the same loading/styling rules as Mission Control: CHM, Canopy Cover, PAI, and FHD load as grayscale when possible, while PAD loads as the documented RGB 5/3/2 composite when enough bands exist. Rumple writes a CSV summary because PyForestScan returns a scalar value.
+Toolbox raster outputs use the same loading/styling rules as Mission Control: CHM, Canopy Cover, PAI, FHD, DTM, Point Density, and Voxel Statistic load as grayscale when possible. PAD is an authoritative multiband height-bin volume and loads as a representative grayscale height slice by default. Optional PAD derivative rasters and height-band composites are visualizations, not replacements for PAD. Rumple writes a CSV summary because PyForestScan returns a scalar value.
 
 The HAG/Normalize tool reads lidar with PyForestScan HAG support and can optionally write LAS/LAZ through PyForestScan `write_las`. It also exposes expert read options such as bounds, thinning radius, and crop polygon/WKT. It does not invent unsupported normalized output formats.
 
@@ -346,8 +346,8 @@ flowchart TD
 
 - FHD uses grid resolution and height bin size, and writes a single-band
   `.tif` or `.tiff` raster.
-- Rumple uses grid resolution to build an internal CHM prerequisite, and writes
-  a scalar `.csv` summary because PyForestScan 0.4.0 returns one rumple index
+- Rumple uses grid resolution to build or reuse an internal CHM prerequisite, and writes
+  a scalar `.csv` summary because PyForestScan returns one rumple index
   value rather than a raster.
 - Rumple output filename must be a simple `.csv` name.
 
@@ -358,9 +358,11 @@ After any raster product completes, confirm the auto-loaded QGIS layer has visib
 contrast without removing and re-adding it manually. CHM, PAI, and FHD should use
 an observed non-zero range when data are present. Canopy Cover should display in
 a `0` to `1` range when provider statistics are unavailable. PAD should load as
-`PyForestScan PAD RGB 5-3-2 - <dataset>` using an RGB composite when at least
-five bands exist. No generated raster should receive a `0` to `0` display range
-unless the provider confirms the raster is truly all zero.
+`PyForestScan PAD height slice - <dataset>` using a representative grayscale
+height slice from the full multiband PAD volume. Optional PAD derivative rasters
+and height-band composites are labeled as derived visualizations. No generated
+raster should receive a `0` to `0` display range unless the provider confirms the
+raster is truly all zero.
 
 ### Canopy Cover QA
 

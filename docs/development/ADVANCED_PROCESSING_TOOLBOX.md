@@ -76,7 +76,11 @@ Parameters:
 - Drop ground bin
 - Add output to project
 
-Adapter call: `create_pad(PadRequest(...))`. PAD is written as a multi-band GeoTIFF and uses the existing QGIS PAD RGB 5/3/2 styling when loaded.
+Adapter call: `create_pad(PadRequest(...))`. PAD is written as an authoritative multi-band GeoTIFF with one band per height bin, band descriptions, and dataset metadata. QGIS loads a representative grayscale height slice by default; PAD Derivative Raster creates optional single-band visualizations.
+
+### PAD Derivative Raster
+
+Creates plugin-derived single-band PAD visualizations from the complete PAD volume. Supported derivative types are height slice, maximum projection, mean projection, and integrated PAD over a selected vertical interval. These outputs are grayscale visualization rasters and do not replace the authoritative PAD multiband GeoTIFF.
 
 ### PAI
 
@@ -233,7 +237,7 @@ Adapter call: `normalize_heights(HagNormalizationRequest(...))`. If an output pa
 1. Install the packaged plugin ZIP into QGIS.
 2. Open Processing Toolbox and confirm `PyForestScan / Diagnostics`, `PyForestScan / Input / I/O`, `PyForestScan / Preprocessing / Filters`, `PyForestScan / Terrain`, and `PyForestScan / Metrics` groups appear.
 3. Run CHM on a small known dataset and confirm the GeoTIFF loads with grayscale styling.
-4. Run PAD and confirm the output is a multi-band GeoTIFF loaded as PAD RGB 5/3/2 when enough bands exist.
+4. Run PAD and confirm the output is a metadata-rich multi-band GeoTIFF loaded as a representative grayscale height slice by default.
 5. Run PAI with a minimum height and optional maximum height; confirm a single-band GeoTIFF is written.
 6. Run Canopy Cover with threshold and `k`; confirm values display as grayscale.
 7. Run FHD and confirm output CRS/extent align with the input.

@@ -114,7 +114,7 @@ flowchart LR
 Mission Control coordinates current workflows only. Dataset footprint preview uses
 QGIS APIs only in the UI layer; core adapter and report code remain QGIS-free.
 The run folder is not a required `.pfs` project file. The Processing page runs the active Product
-Planner JSON through JobManager and the pipeline registry. CHM, Canopy Cover, PAD, PAI, FHD, and Rumple are implemented through the adapter for single-dataset workflows. Raster outputs are loaded with product-aware default styling: CHM, Canopy Cover, PAI, and FHD use grayscale, while PAD uses its documented RGB band composite. Users can restyle layers manually in QGIS.
+Planner JSON through JobManager and the pipeline registry. CHM, Canopy Cover, PAD, PAI, FHD, and Rumple are implemented through the adapter for single-dataset workflows. Raster outputs are loaded with product-aware default styling: single-band rasters use grayscale, and PAD uses a representative grayscale height slice from the authoritative multiband volume. Optional PAD composites are labeled as derived height-band visualizations. Users can restyle layers manually in QGIS.
 
 
 

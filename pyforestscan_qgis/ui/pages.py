@@ -63,6 +63,9 @@ from ..core.dataset_report import (
 from ..core.dependency_check import CheckStatus, EnvironmentReport
 from ..core.exceptions import AdapterError, ProcessingError
 from ..core.ept_subset import build_ept_subset_request, compact_ept_subset_summary
+from ..core.lidar_inventory import LidarFolderRequest, discover_lidar_sources
+from ..core.polygon_processing import build_polygon_processing_plan, polygon_preflight_summary
+from ..core.spatial_selection import polygon_selection_from_wkt
 from ..core.job_manager import JobExecutionError, JobManager
 from ..core.knowledge import RecommendationReport
 from ..core.jobs import JobRecord, JobStatus
@@ -708,6 +711,52 @@ class DatasetPage(MissionPage):
         self.ept_subset_output_path: Path | None = None
         _wire_collapsible_group(ept_group)
 
+        polygon_group, polygon_layout = _collapsible_section(self.content_layout, "Process Folder by Polygon", checked=False)
+        polygon_layout.addWidget(_body_label("Discover local LiDAR sources, intersect them with a polygon, and prepare a safe clipped-processing plan."))
+        polygon_form = QFormLayout()
+        polygon_form.setVerticalSpacing(SECTION_SPACING)
+        self.polygon_folder_edit = QLineEdit()
+        self.polygon_folder_edit.setPlaceholderText("Folder containing LAS, LAZ, COPC, or local ept.json")
+        polygon_folder_row = QHBoxLayout()
+        polygon_folder_browse = QPushButton("Browse")
+        polygon_folder_browse.clicked.connect(self.browse_polygon_folder)
+        polygon_folder_row.addWidget(self.polygon_folder_edit, 1)
+        polygon_folder_row.addWidget(polygon_folder_browse, 0)
+        self.polygon_wkt_edit = QLineEdit()
+        self.polygon_wkt_edit.setPlaceholderText("POLYGON or MULTIPOLYGON WKT; selected QGIS feature support is planned")
+        self.polygon_crs_edit = QLineEdit("EPSG:4326")
+        self.polygon_output_edit = QLineEdit()
+        self.polygon_output_edit.setPlaceholderText("Choose polygon processing output folder")
+        polygon_output_row = QHBoxLayout()
+        polygon_output_browse = QPushButton("Browse")
+        polygon_output_browse.clicked.connect(self.browse_polygon_output_folder)
+        polygon_output_row.addWidget(self.polygon_output_edit, 1)
+        polygon_output_row.addWidget(polygon_output_browse, 0)
+        polygon_form.addRow("LiDAR folder", polygon_folder_row)
+        polygon_form.addRow("Polygon WKT", self.polygon_wkt_edit)
+        polygon_form.addRow("Polygon CRS", self.polygon_crs_edit)
+        polygon_form.addRow("Output folder", polygon_output_row)
+        polygon_layout.addLayout(polygon_form)
+        products_row = QHBoxLayout()
+        self.polygon_product_checks: dict[ProductType, QCheckBox] = {}
+        for product, label in PRODUCT_LABELS.items():
+            check = QCheckBox(label.split(" (")[0])
+            check.setChecked(product is ProductType.CHM)
+            self.polygon_product_checks[product] = check
+            products_row.addWidget(check)
+        polygon_layout.addLayout(products_row)
+        polygon_actions = QHBoxLayout()
+        polygon_actions.setSpacing(ACTION_ROW_SPACING)
+        self.polygon_run_button = QPushButton("Run Polygon Processing")
+        self.polygon_run_button.clicked.connect(self.run_polygon_processing_preflight)
+        _apply_button_role(self.polygon_run_button, "primary")
+        polygon_actions.addWidget(self.polygon_run_button)
+        polygon_actions.addStretch(1)
+        polygon_layout.addLayout(polygon_actions)
+        self.polygon_preflight_text = _details_label("Polygon-folder preflight appears here. Full clipped execution remains PBM/chunking guarded.")
+        polygon_layout.addWidget(self.polygon_preflight_text)
+        _wire_collapsible_group(polygon_group)
+
         spatial = self.add_section("Spatial Preview")
         self.spatial_section = spatial.parentWidget()
         self.footprint_text = QTextEdit()
@@ -760,6 +809,37 @@ class DatasetPage(MissionPage):
         path = QFileDialog.getExistingDirectory(self, "Choose output folder")
         if path:
             self.output_folder_edit.setText(path)
+
+    def browse_polygon_folder(self) -> None:
+        """Choose a LiDAR folder for polygon-driven processing."""
+        path = QFileDialog.getExistingDirectory(self, "Choose LiDAR folder")
+        if path:
+            self.polygon_folder_edit.setText(path)
+
+    def browse_polygon_output_folder(self) -> None:
+        """Choose an output folder for polygon-driven processing."""
+        path = QFileDialog.getExistingDirectory(self, "Choose polygon processing output folder")
+        if path:
+            self.polygon_output_edit.setText(path)
+
+    def run_polygon_processing_preflight(self) -> None:
+        """Build a polygon-folder preflight plan without unbounded point reads."""
+        folder = self.polygon_folder_edit.text().strip()
+        output = self.polygon_output_edit.text().strip() or self.output_folder_edit.text().strip()
+        products = tuple(product.value for product, check in self.polygon_product_checks.items() if check.isChecked())
+        if not folder or not output:
+            self.polygon_preflight_text.setText("Choose a LiDAR folder and output folder before running polygon processing.")
+            return
+        try:
+            polygon = polygon_selection_from_wkt(self.polygon_wkt_edit.text(), self.polygon_crs_edit.text())
+            inventory = discover_lidar_sources(LidarFolderRequest(Path(folder), recursive=True, include_ept=True))
+            plan = build_polygon_processing_plan(inventory, polygon, Path(output), products)
+        except Exception as exc:  # noqa: BLE001 - preflight should report concise guidance.
+            self.polygon_preflight_text.setText(f"Polygon processing preflight failed: {exc}")
+            return
+        lines = list(polygon_preflight_summary(plan))
+        lines.append("Execution note: PBM/chunked clipped processing is required before generating products from this plan.")
+        self.polygon_preflight_text.setText("\n".join(lines))
 
     def browse_ept_dtm(self) -> None:
         """Choose a DTM raster for DTM-backed EPT HAG."""

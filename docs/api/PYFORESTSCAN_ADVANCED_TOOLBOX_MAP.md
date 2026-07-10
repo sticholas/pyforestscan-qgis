@@ -48,3 +48,12 @@ Algorithm classes never import PyForestScan directly. They parse QGIS parameters
 | Visualization / Exports: Plot 2D, Plot Metric, Plot PAD | Deferred / not applicable | QGIS-native map canvas, layer styling, raster histograms, layouts, and exported rasters are better primary UX than matplotlib plots. |
 | Input / I/O standalone CRS and polygon utilities | Deferred | QGIS already has CRS and vector-layer providers; exposing these as isolated algorithms would add clutter without a complete workflow. |
 | LAS in-memory tiling utility | Deferred | Memory-heavy workflow needs preflight, resumability, output summaries, and QA. |
+
+
+## Phase 27D Additions
+
+| Group | Tool | Purpose | Status |
+| --- | --- | --- | --- |
+| `PyForestScan / Metrics` | PAD Derivative Raster | Derive a single-band height slice, maximum, mean, or integrated PAD visualization from the full multiband PAD volume. | Implemented |
+| `Mission Control / Dataset` | Process Folder by Polygon | Discover LiDAR folder sources and build a polygon intersection/preflight plan. | Preflight implemented; PBM clipped execution deferred |
+| `PyForestScan / Metrics` | Localized Rumple Raster | Windowed Rumple extension from CHM. | Math core implemented; QGIS raster execution deferred |

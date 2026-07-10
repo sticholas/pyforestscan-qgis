@@ -79,6 +79,20 @@ Phase 20D maps each documented public function parameter to the Advanced QGIS Pr
 | filters | `remove_outliers_and_clean` | `multiplier` | float | `3.0` | multiplier | multiplier | number | Yes | Advanced Point Cloud Preprocess | Direct | Yes |
 | filters | `remove_outliers_and_clean` | `remove` | bool | `False` | remove outliers | remove | boolean | Yes | Advanced Point Cloud Preprocess | Direct | Yes |
 
+## PAD and Rumple plugin extensions
+
+### PAD derived visualization parameters
+
+PAD derivative rasters are PyForestScan QGIS derived products from the authoritative PAD volume. They expose derivative type (`slice`, `maximum`, `mean`, `integrated`), voxel height, minimum/maximum height, slice height, band index, and output filename. These are not native replacement outputs for `calculate_pad`; they are visualizations from the returned PAD array.
+
+### Localized Rumple Raster
+
+Localized Rumple Raster is a PyForestScan QGIS extension built from CHM windows. Native `calculate_rumple` remains scalar. The QGIS-free math core is implemented and tested for flat, corrugated, and insufficient-data windows; full QGIS raster execution remains deferred until QA approves window defaults.
+
+### Polygon folder processing
+
+Polygon folder processing currently implements QGIS-free inventory/preflight models for source discovery, EPT metadata bounds, polygon WKT bounds, source intersection, EPT broad bounds, CRS warnings, cache signature checks, and workload warnings. Exact clipped product execution is deferred to PBM/chunked routing.
+
 ## handlers, process, utils, visualize
 
 ### `handlers.read_lidar` EPT subset mapping
