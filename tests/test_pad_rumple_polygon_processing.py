@@ -153,13 +153,15 @@ class PolygonFolderPlanningTests(unittest.TestCase):
         self.assertTrue(any("CRS differs" in warning for warning in plan.warnings))
         self.assertTrue(any("Large point estimate" in warning for warning in plan.warnings))
 
-    def test_dataset_page_exposes_polygon_folder_entry_point(self) -> None:
+    def test_polygon_folder_entry_point_moved_to_batch(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
+        dataset_source = source[source.index("class DatasetPage"):source.index("class BatchPage")]
+        batch_source = source[source.index("class BatchPage"):]
 
-        self.assertIn("Process Folder by Polygon", source)
-        self.assertIn("Analyze / Preflight", source)
-        self.assertIn("build_polygon_processing_plan", source)
-        self.assertIn("Execution note: PBM/chunked clipped processing is required", source)
+        self.assertNotIn("Process Folder by Polygon", dataset_source)
+        self.assertIn("Polygon Area Processing", batch_source)
+        self.assertIn("Run Polygon Batch", batch_source)
+        self.assertIn("run_polygon_batch_preflight", batch_source)
 
 
 if __name__ == "__main__":

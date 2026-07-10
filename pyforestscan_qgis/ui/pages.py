@@ -64,9 +64,9 @@ from ..core.dependency_check import CheckStatus, EnvironmentReport
 from ..core.exceptions import AdapterError, ProcessingError
 from ..core.ept_subset import build_ept_subset_request, compact_ept_subset_summary
 from ..core.lidar_inventory import LidarFolderRequest, discover_lidar_sources
-from ..core.polygon_processing import build_polygon_processing_plan, polygon_preflight_summary
-from ..core.polygon_source import POLYGON_VECTOR_FILE_FILTER, PolygonSource, polygon_source_summary, selected_feature_count_text
+from ..core.polygon_source import POLYGON_VECTOR_FILE_FILTER, PolygonSource, selected_feature_count_text
 from ..core.polygon_normalization import normalize_polygon_source
+from ..core.polygon_batch import PolygonBatchRequest, execute_polygon_batch, polygon_preflight_text, run_polygon_batch_preflight, write_polygon_batch_manifest
 from ..core.job_manager import JobExecutionError, JobManager
 from ..core.knowledge import RecommendationReport
 from ..core.jobs import JobRecord, JobStatus
@@ -713,119 +713,6 @@ class DatasetPage(MissionPage):
         self.ept_subset_output_path: Path | None = None
         _wire_collapsible_group(ept_group)
 
-        polygon_group, polygon_layout = _collapsible_section(self.content_layout, "Process Folder by Polygon", checked=False)
-        self.polygon_group = polygon_group
-        polygon_layout.addWidget(_body_label("Choose a LiDAR folder, choose a polygon from QGIS or disk, select products, then run preflight."))
-        polygon_form = QFormLayout()
-        polygon_form.setVerticalSpacing(SECTION_SPACING)
-        self.polygon_folder_edit = QLineEdit()
-        self.polygon_folder_edit.setPlaceholderText("Folder containing LAS, LAZ, COPC, or local ept.json")
-        polygon_folder_row = QHBoxLayout()
-        polygon_folder_browse = QPushButton("Browse")
-        polygon_folder_browse.clicked.connect(self.browse_polygon_folder)
-        polygon_folder_row.addWidget(self.polygon_folder_edit, 1)
-        polygon_folder_row.addWidget(polygon_folder_browse, 0)
-        self.polygon_output_edit = QLineEdit()
-        self.polygon_output_edit.setPlaceholderText("Choose polygon processing output folder")
-        polygon_output_row = QHBoxLayout()
-        polygon_output_browse = QPushButton("Browse")
-        polygon_output_browse.clicked.connect(self.browse_polygon_output_folder)
-        polygon_output_row.addWidget(self.polygon_output_edit, 1)
-        polygon_output_row.addWidget(polygon_output_browse, 0)
-        self.polygon_source_combo = QComboBox()
-        self.polygon_source_combo.addItem("Use QGIS Layer", "qgis")
-        self.polygon_source_combo.addItem("Choose Vector File", "file")
-        self.polygon_source_combo.addItem("Advanced WKT", "wkt")
-        self.polygon_source_combo.currentIndexChanged.connect(self._update_polygon_source_visibility)
-        polygon_form.addRow("LiDAR folder", polygon_folder_row)
-        polygon_form.addRow("Polygon source", self.polygon_source_combo)
-        polygon_form.addRow("Output folder", polygon_output_row)
-        polygon_layout.addLayout(polygon_form)
-
-        self.polygon_qgis_source_frame = QFrame()
-        qgis_source_layout = QVBoxLayout(self.polygon_qgis_source_frame)
-        qgis_source_layout.setContentsMargins(0, 0, 0, 0)
-        qgis_source_layout.setSpacing(SECTION_SPACING)
-        qgis_layer_row = QHBoxLayout()
-        self.polygon_layer_combo = QComboBox()
-        self.polygon_layer_combo.currentIndexChanged.connect(self._update_selected_polygon_layer_status)
-        self.polygon_refresh_layers_button = QPushButton("Refresh Layers")
-        self.polygon_refresh_layers_button.clicked.connect(self.refresh_polygon_layers)
-        _apply_button_role(self.polygon_refresh_layers_button, "neutral")
-        qgis_layer_row.addWidget(self.polygon_layer_combo, 1)
-        qgis_layer_row.addWidget(self.polygon_refresh_layers_button, 0)
-        qgis_source_layout.addLayout(qgis_layer_row)
-        qgis_mode_row = QHBoxLayout()
-        self.polygon_layer_mode_combo = QComboBox()
-        self.polygon_layer_mode_combo.addItem("Use Selected Features", "selected")
-        self.polygon_layer_mode_combo.addItem("Use Entire Layer", "full")
-        self.polygon_dissolve_check = QCheckBox("Dissolve multiple features")
-        self.polygon_dissolve_check.setChecked(True)
-        qgis_mode_row.addWidget(self.polygon_layer_mode_combo, 0)
-        qgis_mode_row.addWidget(self.polygon_dissolve_check, 0)
-        qgis_mode_row.addStretch(1)
-        qgis_source_layout.addLayout(qgis_mode_row)
-        self.polygon_layer_status_label = _details_label("Refresh Layers to choose a loaded polygon layer.")
-        qgis_source_layout.addWidget(self.polygon_layer_status_label)
-        polygon_layout.addWidget(self.polygon_qgis_source_frame)
-
-        self.polygon_vector_source_frame = QFrame()
-        vector_source_layout = QVBoxLayout(self.polygon_vector_source_frame)
-        vector_source_layout.setContentsMargins(0, 0, 0, 0)
-        vector_source_layout.setSpacing(SECTION_SPACING)
-        vector_file_row = QHBoxLayout()
-        self.polygon_vector_file_edit = QLineEdit()
-        self.polygon_vector_file_edit.setPlaceholderText("GeoPackage, Shapefile, GeoJSON, FlatGeobuf, or KML")
-        self.polygon_vector_browse_button = QPushButton("Choose Vector File")
-        self.polygon_vector_browse_button.clicked.connect(self.browse_polygon_vector_file)
-        _apply_button_role(self.polygon_vector_browse_button, "secondary")
-        vector_file_row.addWidget(self.polygon_vector_file_edit, 1)
-        vector_file_row.addWidget(self.polygon_vector_browse_button, 0)
-        vector_source_layout.addLayout(vector_file_row)
-        self.polygon_vector_layer_combo = QComboBox()
-        self.polygon_vector_layer_combo.setVisible(False)
-        vector_source_layout.addWidget(self.polygon_vector_layer_combo)
-        self.polygon_vector_status_label = _details_label("Guided default: all polygon features are dissolved into one processing geometry.")
-        vector_source_layout.addWidget(self.polygon_vector_status_label)
-        polygon_layout.addWidget(self.polygon_vector_source_frame)
-
-        self.polygon_wkt_group, polygon_wkt_layout = _collapsible_section(polygon_layout, "Advanced WKT", checked=False)
-        wkt_form = QFormLayout()
-        wkt_form.setVerticalSpacing(SECTION_SPACING)
-        self.polygon_wkt_edit = QLineEdit()
-        self.polygon_wkt_edit.setPlaceholderText("POLYGON or MULTIPOLYGON WKT")
-        self.polygon_crs_edit = QLineEdit("EPSG:4326")
-        self.polygon_processing_crs_edit = QLineEdit()
-        self.polygon_processing_crs_edit.setPlaceholderText("Optional CRS override, for example EPSG:32610")
-        wkt_form.addRow("Polygon WKT", self.polygon_wkt_edit)
-        wkt_form.addRow("Source CRS", self.polygon_crs_edit)
-        wkt_form.addRow("Processing CRS", self.polygon_processing_crs_edit)
-        polygon_wkt_layout.addLayout(wkt_form)
-        _wire_collapsible_group(self.polygon_wkt_group)
-
-        products_row = QHBoxLayout()
-        self.polygon_product_checks: dict[ProductType, QCheckBox] = {}
-        for product, label in PRODUCT_LABELS.items():
-            check = QCheckBox(label.split(" (")[0])
-            check.setChecked(product is ProductType.CHM)
-            self.polygon_product_checks[product] = check
-            products_row.addWidget(check)
-        polygon_layout.addLayout(products_row)
-        polygon_actions = QHBoxLayout()
-        polygon_actions.setSpacing(ACTION_ROW_SPACING)
-        self.polygon_run_button = QPushButton("Analyze / Preflight")
-        self.polygon_run_button.clicked.connect(self.run_polygon_processing_preflight)
-        _apply_button_role(self.polygon_run_button, "primary")
-        polygon_actions.addWidget(self.polygon_run_button)
-        polygon_actions.addStretch(1)
-        polygon_layout.addLayout(polygon_actions)
-        self.polygon_preflight_text = _details_label("Choose a polygon layer or vector file; WKT is available under Advanced.")
-        polygon_layout.addWidget(self.polygon_preflight_text)
-        self.refresh_polygon_layers()
-        self._update_polygon_source_visibility()
-        _wire_collapsible_group(polygon_group)
-        polygon_group.toggled.connect(lambda _checked: self._update_polygon_source_visibility())
-
         spatial = self.add_section("Spatial Preview")
         self.spatial_section = spatial.parentWidget()
         self.footprint_text = QTextEdit()
@@ -879,146 +766,6 @@ class DatasetPage(MissionPage):
         if path:
             self.output_folder_edit.setText(path)
 
-    def browse_polygon_folder(self) -> None:
-        """Choose a LiDAR folder for polygon-driven processing."""
-        path = QFileDialog.getExistingDirectory(self, "Choose LiDAR folder")
-        if path:
-            self.polygon_folder_edit.setText(path)
-
-    def browse_polygon_output_folder(self) -> None:
-        """Choose an output folder for polygon-driven processing."""
-        path = QFileDialog.getExistingDirectory(self, "Choose polygon processing output folder")
-        if path:
-            self.polygon_output_edit.setText(path)
-
-    def browse_polygon_vector_file(self) -> None:
-        """Choose a polygon vector file for folder preflight."""
-        path, _ = QFileDialog.getOpenFileName(self, "Choose polygon vector file", "", POLYGON_VECTOR_FILE_FILTER)
-        if path:
-            self.polygon_vector_file_edit.setText(path)
-            self._refresh_polygon_vector_layers(path)
-
-    def refresh_polygon_layers(self) -> None:
-        """Refresh loaded QGIS polygon layers and preserve selection when possible."""
-        previous = self.polygon_layer_combo.currentData()
-        previous_id = getattr(previous, "layer_id", None)
-        self.polygon_layer_combo.blockSignals(True)
-        self.polygon_layer_combo.clear()
-        items = polygon_layer_items(self.iface)
-        for item in items:
-            self.polygon_layer_combo.addItem(item.label, item)
-        if previous_id:
-            for index in range(self.polygon_layer_combo.count()):
-                item = self.polygon_layer_combo.itemData(index)
-                if getattr(item, "layer_id", None) == previous_id:
-                    self.polygon_layer_combo.setCurrentIndex(index)
-                    break
-        self.polygon_layer_combo.blockSignals(False)
-        if not items:
-            self.polygon_layer_status_label.setText("No polygon layers are loaded. Add a polygon layer to QGIS or choose a vector file from disk.")
-        else:
-            current = self.polygon_layer_combo.currentData()
-            if current is not None and getattr(current, "selected_feature_count", 0) > 0:
-                self.polygon_layer_mode_combo.setCurrentIndex(0)
-            elif current is not None:
-                self.polygon_layer_mode_combo.setCurrentIndex(1)
-            self._update_selected_polygon_layer_status()
-
-    def _update_selected_polygon_layer_status(self, *_args: object) -> None:
-        item = self.polygon_layer_combo.currentData()
-        if item is None:
-            self.polygon_layer_status_label.setText("No polygon layer selected.")
-            return
-        selected = selected_feature_count_text(getattr(item, "selected_feature_count", 0))
-        guidance = "Use Selected Features is ready." if getattr(item, "selected_feature_count", 0) else "No selected features; use the entire layer or select polygon features on the map."
-        self.polygon_layer_status_label.setText(f"{item.name}: {selected}; CRS {item.crs or 'unknown'}. {guidance}")
-
-    def _update_polygon_source_visibility(self, *_args: object) -> None:
-        mode = self.polygon_source_combo.currentData()
-        container_visible = not hasattr(self, "polygon_group") or self.polygon_group.isChecked()
-        self.polygon_qgis_source_frame.setVisible(container_visible and mode == "qgis")
-        self.polygon_vector_source_frame.setVisible(container_visible and mode == "file")
-        self.polygon_wkt_group.setVisible(container_visible and mode == "wkt")
-        if mode == "wkt":
-            self.polygon_wkt_group.setChecked(True)
-        if mode == "qgis" and container_visible:
-            self.refresh_polygon_layers()
-
-    def _refresh_polygon_vector_layers(self, path: str) -> None:
-        self.polygon_vector_layer_combo.clear()
-        self.polygon_vector_layer_combo.setVisible(False)
-        try:
-            options = vector_file_layer_options(path)
-        except Exception as exc:  # noqa: BLE001 - report file inspection failures concisely.
-            self.polygon_vector_status_label.setText(f"Vector file could not be inspected: {exc}")
-            return
-        if not options:
-            self.polygon_vector_status_label.setText("No polygon layers were found in this vector file. Point and line layers are not accepted.")
-            return
-        for option in options:
-            self.polygon_vector_layer_combo.addItem(option.label, option)
-        self.polygon_vector_layer_combo.setVisible(len(options) > 1)
-        if len(options) > 1:
-            self.polygon_vector_status_label.setText("GeoPackage/container has multiple polygon layers. Choose one; all features are dissolved for preflight.")
-        else:
-            option = options[0]
-            self.polygon_vector_status_label.setText(f"{option.name}: {option.geometry_type}, CRS {option.crs or 'unknown'}. All features will be dissolved.")
-
-    def _normalized_polygon_selection(self):
-        mode = self.polygon_source_combo.currentData()
-        processing_crs = self.polygon_processing_crs_edit.text().strip() if hasattr(self, "polygon_processing_crs_edit") else ""
-        if mode == "qgis":
-            item = self.polygon_layer_combo.currentData()
-            if item is None:
-                raise ValueError("Choose a loaded QGIS polygon layer or choose a vector file.")
-            use_selected = self.polygon_layer_mode_combo.currentData() == "selected"
-            return normalize_qgis_layer_selection(
-                self.iface,
-                item.layer_id,
-                use_selected=use_selected,
-                dissolve=self.polygon_dissolve_check.isChecked(),
-                processing_crs=processing_crs,
-            )
-        if mode == "file":
-            path = self.polygon_vector_file_edit.text().strip()
-            if not path:
-                raise ValueError("Choose a polygon vector file.")
-            if self.polygon_vector_layer_combo.count() == 0:
-                self._refresh_polygon_vector_layers(path)
-            option = self.polygon_vector_layer_combo.currentData()
-            return normalize_vector_file_selection(
-                path,
-                layer_uri=getattr(option, "uri", None),
-                layer_name=getattr(option, "name", None),
-                processing_crs=processing_crs,
-            )
-        source = PolygonSource(
-            source_mode="wkt",
-            polygon_wkt=self.polygon_wkt_edit.text(),
-            source_crs=self.polygon_crs_edit.text(),
-            processing_crs=processing_crs or self.polygon_crs_edit.text(),
-        )
-        return normalize_polygon_source(source)
-
-    def run_polygon_processing_preflight(self) -> None:
-        """Build a polygon-folder preflight plan without unbounded point reads."""
-        folder = self.polygon_folder_edit.text().strip()
-        output = self.polygon_output_edit.text().strip() or self.output_folder_edit.text().strip()
-        products = tuple(product.value for product, check in self.polygon_product_checks.items() if check.isChecked())
-        if not folder or not output:
-            self.polygon_preflight_text.setText("Choose a LiDAR folder and output folder before running polygon processing.")
-            return
-        try:
-            normalized = self._normalized_polygon_selection()
-            inventory = discover_lidar_sources(LidarFolderRequest(Path(folder), recursive=True, include_ept=True))
-            plan = build_polygon_processing_plan(inventory, normalized.to_polygon_selection(), Path(output), products, processing_crs=normalized.processing_crs)
-        except Exception as exc:  # noqa: BLE001 - preflight should report concise guidance.
-            self.polygon_preflight_text.setText(f"Polygon processing preflight failed: {exc}")
-            return
-        lines = [polygon_source_summary(normalized), *polygon_preflight_summary(plan)]
-        lines.append("Execution note: PBM/chunked clipped processing is required before generating products from this plan.")
-        self.polygon_preflight_text.setText("\n".join(lines))
-
     def browse_ept_dtm(self) -> None:
         """Choose a DTM raster for DTM-backed EPT HAG."""
         path, _ = QFileDialog.getOpenFileName(self, "Choose DTM GeoTIFF", "", "GeoTIFF files (*.tif *.tiff);;All files (*.*)")
@@ -1040,7 +787,6 @@ class DatasetPage(MissionPage):
         self.analyze_button.setEnabled(True)
         self.ept_extract_button.setEnabled(True)
         self.ept_use_output_button.setEnabled(self.ept_subset_output_path is not None)
-        self.refresh_polygon_layers()
         self._set_ept_message("Dataset page refreshed. EPT subset extraction is available for ept.json sources.")
         if not self.summary_text.text().strip():
             self._set_dataset_message(empty_state_message("dataset"))
@@ -2032,6 +1778,34 @@ class _BatchExecutionWorker(QObject):
         self.completed.emit(result)
 
 
+class _PolygonBatchExecutionWorker(QObject):
+    """Qt worker that clips polygon sources and runs the normal BatchExecutor."""
+
+    itemReady = pyqtSignal(object)
+    jobReady = pyqtSignal(object)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, report: object, control_callback: Callable[[], str | None]) -> None:
+        super().__init__()
+        self.report = report
+        self.control_callback = control_callback
+
+    def run(self) -> None:
+        try:
+            result = execute_polygon_batch(
+                self.report,
+                adapter=PyForestScanAdapter(),
+                item_callback=self.itemReady.emit,
+                job_callback=self.jobReady.emit,
+                control_callback=self.control_callback,
+            )
+        except Exception as exc:  # noqa: BLE001 - worker must report failures to UI.
+            self.failed.emit(f"Unexpected polygon batch failure: {exc}")
+            return
+        self.completed.emit(result)
+
+
 class _BackendInstallWorker(QObject):
     """Qt worker that runs PBM installation away from the main QGIS UI thread."""
 
@@ -2055,15 +1829,16 @@ class _BackendInstallWorker(QObject):
 
 
 class BatchPage(MissionPage):
-    """Sequential folder-to-products batch workflow."""
+    """Folder-to-products batch workflow with standard and polygon-area modes."""
 
     jobUpdated = pyqtSignal(object)
     batchCompleted = pyqtSignal(object)
 
-    def __init__(self, adapter: PyForestScanAdapter, parent: QWidget | None = None) -> None:
+    def __init__(self, adapter: PyForestScanAdapter, iface: object | None = None, parent: QWidget | None = None) -> None:
         """Create the Batch page."""
         super().__init__("Batch", parent)
         self.adapter = adapter
+        self.iface = iface
         self.discovered_paths: list[Path] = []
         self.latest_result: object | None = None
         self.batch_items: list[object] = []
@@ -2073,9 +1848,19 @@ class BatchPage(MissionPage):
         self.active_workers = 0
         self.batch_thread: QThread | None = None
         self.batch_worker: _BatchExecutionWorker | None = None
-        self.preflight_report: BatchPreflightReport | None = None
+        self.preflight_report: object | None = None
+
+        mode_section = self.add_section("Batch Mode")
+        self.batch_mode_combo = QComboBox()
+        self.batch_mode_combo.addItem("Standard File Batch", "standard")
+        self.batch_mode_combo.addItem("Polygon Area Processing", "polygon")
+        self.batch_mode_combo.currentIndexChanged.connect(self._update_batch_mode_visibility)
+        mode_section.addWidget(self.batch_mode_combo)
+        self.batch_mode_summary_label = _body_label("Standard File Batch: discover files, choose files, run preflight, then run Batch.")
+        mode_section.addWidget(self.batch_mode_summary_label)
 
         source = self.add_section("1. Discover Files")
+        self.standard_batch_section = source.parentWidget()
         folder_row = QHBoxLayout()
         self.input_folder_edit = QLineEdit()
         self.input_folder_edit.setPlaceholderText("Choose a folder containing LAS, LAZ, COPC, or EPT datasets")
@@ -2105,7 +1890,106 @@ class BatchPage(MissionPage):
         self.file_list.setMinimumHeight(COMPACT_LIST_HEIGHT)
         source.addWidget(self.file_list)
 
+        polygon_source = self.add_section("1. Polygon Area Processing")
+        self.polygon_batch_section = polygon_source.parentWidget()
+        polygon_source.addWidget(_body_label("Choose a LiDAR folder and polygon. Batch will discover intersecting sources and clip them before product runs."))
+        polygon_form = QFormLayout()
+        polygon_form.setVerticalSpacing(SECTION_SPACING)
+        self.polygon_lidar_folder_edit = QLineEdit()
+        self.polygon_lidar_folder_edit.setPlaceholderText("Folder containing LAS, LAZ, COPC, or local ept.json sources")
+        polygon_folder_row = QHBoxLayout()
+        polygon_folder_browse = QPushButton("Browse")
+        polygon_folder_browse.clicked.connect(self.browse_polygon_lidar_folder)
+        self.polygon_refresh_folder_button = QPushButton("Refresh LiDAR Folder")
+        self.polygon_refresh_folder_button.clicked.connect(self.refresh_polygon_lidar_folder)
+        _apply_button_role(self.polygon_refresh_folder_button, "neutral")
+        polygon_folder_row.addWidget(self.polygon_lidar_folder_edit, 1)
+        polygon_folder_row.addWidget(polygon_folder_browse, 0)
+        polygon_folder_row.addWidget(self.polygon_refresh_folder_button, 0)
+        self.polygon_source_combo = QComboBox()
+        self.polygon_source_combo.addItem("Use QGIS Layer", "qgis")
+        self.polygon_source_combo.addItem("Choose Vector File", "file")
+        self.polygon_source_combo.addItem("Advanced WKT", "wkt")
+        self.polygon_source_combo.currentIndexChanged.connect(self._update_polygon_source_visibility)
+        polygon_form.addRow("LiDAR folder", polygon_folder_row)
+        polygon_form.addRow("Polygon source", self.polygon_source_combo)
+        polygon_source.addLayout(polygon_form)
+
+        self.polygon_qgis_source_frame = QFrame()
+        qgis_source_layout = QVBoxLayout(self.polygon_qgis_source_frame)
+        qgis_source_layout.setContentsMargins(0, 0, 0, 0)
+        qgis_source_layout.setSpacing(SECTION_SPACING)
+        qgis_layer_row = QHBoxLayout()
+        self.polygon_layer_combo = QComboBox()
+        self.polygon_layer_combo.currentIndexChanged.connect(self._update_selected_polygon_layer_status)
+        self.polygon_refresh_layers_button = QPushButton("Refresh Polygon Layers")
+        self.polygon_refresh_layers_button.clicked.connect(self.refresh_polygon_layers)
+        _apply_button_role(self.polygon_refresh_layers_button, "neutral")
+        qgis_layer_row.addWidget(self.polygon_layer_combo, 1)
+        qgis_layer_row.addWidget(self.polygon_refresh_layers_button, 0)
+        qgis_source_layout.addLayout(qgis_layer_row)
+        qgis_mode_row = QHBoxLayout()
+        self.polygon_layer_mode_combo = QComboBox()
+        self.polygon_layer_mode_combo.addItem("Use Selected Features", "selected")
+        self.polygon_layer_mode_combo.addItem("Use Entire Layer", "full")
+        self.polygon_dissolve_check = QCheckBox("Dissolve multiple features")
+        self.polygon_dissolve_check.setChecked(True)
+        qgis_mode_row.addWidget(self.polygon_layer_mode_combo, 0)
+        qgis_mode_row.addWidget(self.polygon_dissolve_check, 0)
+        qgis_mode_row.addStretch(1)
+        qgis_source_layout.addLayout(qgis_mode_row)
+        self.polygon_layer_status_label = _details_label("Refresh Polygon Layers to choose a loaded polygon layer.")
+        qgis_source_layout.addWidget(self.polygon_layer_status_label)
+        polygon_source.addWidget(self.polygon_qgis_source_frame)
+
+        self.polygon_vector_source_frame = QFrame()
+        vector_source_layout = QVBoxLayout(self.polygon_vector_source_frame)
+        vector_source_layout.setContentsMargins(0, 0, 0, 0)
+        vector_source_layout.setSpacing(SECTION_SPACING)
+        vector_file_row = QHBoxLayout()
+        self.polygon_vector_file_edit = QLineEdit()
+        self.polygon_vector_file_edit.setPlaceholderText("GeoPackage, Shapefile, GeoJSON, FlatGeobuf, or KML")
+        self.polygon_vector_browse_button = QPushButton("Choose Vector File")
+        self.polygon_vector_browse_button.clicked.connect(self.browse_polygon_vector_file)
+        _apply_button_role(self.polygon_vector_browse_button, "secondary")
+        vector_file_row.addWidget(self.polygon_vector_file_edit, 1)
+        vector_file_row.addWidget(self.polygon_vector_browse_button, 0)
+        vector_source_layout.addLayout(vector_file_row)
+        self.polygon_vector_layer_combo = QComboBox()
+        self.polygon_vector_layer_combo.setVisible(False)
+        vector_source_layout.addWidget(self.polygon_vector_layer_combo)
+        self.polygon_vector_status_label = _details_label("Guided default: all polygon features are dissolved into one processing geometry.")
+        vector_source_layout.addWidget(self.polygon_vector_status_label)
+        polygon_source.addWidget(self.polygon_vector_source_frame)
+
+        self.polygon_wkt_group, polygon_wkt_layout = _collapsible_section(polygon_source, "Advanced WKT", checked=False)
+        wkt_form = QFormLayout()
+        wkt_form.setVerticalSpacing(SECTION_SPACING)
+        self.polygon_wkt_edit = QLineEdit()
+        self.polygon_wkt_edit.setPlaceholderText("POLYGON or MULTIPOLYGON WKT")
+        self.polygon_crs_edit = QLineEdit("EPSG:4326")
+        self.polygon_processing_crs_edit = QLineEdit()
+        self.polygon_processing_crs_edit.setPlaceholderText("Optional CRS override, for example EPSG:32610")
+        wkt_form.addRow("Polygon WKT", self.polygon_wkt_edit)
+        wkt_form.addRow("Source CRS", self.polygon_crs_edit)
+        wkt_form.addRow("Processing CRS", self.polygon_processing_crs_edit)
+        polygon_wkt_layout.addLayout(wkt_form)
+        _wire_collapsible_group(self.polygon_wkt_group)
+        polygon_actions = QHBoxLayout()
+        polygon_actions.setSpacing(ACTION_ROW_SPACING)
+        self.rerun_polygon_preflight_button = QPushButton("Re-run Preflight")
+        self.rerun_polygon_preflight_button.clicked.connect(self.run_preflight)
+        _apply_button_role(self.rerun_polygon_preflight_button, "secondary")
+        self.reset_polygon_batch_button = QPushButton("Reset Polygon Batch")
+        self.reset_polygon_batch_button.clicked.connect(self.reset_polygon_batch)
+        _apply_button_role(self.reset_polygon_batch_button, "danger")
+        polygon_actions.addWidget(self.rerun_polygon_preflight_button)
+        polygon_actions.addWidget(self.reset_polygon_batch_button)
+        polygon_actions.addStretch(1)
+        polygon_source.addLayout(polygon_actions)
+
         output = self.add_section("Output")
+        self.batch_output_section = output.parentWidget()
         output_row = QHBoxLayout()
         self.output_folder_edit = QLineEdit()
         self.output_folder_edit.setPlaceholderText("Choose one output folder for the batch")
@@ -2273,6 +2157,165 @@ class BatchPage(MissionPage):
         self.batch_results = QListWidget()
         self.batch_results.setMinimumHeight(COMPACT_LIST_HEIGHT)
         run_section.addWidget(self.batch_results)
+        self._update_batch_mode_visibility()
+
+    def _current_batch_mode(self) -> str:
+        return str(self.batch_mode_combo.currentData() or "standard")
+
+    def _update_batch_mode_visibility(self, *_args: object) -> None:
+        mode = self._current_batch_mode()
+        polygon = mode == "polygon"
+        self.standard_batch_section.setVisible(not polygon)
+        self.polygon_batch_section.setVisible(polygon)
+        self.batch_mode_summary_label.setText(
+            "Polygon Area Processing: choose a LiDAR folder and polygon; Batch discovers intersecting sources and clips them before product runs."
+            if polygon else
+            "Standard File Batch: discover files, choose files, run preflight, then run Batch."
+        )
+        self.preflight_report = None
+        self.acknowledge_warnings_check.setChecked(False)
+        self.acknowledge_warnings_check.setEnabled(False)
+        self.preflight_text.setPlainText("Run polygon preflight before starting Polygon Area Processing." if polygon else "Run preflight before starting a batch.")
+        self.run_button.setText("Run Polygon Batch" if polygon else primary_action_label("batch"))
+        self.resume_button.setVisible(not polygon)
+        self.retry_failed_button.setText("Retry Failed" if polygon else "Retry Failed Files")
+        self.summary_label.setText("Review Polygon Batch outputs after execution." if polygon else "4. Review Results after the batch completes.")
+        self._update_polygon_source_visibility()
+        self._update_run_button_enabled()
+
+    def browse_polygon_lidar_folder(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "Choose polygon LiDAR folder")
+        if path:
+            self.polygon_lidar_folder_edit.setText(path)
+            self.refresh_polygon_lidar_folder()
+
+    def refresh_polygon_lidar_folder(self) -> None:
+        self.preflight_report = None
+        self.preflight_text.setPlainText("LiDAR folder refreshed. Re-run preflight to update intersecting sources.")
+        self._update_run_button_enabled()
+
+    def browse_polygon_vector_file(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Choose polygon vector file", "", POLYGON_VECTOR_FILE_FILTER)
+        if path:
+            self.polygon_vector_file_edit.setText(path)
+            self._refresh_polygon_vector_layers(path)
+
+    def refresh_polygon_layers(self) -> None:
+        previous = self.polygon_layer_combo.currentData()
+        previous_id = getattr(previous, "layer_id", None)
+        self.polygon_layer_combo.blockSignals(True)
+        self.polygon_layer_combo.clear()
+        items = polygon_layer_items(self.iface)
+        for item in items:
+            self.polygon_layer_combo.addItem(item.label, item)
+        if previous_id:
+            for index in range(self.polygon_layer_combo.count()):
+                item = self.polygon_layer_combo.itemData(index)
+                if getattr(item, "layer_id", None) == previous_id:
+                    self.polygon_layer_combo.setCurrentIndex(index)
+                    break
+        self.polygon_layer_combo.blockSignals(False)
+        if not items:
+            self.polygon_layer_status_label.setText("No polygon layers are loaded. Add a polygon layer to QGIS or choose a vector file from disk.")
+        else:
+            current = self.polygon_layer_combo.currentData()
+            if current is not None and getattr(current, "selected_feature_count", 0) > 0:
+                self.polygon_layer_mode_combo.setCurrentIndex(0)
+            elif current is not None:
+                self.polygon_layer_mode_combo.setCurrentIndex(1)
+            self._update_selected_polygon_layer_status()
+        self.preflight_report = None
+        self._update_run_button_enabled()
+
+    def _update_selected_polygon_layer_status(self, *_args: object) -> None:
+        item = self.polygon_layer_combo.currentData()
+        if item is None:
+            self.polygon_layer_status_label.setText("No polygon layer selected.")
+            return
+        selected = selected_feature_count_text(getattr(item, "selected_feature_count", 0))
+        guidance = "Use Selected Features is ready." if getattr(item, "selected_feature_count", 0) else "No selected features; use the entire layer or select polygon features on the map."
+        self.polygon_layer_status_label.setText(f"{item.name}: {selected}; CRS {item.crs or 'unknown'}. {guidance}")
+
+    def _update_polygon_source_visibility(self, *_args: object) -> None:
+        if not hasattr(self, "polygon_source_combo"):
+            return
+        mode = self.polygon_source_combo.currentData()
+        container_visible = self._current_batch_mode() == "polygon"
+        self.polygon_qgis_source_frame.setVisible(container_visible and mode == "qgis")
+        self.polygon_vector_source_frame.setVisible(container_visible and mode == "file")
+        self.polygon_wkt_group.setVisible(container_visible and mode == "wkt")
+        if mode == "wkt":
+            self.polygon_wkt_group.setChecked(True)
+        if mode == "qgis" and container_visible:
+            self.refresh_polygon_layers()
+
+    def _refresh_polygon_vector_layers(self, path: str) -> None:
+        self.polygon_vector_layer_combo.clear()
+        self.polygon_vector_layer_combo.setVisible(False)
+        try:
+            options = vector_file_layer_options(path)
+        except Exception as exc:  # noqa: BLE001
+            self.polygon_vector_status_label.setText(f"Vector file could not be inspected: {exc}")
+            return
+        if not options:
+            self.polygon_vector_status_label.setText("No polygon layers were found in this vector file. Point and line layers are not accepted.")
+            return
+        for option in options:
+            self.polygon_vector_layer_combo.addItem(option.label, option)
+        self.polygon_vector_layer_combo.setVisible(len(options) > 1)
+        if len(options) > 1:
+            self.polygon_vector_status_label.setText("GeoPackage/container has multiple polygon layers. Choose one; all features are dissolved for preflight.")
+        else:
+            option = options[0]
+            self.polygon_vector_status_label.setText(f"{option.name}: {option.geometry_type}, CRS {option.crs or 'unknown'}. All features will be dissolved.")
+        self.preflight_report = None
+        self._update_run_button_enabled()
+
+    def _normalized_polygon_selection(self):
+        mode = self.polygon_source_combo.currentData()
+        processing_crs = self.polygon_processing_crs_edit.text().strip() if hasattr(self, "polygon_processing_crs_edit") else ""
+        if mode == "qgis":
+            item = self.polygon_layer_combo.currentData()
+            if item is None:
+                raise ValueError("Choose a loaded QGIS polygon layer or choose a vector file.")
+            return normalize_qgis_layer_selection(
+                self.iface,
+                item.layer_id,
+                use_selected=self.polygon_layer_mode_combo.currentData() == "selected",
+                dissolve=self.polygon_dissolve_check.isChecked(),
+                processing_crs=processing_crs,
+            )
+        if mode == "file":
+            path = self.polygon_vector_file_edit.text().strip()
+            if not path:
+                raise ValueError("Choose a polygon vector file.")
+            if self.polygon_vector_layer_combo.count() == 0:
+                self._refresh_polygon_vector_layers(path)
+            option = self.polygon_vector_layer_combo.currentData()
+            return normalize_vector_file_selection(
+                path,
+                layer_uri=getattr(option, "uri", None),
+                layer_name=getattr(option, "name", None),
+                processing_crs=processing_crs,
+            )
+        return normalize_polygon_source(
+            PolygonSource(
+                source_mode="wkt",
+                polygon_wkt=self.polygon_wkt_edit.text(),
+                source_crs=self.polygon_crs_edit.text(),
+                processing_crs=processing_crs or self.polygon_crs_edit.text(),
+            )
+        )
+
+    def reset_polygon_batch(self) -> None:
+        self.preflight_report = None
+        self.batch_items = []
+        self.failed_paths = []
+        self.batch_results.clear()
+        self.progress_bar.setValue(0)
+        self.preflight_text.setPlainText("Polygon Batch reset. Choose a folder and polygon, then run preflight.")
+        _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: Not set up - run polygon preflight.")
+        self._update_run_button_enabled()
 
     def set_default_output_folder(self, folder: Path | None) -> None:
         """Use configured default output folder when empty."""
@@ -2324,6 +2367,27 @@ class BatchPage(MissionPage):
         self.preflight_button.setEnabled(False)
         self.preflight_text.setPlainText("Preparing preflight check...")
         QApplication.processEvents()
+        if self._current_batch_mode() == "polygon":
+            try:
+                request = self._build_polygon_batch_request()
+                report = run_polygon_batch_preflight(request)
+                write_polygon_batch_manifest(report)
+            except (BatchExecutionError, ValueError) as exc:
+                self.preflight_text.setPlainText(f"BLOCKER: {exc}")
+                self.preflight_report = None
+                self._update_run_button_enabled()
+                self.preflight_button.setEnabled(True)
+                return
+            finally:
+                self.preflight_button.setEnabled(True)
+            self.preflight_report = report
+            self.preflight_text.setPlainText(polygon_preflight_text(report))
+            self.acknowledge_warnings_check.setEnabled(report.has_warnings and not report.blockers)
+            if not report.has_warnings:
+                self.acknowledge_warnings_check.setChecked(False)
+            self._update_run_button_enabled()
+            self._refresh_footprint_label()
+            return
         try:
             request = self._build_batch_request()
         except BatchExecutionError as exc:
@@ -2347,6 +2411,9 @@ class BatchPage(MissionPage):
         """Run selected datasets through preflight-approved batch execution."""
         if self.preflight_report is None:
             _set_status_badge(self.status_label, "WARNING", "Status: Needs review - run preflight before starting the batch.")
+            return
+        if self._current_batch_mode() == "polygon":
+            self._run_polygon_batch()
             return
         if self.preflight_report.blockers:
             _set_status_badge(self.status_label, "FAILED", "Status: Failed - preflight blockers must be resolved before running.")
@@ -2402,6 +2469,47 @@ class BatchPage(MissionPage):
         self.batch_thread.finished.connect(self._clear_batch_thread)
         self.batch_thread.start()
 
+    def _run_polygon_batch(self) -> None:
+        report = self.preflight_report
+        if report is None:
+            return
+        if getattr(report, "blockers", ()):
+            _set_status_badge(self.status_label, "FAILED", "Status: Failed - polygon preflight blockers must be resolved before running.")
+            return
+        if getattr(report, "warnings", ()) and not self.acknowledge_warnings_check.isChecked():
+            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - review and acknowledge polygon warnings before running.")
+            return
+        selected = list(getattr(report, "selected_sources", ()))
+        self.batch_items = []
+        self.failed_paths = []
+        self.cancel_requested = False
+        self.pause_requested = False
+        self.batch_results.clear()
+        self.progress_bar.setValue(0)
+        self.run_button.setEnabled(False)
+        self.resume_button.setEnabled(False)
+        self.pause_button.setEnabled(True)
+        self.cancel_button.setEnabled(True)
+        self.retry_failed_button.setEnabled(False)
+        self._processed_items = 0
+        self._total_items = max(1, len(selected))
+        _set_status_badge(self.status_label, "RUNNING", f"Status: Running - clipping and processing {len(selected)} intersecting source(s).")
+        self.worker_status_label.setText("Active workers: 1 (polygon clipping, then batch execution)")
+        self.batch_thread = QThread(self)
+        self.batch_worker = _PolygonBatchExecutionWorker(report, self._batch_control_state)
+        self.batch_worker.moveToThread(self.batch_thread)
+        self.batch_thread.started.connect(self.batch_worker.run)
+        self.batch_worker.itemReady.connect(self._on_batch_item)
+        self.batch_worker.jobReady.connect(self._on_batch_job_update)
+        self.batch_worker.completed.connect(self._on_batch_complete)
+        self.batch_worker.failed.connect(self._on_batch_failed)
+        self.batch_worker.completed.connect(self.batch_thread.quit)
+        self.batch_worker.failed.connect(self.batch_thread.quit)
+        self.batch_thread.finished.connect(self.batch_worker.deleteLater)
+        self.batch_thread.finished.connect(self.batch_thread.deleteLater)
+        self.batch_thread.finished.connect(self._clear_batch_thread)
+        self.batch_thread.start()
+
     def _build_batch_request(self, batch_folder: Path | None = None, datasets: tuple[Path, ...] | None = None) -> BatchRequest:
         """Build a typed batch request from current UI state."""
         selected = tuple(datasets) if datasets is not None else tuple(self._selected_paths())
@@ -2439,9 +2547,53 @@ class BatchPage(MissionPage):
             batch_folder=batch_folder,
         )
 
+    def _build_polygon_batch_request(self) -> PolygonBatchRequest:
+        folder = self.polygon_lidar_folder_edit.text().strip()
+        output_folder = self.output_folder_edit.text().strip()
+        if not folder:
+            raise BatchExecutionError("Choose a LiDAR folder for Polygon Area Processing.")
+        if not output_folder:
+            raise BatchExecutionError("Choose an output folder.")
+        products = tuple(product for product, check in self.product_checks.items() if check.isChecked())
+        if not products:
+            raise BatchExecutionError("Select at least one product.")
+        settings = BatchProductSettings(
+            products=products,
+            grid_resolution=self.resolution_spin.value(),
+            height_bin_size=self.height_bin_spin.value() if self.height_bin_spin.value() > 0 else None,
+            chm_interpolation=self.chm_interpolation_combo.currentText(),
+            canopy_cover_height_threshold=self.canopy_threshold_spin.value(),
+            stop_on_error=self.stop_on_error_check.isChecked(),
+            load_outputs_into_qgis=self.load_outputs_check.isChecked(),
+            execution_mode=str(self.execution_mode_combo.currentData()),
+            max_workers=self.max_workers_spin.value(),
+            confirm_large_parallel=self.confirm_parallel_check.isChecked(),
+            skip_completed=self.skip_completed_check.isChecked(),
+            retry_failed_only=self.retry_failed_only_check.isChecked(),
+            overwrite_existing=self.overwrite_existing_check.isChecked(),
+            preflight_acknowledged=self.acknowledge_warnings_check.isChecked(),
+        )
+        return PolygonBatchRequest(
+            lidar_folder=Path(folder),
+            output_folder=Path(output_folder),
+            polygon=self._normalized_polygon_selection(),
+            products=products,
+            settings=settings,
+            recursive=True,
+            title="PyForestScan Polygon Batch",
+        )
+
     def _update_run_button_enabled(self) -> None:
         """Enable Run only after preflight passes or warnings are acknowledged."""
         report = self.preflight_report
+        if self._current_batch_mode() == "polygon":
+            selected = getattr(report, "selected_sources", ()) if report is not None else ()
+            blockers = getattr(report, "blockers", ()) if report is not None else ()
+            warnings = getattr(report, "warnings", ()) if report is not None else ()
+            enabled = bool(report and selected and not blockers and (not warnings or self.acknowledge_warnings_check.isChecked()))
+            self.run_button.setEnabled(enabled)
+            self.resume_button.setEnabled(False)
+            return
         enabled = bool(report and report.files_to_process and not report.blockers and (not report.warnings or self.acknowledge_warnings_check.isChecked()))
         self.run_button.setEnabled(enabled)
         resumable = bool(report and report.manifest_path.exists() and (report.files_completed or report.files_to_retry or report.files_to_skip))
@@ -2516,6 +2668,17 @@ class BatchPage(MissionPage):
         self._refresh_footprint_label()
 
     def _refresh_footprint_label(self) -> None:
+        if hasattr(self, "batch_mode_combo") and self._current_batch_mode() == "polygon":
+            selected_count = len(getattr(self.preflight_report, "selected_sources", ())) if self.preflight_report is not None else 0
+            selected_products = [product for product, check in self.product_checks.items() if check.isChecked()]
+            products = [PRODUCT_LABELS[product] for product in selected_products]
+            self.footprint_label.setText(
+                f"Polygon intersecting sources: {selected_count} after preflight\n"
+                f"Selected products: {', '.join(products) if products else 'none'}\n"
+                f"Shared grid resolution: {self.resolution_spin.value():g}\n"
+                "Polygon Batch clips sources first, then runs the standard Batch product pipeline on clipped inputs."
+            )
+            return
         selected_count = len(self._selected_paths())
         selected_products = [product for product, check in self.product_checks.items() if check.isChecked()]
         products = [PRODUCT_LABELS[product] for product in selected_products]

@@ -73,19 +73,19 @@ class PolygonSourceModelTests(unittest.TestCase):
 class PolygonSourceUiStaticTests(unittest.TestCase):
     """Static checks for QGIS-facing UI integration."""
 
-    def test_dataset_page_exposes_guided_polygon_sources(self) -> None:
+    def test_batch_page_exposes_guided_polygon_sources(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
         self.assertIn("Use QGIS Layer", source)
         self.assertIn("Choose Vector File", source)
         self.assertIn("Advanced WKT", source)
-        self.assertIn("Refresh Layers", source)
+        self.assertIn("Refresh Polygon Layers", source)
         self.assertIn("Use Selected Features", source)
         self.assertIn("Use Entire Layer", source)
-        self.assertIn("polygon_source_summary", source)
+        self.assertIn("run_polygon_batch_preflight", source)
 
     def test_guided_mode_no_longer_requires_wkt(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
-        self.assertIn("Choose a polygon layer or vector file; WKT is available under Advanced.", source)
+        self.assertIn("Polygon Area Processing", source)
         self.assertNotIn("selected QGIS feature support is planned", source)
 
     def test_qgis_helper_filters_polygon_layers_and_vector_containers(self) -> None:

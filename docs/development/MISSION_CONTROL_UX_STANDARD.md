@@ -17,7 +17,7 @@ This standard applies to every future Mission Control page, dialog, panel, and w
 
 Primary single-dataset workflow pages are Home, Workspace when needed, Dataset, Planning, Processing, and Results. Batch is optional and must not be part of the default Continue path. Scientific Advisor is supporting guidance and must not be forced before Processing. Environment and Settings are readiness/support pages. They remain available from navigation, but the primary UI should make the next workflow step obvious without forcing a wizard.
 
-Primary workflow pages may show a subtle step indicator using completed, current, and upcoming markers. Batch may show its own controls when users explicitly choose Batch, but it should be omitted from the default single-dataset indicator. Readiness markers are small text-adjacent markers and never replace status words.
+Primary workflow pages may show a subtle step indicator using completed, current, and upcoming markers. Batch may show its own controls when users explicitly choose Batch, including Standard File Batch and Polygon Area Processing modes, but it should be omitted from the default single-dataset indicator. Readiness markers are small text-adjacent markers and never replace status words.
 
 ## Interaction Lifecycle
 
@@ -71,7 +71,7 @@ If the user has not reached a workflow step, the page should show the one next a
 | Dataset | Selected dataset, Analyze Dataset action, dataset summary after analysis | Metadata and report paths |
 | Planning | Selected products, shared settings, estimated outputs, Continue to Processing | Advanced product settings and parameter explanations |
 | Processing | Current job, progress, execution backend, output folder, Run Processing, Next Step to Results after completion | Backend logs, technical output, job JSON |
-| Batch | Discover Files, Preflight, Run Batch, Review Results | Advanced options, footprint estimate, parallel diagnostics |
+| Batch | Batch mode, Discover Files or LiDAR Folder, Preflight, Run Batch, Review Results | Advanced options, footprint estimate, polygon technical details, parallel diagnostics |
 | Results | Generated outputs, Open Output Folder, Load Outputs into QGIS, or compact guidance back to Processing | Technical logs and processing metadata |
 | Scientific Advisor | Executive summary, populated recommendations/products/actionable warnings | Empty recommendation/warning cards, product explanations, scientific notes |
 | Environment | Overall status, PBM status, execution backend, Refresh, Backend Settings | QGIS fallback, dependency details, technical checks/logs |

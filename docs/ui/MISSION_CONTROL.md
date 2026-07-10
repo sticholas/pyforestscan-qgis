@@ -37,8 +37,7 @@ Results, Scientific Advisor, Environment, and Settings.
 - Dataset: choose LAS, LAZ, COPC, or EPT plus an output folder, analyze the dataset, create the active
   run folder, show a compact key-facts dataset summary and spatial footprint preview,
   keep lower-priority fields/report paths under content-sized Technical Metadata, add the footprint to
-  QGIS, zoom the main map canvas, and run polygon-folder preflight from a QGIS polygon layer,
-  selected polygon features, a vector file, or Advanced WKT.
+  QGIS, and zoom the main map canvas. Folder and polygon-area workflows live in Batch.
 - Planning: Product Planner uses the active Dataset Explorer report, keeps the
   normal product/settings path first, and collapses output-folder overrides under
   Advanced Output Folder. No product execution is performed.
@@ -47,7 +46,9 @@ Results, Scientific Advisor, Environment, and Settings.
   and progress by default. Product Plan JSON paths, pipeline stages, and logs are
   available under Technical Details.
 - Batch: optional folder-to-products workflow for users who explicitly choose
-  batch processing. It is not part of the default Continue path.
+  batch processing. It defaults to Standard File Batch and offers Polygon Area
+  Processing for LiDAR-folder clipping by QGIS layer, vector file, or Advanced WKT.
+  It is not part of the default Continue path.
 - Results: show a compact teaching empty state until outputs exist, then make
   Open Output Folder and Load Outputs dominant. Load Outputs adds current-run
   `.tif`, `.tiff`, and supported `.csv` outputs to QGIS, skips duplicates, and
@@ -169,14 +170,14 @@ selection.
 
 ## Batch Processing
 
-Mission Control includes a Batch page for sequential folder-to-products workflows. Users choose an input folder, optional recursive discovery, selected files, one output folder, products, and shared settings. Batch v1 creates one `pyforestscan_batch_<timestamp>` folder and one normal run folder per selected dataset. Each dataset reuses Dataset Explorer, Product Planner, JobManager, the pipeline registry, and the adapter boundary. Failures are recorded per file and do not stop the whole batch unless the user enables stop-on-error. Batch summary JSON, CSV, and HTML files are shown in Results after completion.
+Mission Control includes a Batch page for folder-to-products workflows. Standard File Batch lets users choose an input folder, optional recursive discovery, selected files, one output folder, products, and shared settings. Polygon Area Processing lets users choose a LiDAR folder, polygon source, output folder, and products; preflight selects intersecting sources, execution stages clipped LAZ inputs, and the normal Batch executor processes those staged files. Batch creates one `pyforestscan_batch_<timestamp>` folder and one normal run folder per selected dataset or clipped source. Each dataset reuses Dataset Explorer, Product Planner, JobManager, the pipeline registry, and the adapter boundary. Failures are recorded per file and do not stop the whole batch unless the user enables stop-on-error. Batch summary JSON, CSV, and HTML files are shown in Results after completion.
 
 
 ## UX Streamlining
 
 The Home page is intentionally a workflow overview rather than a documentation landing page. It shows only backend/environment readiness, selected dataset, workflow status, current output folder, Continue, and Check Environment. Continue routes to Environment when readiness needs attention, then Dataset, Planning, Processing, or Results as the run progresses. Technical paths and internal files remain collapsed on their respective pages.
 
-Batch v2 keeps the default workflow focused on the choices users need: input folder, selected files, output folder, products, shared settings, and run controls. Internal reports remain available through Results and run-folder summaries.
+Batch keeps the default Standard File Batch workflow focused on the choices users need: input folder, selected files, output folder, products, shared settings, and run controls. Polygon Area Processing adds a separate mode for LiDAR folder plus polygon source workflows so Dataset remains a single-dataset page. Internal reports remain available through Results and run-folder summaries.
 
 
 ## Batch Execution Modes

@@ -186,7 +186,7 @@ Primary single-dataset workflow pages use subtle completed/current/upcoming orie
 
 - Keep one obvious action.
 - Show one next step on primary workflow pages.
-- Keep Batch and Scientific Advisor outside the default Continue path.
+- Keep Batch and Scientific Advisor outside the default Continue path. Batch may expose Standard File Batch and Polygon Area Processing modes when the user explicitly opens Batch.
 - Use readiness markers only beside important readiness text.
 - Hide technical details.
 - Avoid duplicate status.
@@ -226,7 +226,7 @@ Future integrations such as WhiteboxTools, Open3D, SAM, PyTorch, CloudCompare, P
 | Scientific Advisor | Empty recommendation/warning cards are hidden. | Keep detailed product explanations collapsed. |
 | Planning | Some parameter density is inherent to product choice. | Keep advanced product settings collapsed and recommended defaults first. |
 | Processing | Execution backend and progress are visible. | Keep logs, JSON paths, and pipeline stages in Technical Details. |
-| Batch | Three-step flow is understandable. | Keep Parallel Safe available but secondary. |
+| Batch | Three-step flow is understandable. Phase 27F adds an explicit Standard File Batch / Polygon Area Processing mode choice. | Keep Parallel Safe available but secondary; keep polygon technical details behind preflight summaries. |
 | Results | Generated outputs come first. | Keep internal reports/logs collapsed. |
 | Settings / Backend | PBM controls are clear and detailed backend paths are collapsed. | Keep install/repair messaging user-local and non-technical. |
 | Dialogs and popups | PBM confirmation is necessary and scoped. | Keep confirmations short with Advanced details only when needed. |
