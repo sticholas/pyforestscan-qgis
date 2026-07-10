@@ -8,7 +8,7 @@ This document records current limitations for the internal release candidate. It
 - CHM, Canopy Cover, PAD, PAI, FHD, and Rumple summary are implemented for single datasets, but outputs still require visual QA in QGIS before interpretation.
 - PAD is an authoritative multi-band height-bin volume. Mission Control displays a representative grayscale height slice by default; single-band PAD derivatives and RGB composites are visualizations, not replacements for the full PAD volume.
 - Rumple currently writes a CSV summary rather than a raster layer.
-- Polygon-folder processing is currently a guarded preflight/planning workflow. Full clipped PBM/chunked product execution, selected-feature extraction, mosaicking, cataloging, folder monitoring, and project files remain deferred.
+- Polygon-folder processing is currently a guarded preflight/planning workflow. Mission Control can now select polygons from loaded QGIS layers, selected features, vector files, GeoPackage layers, or Advanced WKT, but full clipped PBM/chunked product execution, mosaicking, cataloging, folder monitoring, and project files remain deferred.
 
 ## Batch Processing
 

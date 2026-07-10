@@ -35,11 +35,13 @@ Parameters:
 - `thin_radius`
 - `hag` / `hag_dtm` with mutual exclusion
 - `dtm` for DTM-backed HAG
-- `crop_poly` and `poly` polygon WKT or polygon file
+- `crop_poly`
+- `polygon_source` polygon feature source, preferred for QGIS layers and vector files
+- `poly` Advanced WKT or polygon file path fallback; do not use together with `polygon_source`
 - `reproject`
 - `output_las_laz`
 
-Adapter call: `extract_lidar_subset(EptSubsetRequest(...))`. The PBM backend job type is `ept_subset_extract` when PBM is READY; QGIS Python remains the fallback only when PBM is unavailable and dependencies are present.
+Adapter call: `extract_lidar_subset(EptSubsetRequest(...))`. The PBM backend job type is `ept_subset_extract` when PBM is READY; QGIS Python remains the fallback only when PBM is unavailable and dependencies are present. The Processing algorithm dissolves polygon feature-source input to WKT before calling the adapter so users do not need to paste WKT manually.
 
 ## Coverage Notes
 

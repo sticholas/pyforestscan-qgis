@@ -157,7 +157,7 @@ class PolygonFolderPlanningTests(unittest.TestCase):
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 
         self.assertIn("Process Folder by Polygon", source)
-        self.assertIn("Run Polygon Processing", source)
+        self.assertIn("Analyze / Preflight", source)
         self.assertIn("build_polygon_processing_plan", source)
         self.assertIn("Execution note: PBM/chunked clipped processing is required", source)
 

@@ -37,7 +37,8 @@ Results, Scientific Advisor, Environment, and Settings.
 - Dataset: choose LAS, LAZ, COPC, or EPT plus an output folder, analyze the dataset, create the active
   run folder, show a compact key-facts dataset summary and spatial footprint preview,
   keep lower-priority fields/report paths under content-sized Technical Metadata, add the footprint to
-  QGIS, and zoom the main map canvas.
+  QGIS, zoom the main map canvas, and run polygon-folder preflight from a QGIS polygon layer,
+  selected polygon features, a vector file, or Advanced WKT.
 - Planning: Product Planner uses the active Dataset Explorer report, keeps the
   normal product/settings path first, and collapses output-folder overrides under
   Advanced Output Folder. No product execution is performed.

@@ -42,7 +42,7 @@ def polygon_selection_from_wkt(wkt: str, crs: str, *, source_label: str = "polyg
     if not text:
         raise ValueError("Polygon WKT is required.")
     upper = text.upper()
-    if "POLYGON" not in upper:
+    if not (upper.startswith("POLYGON") or upper.startswith("MULTIPOLYGON")):
         raise ValueError("Polygon WKT must be POLYGON or MULTIPOLYGON geometry.")
     if not (crs or "").strip():
         raise ValueError("Polygon CRS is required.")
