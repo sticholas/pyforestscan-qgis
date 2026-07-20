@@ -6,14 +6,14 @@ Polygon Area Processing uses a LiDAR catalog so large repositories do not need t
 
 Use a catalog when you want to process a polygon against a folder or repository that contains many LiDAR sources. The catalog stores source footprints and metadata in a small SQLite database with a spatial index.
 
-Normal polygon processing requires a catalog. If no catalog exists, Mission Control shows **No Catalog** and offers **Build Catalog**.
+Normal polygon processing requires a catalog. If no catalog exists, Mission Control shows **No Catalog** and offers **Build Complete Repository Index**.
 
 ## Build Or Update
 
 1. Open Mission Control > Batch.
 2. Choose **Polygon Area Processing**.
 3. Choose the **LiDAR Repository**.
-4. Click **Build Catalog**.
+4. Click **Detect Best Indexing Strategy**, then use **Build Relevant Index** when supported or **Build Complete Repository Index** for the durable full catalog.
 5. After the catalog is ready, choose the polygon source, products, and output folder.
 6. Click **Run Preflight Check**.
 
@@ -42,7 +42,7 @@ For repositories with millions of files, the first catalog build can take time. 
 
 ## Responsive Large Repository Workflow
 
-Selecting or pasting a LiDAR Repository path is lightweight. Mission Control normalizes the path, checks that it is accessible, and reads catalog status only. It does not recursively count files, inspect headers, calculate folder size, or build a catalog until you explicitly click **Build Catalog**, **Update Catalog**, or **Resume Catalog Build**.
+Selecting or pasting a LiDAR Repository path is lightweight. Mission Control normalizes the path, checks that it is accessible, and reads catalog status only. It does not recursively count files, inspect headers, calculate folder size, or build a catalog until you explicitly click **Build Relevant Index**, **Build Complete Repository Index**, **Update Catalog**, or **Resume Catalog Build**.
 
 Use **Use Path** when a native folder picker is slow on network, removable, or mounted storage. Use **Quick Probe** for a bounded top-level sample: it stops after a small item/time budget and does not recurse. The sample is not a total file count.
 
@@ -57,3 +57,11 @@ Catalog work is checkpointed after safe chunks. **Pause After Current Chunk** le
 ## Benchmarking Safely
 
 Use `python3 scripts/benchmark_lidar_catalog.py --synthetic` for a safe SQLite/RTree benchmark. Use `--path <repo> --real-dry-probe` to probe a real repository without recursion. A real build requires `--real-build --confirm-real-build`, and can be bounded with `--max-files` or `--maximum-duration` for controlled testing.
+
+## Adaptive Indexing Strategies
+
+Before building a complete catalog, click **Detect Best Indexing Strategy**. Mission Control performs a bounded top-level probe and reports whether it can use an existing spatial index, a PDAL tile index, EPT/COPC native registration, an approved filename/grid profile, partitioned lazy indexing, or the full header catalog fallback.
+
+Use **Build Relevant Index** when the detected strategy can register an existing index or native EPT/COPC source. Use **Build Complete Repository Index** when no trustworthy shortcut exists.
+
+See [Choosing A LiDAR Index Strategy](choosing-lidar-index-strategy.md) and [Repository Profiles](repository-profiles.md).

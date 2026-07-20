@@ -22,3 +22,4 @@ This directory contains implementation notes for contributors working on PyFores
 - [Manual QA Script](MANUAL_QA_SCRIPT.md)
 
 Historical phase validation records live in [docs/archive/phase-history](../archive/phase-history/README.md).
+- [Adaptive LiDAR Indexing](ADAPTIVE_LIDAR_INDEXING.md)

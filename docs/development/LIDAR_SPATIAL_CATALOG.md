@@ -123,3 +123,9 @@ Progress starts as indeterminate while the total repository size is unknown. Cou
 ## Filesystem Profiles
 
 Quick Probe reports conservative filesystem notes for local, mounted, UNC/network, or unknown paths. Default metadata worker settings remain conservative; future PBM catalog workers can use these notes to choose smaller queues and worker counts for network or mounted storage.
+
+## Phase 27I Adaptive And Lazy Indexing
+
+Phase 27I adds `pyforestscan_qgis/core/adaptive_lidar_indexing.py` as the strategy layer above the catalog worker. It detects repository capabilities with a bounded top-level probe, chooses a `RepositoryIndexPlan`, and supports registration of existing CSV/GeoJSON footprint indexes and native EPT/COPC logical sources into the same SQLite/RTree catalog.
+
+The full catalog remains the fallback. It is now described as a two-pass path: spatial fields first so polygon queries can work, richer metadata enrichment later. Filename/grid and partitioned-lazy profiles are modeled but require explicit profile approval or supplied partition metadata before use.

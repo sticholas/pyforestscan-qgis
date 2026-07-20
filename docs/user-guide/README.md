@@ -12,3 +12,7 @@ Recommended reading order:
 ## Pages
 
 - [Dataset Page](dataset.md)
+- [LiDAR Catalogs](lidar-catalog.md)
+- [Process LiDAR Folder by Polygon](polygon-folder-processing.md)
+- [Choosing A LiDAR Index Strategy](choosing-lidar-index-strategy.md)
+- [Repository Profiles](repository-profiles.md)

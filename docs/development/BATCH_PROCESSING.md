@@ -167,3 +167,9 @@ Disk-space estimates are conservative placeholders based on selected file count 
 External worker mode is disabled in normal Mission Control use. Phase 17E proved the basic job-spec/result-file architecture, but manual validation showed that using QGIS GUI Python as the worker launcher can open multiple QGIS application windows instead of running headless jobs. That behavior is unsafe for users and can destabilize a desktop session.
 
 The code is retained only as isolated developer research scaffolding. The executor and preflight layer block external mode unless the `PYFORESTSCAN_QGIS_ENABLE_EXTERNAL_WORKERS` developer flag is set. Do not set that flag for normal processing. QGIS GUI executables must never be used as worker Python. Future work must identify and validate a true headless Python launcher before external workers can return to the UI.
+
+## Adaptive Polygon Repository Indexing
+
+Polygon Area Processing exposes **Detect Best Indexing Strategy**, **Build Relevant Index**, and **Build Complete Repository Index**. Detection is bounded and does not recurse. Relevant indexing can register an existing index or native EPT/COPC source when safe; otherwise the existing durable catalog job runs with Phase 27H safeguards.
+
+Batch execution and scientific processing are unchanged. External Worker mode remains disabled.

@@ -91,4 +91,10 @@ Local LAS/LAZ/COPC source bounds are read during catalog building when the publi
 
 ## Catalog Maintenance
 
-Use **Build Catalog** the first time you point Polygon Area Processing at a repository. Use **Update Catalog** after files are added, modified, moved, or deleted. Normal polygon preflight uses the catalog and does not trigger a complete rebuild.
+Use **Detect Best Indexing Strategy** first. Then use **Build Relevant Index** when supported, or **Build Complete Repository Index** the first time a full repository catalog is needed. Use **Update Catalog** after files are added, modified, moved, or deleted. Normal polygon preflight uses the catalog and does not trigger a complete rebuild.
+
+## Adaptive Repository Indexing
+
+Polygon Area Processing now separates repository strategy detection from heavy catalog work. **Detect Best Indexing Strategy** is safe to run first because it uses a bounded top-level probe only. It can identify existing PyForestScan catalogs, PDAL tile indexes, CSV/GeoJSON footprint indexes, EPT roots, COPC sources, and configured repository profiles.
+
+The default path remains safe: if no trustworthy shortcut is found, use **Build Complete Repository Index**. Batch preflight still requires a usable catalog before processing.

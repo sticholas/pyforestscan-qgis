@@ -195,3 +195,13 @@ When `batch_manifest.json` exists, Mission Control exposes Resume Batch. Complet
 ## External Worker Mode
 
 External Worker mode is disabled and is not selectable in Mission Control. Manual validation showed that QGIS GUI Python can launch full QGIS application windows instead of headless jobs. The preserved external-worker code is future research only and is blocked by core guardrails unless an explicit developer flag is set outside normal use.
+
+## Batch Adaptive Indexing Controls
+
+In **Batch > Polygon Area Processing**, users can preview repository indexing before heavy catalog work:
+
+- **Detect Best Indexing Strategy** shows the selected strategy, reason, cost, expected accuracy, files avoided, and warnings.
+- **Build Relevant Index** uses the detected low-cost path where supported, such as existing indexes or native EPT/COPC registration.
+- **Build Complete Repository Index** starts the durable full catalog build/update path.
+
+The strategy panel is informational and bounded; it must not start a deep scan by itself.

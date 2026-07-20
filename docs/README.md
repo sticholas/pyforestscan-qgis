@@ -122,3 +122,4 @@ This documentation is organized for users, scientists, developers, maintainers, 
 - [Security](../SECURITY.md)
 - [Code of Conduct](../CODE_OF_CONDUCT.md)
 - [Citation](../CITATION.cff)
+- [Adaptive LiDAR Indexing](development/ADAPTIVE_LIDAR_INDEXING.md)

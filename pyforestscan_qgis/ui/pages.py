@@ -45,6 +45,14 @@ from qgis.PyQt.QtWidgets import (
 from ..core.adapter import PyForestScanAdapter
 from ..core.backend import BackendService
 from ..core.qgis_compat import build_qgis_compatibility_report, format_qgis_compatibility_report
+from ..core.adaptive_lidar_indexing import (
+    LidarIndexStrategy,
+    choose_index_strategy,
+    detect_repository_capabilities,
+    format_repository_index_plan,
+    register_existing_footprint_index,
+    register_native_sources,
+)
 from ..core.batch import BatchProductSettings, BatchRequest, discover_lidar_files
 from ..core.batch_executor import PARALLEL_SAFE_MODE, SEQUENTIAL_MODE, BatchExecutor
 from ..core.batch_preflight import BatchPreflightReport, run_batch_preflight
@@ -1879,6 +1887,7 @@ class BatchPage(MissionPage):
         self.catalog_worker: _CatalogBuildWorker | None = None
         self.catalog_pause_requested = False
         self.preflight_report: object | None = None
+        self.current_index_plan: object | None = None
 
         mode_section = self.add_section("Batch Mode")
         self.batch_mode_combo = QComboBox()
@@ -1952,13 +1961,52 @@ class BatchPage(MissionPage):
         polygon_form.addRow("LiDAR Repository", polygon_folder_row)
         polygon_form.addRow("Polygon source", self.polygon_source_combo)
         polygon_source.addLayout(polygon_form)
-        self.polygon_catalog_status_label = _details_label("No Catalog - choose a LiDAR repository, then Build Catalog.")
+        self.polygon_catalog_status_label = _details_label("No Catalog - choose a LiDAR repository, then detect a strategy or build a complete catalog.")
         polygon_source.addWidget(self.polygon_catalog_status_label)
+        strategy_form = QFormLayout()
+        strategy_form.setVerticalSpacing(SECTION_SPACING)
+        self.polygon_index_strategy_combo = QComboBox()
+        self.polygon_index_strategy_combo.addItem("Automatic", LidarIndexStrategy.AUTOMATIC.value)
+        self.polygon_index_strategy_combo.addItem("Existing Spatial Index", LidarIndexStrategy.EXISTING_SPATIAL_INDEX.value)
+        self.polygon_index_strategy_combo.addItem("EPT/COPC Native", LidarIndexStrategy.NATIVE_HIERARCHICAL_SOURCE.value)
+        self.polygon_index_strategy_combo.addItem("Filename/Grid Profile", LidarIndexStrategy.FILENAME_GRID.value)
+        self.polygon_index_strategy_combo.addItem("Partitioned Lazy", LidarIndexStrategy.PARTITIONED_LAZY.value)
+        self.polygon_index_strategy_combo.addItem("Full Header Catalog", LidarIndexStrategy.FULL_HEADER_CATALOG.value)
+        strategy_form.addRow("Indexing strategy", self.polygon_index_strategy_combo)
+        existing_index_row = QHBoxLayout()
+        self.polygon_existing_index_edit = QLineEdit()
+        self.polygon_existing_index_edit.setPlaceholderText("Optional existing index: GeoJSON, CSV, GPKG, SHP, FGB, or PDAL tile index")
+        self.polygon_existing_index_button = QPushButton("Choose Index")
+        self.polygon_existing_index_button.clicked.connect(self.choose_polygon_existing_index)
+        _apply_button_role(self.polygon_existing_index_button, "neutral")
+        existing_index_row.addWidget(self.polygon_existing_index_edit, 1)
+        existing_index_row.addWidget(self.polygon_existing_index_button, 0)
+        strategy_form.addRow("Existing index", existing_index_row)
+        polygon_source.addLayout(strategy_form)
+        strategy_actions = QHBoxLayout()
+        strategy_actions.setSpacing(ACTION_ROW_SPACING)
+        self.detect_index_strategy_button = QPushButton("Detect Best Indexing Strategy")
+        self.detect_index_strategy_button.clicked.connect(self.detect_polygon_index_strategy)
+        _apply_button_role(self.detect_index_strategy_button, "secondary")
+        self.build_relevant_index_button = QPushButton("Build Relevant Index")
+        self.build_relevant_index_button.clicked.connect(self.build_relevant_polygon_index)
+        _apply_button_role(self.build_relevant_index_button, "primary")
+        strategy_actions.addWidget(self.detect_index_strategy_button)
+        strategy_actions.addWidget(self.build_relevant_index_button)
+        strategy_actions.addStretch(1)
+        polygon_source.addLayout(strategy_actions)
+        self.polygon_index_plan_text = QTextEdit()
+        self.polygon_index_plan_text.setReadOnly(True)
+        self.polygon_index_plan_text.setMinimumHeight(72)
+        self.polygon_index_plan_text.setMaximumHeight(140)
+        self.polygon_index_plan_text.setPlainText("Detect Best Indexing Strategy runs a bounded top-level probe only; it does not crawl the repository or read every header.")
+        polygon_source.addWidget(self.polygon_index_plan_text)
         catalog_actions = QHBoxLayout()
         catalog_actions.setSpacing(ACTION_ROW_SPACING)
-        self.build_catalog_button = QPushButton("Build Catalog")
+        self.build_catalog_button = QPushButton("Build Complete Repository Index")
+        self.build_catalog_button.setToolTip("Build Catalog")
         self.build_catalog_button.clicked.connect(self.build_polygon_catalog)
-        _apply_button_role(self.build_catalog_button, "primary")
+        _apply_button_role(self.build_catalog_button, "secondary")
         self.update_catalog_button = QPushButton("Update Catalog")
         self.update_catalog_button.clicked.connect(self.build_polygon_catalog)
         _apply_button_role(self.update_catalog_button, "secondary")
@@ -2301,7 +2349,9 @@ class BatchPage(MissionPage):
         folder = self.polygon_lidar_folder_edit.text().strip()
         running = self.catalog_thread is not None
         if not folder:
-            self.polygon_catalog_status_label.setText("No Catalog - choose a LiDAR repository, then Build Catalog.")
+            self.polygon_catalog_status_label.setText("No Catalog - choose a LiDAR repository, then detect a strategy or build a complete catalog.")
+            self.detect_index_strategy_button.setEnabled(False)
+            self.build_relevant_index_button.setEnabled(False)
             self.build_catalog_button.setEnabled(False)
             self.update_catalog_button.setEnabled(False)
             self.resume_catalog_button.setEnabled(False)
@@ -2318,11 +2368,68 @@ class BatchPage(MissionPage):
         self.polygon_catalog_status_label.setText(state_text if selection.valid else selection.message)
         exists = bool(path and path.exists())
         interrupted = bool(latest is not None and latest.status in {CatalogJobStatus.INTERRUPTED, CatalogJobStatus.PAUSED})
+        self.detect_index_strategy_button.setEnabled(selection.valid and not running)
+        self.build_relevant_index_button.setEnabled(selection.valid and not running)
         self.build_catalog_button.setEnabled(selection.valid and not running)
         self.update_catalog_button.setEnabled(selection.valid and exists and not running)
         self.resume_catalog_button.setEnabled(selection.valid and interrupted and not running)
         self.pause_catalog_button.setEnabled(running)
         self.open_catalog_folder_button.setEnabled(bool(path) and not running)
+
+    def choose_polygon_existing_index(self) -> None:
+        path, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            "Choose existing LiDAR footprint index",
+            "",
+            "LiDAR indexes (*.geojson *.json *.csv *.gpkg *.shp *.fgb);;All files (*.*)",
+        )
+        if path:
+            self.polygon_existing_index_edit.setText(path)
+            self.current_index_plan = None
+            self.detect_polygon_index_strategy()
+
+    def detect_polygon_index_strategy(self) -> None:
+        folder_text = self.polygon_lidar_folder_edit.text().strip()
+        if not folder_text:
+            self.polygon_index_plan_text.setPlainText("Choose a LiDAR repository before detecting an indexing strategy.")
+            return
+        requested = LidarIndexStrategy(self.polygon_index_strategy_combo.currentData() or LidarIndexStrategy.AUTOMATIC.value)
+        existing_index = self.polygon_existing_index_edit.text().strip() or None
+        capabilities = detect_repository_capabilities(folder_text, existing_index_path=existing_index)
+        plan = choose_index_strategy(capabilities, requested=requested)
+        self.current_index_plan = plan
+        self.polygon_index_plan_text.setPlainText(format_repository_index_plan(plan))
+        self.polygon_catalog_status_label.setText(f"Index strategy: {plan.selected_strategy.value}; cost {plan.expected_build_cost.value}. No deep scan was performed.")
+
+    def build_relevant_polygon_index(self) -> None:
+        if self.current_index_plan is None:
+            self.detect_polygon_index_strategy()
+        plan = self.current_index_plan
+        if plan is not None and getattr(plan, "selected_strategy", None) is LidarIndexStrategy.EXISTING_SPATIAL_INDEX and getattr(plan, "sources_to_register", None):
+            source = plan.sources_to_register[0]
+            if Path(source).suffix.lower() == ".sqlite":
+                self.polygon_index_plan_text.setPlainText(f"Existing PyForestScan catalog is ready: {source}.")
+                self.refresh_catalog_status()
+                return
+            try:
+                catalog = register_existing_footprint_index(source, self.polygon_lidar_folder_edit.text().strip(), self._polygon_catalog_path())
+            except Exception as exc:  # pragma: no cover - defensive UI boundary
+                self.polygon_index_plan_text.setPlainText(f"Existing index registration failed: {exc}")
+                return
+            self.polygon_index_plan_text.setPlainText(f"Registered existing spatial index into {catalog}.")
+            self.refresh_catalog_status()
+            return
+        if plan is not None and getattr(plan, "selected_strategy", None) is LidarIndexStrategy.NATIVE_HIERARCHICAL_SOURCE and getattr(plan, "sources_to_register", None):
+            try:
+                catalog = register_native_sources(self.polygon_lidar_folder_edit.text().strip(), plan.sources_to_register, self._polygon_catalog_path())
+            except Exception as exc:  # pragma: no cover - defensive UI boundary
+                self.polygon_index_plan_text.setPlainText(f"Native EPT/COPC registration failed: {exc}")
+                return
+            self.polygon_index_plan_text.setPlainText(f"Registered native EPT/COPC sources into {catalog}.")
+            self.refresh_catalog_status()
+            return
+        self.polygon_index_plan_text.setPlainText("Selected strategy requires the durable catalog worker; indexing starts with the current repository safeguards.")
+        self._start_polygon_catalog_job("lidar_catalog_build")
 
     def build_polygon_catalog(self) -> None:
         self._start_polygon_catalog_job("lidar_catalog_build")
@@ -2343,6 +2450,8 @@ class BatchPage(MissionPage):
         if catalog is None:
             return
         self.catalog_pause_requested = False
+        self.detect_index_strategy_button.setEnabled(False)
+        self.build_relevant_index_button.setEnabled(False)
         self.build_catalog_button.setEnabled(False)
         self.update_catalog_button.setEnabled(False)
         self.resume_catalog_button.setEnabled(False)
