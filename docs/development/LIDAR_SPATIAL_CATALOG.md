@@ -105,3 +105,21 @@ Very large selections produce warnings before execution. External Worker mode re
 ## Extension Points
 
 The catalog builder supports include/exclude patterns, source-type filters, max traversal depth, hidden/temp/archive folder ignoring, and future repository-specific path adapters. Filename-based spatial inference is not assumed unless a future documented adapter supplies it.
+
+## Phase 27H Responsive Jobs
+
+Phase 27H adds lightweight repository selection, bounded Quick Probe, durable catalog job state, single-writer locks, pause-after-current-chunk, resume, stage/counter progress, and a PBM runner entrypoint (`pyforestscan_qgis.backend_runner.run_catalog_job`).
+
+The Batch UI starts catalog work only from explicit Build/Update/Resume actions. Folder browse, pasted path use, page open, workspace restore, and Refresh Catalog Status do not call `os.walk`, recursive globbing, header inspection, or catalog building.
+
+Catalog build/update remains streaming: traversal yields incrementally, SQLite commits are batched, seen paths are written to a temporary SQLite table for deletion reconciliation, and unchanged files are skipped before metadata inspection.
+
+## Progress And State Files
+
+Catalog jobs write JSON state under `catalog_jobs/` beside the catalog and use a `.lock` file to prevent concurrent writers. States are queued, running, pausing, paused/interrupted, completed, and failed. Stages are Preparing, Discovering Sources, Reading Metadata, Writing Spatial Index, Detecting Deleted Sources, Verifying Catalog, Finalizing, and Ready.
+
+Progress starts as indeterminate while the total repository size is unknown. Counters and rate are preferred over fake exact percentages. ETA remains pending until enough information exists to make it honest.
+
+## Filesystem Profiles
+
+Quick Probe reports conservative filesystem notes for local, mounted, UNC/network, or unknown paths. Default metadata worker settings remain conservative; future PBM catalog workers can use these notes to choose smaller queues and worker counts for network or mounted storage.

@@ -163,6 +163,7 @@ class CatalogBuildOptions:
     include_globs: tuple[str, ...] = ()
     exclude_globs: tuple[str, ...] = ()
     max_depth: int | None = None
+    max_source_files: int | None = None
     source_types: tuple[str, ...] = ()
     ignore_hidden: bool = True
     ignore_names: tuple[str, ...] = (".git", "__pycache__", ".pyforestscan", "tmp", "temp", "archive")

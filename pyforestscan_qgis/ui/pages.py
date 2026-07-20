@@ -65,8 +65,9 @@ from ..core.exceptions import AdapterError, ProcessingError
 from ..core.ept_subset import build_ept_subset_request, compact_ept_subset_summary
 from ..core.polygon_source import POLYGON_VECTOR_FILE_FILTER, PolygonSource, selected_feature_count_text
 from ..core.polygon_normalization import normalize_polygon_source
-from ..core.lidar_catalog_builder import build_lidar_catalog
+from ..core.lidar_catalog_jobs import CatalogJobRunner, CatalogJobSpec, CatalogJobStatus, latest_catalog_job_state
 from ..core.lidar_catalog_models import default_lidar_catalog_path
+from ..core.lidar_catalog_probe import quick_probe_lidar_repository, select_lidar_repository_path
 from ..core.polygon_batch import PolygonBatchRequest, catalog_status_text, execute_polygon_batch, polygon_preflight_text, run_polygon_batch_preflight, write_polygon_batch_manifest
 from ..core.job_manager import JobExecutionError, JobManager
 from ..core.knowledge import RecommendationReport
@@ -1780,24 +1781,24 @@ class _BatchExecutionWorker(QObject):
 
 
 class _CatalogBuildWorker(QObject):
-    """Worker-thread wrapper for LiDAR catalog build/update."""
+    """Worker-thread wrapper for durable LiDAR catalog jobs."""
 
     progress = pyqtSignal(object)
     completed = pyqtSignal(object)
     failed = pyqtSignal(str)
 
-    def __init__(self, root_path: Path, catalog_path: Path) -> None:
+    def __init__(self, spec: CatalogJobSpec, pause_callback: Callable[[], bool]) -> None:
         super().__init__()
-        self.root_path = root_path
-        self.catalog_path = catalog_path
+        self.spec = spec
+        self.pause_callback = pause_callback
 
     def run(self) -> None:
         try:
-            result = build_lidar_catalog(
-                self.root_path,
-                self.catalog_path,
-                progress_callback=lambda payload: self.progress.emit(payload),
-            )
+            result = CatalogJobRunner(
+                self.spec,
+                progress_callback=lambda progress: self.progress.emit(progress),
+                pause_callback=self.pause_callback,
+            ).run()
         except Exception as exc:  # noqa: BLE001 - worker must report UI-safe message.
             self.failed.emit(str(exc))
             return
@@ -1876,6 +1877,7 @@ class BatchPage(MissionPage):
         self.batch_worker: _BatchExecutionWorker | None = None
         self.catalog_thread: QThread | None = None
         self.catalog_worker: _CatalogBuildWorker | None = None
+        self.catalog_pause_requested = False
         self.preflight_report: object | None = None
 
         mode_section = self.add_section("Batch Mode")
@@ -1928,11 +1930,19 @@ class BatchPage(MissionPage):
         polygon_folder_row = QHBoxLayout()
         polygon_folder_browse = QPushButton("Browse")
         polygon_folder_browse.clicked.connect(self.browse_polygon_lidar_folder)
+        self.use_polygon_path_button = QPushButton("Use Path")
+        self.use_polygon_path_button.clicked.connect(self.use_polygon_repository_path)
+        _apply_button_role(self.use_polygon_path_button, "neutral")
+        self.quick_probe_button = QPushButton("Quick Probe")
+        self.quick_probe_button.clicked.connect(self.quick_probe_polygon_repository)
+        _apply_button_role(self.quick_probe_button, "secondary")
         self.polygon_refresh_folder_button = QPushButton("Refresh Catalog Status")
         self.polygon_refresh_folder_button.clicked.connect(self.refresh_polygon_lidar_folder)
         _apply_button_role(self.polygon_refresh_folder_button, "neutral")
         polygon_folder_row.addWidget(self.polygon_lidar_folder_edit, 1)
         polygon_folder_row.addWidget(polygon_folder_browse, 0)
+        polygon_folder_row.addWidget(self.use_polygon_path_button, 0)
+        polygon_folder_row.addWidget(self.quick_probe_button, 0)
         polygon_folder_row.addWidget(self.polygon_refresh_folder_button, 0)
         self.polygon_source_combo = QComboBox()
         self.polygon_source_combo.addItem("Use QGIS Layer", "qgis")
@@ -1952,11 +1962,20 @@ class BatchPage(MissionPage):
         self.update_catalog_button = QPushButton("Update Catalog")
         self.update_catalog_button.clicked.connect(self.build_polygon_catalog)
         _apply_button_role(self.update_catalog_button, "secondary")
+        self.resume_catalog_button = QPushButton("Resume Catalog Build")
+        self.resume_catalog_button.clicked.connect(self.resume_polygon_catalog)
+        _apply_button_role(self.resume_catalog_button, "secondary")
+        self.pause_catalog_button = QPushButton("Pause After Current Chunk")
+        self.pause_catalog_button.clicked.connect(self.pause_polygon_catalog)
+        self.pause_catalog_button.setEnabled(False)
+        _apply_button_role(self.pause_catalog_button, "secondary")
         self.open_catalog_folder_button = QPushButton("Open Catalog Folder")
         self.open_catalog_folder_button.clicked.connect(self.open_polygon_catalog_folder)
         _apply_button_role(self.open_catalog_folder_button, "neutral")
         catalog_actions.addWidget(self.build_catalog_button)
         catalog_actions.addWidget(self.update_catalog_button)
+        catalog_actions.addWidget(self.resume_catalog_button)
+        catalog_actions.addWidget(self.pause_catalog_button)
         catalog_actions.addWidget(self.open_catalog_folder_button)
         catalog_actions.addStretch(1)
         polygon_source.addLayout(catalog_actions)
@@ -2234,13 +2253,41 @@ class BatchPage(MissionPage):
         path = QFileDialog.getExistingDirectory(self, "Choose LiDAR repository")
         if path:
             self.polygon_lidar_folder_edit.setText(path)
-            self.refresh_polygon_lidar_folder()
+            self.use_polygon_repository_path()
+
+    def use_polygon_repository_path(self) -> None:
+        path_text = self.polygon_lidar_folder_edit.text().strip()
+        if not path_text:
+            self.polygon_catalog_status_label.setText("No Catalog - paste or browse to a LiDAR repository path.")
+            return
+        status = select_lidar_repository_path(path_text)
+        self.polygon_lidar_folder_edit.setText(str(status.normalized_path))
+        self.preflight_report = None
+        self.refresh_catalog_status()
+        self.preflight_text.setPlainText(status.message + " No repository scan was performed.")
+        self._update_run_button_enabled()
 
     def refresh_polygon_lidar_folder(self) -> None:
         self.preflight_report = None
         self.refresh_catalog_status()
-        self.preflight_text.setPlainText("Catalog status refreshed. Run polygon preflight to query intersecting sources.")
+        self.preflight_text.setPlainText("Catalog status refreshed. No repository scan was performed. Run polygon preflight to query intersecting sources.")
         self._update_run_button_enabled()
+
+    def quick_probe_polygon_repository(self) -> None:
+        folder = self.polygon_lidar_folder_edit.text().strip()
+        if not folder:
+            self.polygon_catalog_status_label.setText("Quick Probe needs a LiDAR repository path.")
+            return
+        probe = quick_probe_lidar_repository(folder)
+        examples = ", ".join(probe.source_type_examples) if probe.source_type_examples else "none in bounded top-level sample"
+        dirs = ", ".join(probe.top_level_directory_examples[:4]) if probe.top_level_directory_examples else "none sampled"
+        limit = " stopped at probe limit" if probe.stopped_by_limit else " completed within probe budget"
+        self.polygon_catalog_status_label.setText(
+            f"Quick Probe:{limit}; inspected {probe.inspected_entries} top-level entr{'y' if probe.inspected_entries == 1 else 'ies'} "
+            f"in {probe.elapsed_seconds:.2f}s. Catalog: {'found' if probe.selection.catalog_exists else 'not found'}. "
+            f"Source examples: {examples}. Directories: {dirs}. {probe.filesystem_note}"
+        )
+        self.preflight_text.setPlainText(probe.recommendation)
 
     def _polygon_catalog_path(self) -> Path | None:
         folder = self.polygon_lidar_folder_edit.text().strip()
@@ -2252,36 +2299,60 @@ class BatchPage(MissionPage):
         if not hasattr(self, "polygon_catalog_status_label"):
             return
         folder = self.polygon_lidar_folder_edit.text().strip()
+        running = self.catalog_thread is not None
         if not folder:
             self.polygon_catalog_status_label.setText("No Catalog - choose a LiDAR repository, then Build Catalog.")
             self.build_catalog_button.setEnabled(False)
             self.update_catalog_button.setEnabled(False)
+            self.resume_catalog_button.setEnabled(False)
+            self.pause_catalog_button.setEnabled(False)
             self.open_catalog_folder_button.setEnabled(False)
             return
         path = self._polygon_catalog_path()
-        self.polygon_catalog_status_label.setText(catalog_status_text(Path(folder), path))
+        selection = select_lidar_repository_path(folder)
+        latest = latest_catalog_job_state(path) if path is not None else None
+        if latest is not None and latest.status in {CatalogJobStatus.INTERRUPTED, CatalogJobStatus.PAUSED, CatalogJobStatus.FAILED}:
+            state_text = f"Catalog {latest.status.value.title()} - {latest.stage.value}; discovered {latest.discovered:,}; indexed {latest.indexed:,}; errors {latest.errors:,}."
+        else:
+            state_text = catalog_status_text(Path(folder), path)
+        self.polygon_catalog_status_label.setText(state_text if selection.valid else selection.message)
         exists = bool(path and path.exists())
-        running = self.catalog_thread is not None
-        self.build_catalog_button.setEnabled(not running)
-        self.update_catalog_button.setEnabled(exists and not running)
+        interrupted = bool(latest is not None and latest.status in {CatalogJobStatus.INTERRUPTED, CatalogJobStatus.PAUSED})
+        self.build_catalog_button.setEnabled(selection.valid and not running)
+        self.update_catalog_button.setEnabled(selection.valid and exists and not running)
+        self.resume_catalog_button.setEnabled(selection.valid and interrupted and not running)
+        self.pause_catalog_button.setEnabled(running)
         self.open_catalog_folder_button.setEnabled(bool(path) and not running)
 
     def build_polygon_catalog(self) -> None:
+        self._start_polygon_catalog_job("lidar_catalog_build")
+
+    def resume_polygon_catalog(self) -> None:
+        self._start_polygon_catalog_job("lidar_catalog_resume")
+
+    def _start_polygon_catalog_job(self, job_type: str) -> None:
         folder_text = self.polygon_lidar_folder_edit.text().strip()
         if not folder_text:
             _set_status_badge(self.status_label, "WARNING", "Status: Needs review - choose a LiDAR repository before building a catalog.")
             return
-        root = Path(folder_text)
+        selection = select_lidar_repository_path(folder_text)
+        if not selection.valid or not selection.readable:
+            _set_status_badge(self.status_label, "FAILED", f"Status: Failed - {selection.message}")
+            return
         catalog = self._polygon_catalog_path()
         if catalog is None:
             return
+        self.catalog_pause_requested = False
         self.build_catalog_button.setEnabled(False)
         self.update_catalog_button.setEnabled(False)
+        self.resume_catalog_button.setEnabled(False)
+        self.pause_catalog_button.setEnabled(True)
         self.preflight_button.setEnabled(False)
-        self.polygon_catalog_status_label.setText(f"Catalog build running - indexing headers under {root}. Normal polygon runs will query {catalog}.")
-        _set_status_badge(self.status_label, "RUNNING", "Status: Running - building LiDAR catalog.")
+        self.polygon_catalog_status_label.setText(f"Catalog job queued - {job_type.replace('_', ' ')} for {selection.normalized_path}.")
+        _set_status_badge(self.status_label, "RUNNING", "Status: Running - catalog job active.")
+        spec = CatalogJobSpec.create(job_type, selection.normalized_path, catalog)
         self.catalog_thread = QThread(self)
-        self.catalog_worker = _CatalogBuildWorker(root, catalog)
+        self.catalog_worker = _CatalogBuildWorker(spec, self._catalog_pause_state)
         self.catalog_worker.moveToThread(self.catalog_thread)
         self.catalog_thread.started.connect(self.catalog_worker.run)
         self.catalog_worker.progress.connect(self._on_catalog_build_progress)
@@ -2294,32 +2365,61 @@ class BatchPage(MissionPage):
         self.catalog_thread.finished.connect(self._clear_catalog_thread)
         self.catalog_thread.start()
 
-    def _on_catalog_build_progress(self, payload: object) -> None:
-        if isinstance(payload, dict):
+    def pause_polygon_catalog(self) -> None:
+        self.catalog_pause_requested = True
+        self.pause_catalog_button.setEnabled(False)
+        self.polygon_catalog_status_label.setText("Pause requested. Catalog job will pause after the current safe chunk commits.")
+
+    def _catalog_pause_state(self) -> bool:
+        return self.catalog_pause_requested
+
+    def _on_catalog_build_progress(self, progress: object) -> None:
+        if hasattr(progress, "to_dict"):
+            status = getattr(progress, "status", None)
+            stage = getattr(progress, "stage", None)
+            rate = getattr(progress, "rate_per_second", None)
+            rate_text = "rate pending" if rate is None else f"{rate:.1f} sources/sec"
+            percent = getattr(progress, "percent", None)
+            percent_text = "indeterminate" if percent is None else f"{percent}%"
+            latest = getattr(progress, "latest_source", "")
+            latest_text = f" Latest: {latest}" if latest else ""
+            self.polygon_catalog_status_label.setText(
+                f"Catalog {getattr(status, 'value', status)} - {getattr(stage, 'value', stage)}; "
+                f"progress {percent_text}; discovered {getattr(progress, 'discovered', 0):,}; "
+                f"indexed {getattr(progress, 'indexed', 0):,}; unchanged {getattr(progress, 'unchanged', 0):,}; "
+                f"errors {getattr(progress, 'errors', 0):,}; {rate_text}.{latest_text}"
+            )
+            return
+        if isinstance(progress, dict):
             self.polygon_catalog_status_label.setText(
                 "Catalog build running - "
-                f"discovered {payload.get('discovered', 0):,}; "
-                f"indexed {payload.get('indexed', 0):,}; "
-                f"unchanged {payload.get('unchanged', 0):,}; "
-                f"errors {payload.get('errors', 0):,}."
+                f"discovered {progress.get('discovered', 0):,}; "
+                f"indexed {progress.get('indexed', 0):,}; "
+                f"unchanged {progress.get('unchanged', 0):,}; "
+                f"errors {progress.get('errors', 0):,}."
             )
 
     def _on_catalog_build_complete(self, result: object) -> None:
         self.preflight_button.setEnabled(True)
         self.preflight_report = None
-        _set_status_badge(self.status_label, "READY", f"Status: Ready - catalog indexed {getattr(result, 'indexed_count', 0):,}; unchanged {getattr(result, 'unchanged_count', 0):,}; errors {getattr(result, 'error_count', 0):,}.")
+        if getattr(result, "cancelled", False):
+            _set_status_badge(self.status_label, "WARNING", f"Status: Warning - catalog interrupted after indexing {getattr(result, 'indexed_count', 0):,}; resume is available.")
+            self.preflight_text.setPlainText("Catalog build was interrupted after a safe chunk. Resume Catalog Build to continue without discarding indexed records.")
+        else:
+            _set_status_badge(self.status_label, "READY", f"Status: Ready - catalog indexed {getattr(result, 'indexed_count', 0):,}; unchanged {getattr(result, 'unchanged_count', 0):,}; errors {getattr(result, 'error_count', 0):,}.")
+            self.preflight_text.setPlainText("Catalog ready. Run polygon preflight to query intersecting sources.")
         self.refresh_catalog_status()
-        self.preflight_text.setPlainText("Catalog ready. Run polygon preflight to query intersecting sources.")
 
     def _on_catalog_build_failed(self, message: str) -> None:
         self.preflight_button.setEnabled(True)
-        _set_status_badge(self.status_label, "FAILED", f"Status: Failed - catalog build failed: {message}")
-        self.polygon_catalog_status_label.setText(f"Catalog build failed: {message}")
+        _set_status_badge(self.status_label, "FAILED", f"Status: Failed - catalog job failed: {message}")
+        self.polygon_catalog_status_label.setText(f"Catalog job failed: {message}")
         self.refresh_catalog_status()
 
     def _clear_catalog_thread(self) -> None:
         self.catalog_thread = None
         self.catalog_worker = None
+        self.catalog_pause_requested = False
         self.refresh_catalog_status()
 
     def open_polygon_catalog_folder(self) -> None:

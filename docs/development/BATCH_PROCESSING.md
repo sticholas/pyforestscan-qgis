@@ -21,7 +21,7 @@ Implemented:
 - Optional output loading into QGIS, disabled by default for batch safety.
 - Result filtering for all, completed, failed, and skipped files.
 - Summary counts for total files, completed, failed, skipped, output count, and observed output storage.
-- Polygon Area Processing mode with LiDAR catalog build/update, indexed catalog query, polygon source selection, clipped-source staging, raster mask handoff, and standard Batch executor handoff.
+- Polygon Area Processing mode with explicit LiDAR catalog build/update/resume jobs, indexed catalog query, polygon source selection, clipped-source staging, raster mask handoff, and standard Batch executor handoff.
 
 Not implemented yet:
 

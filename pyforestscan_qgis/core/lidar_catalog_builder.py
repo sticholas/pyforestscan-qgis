@@ -40,6 +40,8 @@ def build_lidar_catalog(
     batch: list[LidarCatalogRecord] = []
     cancelled = False
     try:
+        if progress_callback is not None:
+            progress_callback({"stage": "Preparing", "discovered": discovered, "indexed": indexed, "errors": errors, "unchanged": unchanged, "deleted": deleted})
         connection.execute("DROP TABLE IF EXISTS temp_seen_paths")
         connection.execute("CREATE TEMP TABLE temp_seen_paths(relative_path TEXT PRIMARY KEY)")
         for path in iter_lidar_paths(root, options=options):
@@ -48,6 +50,7 @@ def build_lidar_catalog(
                 break
             discovered += 1
             relative = path.relative_to(root).as_posix()
+            latest_source = relative
             seen_batch.append(relative)
             previous = record_for_relative_path(connection, root_id, relative)
             try:
@@ -66,14 +69,19 @@ def build_lidar_catalog(
                     updated += 1
                 batch.append(record)
             if len(batch) >= options.thresholds.batch_commit_size:
+                if progress_callback is not None:
+                    progress_callback({"stage": "Writing Spatial Index", "discovered": discovered, "indexed": indexed, "errors": errors, "unchanged": unchanged, "deleted": deleted, "latest_source": latest_source})
                 upsert_records(connection, batch)
                 batch.clear()
             if len(seen_batch) >= options.thresholds.batch_commit_size:
                 connection.executemany("INSERT OR IGNORE INTO temp_seen_paths(relative_path) VALUES (?)", ((item,) for item in seen_batch))
                 seen_batch.clear()
                 connection.commit()
+            if options.max_source_files is not None and discovered >= options.max_source_files:
+                cancelled = True
+                break
             if progress_callback is not None and discovered % options.thresholds.checkpoint_interval == 0:
-                progress_callback({"discovered": discovered, "indexed": indexed, "errors": errors, "unchanged": unchanged})
+                progress_callback({"stage": "Reading Metadata", "discovered": discovered, "indexed": indexed, "errors": errors, "unchanged": unchanged, "deleted": deleted, "latest_source": latest_source})
         if batch:
             upsert_records(connection, batch)
         if seen_batch:
@@ -81,6 +89,8 @@ def build_lidar_catalog(
             seen_batch.clear()
         connection.commit()
         if not cancelled:
+            if progress_callback is not None:
+                progress_callback({"stage": "Detecting Deleted Sources", "discovered": discovered, "indexed": indexed, "errors": errors, "unchanged": unchanged, "deleted": deleted})
             deleted_rows = connection.execute(
                 "SELECT id FROM lidar_sources WHERE root_id = ? AND relative_path NOT IN (SELECT relative_path FROM temp_seen_paths) AND inventory_status != 'deleted'",
                 (root_id,),
@@ -94,7 +104,8 @@ def build_lidar_catalog(
             deleted = len(deleted_ids)
             connection.commit()
         if progress_callback is not None:
-            progress_callback({"discovered": discovered, "indexed": indexed, "errors": errors, "unchanged": unchanged, "deleted": deleted})
+            progress_callback({"stage": "Verifying Catalog", "discovered": discovered, "indexed": indexed, "errors": errors, "unchanged": unchanged, "deleted": deleted})
+            progress_callback({"stage": "Finalizing", "discovered": discovered, "indexed": indexed, "errors": errors, "unchanged": unchanged, "deleted": deleted})
     finally:
         connection.close()
     return LidarCatalogBuildResult(catalog, root, root_id, discovered, indexed, unchanged, updated, errors, deleted, cancelled)

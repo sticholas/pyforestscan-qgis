@@ -39,3 +39,21 @@ Some files may fail metadata inspection. Mission Control records those failures 
 ## Very Large Repositories
 
 For repositories with millions of files, the first catalog build can take time. It is a deliberate maintenance step, not something that runs silently before every polygon job. Normal preflight queries the catalog and should remain fast.
+
+## Responsive Large Repository Workflow
+
+Selecting or pasting a LiDAR Repository path is lightweight. Mission Control normalizes the path, checks that it is accessible, and reads catalog status only. It does not recursively count files, inspect headers, calculate folder size, or build a catalog until you explicitly click **Build Catalog**, **Update Catalog**, or **Resume Catalog Build**.
+
+Use **Use Path** when a native folder picker is slow on network, removable, or mounted storage. Use **Quick Probe** for a bounded top-level sample: it stops after a small item/time budget and does not recurse. The sample is not a total file count.
+
+Catalog jobs show stages, counters, elapsed time, current rate, and latest source path. Early progress is indeterminate because the total file count is unknown. The plugin does not invent an exact percentage before it has a reliable denominator.
+
+## Pause Resume And Updates
+
+Catalog work is checkpointed after safe chunks. **Pause After Current Chunk** lets the job finish the current chunk, commit records, write state, and mark the job interrupted. **Resume Catalog Build** continues without discarding valid indexed records.
+
+**Update Catalog** skips unchanged files using relative path, size, and modified time. New and modified files are indexed incrementally. Deleted files are reconciled in SQLite rather than with a giant in-memory path set.
+
+## Benchmarking Safely
+
+Use `python3 scripts/benchmark_lidar_catalog.py --synthetic` for a safe SQLite/RTree benchmark. Use `--path <repo> --real-dry-probe` to probe a real repository without recursion. A real build requires `--real-build --confirm-real-build`, and can be bounded with `--max-files` or `--maximum-duration` for controlled testing.

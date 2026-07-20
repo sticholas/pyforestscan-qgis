@@ -72,6 +72,21 @@ class PBMProcessingExecutionTests(unittest.TestCase):
         self.assertEqual(command[1:3], ["-m", "pyforestscan_qgis.backend_runner.run_processing_job"])
         self.assertEqual(command[-2:], ["--spec", str(root / "spec.json")])
 
+
+    def test_catalog_runner_command_construction(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            paths = resolve_backend_paths(backend_root=root / "backend")
+            paths.python_executable.parent.mkdir(parents=True, exist_ok=True)
+            paths.python_executable.write_text("", encoding="utf-8")
+            service = BackendExecutionService(paths, verifier=lambda: ready_verification(paths))
+            command = service.catalog_runner_command(root / "catalog-spec.json")
+
+        self.assertEqual(command[1:3], ["-m", "pyforestscan_qgis.backend_runner.run_catalog_job"])
+        self.assertEqual(command[-2:], ["--spec", str(root / "catalog-spec.json")])
+        self.assertIn(Path(command[0]).name.lower(), {"python", "python.exe"})
+        self.assertNotIn("qgis", Path(command[0]).name.lower())
+
     def test_refuses_qgis_gui_executable_as_backend_python(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             bad = Path(tmpdir) / "qgis-ltr-bin.exe"

@@ -114,6 +114,11 @@ class BackendService:
         spec_path = spec.write()
         return self.execution_service().run_processing_job(spec, spec_path)
 
+
+    def catalog_runner_command(self, spec_path: Path) -> list[str]:
+        """Return the controlled PBM backend command for a LiDAR catalog job."""
+        return self.execution_service().catalog_runner_command(spec_path)
+
     def preview_repair_plan(self) -> RepairPlan:
         """Return a non-mutating backend repair plan."""
         return plan_backend_repair(self.paths, self.manifest)

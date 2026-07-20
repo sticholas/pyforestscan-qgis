@@ -155,6 +155,14 @@ class BackendExecutionService:
             raise RuntimeError("; ".join(result.errors) or summarize_subprocess_output(completed.stderr, completed.stdout) or "PBM backend job failed.")
         return result
 
+
+    def catalog_runner_command(self, spec_path: Path) -> list[str]:
+        """Return the PBM backend command for a LiDAR catalog job spec."""
+        ok, message = validate_backend_python_executable(self.paths.python_executable)
+        if not ok:
+            raise ValueError(message)
+        return [str(self.paths.python_executable), "-m", "pyforestscan_qgis.backend_runner.run_catalog_job", "--spec", str(spec_path)]
+
     def runner_command(self, spec_path: Path) -> list[str]:
         """Return the backend runner command for a spec path."""
         return self.runner_command_for_args(("--spec", str(spec_path)))

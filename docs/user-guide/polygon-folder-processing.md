@@ -31,7 +31,7 @@ Batch is optional and is not part of the default single-dataset Continue path.
 1. Add a polygon or multipolygon layer to QGIS.
 2. Open Mission Control > Batch.
 3. Set Batch Mode to **Polygon Area Processing**.
-4. Choose the LiDAR Repository and output folder. Build or update the catalog if Mission Control shows **No Catalog**.
+4. Choose the LiDAR Repository and output folder. Build or update the catalog only when Mission Control shows **No Catalog**, **Interrupted**, or **Out of Date** and you explicitly choose a catalog action.
 5. Set Polygon source to **Use QGIS Layer**.
 6. Choose the polygon layer from the dropdown.
 7. Choose **Use Selected Features** or **Use Entire Layer**.
