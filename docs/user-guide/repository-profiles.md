@@ -38,3 +38,7 @@ Partition profiles are useful for county/state repositories, survey-year folders
 ## Current Scope
 
 Phase 27I adds the profile models and planning behavior. A full profile editor and provider-specific profile library remain deferred until real repositories are validated.
+
+## EPT Profiles
+
+EPT does not need a filename/grid profile. Select the EPT root, `ept.json`, or `ept-data`; the plugin normalizes the selection to one logical EPT source and uses built-in EPT spatial access.

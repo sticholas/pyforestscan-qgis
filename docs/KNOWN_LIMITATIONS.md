@@ -38,3 +38,7 @@ PBM verification can report the managed backend as `Ready`, and Environment Chec
 ## Adaptive LiDAR Indexing
 
 Adaptive LiDAR indexing can detect and plan lower-cost strategies, but not every shortcut is fully automated. CSV and GeoJSON footprint indexes can be imported by the QGIS-free core. GeoPackage, Shapefile, and FlatGeobuf index import requires QGIS/OGR field mapping. Filename/grid and partition profiles require explicit approval and representative validation before scientific use. Real-world 2.6-million-file benchmarks remain pending.
+
+## Phase 27J Remaining EPT Limits
+
+EPT node cataloging is blocked and repair is available for older incorrect catalogs. Clean-machine testing is still needed against the reported 2.6-million-node repository to measure real RTree lookup, row loading, and workload-estimation timings. CRS transformation quality still depends on QGIS/OGR transformation availability in the UI layer.

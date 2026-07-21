@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -137,6 +139,8 @@ class LidarCatalogQueryResult:
     estimated_bytes: int
     query_seconds: float
     warnings: tuple[str, ...] = ()
+    timing_seconds: dict[str, float] | None = None
+    point_estimate_confidence: str = "Unavailable"
 
     @property
     def source_records(self) -> tuple[LidarSourceRecord, ...]:
@@ -174,6 +178,16 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+@dataclass(frozen=True)
+class CatalogMoveReport:
+    """Result of copying a repository-side catalog into user-local storage."""
+
+    source_path: Path
+    destination_path: Path
+    moved: bool
+    message: str
+
+
 def stable_root_id(root_path: Path | str) -> str:
     """Return a stable root id without hashing file contents."""
     text = str(Path(root_path).expanduser().resolve()).replace("\\", "/").lower()
@@ -188,6 +202,8 @@ def source_id_for(root_id: str, relative_path: str) -> str:
 def default_lidar_catalog_path(root_path: Path | str, workspace_folder: Path | str | None = None) -> Path:
     """Return the preferred catalog location for a LiDAR repository."""
     root = Path(root_path).expanduser()
+    if _looks_remote_or_mounted(root):
+        return _local_catalog_path(root)
     preferred = root / DEFAULT_CATALOG_RELATIVE_PATH
     try:
         if root.exists() and root.is_dir():
@@ -200,6 +216,42 @@ def default_lidar_catalog_path(root_path: Path | str, workspace_folder: Path | s
         return preferred
     root_id = stable_root_id(root)
     return Path(workspace_folder).expanduser() / ".pyforestscan" / "catalogs" / f"{root_id}.sqlite"
+
+
+def repository_side_lidar_catalog_path(root_path: Path | str) -> Path:
+    """Return the legacy repository-side catalog path for compatibility checks."""
+    return Path(root_path).expanduser() / DEFAULT_CATALOG_RELATIVE_PATH
+
+
+def move_lidar_catalog_to_local_storage(root_path: Path | str, catalog_path: Path | str | None = None) -> CatalogMoveReport:
+    """Copy an existing catalog to the user-local catalog location without deleting the source."""
+    root = Path(root_path).expanduser()
+    source = Path(catalog_path).expanduser() if catalog_path is not None else repository_side_lidar_catalog_path(root)
+    destination = _local_catalog_path(root)
+    if not source.exists():
+        return CatalogMoveReport(source, destination, False, f"Catalog was not found: {source}")
+    if source.resolve() == destination.resolve():
+        return CatalogMoveReport(source, destination, False, f"Catalog is already stored locally: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(str(source) + suffix)
+        if sidecar.exists():
+            shutil.copy2(sidecar, Path(str(destination) + suffix))
+    return CatalogMoveReport(source, destination, True, f"Moved catalog copy to local storage: {destination}")
+
+
+def _local_catalog_path(root: Path) -> Path:
+    root_id = stable_root_id(root)
+    base = os.environ.get("LOCALAPPDATA")
+    if base:
+        return Path(base) / "PyForestScan" / "catalogs" / root_id / "catalog.sqlite"
+    return Path.home() / ".local" / "share" / "PyForestScan" / "catalogs" / root_id / "catalog.sqlite"
+
+
+def _looks_remote_or_mounted(root: Path) -> bool:
+    text = str(root).replace("\\", "/").lower()
+    return text.startswith("//") or text.startswith("/mnt/") or "/mnt/" in text
 
 
 def _can_create_directory(path: Path) -> bool:

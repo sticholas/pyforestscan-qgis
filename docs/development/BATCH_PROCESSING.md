@@ -173,3 +173,9 @@ The code is retained only as isolated developer research scaffolding. The execut
 Polygon Area Processing exposes **Detect Best Indexing Strategy**, **Build Relevant Index**, and **Build Complete Repository Index**. Detection is bounded and does not recurse. Relevant indexing can register an existing index or native EPT/COPC source when safe; otherwise the existing durable catalog job runs with Phase 27H safeguards.
 
 Batch execution and scientific processing are unchanged. External Worker mode remains disabled.
+
+## Backend-Aware Polygon Preflight
+
+Polygon Area Processing preflight now checks the PBM backend that will execute the job. Ready can be YES only when the polygon, repository/catalog, products, output, manifest, and managed backend are usable. Missing PyForestScan imports are reported before Run.
+
+EPT and COPC logical sources no longer use the local-file staging model. EPT sends one `ept.json` source plus bounds and exact polygon WKT to PBM.

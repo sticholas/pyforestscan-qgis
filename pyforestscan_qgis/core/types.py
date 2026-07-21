@@ -150,6 +150,8 @@ class ChmRequest:
     interp_valid_region: bool = False
     interp_clean_edges: bool = False
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
 
 
 @dataclass(frozen=True)
@@ -177,6 +179,8 @@ class CanopyCoverRequest:
     beer_lambert_constant: float = 1.0
     drop_ground: bool = True
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
 
 
 @dataclass(frozen=True)
@@ -202,6 +206,8 @@ class PadRequest:
     beer_lambert_constant: float = 1.0
     drop_ground: bool = True
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
 
 
 @dataclass(frozen=True)
@@ -230,6 +236,8 @@ class PaiRequest:
     beer_lambert_constant: float = 1.0
     drop_ground: bool = True
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
 
 
 @dataclass(frozen=True)
@@ -255,6 +263,8 @@ class FhdRequest:
     min_height: float = 0.0
     max_height: float | None = None
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
 
 
 @dataclass(frozen=True)
@@ -281,6 +291,8 @@ class RumpleRequest:
     interp_valid_region: bool = False
     interp_clean_edges: bool = False
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
 
 
 @dataclass(frozen=True)
@@ -331,6 +343,8 @@ class DtmRequest:
     resolution: float = 2.0
     classify_ground: bool = False
     nodata: float = -9999.0
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
 
 
 @dataclass(frozen=True)
@@ -355,6 +369,8 @@ class PointDensityRequest:
     per_area: bool = False
     cell_area: float | None = None
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
 
 
 @dataclass(frozen=True)
@@ -381,6 +397,8 @@ class VoxelStatRequest:
     stat: str
     z_index_range: tuple[int, int] | None = None
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
 
 
 @dataclass(frozen=True)

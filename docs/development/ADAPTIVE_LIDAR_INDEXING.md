@@ -66,3 +66,9 @@ When no trustworthy index is detected, the planner chooses the existing durable 
 ## Worker Audit
 
 Phase 27I records a persistent-worker audit helper. Current catalog jobs use a durable job runner rather than intentionally launching one subprocess per source. A future PBM-backed fast-header worker can use the same strategy plan to tune worker counts and report measured bottlenecks.
+
+## Phase 27J Corrections
+
+EPT selection is normalized before strategy detection. `ept-data` and EPT hierarchy selections resolve to the parent `ept.json`; adaptive detection should not recommend or build a node-level full-header catalog for EPT internals.
+
+Guided labels now use plain language. Internal enum values remain in core models and logs only.

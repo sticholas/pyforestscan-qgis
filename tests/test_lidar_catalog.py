@@ -122,7 +122,7 @@ class LidarCatalogTests(unittest.TestCase):
             write_ept(root / "late" / "ept.json", [0, 0, 0, 5, 5, 5], points=100)
             polygon = normalized_selection_from_wkt("POLYGON ((1 1, 4 1, 4 4, 1 4, 1 1))", "EPSG:32610")
             settings = BatchProductSettings(products=(ProductType.CHM,), grid_resolution=1.0)
-            report = run_polygon_batch_preflight(PolygonBatchRequest(root, root / "out", polygon, (ProductType.CHM,), settings))
+            report = run_polygon_batch_preflight(PolygonBatchRequest(root, root / "out", polygon, (ProductType.CHM,), settings), backend_probe=lambda: (True, "PBM backend is ready."))
 
         self.assertTrue(report.ready)
         self.assertEqual(len(report.selected_sources), 1)
@@ -134,7 +134,7 @@ class LidarCatalogTests(unittest.TestCase):
             write_ept(root / "hit" / "ept.json", [0, 0, 0, 5, 5, 5])
             polygon = normalized_selection_from_wkt("POLYGON ((1 1, 4 1, 4 4, 1 4, 1 1))", "EPSG:32610")
             settings = BatchProductSettings(products=(ProductType.CHM,), grid_resolution=1.0)
-            report = run_polygon_batch_preflight(PolygonBatchRequest(root, root / "out", polygon, (ProductType.CHM,), settings))
+            report = run_polygon_batch_preflight(PolygonBatchRequest(root, root / "out", polygon, (ProductType.CHM,), settings), backend_probe=lambda: (True, "PBM backend is ready."))
 
         self.assertFalse(report.ready)
         self.assertTrue(any("Build a LiDAR catalog" in item for item in report.blockers))
@@ -161,7 +161,7 @@ class LidarCatalogTests(unittest.TestCase):
             build_lidar_catalog(root)
             polygon = normalized_selection_from_wkt("POLYGON ((1 1, 4 1, 4 4, 1 4, 1 1))", "EPSG:32610")
             settings = BatchProductSettings(products=(ProductType.CHM,), grid_resolution=1.0)
-            report = run_polygon_batch_preflight(PolygonBatchRequest(root, root / "out", polygon, (ProductType.CHM,), settings))
+            report = run_polygon_batch_preflight(PolygonBatchRequest(root, root / "out", polygon, (ProductType.CHM,), settings), backend_probe=lambda: (True, "PBM backend is ready."))
             adapter = FakeAdapter()
             execute_polygon_batch(report, adapter=adapter, executor=FakeExecutor())
 

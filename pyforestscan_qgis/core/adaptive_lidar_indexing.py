@@ -14,6 +14,7 @@ from typing import Iterable
 from .lidar_catalog import catalog_summary, connect_catalog, upsert_records
 from .lidar_catalog_builder import inspect_lidar_header
 from .lidar_catalog_models import LidarCatalogRecord, default_lidar_catalog_path, source_id_for, stable_root_id, utc_now_iso
+from .ept_repository import resolve_ept_selection
 from .lidar_catalog_probe import quick_probe_lidar_repository, select_lidar_repository_path
 from .lidar_inventory import lidar_source_type
 from .spatial_selection import Bounds2D
@@ -200,6 +201,7 @@ def detect_repository_capabilities(
     """Bounded detection of trustworthy indexing strategies."""
     selection = select_lidar_repository_path(root_path)
     root = selection.normalized_path
+    ept_selection = resolve_ept_selection(root)
     warnings: list[str] = []
     if not selection.valid:
         warnings.append(selection.message)
@@ -210,7 +212,9 @@ def detect_repository_capabilities(
     ept_roots: list[Path] = []
     copc_sources: list[Path] = []
     generic: list[Path] = []
-    if selection.valid:
+    if ept_selection is not None:
+        ept_roots.append(ept_selection.ept_json)
+    if selection.valid and ept_selection is None:
         start = time.monotonic()
         try:
             for index, child in enumerate(root.iterdir()):

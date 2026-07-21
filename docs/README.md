@@ -123,3 +123,5 @@ This documentation is organized for users, scientists, developers, maintainers, 
 - [Code of Conduct](../CODE_OF_CONDUCT.md)
 - [Citation](../CITATION.cff)
 - [Adaptive LiDAR Indexing](development/ADAPTIVE_LIDAR_INDEXING.md)
+- [EPT Repository Handling](development/EPT_REPOSITORY_HANDLING.md)
+- [Contextual Help System](development/CONTEXTUAL_HELP_SYSTEM.md)

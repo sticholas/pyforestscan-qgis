@@ -92,3 +92,7 @@ Warnings appear only when actionable. A warning should state what happened and w
 - New diagnostics must not create always-visible walls of technical text.
 - New processing capability must not make Guided Mode behave like the Advanced Toolbox.
 - External Worker mode remains disabled unless explicitly re-scoped in a future phase.
+
+## Contextual Help
+
+Mission Control uses `InfoHelpButton` for concise help on controls that affect CRS, scientific interpretation, performance, memory, clipping, concurrency, overwrite behavior, or output meaning. Tooltips are short; click details provide 40-120 words when needed.

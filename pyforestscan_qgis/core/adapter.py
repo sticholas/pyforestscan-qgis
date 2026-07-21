@@ -292,7 +292,7 @@ class PyForestScanAdapter:
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, hag=True)
+            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **_read_lidar_spatial_kwargs(request, hag=True))
             if point_cloud is None:
                 raise ProcessingError("PyForestScan returned no point data for CHM generation.")
             self._progress.update(35, "Point cloud loaded")
@@ -349,7 +349,7 @@ class PyForestScanAdapter:
         self._log(LogLevel.INFO, "Starting PAD generation", input=str(request.input_path), output=str(output_path))
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
-            point_array = self._read_hag_point_array(request.input_path, request.crs, "PAD")
+            point_array = self._read_hag_point_array(request, "PAD")
             voxel_returns, extent = pyforestscan.assign_voxels(
                 point_array,
                 (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height),
@@ -405,7 +405,7 @@ class PyForestScanAdapter:
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_array = self._read_hag_point_array(request.input_path, request.crs, "PAI")
+            point_array = self._read_hag_point_array(request, "PAI")
             voxel_returns, extent = pyforestscan.assign_voxels(
                 point_array,
                 (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height),
@@ -467,7 +467,7 @@ class PyForestScanAdapter:
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_array = self._read_hag_point_array(request.input_path, request.crs, "FHD")
+            point_array = self._read_hag_point_array(request, "FHD")
             voxel_returns, extent = pyforestscan.assign_voxels(
                 point_array,
                 (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height),
@@ -523,7 +523,7 @@ class PyForestScanAdapter:
                 chm_source = "reused compatible CHM from current adapter session"
                 self._progress.update(55, "Compatible CHM reused")
             else:
-                point_array = self._read_hag_point_array(request.input_path, request.crs, "rumple")
+                point_array = self._read_hag_point_array(request, "rumple")
                 chm, extent = pyforestscan.calculate_chm(
                     point_array,
                     _xy_resolution(request.grid_resolution, request.y_resolution),
@@ -590,7 +590,7 @@ class PyForestScanAdapter:
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_array = self._read_hag_point_array(request.input_path, request.crs, "canopy cover")
+            point_array = self._read_hag_point_array(request, "canopy cover")
             voxel_returns, extent = pyforestscan.assign_voxels(
                 point_array,
                 (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height),
@@ -651,7 +651,7 @@ class PyForestScanAdapter:
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_array = self._read_hag_point_array(request.input_path, request.crs, "point density")
+            point_array = self._read_hag_point_array(request, "point density")
             x_resolution, y_resolution = _xy_resolution(request.grid_resolution, request.y_resolution)
             voxel_returns, extent = pyforestscan.assign_voxels(point_array, (x_resolution, y_resolution, request.voxel_height))
             self._progress.update(55, "Voxel returns calculated")
@@ -707,7 +707,7 @@ class PyForestScanAdapter:
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_array = self._read_hag_point_array(request.input_path, request.crs, "voxel statistic")
+            point_array = self._read_hag_point_array(request, "voxel statistic")
             names = getattr(point_array.dtype, "names", ()) or ()
             if request.dimension not in names:
                 raise ProcessingError(f"Voxel Statistic input is missing requested dimension: {request.dimension}")
@@ -1051,10 +1051,14 @@ class PyForestScanAdapter:
         )
         return _dataset_inspection_from_backend_metrics(result.product_metrics)
 
-    def _read_hag_point_array(self, input_path: Path | str, crs: str, product_label: str) -> object:
+    def _read_hag_point_array(self, request_or_path: object, crs: str | None = None, product_label: str | None = None) -> object:
         """Read lidar with HeightAboveGround and return one structured point array."""
+        if product_label is None:
+            product_label = str(crs or "product")
+            crs = str(getattr(request_or_path, "crs", ""))
         handlers = _import_required("pyforestscan.handlers", ProcessingError)
-        point_cloud = handlers.read_lidar(str(input_path), crs, hag=True)
+        input_path = getattr(request_or_path, "input_path", request_or_path)
+        point_cloud = handlers.read_lidar(str(input_path), str(crs or ""), **_read_lidar_spatial_kwargs(request_or_path, hag=True))
         if point_cloud is None:
             raise ProcessingError(f"PyForestScan returned no point data for {product_label} generation.")
         self._progress.update(25, "Point cloud loaded")
@@ -1180,6 +1184,19 @@ class PyForestScanAdapter:
             )
             self._log_sink(LogRecord(level=level, message=message, context=typed_context))
 
+
+
+def _read_lidar_spatial_kwargs(request: object, *, hag: bool) -> dict[str, object]:
+    """Return spatial read options carried across the PBM request boundary."""
+    kwargs: dict[str, object] = {"hag": hag}
+    bounds = getattr(request, "bounds", None)
+    crop_polygon = getattr(request, "crop_polygon", None)
+    if bounds is not None:
+        kwargs["bounds"] = bounds
+    if crop_polygon:
+        kwargs["crop_poly"] = True
+        kwargs["poly"] = crop_polygon
+    return kwargs
 
 def _dataset_inspection_from_backend_metrics(metrics: dict[str, object]) -> DatasetInspection:
     source_data = dict(metrics.get("source", {}) or {})

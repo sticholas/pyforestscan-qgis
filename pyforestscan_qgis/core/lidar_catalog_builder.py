@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from .lidar_catalog import connect_catalog, record_for_relative_path, upsert_records
+from .ept_repository import prune_ept_traversal, resolve_ept_selection, is_ept_internal_path
 from .lidar_catalog_models import CatalogBuildOptions, LidarCatalogBuildResult, LidarCatalogRecord, default_lidar_catalog_path, source_id_for, stable_root_id, utc_now_iso
 from .lidar_inventory import lidar_source_type
 
@@ -27,7 +28,8 @@ def build_lidar_catalog(
     inspector: Callable[[Path, Path, str], LidarCatalogRecord] | None = None,
 ) -> LidarCatalogBuildResult:
     """Build or update a persistent catalog using streaming traversal and batched commits."""
-    root = Path(root_path).expanduser().resolve()
+    selected = resolve_ept_selection(root_path)
+    root = selected.normalized_repository if selected is not None else Path(root_path).expanduser().resolve()
     if not root.is_dir():
         raise ValueError(f"LiDAR repository does not exist: {root}")
     options = options or CatalogBuildOptions()
@@ -127,8 +129,16 @@ def iter_lidar_paths(root_path: Path | str, *, options: CatalogBuildOptions | No
         if options.ignore_names:
             ignored = set(options.ignore_names)
             dirnames[:] = [name for name in dirnames if name not in ignored]
+        logical_ept_sources = prune_ept_traversal(current, dirnames, filenames)
+        for ept_source in logical_ept_sources:
+            yield ept_source
+        if is_ept_internal_path(current):
+            dirnames[:] = []
+            continue
         for filename in filenames:
             path = current / filename
+            if is_ept_internal_path(path) or filename.lower() in {"ept.json", "ept-build.json", "ept-sources.json"}:
+                continue
             source_type = lidar_source_type(path, include_ept=True)
             if source_type is None:
                 continue

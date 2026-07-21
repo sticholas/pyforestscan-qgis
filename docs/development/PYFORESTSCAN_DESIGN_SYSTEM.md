@@ -237,3 +237,7 @@ Future integrations such as WhiteboxTools, Open3D, SAM, PyTorch, CloudCompare, P
 ## Implementation Notes
 
 The QGIS-free design vocabulary lives in `pyforestscan_qgis/ui/ux_summary.py` and is covered by `tests/test_mission_control_ux.py`. Future UI components should reuse those labels or update the design system and tests in the same change.
+
+## Information Controls
+
+Use the standard small `i` information control for contextual help. It must have a tooltip, accessible name, keyboard focus, and a concise click detail where configured. Do not use the information icon as a substitute for clear labels.

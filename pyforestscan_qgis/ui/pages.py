@@ -70,11 +70,12 @@ from ..core.dataset_report import (
 )
 from ..core.dependency_check import CheckStatus, EnvironmentReport
 from ..core.exceptions import AdapterError, ProcessingError
+from ..core.ept_repository import incorrect_ept_catalog_detected, repair_ept_catalog
 from ..core.ept_subset import build_ept_subset_request, compact_ept_subset_summary
 from ..core.polygon_source import POLYGON_VECTOR_FILE_FILTER, PolygonSource, selected_feature_count_text
 from ..core.polygon_normalization import normalize_polygon_source
 from ..core.lidar_catalog_jobs import CatalogJobRunner, CatalogJobSpec, CatalogJobStatus, latest_catalog_job_state
-from ..core.lidar_catalog_models import default_lidar_catalog_path
+from ..core.lidar_catalog_models import default_lidar_catalog_path, move_lidar_catalog_to_local_storage
 from ..core.lidar_catalog_probe import quick_probe_lidar_repository, select_lidar_repository_path
 from ..core.polygon_batch import PolygonBatchRequest, catalog_status_text, execute_polygon_batch, polygon_preflight_text, run_polygon_batch_preflight, write_polygon_batch_manifest
 from ..core.job_manager import JobExecutionError, JobManager
@@ -103,6 +104,7 @@ from ..core.workspace import (
     create_run_context,
 )
 from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
+from .help import info_help_button
 from .output_loading import LoadableOutput, collect_loadable_outputs, compact_dataset_summary_lines, output_loading_summary
 from .state import ProjectSummary
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
@@ -1958,21 +1960,47 @@ class BatchPage(MissionPage):
         self.polygon_source_combo.addItem("Choose Vector File", "file")
         self.polygon_source_combo.addItem("Advanced WKT", "wkt")
         self.polygon_source_combo.currentIndexChanged.connect(self._update_polygon_source_visibility)
-        polygon_form.addRow("LiDAR Repository", polygon_folder_row)
-        polygon_form.addRow("Polygon source", self.polygon_source_combo)
+        lidar_repository_row = QHBoxLayout()
+        lidar_repository_row.addLayout(polygon_folder_row, 1)
+        lidar_repository_row.addWidget(info_help_button(
+            "Choose the folder or ept.json for the LiDAR data you want to analyze.",
+            "For EPT datasets, you may choose ept.json, the EPT root folder, or the ept-data folder. Mission Control automatically uses the parent EPT dataset and does not index internal EPT node files.",
+            accessible_name="LiDAR Repository Help",
+            documentation_anchor="docs/user-guide/polygon-folder-processing.md",
+            parent=self,
+        ), 0)
+        polygon_form.addRow("LiDAR Repository", lidar_repository_row)
+        polygon_source_row = QHBoxLayout()
+        polygon_source_row.addWidget(self.polygon_source_combo, 1)
+        polygon_source_row.addWidget(info_help_button(
+            "Choose where the area of interest polygon comes from.",
+            "Use selected features when you have selected one or more polygons in QGIS. Use Entire Layer when the whole polygon layer is the area to process. Advanced WKT stays hidden for troubleshooting and reproducible tests.",
+            accessible_name="Polygon Source Help",
+            parent=self,
+        ), 0)
+        polygon_form.addRow("Polygon source", polygon_source_row)
         polygon_source.addLayout(polygon_form)
-        self.polygon_catalog_status_label = _details_label("No Catalog - choose a LiDAR repository, then detect a strategy or build a complete catalog.")
+        self.polygon_catalog_status_label = _details_label("Repository not prepared - choose a LiDAR repository, then Prepare Repository.")
         polygon_source.addWidget(self.polygon_catalog_status_label)
         strategy_form = QFormLayout()
         strategy_form.setVerticalSpacing(SECTION_SPACING)
         self.polygon_index_strategy_combo = QComboBox()
-        self.polygon_index_strategy_combo.addItem("Automatic", LidarIndexStrategy.AUTOMATIC.value)
-        self.polygon_index_strategy_combo.addItem("Existing Spatial Index", LidarIndexStrategy.EXISTING_SPATIAL_INDEX.value)
-        self.polygon_index_strategy_combo.addItem("EPT/COPC Native", LidarIndexStrategy.NATIVE_HIERARCHICAL_SOURCE.value)
-        self.polygon_index_strategy_combo.addItem("Filename/Grid Profile", LidarIndexStrategy.FILENAME_GRID.value)
-        self.polygon_index_strategy_combo.addItem("Partitioned Lazy", LidarIndexStrategy.PARTITIONED_LAZY.value)
-        self.polygon_index_strategy_combo.addItem("Full Header Catalog", LidarIndexStrategy.FULL_HEADER_CATALOG.value)
-        strategy_form.addRow("Indexing strategy", self.polygon_index_strategy_combo)
+        self.polygon_index_strategy_combo.addItem("Automatic Setup (Recommended)", LidarIndexStrategy.AUTOMATIC.value)
+        self.polygon_index_strategy_combo.addItem("Use an Existing Footprint Index", LidarIndexStrategy.EXISTING_SPATIAL_INDEX.value)
+        self.polygon_index_strategy_combo.addItem("Use Built-in Spatial Access", LidarIndexStrategy.NATIVE_HIERARCHICAL_SOURCE.value)
+        self.polygon_index_strategy_combo.addItem("Use Tile Names", LidarIndexStrategy.FILENAME_GRID.value)
+        self.polygon_index_strategy_combo.addItem("Use Folder Regions", LidarIndexStrategy.PARTITIONED_LAZY.value)
+        self.polygon_index_strategy_combo.addItem("Scan File Headers", LidarIndexStrategy.FULL_HEADER_CATALOG.value)
+        strategy_row = QHBoxLayout()
+        strategy_row.addWidget(self.polygon_index_strategy_combo, 1)
+        strategy_row.addWidget(info_help_button(
+            "Automatic Setup recommends the fastest trustworthy way to prepare the repository.",
+            "Leave this on Automatic Setup unless you know the repository has a footprint index, built-in EPT/COPC spatial access, a validated tile naming system, or mapped folder regions. Scan File Headers is the most compatible method but can be slow for very large repositories.",
+            accessible_name="Repository Setup Method Help",
+            documentation_anchor="docs/user-guide/choosing-lidar-index-strategy.md",
+            parent=self,
+        ), 0)
+        strategy_form.addRow("Repository setup method", strategy_row)
         existing_index_row = QHBoxLayout()
         self.polygon_existing_index_edit = QLineEdit()
         self.polygon_existing_index_edit.setPlaceholderText("Optional existing index: GeoJSON, CSV, GPKG, SHP, FGB, or PDAL tile index")
@@ -1985,10 +2013,10 @@ class BatchPage(MissionPage):
         polygon_source.addLayout(strategy_form)
         strategy_actions = QHBoxLayout()
         strategy_actions.setSpacing(ACTION_ROW_SPACING)
-        self.detect_index_strategy_button = QPushButton("Detect Best Indexing Strategy")
+        self.detect_index_strategy_button = QPushButton("Preview Setup Method")
         self.detect_index_strategy_button.clicked.connect(self.detect_polygon_index_strategy)
         _apply_button_role(self.detect_index_strategy_button, "secondary")
-        self.build_relevant_index_button = QPushButton("Build Relevant Index")
+        self.build_relevant_index_button = QPushButton("Prepare Repository")
         self.build_relevant_index_button.clicked.connect(self.build_relevant_polygon_index)
         _apply_button_role(self.build_relevant_index_button, "primary")
         strategy_actions.addWidget(self.detect_index_strategy_button)
@@ -1999,11 +2027,11 @@ class BatchPage(MissionPage):
         self.polygon_index_plan_text.setReadOnly(True)
         self.polygon_index_plan_text.setMinimumHeight(72)
         self.polygon_index_plan_text.setMaximumHeight(140)
-        self.polygon_index_plan_text.setPlainText("Detect Best Indexing Strategy runs a bounded top-level probe only; it does not crawl the repository or read every header.")
+        self.polygon_index_plan_text.setPlainText("Preview Setup Method checks the repository lightly and recommends a preparation method without scanning every file.")
         polygon_source.addWidget(self.polygon_index_plan_text)
         catalog_actions = QHBoxLayout()
         catalog_actions.setSpacing(ACTION_ROW_SPACING)
-        self.build_catalog_button = QPushButton("Build Complete Repository Index")
+        self.build_catalog_button = QPushButton("Scan File Headers")
         self.build_catalog_button.setToolTip("Build Catalog")
         self.build_catalog_button.clicked.connect(self.build_polygon_catalog)
         _apply_button_role(self.build_catalog_button, "secondary")
@@ -2017,6 +2045,14 @@ class BatchPage(MissionPage):
         self.pause_catalog_button.clicked.connect(self.pause_polygon_catalog)
         self.pause_catalog_button.setEnabled(False)
         _apply_button_role(self.pause_catalog_button, "secondary")
+        self.repair_ept_catalog_button = QPushButton("Repair EPT Catalog")
+        self.repair_ept_catalog_button.clicked.connect(self.repair_polygon_ept_catalog)
+        self.repair_ept_catalog_button.setVisible(False)
+        _apply_button_role(self.repair_ept_catalog_button, "secondary")
+        self.move_catalog_local_button = QPushButton("Move Catalog Local")
+        self.move_catalog_local_button.clicked.connect(self.move_polygon_catalog_local)
+        self.move_catalog_local_button.setVisible(False)
+        _apply_button_role(self.move_catalog_local_button, "secondary")
         self.open_catalog_folder_button = QPushButton("Open Catalog Folder")
         self.open_catalog_folder_button.clicked.connect(self.open_polygon_catalog_folder)
         _apply_button_role(self.open_catalog_folder_button, "neutral")
@@ -2024,6 +2060,8 @@ class BatchPage(MissionPage):
         catalog_actions.addWidget(self.update_catalog_button)
         catalog_actions.addWidget(self.resume_catalog_button)
         catalog_actions.addWidget(self.pause_catalog_button)
+        catalog_actions.addWidget(self.repair_ept_catalog_button)
+        catalog_actions.addWidget(self.move_catalog_local_button)
         catalog_actions.addWidget(self.open_catalog_folder_button)
         catalog_actions.addStretch(1)
         polygon_source.addLayout(catalog_actions)
@@ -2341,6 +2379,9 @@ class BatchPage(MissionPage):
         folder = self.polygon_lidar_folder_edit.text().strip()
         if not folder:
             return None
+        selection = select_lidar_repository_path(folder)
+        if selection.valid:
+            return selection.catalog_path
         return default_lidar_catalog_path(Path(folder))
 
     def refresh_catalog_status(self) -> None:
@@ -2349,13 +2390,17 @@ class BatchPage(MissionPage):
         folder = self.polygon_lidar_folder_edit.text().strip()
         running = self.catalog_thread is not None
         if not folder:
-            self.polygon_catalog_status_label.setText("No Catalog - choose a LiDAR repository, then detect a strategy or build a complete catalog.")
+            self.polygon_catalog_status_label.setText("Repository not prepared - choose a LiDAR repository, then Prepare Repository.")
             self.detect_index_strategy_button.setEnabled(False)
             self.build_relevant_index_button.setEnabled(False)
             self.build_catalog_button.setEnabled(False)
             self.update_catalog_button.setEnabled(False)
             self.resume_catalog_button.setEnabled(False)
             self.pause_catalog_button.setEnabled(False)
+            self.repair_ept_catalog_button.setVisible(False)
+            self.repair_ept_catalog_button.setEnabled(False)
+            self.move_catalog_local_button.setVisible(False)
+            self.move_catalog_local_button.setEnabled(False)
             self.open_catalog_folder_button.setEnabled(False)
             return
         path = self._polygon_catalog_path()
@@ -2364,7 +2409,10 @@ class BatchPage(MissionPage):
         if latest is not None and latest.status in {CatalogJobStatus.INTERRUPTED, CatalogJobStatus.PAUSED, CatalogJobStatus.FAILED}:
             state_text = f"Catalog {latest.status.value.title()} - {latest.stage.value}; discovered {latest.discovered:,}; indexed {latest.indexed:,}; errors {latest.errors:,}."
         else:
-            state_text = catalog_status_text(Path(folder), path)
+            state_text = catalog_status_text(selection.normalized_path, path)
+        incorrect_ept_catalog = bool(selection.valid and path and path.exists() and incorrect_ept_catalog_detected(path, Path(folder)))
+        if incorrect_ept_catalog:
+            state_text = "Incorrect EPT Catalog Detected - this catalog indexes internal EPT node files individually. Use Repair EPT Catalog."
         self.polygon_catalog_status_label.setText(state_text if selection.valid else selection.message)
         exists = bool(path and path.exists())
         interrupted = bool(latest is not None and latest.status in {CatalogJobStatus.INTERRUPTED, CatalogJobStatus.PAUSED})
@@ -2374,7 +2422,38 @@ class BatchPage(MissionPage):
         self.update_catalog_button.setEnabled(selection.valid and exists and not running)
         self.resume_catalog_button.setEnabled(selection.valid and interrupted and not running)
         self.pause_catalog_button.setEnabled(running)
+        local_catalog_path = default_lidar_catalog_path(selection.normalized_path)
+        move_local_available = bool(selection.valid and path and path.exists() and Path(path) != local_catalog_path)
+        self.repair_ept_catalog_button.setVisible(incorrect_ept_catalog)
+        self.repair_ept_catalog_button.setEnabled(incorrect_ept_catalog and not running)
+        self.move_catalog_local_button.setVisible(move_local_available)
+        self.move_catalog_local_button.setEnabled(move_local_available and not running)
         self.open_catalog_folder_button.setEnabled(bool(path) and not running)
+
+    def repair_polygon_ept_catalog(self) -> None:
+        folder = self.polygon_lidar_folder_edit.text().strip()
+        path = self._polygon_catalog_path()
+        if not folder or path is None:
+            self.polygon_index_plan_text.setPlainText("Choose a LiDAR repository before repairing an EPT catalog.")
+            return
+        report = repair_ept_catalog(path, Path(folder))
+        self.polygon_index_plan_text.setPlainText(report.message + (f"\nBackup: {report.backup_path}" if report.backup_path else ""))
+        self.refresh_catalog_status()
+
+    def move_polygon_catalog_local(self) -> None:
+        folder = self.polygon_lidar_folder_edit.text().strip()
+        path = self._polygon_catalog_path()
+        if not folder or path is None:
+            self.polygon_index_plan_text.setPlainText("Choose a LiDAR repository before moving a catalog.")
+            return
+        selection = select_lidar_repository_path(folder)
+        if not selection.valid:
+            self.polygon_index_plan_text.setPlainText(selection.message)
+            return
+        report = move_lidar_catalog_to_local_storage(selection.normalized_path, path)
+        detail = f"\nOriginal catalog preserved: {report.source_path}" if report.moved else ""
+        self.polygon_index_plan_text.setPlainText(report.message + detail)
+        self.refresh_catalog_status()
 
     def choose_polygon_existing_index(self) -> None:
         path, _selected_filter = QFileDialog.getOpenFileName(
@@ -2399,7 +2478,7 @@ class BatchPage(MissionPage):
         plan = choose_index_strategy(capabilities, requested=requested)
         self.current_index_plan = plan
         self.polygon_index_plan_text.setPlainText(format_repository_index_plan(plan))
-        self.polygon_catalog_status_label.setText(f"Index strategy: {plan.selected_strategy.value}; cost {plan.expected_build_cost.value}. No deep scan was performed.")
+        self.polygon_catalog_status_label.setText(f"Repository setup: {plan.selected_strategy.value}; cost {plan.expected_build_cost.value}. No full scan was performed.")
 
     def build_relevant_polygon_index(self) -> None:
         if self.current_index_plan is None:

@@ -205,3 +205,9 @@ In **Batch > Polygon Area Processing**, users can preview repository indexing be
 - **Build Complete Repository Index** starts the durable full catalog build/update path.
 
 The strategy panel is informational and bounded; it must not start a deep scan by itself.
+
+## Polygon Area Processing Help And Terminology
+
+The Batch page now uses **Prepare Repository** and **Automatic Setup (Recommended)** as the guided path. Technical indexing strategy names are hidden from the default guided labels. Contextual help buttons explain LiDAR Repository, Polygon source, and Repository setup method.
+
+Preflight shows compact execution readiness: repository type, logical inputs, backend status, workload, estimated points, output, warnings, and expandable-style technical diagnostics.

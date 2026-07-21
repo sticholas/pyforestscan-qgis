@@ -39,21 +39,21 @@ class PolygonBatchPreflightTests(unittest.TestCase):
             (root / "b" ).mkdir()
             (root / "b" / "ept.json").write_text(json.dumps({"bounds": [10, 10, 0, 15, 15, 5], "srs": {"authority": "EPSG:32610"}, "points": 200}), encoding="utf-8")
             build_lidar_catalog(root)
-            report = run_polygon_batch_preflight(self._request(root))
+            report = run_polygon_batch_preflight(self._request(root), backend_probe=lambda: (True, "PBM backend is ready."))
 
         self.assertTrue(report.ready)
         self.assertEqual(len(report.inventory.sources), 1)
         self.assertEqual(len(report.selected_sources), 1)
         self.assertEqual(report.estimated_point_count, 100)
         self.assertIn("a/ept.json", str(selected_source_paths(report)[0]))
-        self.assertIn("Intersecting sources: 1", polygon_preflight_text(report))
+        self.assertIn("Logical inputs: 1", polygon_preflight_text(report))
 
     def test_polygon_preflight_blocks_no_intersection(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "ept.json").write_text(json.dumps({"bounds": [10, 10, 0, 15, 15, 5], "points": 100}), encoding="utf-8")
             build_lidar_catalog(root)
-            report = run_polygon_batch_preflight(self._request(root))
+            report = run_polygon_batch_preflight(self._request(root), backend_probe=lambda: (True, "PBM backend is ready."))
 
         self.assertFalse(report.ready)
         self.assertTrue(any("No cataloged LiDAR sources intersect" in item for item in report.blockers))
@@ -63,7 +63,7 @@ class PolygonBatchPreflightTests(unittest.TestCase):
             root = Path(tmpdir)
             (root / "tile.laz").write_text("", encoding="utf-8")
             build_lidar_catalog(root)
-            report = run_polygon_batch_preflight(self._request(root))
+            report = run_polygon_batch_preflight(self._request(root), backend_probe=lambda: (True, "PBM backend is ready."))
 
         self.assertEqual(len(report.selected_sources), 0)
         self.assertTrue(any("metadata errors" in warning for warning in report.warnings))
@@ -73,7 +73,7 @@ class PolygonBatchPreflightTests(unittest.TestCase):
             root = Path(tmpdir)
             (root / "ept.json").write_text(json.dumps({"bounds": [0, 0, 0, 5, 5, 5], "points": 100}), encoding="utf-8")
             build_lidar_catalog(root)
-            report = run_polygon_batch_preflight(self._request(root))
+            report = run_polygon_batch_preflight(self._request(root), backend_probe=lambda: (True, "PBM backend is ready."))
             path = write_polygon_batch_manifest(report)
             payload = json.loads(path.read_text(encoding="utf-8"))
 
@@ -82,31 +82,32 @@ class PolygonBatchPreflightTests(unittest.TestCase):
         self.assertEqual(len(payload["sources"]), 1)
         self.assertIn("wkt", payload["polygon"])
 
-    def test_execute_polygon_batch_clips_before_batch_executor(self) -> None:
-        class FakeAdapter:
-            def normalize_heights(self, request):
-                Path(request.output_path).parent.mkdir(parents=True, exist_ok=True)
-                Path(request.output_path).write_text("clipped", encoding="utf-8")
-                self.last_request = request
-                return HagNormalizationResult(Path(request.output_path), 12, request.crs, True)
+    def test_execute_polygon_batch_uses_logical_ept_without_staging_nodes(self) -> None:
+        class Result:
+            def __init__(self, path: Path) -> None:
+                self.output_path = path
 
-        class FakeExecutor:
-            def run(self, request, item_callback=None, job_callback=None, control_callback=None):
-                self.request = request
-                return BatchResult("id", request.title, "start", "end", request.batch_folder, (), request.batch_folder / "batch_summary.json", request.batch_folder / "batch_summary.csv", request.batch_folder / "batch_summary.html")
+        class FakeAdapter:
+            def create_chm(self, request):
+                Path(request.output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(request.output_path).write_text("chm", encoding="utf-8")
+                self.last_request = request
+                return Result(Path(request.output_path))
+
+            def normalize_heights(self, request):
+                raise AssertionError("EPT logical execution must not stage node LAZ files through QGIS Python")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "ept.json").write_text(json.dumps({"bounds": [0, 0, 0, 5, 5, 5], "points": 100}), encoding="utf-8")
             build_lidar_catalog(root)
-            report = run_polygon_batch_preflight(self._request(root))
+            report = run_polygon_batch_preflight(self._request(root), backend_probe=lambda: (True, "PBM backend is ready."))
             fake_adapter = FakeAdapter()
-            fake_executor = FakeExecutor()
-            result = execute_polygon_batch(report, adapter=fake_adapter, executor=fake_executor)
+            result = execute_polygon_batch(report, adapter=fake_adapter)
 
         self.assertEqual(result.title, "PyForestScan Polygon Batch")
-        self.assertEqual(len(fake_executor.request.datasets), 1)
-        self.assertTrue(str(fake_executor.request.datasets[0]).endswith("_polygon_clip.laz"))
+        self.assertEqual(len(result.items), 1)
+        self.assertEqual(result.items[0].dataset_path.name, "ept.json")
         self.assertIn("POLYGON", fake_adapter.last_request.crop_polygon)
         self.assertIsNotNone(fake_adapter.last_request.bounds)
 

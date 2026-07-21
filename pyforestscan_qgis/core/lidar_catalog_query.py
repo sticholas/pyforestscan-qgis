@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 import time
 from pathlib import Path
@@ -13,6 +14,7 @@ from .polygon_source import NormalizedPolygonSelection
 from .spatial_selection import Bounds2D, polygon_selection_from_wkt
 
 CoordinateTransformer = Callable[[float, float], tuple[float, float]]
+MAX_PLAUSIBLE_POINT_ESTIMATE = 10_000_000_000_000
 
 
 def derive_polygon_query_geometry(
@@ -74,6 +76,7 @@ def query_catalog_for_polygon(
     connection = connect_catalog(catalog_path)
     try:
         root_id = stable_root_id(root_path)
+        rtree_start = time.perf_counter()
         records = query_intersecting_records(
             connection,
             root_id,
@@ -83,6 +86,8 @@ def query_catalog_for_polygon(
             geometry.envelope.ymax,
             limit=thresholds.max_candidates_per_run + 1,
         )
+        rtree_elapsed = time.perf_counter() - rtree_start
+        row_start = time.perf_counter()
         error_row = connection.execute(
             "SELECT COUNT(*) AS count FROM lidar_sources WHERE root_id = ? AND inventory_status = 'error'",
             (root_id,),
@@ -91,9 +96,9 @@ def query_catalog_for_polygon(
             "SELECT COUNT(*) AS count FROM lidar_sources WHERE root_id = ? AND inventory_status = 'indexed'",
             (root_id,),
         ).fetchone()
+        row_elapsed = time.perf_counter() - row_start
     finally:
         connection.close()
-    elapsed = time.perf_counter() - start
     warnings = list(geometry.warnings)
     candidate_count = len(records)
     limited = False
@@ -101,8 +106,13 @@ def query_catalog_for_polygon(
         limited = True
         records = records[: thresholds.max_candidates_per_run]
         warnings.append(f"Catalog query exceeded the maximum candidate threshold of {thresholds.max_candidates_per_run:,}; refine the polygon or thresholds before running.")
-    estimated_points = _estimated_points(records)
+    estimate_start = time.perf_counter()
+    estimated_points, estimate_confidence, estimate_warning = _estimated_points(records)
+    estimate_elapsed = time.perf_counter() - estimate_start
     estimated_bytes = sum(record.file_size for record in records)
+    elapsed = time.perf_counter() - start
+    if estimate_warning:
+        warnings.append(estimate_warning)
     if estimated_points is not None and estimated_points > thresholds.max_estimated_points:
         warnings.append(f"Estimated point count {estimated_points:,} exceeds the configured threshold.")
     if estimated_bytes > thresholds.max_estimated_input_bytes:
@@ -124,10 +134,29 @@ def query_catalog_for_polygon(
         estimated_bytes=estimated_bytes,
         query_seconds=elapsed,
         warnings=tuple(dict.fromkeys(warnings)),
+        timing_seconds={
+            "rtree_lookup": rtree_elapsed,
+            "row_loading": row_elapsed,
+            "workload_estimation": estimate_elapsed,
+            "total_preflight_query": elapsed,
+        },
+        point_estimate_confidence=estimate_confidence,
     )
 
 
-def _estimated_points(records) -> int | None:
+def _estimated_points(records) -> tuple[int | None, str, str | None]:
     if not records or any(record.point_count is None for record in records):
-        return None
-    return int(sum(record.point_count or 0 for record in records))
+        return None, "Unavailable", None
+    total = 0
+    for record in records:
+        value = record.point_count
+        if value is None:
+            return None, "Unavailable", None
+        if not isinstance(value, int) or value < 0:
+            return None, "Unavailable", "Estimated point count is unavailable because catalog point metadata is malformed."
+        total += value
+        if total > MAX_PLAUSIBLE_POINT_ESTIMATE:
+            return None, "Unavailable", "Estimated point count is unavailable because catalog point metadata is implausibly large."
+    if not math.isfinite(float(total)) or total < 0:
+        return None, "Unavailable", "Estimated point count is unavailable because catalog point metadata is invalid."
+    return int(total), "High", None

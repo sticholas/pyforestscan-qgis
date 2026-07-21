@@ -23,3 +23,5 @@ This directory contains implementation notes for contributors working on PyFores
 
 Historical phase validation records live in [docs/archive/phase-history](../archive/phase-history/README.md).
 - [Adaptive LiDAR Indexing](ADAPTIVE_LIDAR_INDEXING.md)
+- [EPT Repository Handling](EPT_REPOSITORY_HANDLING.md)
+- [Contextual Help System](CONTEXTUAL_HELP_SYSTEM.md)

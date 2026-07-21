@@ -129,3 +129,11 @@ Quick Probe reports conservative filesystem notes for local, mounted, UNC/networ
 Phase 27I adds `pyforestscan_qgis/core/adaptive_lidar_indexing.py` as the strategy layer above the catalog worker. It detects repository capabilities with a bounded top-level probe, chooses a `RepositoryIndexPlan`, and supports registration of existing CSV/GeoJSON footprint indexes and native EPT/COPC logical sources into the same SQLite/RTree catalog.
 
 The full catalog remains the fallback. It is now described as a two-pass path: spatial fields first so polygon queries can work, richer metadata enrichment later. Filename/grid and partitioned-lazy profiles are modeled but require explicit profile approval or supplied partition metadata before use.
+
+## EPT Pruning And Repair
+
+Catalog traversal prunes EPT internals when `ept.json` is present. The catalog stores one logical EPT source and does not descend into `ept-data` or `ept-hierarchy`.
+
+`pyforestscan_qgis/core/ept_repository.py` detects node-level EPT catalogs and repairs them by backing up the SQLite file, deleting internal-node records, inserting one logical EPT record, and rebuilding RTree state without walking the EPT node tree.
+
+Mounted and network-like paths default to user-local catalog storage under PyForestScan application data. Repository-side catalogs remain readable for compatibility, and the Batch page can copy them to the local catalog store with **Move Catalog Local** without deleting the source catalog.

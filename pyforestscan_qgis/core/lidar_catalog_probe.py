@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .lidar_catalog import catalog_summary
-from .lidar_catalog_models import LidarCatalogSummary, default_lidar_catalog_path
+from .ept_repository import resolve_ept_selection
+from .lidar_catalog_models import LidarCatalogSummary, default_lidar_catalog_path, repository_side_lidar_catalog_path
 from .lidar_inventory import lidar_source_type
 
 DEFAULT_PROBE_ENTRY_LIMIT = 500
@@ -47,7 +48,13 @@ def select_lidar_repository_path(path: str | Path) -> RepositorySelectionStatus:
     """Normalize and validate a repository path without deep scanning."""
     raw = Path(path).expanduser()
     normalized = raw.resolve() if raw.exists() else raw.absolute()
+    ept_selection = resolve_ept_selection(normalized)
+    message_prefix = ""
+    if ept_selection is not None:
+        normalized = ept_selection.normalized_repository
+        message_prefix = ept_selection.message + " "
     catalog = default_lidar_catalog_path(normalized)
+    legacy_catalog = repository_side_lidar_catalog_path(normalized)
     valid = normalized.is_dir()
     readable = False
     if valid:
@@ -61,10 +68,13 @@ def select_lidar_repository_path(path: str | Path) -> RepositorySelectionStatus:
     elif not readable:
         message = f"Directory is not readable: {normalized}"
     elif catalog.exists():
-        message = "Catalog found. Refresh status or analyze polygon."
+        message = message_prefix + "Catalog found. Refresh status or analyze polygon."
+    elif legacy_catalog.exists():
+        catalog = legacy_catalog
+        message = message_prefix + "Catalog found beside repository. Move Local is recommended for network storage."
     else:
-        message = "No Catalog - Build Catalog when ready."
-    return RepositorySelectionStatus(normalized, normalized, valid, readable, catalog, catalog.exists(), message)
+        message = message_prefix + "No Catalog - Prepare Repository when ready."
+    return RepositorySelectionStatus(raw, normalized, valid, readable, catalog, catalog.exists(), message)
 
 
 def quick_probe_lidar_repository(path: str | Path, *, max_entries: int = DEFAULT_PROBE_ENTRY_LIMIT, max_seconds: float = DEFAULT_PROBE_SECONDS) -> QuickProbeResult:

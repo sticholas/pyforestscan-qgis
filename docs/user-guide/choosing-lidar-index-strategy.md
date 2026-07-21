@@ -38,3 +38,16 @@ Use **Full Header Catalog** when Mission Control cannot detect a trustworthy sho
 Filename/grid profiles must be approved and include a CRS. Do not use filename-derived bounds for scientific work until representative samples have been validated.
 
 GeoPackage, Shapefile, and FlatGeobuf footprint indexes are recognized, but they need QGIS/OGR field mapping before import. CSV and GeoJSON footprint indexes can be imported by the QGIS-free core when they expose the expected fields.
+
+## Guided Labels
+
+Mission Control uses plain setup labels in Guided mode:
+
+- **Automatic Setup (Recommended)**
+- **Use an Existing Footprint Index**
+- **Use Built-in Spatial Access** for EPT or COPC
+- **Use Tile Names**
+- **Use Folder Regions**
+- **Scan File Headers**
+
+Technical strategy names are kept for logs and Advanced diagnostics.

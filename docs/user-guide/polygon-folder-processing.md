@@ -98,3 +98,9 @@ Use **Detect Best Indexing Strategy** first. Then use **Build Relevant Index** w
 Polygon Area Processing now separates repository strategy detection from heavy catalog work. **Detect Best Indexing Strategy** is safe to run first because it uses a bounded top-level probe only. It can identify existing PyForestScan catalogs, PDAL tile indexes, CSV/GeoJSON footprint indexes, EPT roots, COPC sources, and configured repository profiles.
 
 The default path remains safe: if no trustworthy shortcut is found, use **Build Complete Repository Index**. Batch preflight still requires a usable catalog before processing.
+
+## EPT Datasets
+
+You can choose `ept.json`, the EPT root folder, or the `ept-data` folder. Mission Control automatically uses the parent EPT dataset and treats it as one logical input. Internal EPT node files are not listed, cataloged, or staged as separate Batch files.
+
+Preflight now checks the managed PBM backend before Run. If the backend cannot import PyForestScan, preflight is **Ready: NO** and tells you to repair or rebuild the backend from Environment.
