@@ -33,3 +33,8 @@ Older catalogs may contain internal EPT node records. The repair path detects no
 EPT Polygon Area Processing uses one logical source. The request carries automatic EPT bounds in PyForestScan format `([xmin, xmax], [ymin, ymax])` and retains the exact polygon WKT for clipping. PBM backend Python imports PyForestScan and reads the EPT; QGIS Python prepares the request and monitors results.
 
 Local tiled LAS/LAZ processing still uses catalog query plus staged clipped files. COPC follows the logical source pattern when cataloged as a logical source.
+
+
+## Phase 27K Polygon Transport
+
+EPT polygon jobs now keep the EPT source as one logical  input and pass polygon-derived EPT bounds to the backend. Exact clipping geometry is serialized in the job spec and materialized inside the PBM job workspace as a vector file before PyForestScan is called. WKT is diagnostics content, not a polygon filename.

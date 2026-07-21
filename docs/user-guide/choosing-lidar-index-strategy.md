@@ -51,3 +51,8 @@ Mission Control uses plain setup labels in Guided mode:
 - **Scan File Headers**
 
 Technical strategy names are kept for logs and Advanced diagnostics.
+
+
+## Guided Help
+
+Use the blue information badges beside repository setup controls for concise explanations. Automatic Setup remains recommended. Technical strategy names are reserved for Advanced diagnostics and logs.

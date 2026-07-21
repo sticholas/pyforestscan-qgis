@@ -126,6 +126,24 @@ class LidarCatalogQuery:
 
 
 @dataclass(frozen=True)
+class WorkloadEstimate:
+    """Defensible workload estimate with assumptions and confidence."""
+
+    point_estimate: int | None
+    lower_bound: int | None = None
+    upper_bound: int | None = None
+    confidence: str = "Unavailable"
+    method: str = "Unavailable"
+    source_area: float | None = None
+    polygon_area: float | None = None
+    density: float | None = None
+    unit_basis: str = "unknown"
+    assumptions: tuple[str, ...] = ()
+    warning: str | None = None
+    is_plausible: bool = False
+
+
+@dataclass(frozen=True)
 class LidarCatalogQueryResult:
     """Catalog query result for polygon Batch preflight."""
 
@@ -141,6 +159,7 @@ class LidarCatalogQueryResult:
     warnings: tuple[str, ...] = ()
     timing_seconds: dict[str, float] | None = None
     point_estimate_confidence: str = "Unavailable"
+    workload_estimate: WorkloadEstimate | None = None
 
     @property
     def source_records(self) -> tuple[LidarSourceRecord, ...]:

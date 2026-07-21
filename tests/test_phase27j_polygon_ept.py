@@ -125,7 +125,7 @@ class Phase27JEptTests(unittest.TestCase):
 
         self.assertIsNone(report.estimated_point_count)
         self.assertIn("Not available for this repository", text)
-        self.assertTrue(any("implausibly large" in warning for warning in report.warnings))
+        self.assertTrue(any("reliable polygon-subset estimate" in warning for warning in report.warnings))
 
     def test_query_timing_components_are_separate(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

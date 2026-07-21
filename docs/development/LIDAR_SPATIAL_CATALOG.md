@@ -137,3 +137,8 @@ Catalog traversal prunes EPT internals when `ept.json` is present. The catalog s
 `pyforestscan_qgis/core/ept_repository.py` detects node-level EPT catalogs and repairs them by backing up the SQLite file, deleting internal-node records, inserting one logical EPT record, and rebuilding RTree state without walking the EPT node tree.
 
 Mounted and network-like paths default to user-local catalog storage under PyForestScan application data. Repository-side catalogs remain readable for compatibility, and the Batch page can copy them to the local catalog store with **Move Catalog Local** without deleting the source catalog.
+
+
+## Phase 27K Workload Estimates
+
+Catalog point counts from EPT or COPC root metadata are not treated as polygon-subset estimates. Unless a measured or otherwise defensible subset estimate exists, preflight reports estimated points as unavailable and records the reason. Independent local tile point-count sums may still be shown with High confidence when catalog assumptions are valid.

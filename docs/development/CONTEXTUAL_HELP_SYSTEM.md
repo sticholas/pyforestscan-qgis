@@ -28,3 +28,8 @@ Avoid vague text such as "controls strategy". Prefer concrete wording such as "S
 Guided mode should use plain labels such as **Automatic Setup**, **Prepare Repository**, and **Use Built-in Spatial Access**. Internal enum labels remain acceptable in logs and technical diagnostics, but not as primary user-facing choices.
 
 Advanced sections should remain collapsed by default, include help when settings affect CRS, performance, memory, output meaning, overwrite behavior, or scientific interpretation, and provide reset-to-recommended behavior when a group exposes multiple tunable controls.
+
+
+## Phase 27K InfoBadge Registry
+
+Contextual help content now lives in . UI code should prefer  so wording, recommended defaults, consequences, and documentation anchors stay centralized. The reusable  is a small blue circular information badge with tooltip, click detail, keyboard activation, and accessible name. Run  to report registered, used, missing, and orphan topics.

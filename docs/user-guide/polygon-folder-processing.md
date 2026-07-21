@@ -104,3 +104,8 @@ The default path remains safe: if no trustworthy shortcut is found, use **Build 
 You can choose `ept.json`, the EPT root folder, or the `ept-data` folder. Mission Control automatically uses the parent EPT dataset and treats it as one logical input. Internal EPT node files are not listed, cataloged, or staged as separate Batch files.
 
 Preflight now checks the managed PBM backend before Run. If the backend cannot import PyForestScan, preflight is **Ready: NO** and tells you to repair or rebuild the backend from Environment.
+
+
+## Polygon Input Contract
+
+When you run Polygon Area Processing, Mission Control stores the selected geometry and CRS in the job manifest. The managed backend creates a real clipping polygon file inside the job folder before processing. This prevents WKT text from being mistaken for a filename and keeps the job independent of the original QGIS layer after submission.

@@ -241,3 +241,8 @@ The QGIS-free design vocabulary lives in `pyforestscan_qgis/ui/ux_summary.py` an
 ## Information Controls
 
 Use the standard small `i` information control for contextual help. It must have a tooltip, accessible name, keyboard focus, and a concise click detail where configured. Do not use the information icon as a substitute for clear labels.
+
+
+## InfoBadge
+
+The standard information control is a compact blue circular  with lowercase , hover state, focus state, tooltip, click detail, and accessible name. It uses Qt styling rather than external fonts or bitmap dependencies and must remain legible in compact dock layouts.

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 from .lidar_catalog import connect_catalog, query_intersecting_records
-from .lidar_catalog_models import CatalogThresholds, LidarCatalogQuery, LidarCatalogQueryResult, PolygonQueryGeometry, stable_root_id
+from .lidar_catalog_models import CatalogThresholds, LidarCatalogQuery, LidarCatalogQueryResult, PolygonQueryGeometry, WorkloadEstimate, stable_root_id
 from .polygon_source import NormalizedPolygonSelection
 from .spatial_selection import Bounds2D, polygon_selection_from_wkt
 
@@ -107,7 +107,10 @@ def query_catalog_for_polygon(
         records = records[: thresholds.max_candidates_per_run]
         warnings.append(f"Catalog query exceeded the maximum candidate threshold of {thresholds.max_candidates_per_run:,}; refine the polygon or thresholds before running.")
     estimate_start = time.perf_counter()
-    estimated_points, estimate_confidence, estimate_warning = _estimated_points(records)
+    workload_estimate = _estimated_points(records, polygon_area=polygon.area)
+    estimated_points = workload_estimate.point_estimate
+    estimate_confidence = workload_estimate.confidence
+    estimate_warning = workload_estimate.warning
     estimate_elapsed = time.perf_counter() - estimate_start
     estimated_bytes = sum(record.file_size for record in records)
     elapsed = time.perf_counter() - start
@@ -141,22 +144,47 @@ def query_catalog_for_polygon(
             "total_preflight_query": elapsed,
         },
         point_estimate_confidence=estimate_confidence,
+        workload_estimate=workload_estimate,
     )
 
 
-def _estimated_points(records) -> tuple[int | None, str, str | None]:
-    if not records or any(record.point_count is None for record in records):
-        return None, "Unavailable", None
+def _estimated_points(records, *, polygon_area: float | None = None) -> WorkloadEstimate:
+    if not records:
+        return WorkloadEstimate(None, polygon_area=polygon_area)
+    source_types = {str(getattr(record, "source_type", "")).lower() for record in records}
+    if source_types & {"ept", "copc"}:
+        return WorkloadEstimate(
+            None,
+            confidence="Unavailable",
+            method="Unavailable",
+            polygon_area=polygon_area,
+            unit_basis="source metadata only",
+            assumptions=("EPT/COPC root point counts describe the source, not the requested polygon subset.",),
+            warning="Estimated point count is unavailable because EPT/COPC metadata does not provide a reliable polygon-subset estimate.",
+            is_plausible=False,
+        )
+    if any(record.point_count is None for record in records):
+        return WorkloadEstimate(None, polygon_area=polygon_area)
     total = 0
     for record in records:
         value = record.point_count
         if value is None:
-            return None, "Unavailable", None
+            return WorkloadEstimate(None, polygon_area=polygon_area)
         if not isinstance(value, int) or value < 0:
-            return None, "Unavailable", "Estimated point count is unavailable because catalog point metadata is malformed."
+            return WorkloadEstimate(None, polygon_area=polygon_area, warning="Estimated point count is unavailable because catalog point metadata is malformed.")
         total += value
         if total > MAX_PLAUSIBLE_POINT_ESTIMATE:
-            return None, "Unavailable", "Estimated point count is unavailable because catalog point metadata is implausibly large."
+            return WorkloadEstimate(None, polygon_area=polygon_area, warning="Estimated point count is unavailable because catalog point metadata is implausibly large.")
     if not math.isfinite(float(total)) or total < 0:
-        return None, "Unavailable", "Estimated point count is unavailable because catalog point metadata is invalid."
-    return int(total), "High", None
+        return WorkloadEstimate(None, polygon_area=polygon_area, warning="Estimated point count is unavailable because catalog point metadata is invalid.")
+    return WorkloadEstimate(
+        int(total),
+        lower_bound=int(total),
+        upper_bound=int(total),
+        confidence="High",
+        method="Catalog source-point sum for independent nonoverlapping tiles",
+        polygon_area=polygon_area,
+        unit_basis="catalog source metadata",
+        assumptions=("Selected source files are independent catalog records.",),
+        is_plausible=True,
+    )

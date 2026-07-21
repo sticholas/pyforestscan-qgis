@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from .polygon_transport import PolygonExecutionInput
+
 
 class DatasetFormat(str, Enum):
     """Point cloud formats recognized by the adapter."""
@@ -152,6 +154,8 @@ class ChmRequest:
     y_resolution: float | None = None
     bounds: tuple[tuple[float, float], ...] | None = None
     crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -181,6 +185,8 @@ class CanopyCoverRequest:
     y_resolution: float | None = None
     bounds: tuple[tuple[float, float], ...] | None = None
     crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -208,6 +214,8 @@ class PadRequest:
     y_resolution: float | None = None
     bounds: tuple[tuple[float, float], ...] | None = None
     crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -238,6 +246,8 @@ class PaiRequest:
     y_resolution: float | None = None
     bounds: tuple[tuple[float, float], ...] | None = None
     crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -265,6 +275,8 @@ class FhdRequest:
     y_resolution: float | None = None
     bounds: tuple[tuple[float, float], ...] | None = None
     crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -293,6 +305,8 @@ class RumpleRequest:
     y_resolution: float | None = None
     bounds: tuple[tuple[float, float], ...] | None = None
     crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -320,6 +334,8 @@ class HagNormalizationRequest:
     bounds: tuple[tuple[float, float], ...] | None = None
     thin_radius: float | None = None
     crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -345,6 +361,8 @@ class DtmRequest:
     nodata: float = -9999.0
     bounds: tuple[tuple[float, float], ...] | None = None
     crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -371,6 +389,8 @@ class PointDensityRequest:
     y_resolution: float | None = None
     bounds: tuple[tuple[float, float], ...] | None = None
     crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -399,6 +419,8 @@ class VoxelStatRequest:
     y_resolution: float | None = None
     bounds: tuple[tuple[float, float], ...] | None = None
     crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)

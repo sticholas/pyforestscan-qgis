@@ -44,7 +44,8 @@ class PolygonBatchPreflightTests(unittest.TestCase):
         self.assertTrue(report.ready)
         self.assertEqual(len(report.inventory.sources), 1)
         self.assertEqual(len(report.selected_sources), 1)
-        self.assertEqual(report.estimated_point_count, 100)
+        self.assertIsNone(report.estimated_point_count)
+        self.assertEqual(report.query_result.point_estimate_confidence, "Unavailable")
         self.assertIn("a/ept.json", str(selected_source_paths(report)[0]))
         self.assertIn("Logical inputs: 1", polygon_preflight_text(report))
 
@@ -109,6 +110,7 @@ class PolygonBatchPreflightTests(unittest.TestCase):
         self.assertEqual(len(result.items), 1)
         self.assertEqual(result.items[0].dataset_path.name, "ept.json")
         self.assertIn("POLYGON", fake_adapter.last_request.crop_polygon)
+        self.assertIsNotNone(fake_adapter.last_request.polygon_execution_input)
         self.assertIsNotNone(fake_adapter.last_request.bounds)
 
 

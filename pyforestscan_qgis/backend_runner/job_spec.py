@@ -87,7 +87,7 @@ def build_job_spec_from_request(product: str, request: Any, run_folder: Path | N
     input_path = Path(str(params.get("input_path", "")))
     output_path = Path(str(params.get("output_path", "")))
     crs = str(params.get("crs", ""))
-    folder = Path(run_folder) if run_folder is not None else output_path.parent
+    folder = Path(run_folder) if run_folder is not None else _default_run_folder_for_request(params, output_path)
     identifier = job_id or f"pbm-{product}-{uuid.uuid4().hex[:12]}"
     result_path = folder / ".pbm_jobs" / f"{identifier}.result.json"
     output_paths = {"primary": output_path}
@@ -96,7 +96,11 @@ def build_job_spec_from_request(product: str, request: Any, run_folder: Path | N
     else:
         dtm_path = None
     request_fields = {field.name for field in fields(request)}
-    hag_options = {key: params[key] for key in ("use_dtm", "hag", "hag_dtm", "dtm_path", "reproject", "bounds", "thin_radius", "crop_polygon", "crop_poly", "poly") if key in request_fields}
+    hag_options = {
+        key: params[key]
+        for key in ("use_dtm", "hag", "hag_dtm", "dtm_path", "reproject", "bounds", "thin_radius", "crop_polygon", "crop_polygon_path", "polygon_execution_input", "crop_poly", "poly")
+        if key in request_fields
+    }
     version = getattr(__version__, "full_version", lambda: "unknown")() if __version__ is not None else "unknown"
     return BackendJobSpec(
         job_id=identifier,
@@ -111,6 +115,14 @@ def build_job_spec_from_request(product: str, request: Any, run_folder: Path | N
         dtm_path=dtm_path,
         plugin_version=version,
     )
+
+
+def _default_run_folder_for_request(params: dict[str, Any], output_path: Path) -> Path:
+    """Return the durable PBM job workspace for a request."""
+    parent = output_path.parent
+    if params.get("polygon_execution_input") and parent.name == "outputs":
+        return parent.parent
+    return parent
 
 
 def _json_ready(value: Any) -> Any:

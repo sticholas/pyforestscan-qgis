@@ -14,6 +14,7 @@ from .job_spec import BackendJobSpec
 from pyforestscan_qgis.core.adapter import PyForestScanAdapter
 from pyforestscan_qgis.core.config import InspectionOptions
 from pyforestscan_qgis.core.ept_subset import EptSubsetRequest
+from pyforestscan_qgis.core.polygon_transport import materialize_polygon_input
 from pyforestscan_qgis.core.types import (
     CanopyCoverRequest,
     ChmRequest,
@@ -97,6 +98,10 @@ def _request_from_spec(spec: BackendJobSpec) -> Any:
         params["output_path"] = spec.output_paths["primary"]
     if spec.dtm_path is not None and "dtm_path" in request_class.__dataclass_fields__:
         params["dtm_path"] = spec.dtm_path
+    if params.get("polygon_execution_input") and "crop_polygon_path" in request_class.__dataclass_fields__:
+        prepared = materialize_polygon_input(params["polygon_execution_input"], spec.run_folder)
+        params["crop_polygon_path"] = prepared.temporary_vector_path
+        params["polygon_vector_format"] = prepared.temporary_vector_format
     field_names = set(request_class.__dataclass_fields__)
     clean = {key: _coerce_value(key, value) for key, value in params.items() if key in field_names}
     return request_class(**clean)

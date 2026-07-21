@@ -211,3 +211,8 @@ The strategy panel is informational and bounded; it must not start a deep scan b
 The Batch page now uses **Prepare Repository** and **Automatic Setup (Recommended)** as the guided path. Technical indexing strategy names are hidden from the default guided labels. Contextual help buttons explain LiDAR Repository, Polygon source, and Repository setup method.
 
 Preflight shows compact execution readiness: repository type, logical inputs, backend status, workload, estimated points, output, warnings, and expandable-style technical diagnostics.
+
+
+## Phase 27K Polygon And Help Updates
+
+Polygon Area Processing now distinguishes geometry content from backend vector paths. PBM materializes the clipping polygon in the job workspace and PyForestScan receives a real GeoPackage or GeoJSON path. The Batch page uses central InfoBadge topics for repository, polygon source, and setup method help.

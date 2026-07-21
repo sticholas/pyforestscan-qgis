@@ -96,3 +96,8 @@ Warnings appear only when actionable. A warning should state what happened and w
 ## Contextual Help
 
 Mission Control uses `InfoHelpButton` for concise help on controls that affect CRS, scientific interpretation, performance, memory, clipping, concurrency, overwrite behavior, or output meaning. Tooltips are short; click details provide 40-120 words when needed.
+
+
+## Phase 27K Help Standard
+
+Use clear labels before adding help. Add InfoBadge controls only for scientific terms, CRS behavior, backend/runtime behavior, workload uncertainty, performance, memory, output meaning, or risky Advanced/Troubleshooting settings. Keep Guided mode clean and place raw WKT, raw bounds, enum values, and command details under Technical diagnostics.

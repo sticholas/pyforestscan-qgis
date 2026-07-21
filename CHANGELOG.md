@@ -126,3 +126,6 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 - Mission Control run folders now avoid overwriting previous runs by adding numeric suffixes when a timestamped folder already exists.
 - Dataset Explorer Processing feedback now formats long CRS strings and numeric summaries more clearly after manual QGIS validation.
 - `InspectionOptions.include_dimensions` is now honored by dataset inspection.
+
+
+- Phase 27K: Fixed polygon transport so PBM materializes a real clipping vector file before PyForestScan execution, made EPT/COPC workload estimates conservative, added polygon progress stages, introduced a styled InfoBadge help registry, and documented real EPT validation steps.

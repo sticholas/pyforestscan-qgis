@@ -21,6 +21,7 @@ from .lidar_catalog_query import derive_polygon_query_geometry, query_catalog_fo
 from .lidar_inventory import LidarInventory, LidarSourceRecord
 from .polygon_processing import PolygonProcessingPlan, build_polygon_processing_plan
 from .polygon_source import NormalizedPolygonSelection
+from .polygon_transport import polygon_execution_input_from_selection, unique_polygon_job_id
 from .raster_mask import RasterMaskResult, apply_polygon_mask_to_outputs
 from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, HagNormalizationRequest, PadRequest, PaiRequest, PointDensityRequest, ProductType, RumpleRequest, VoxelStatRequest
 
@@ -70,6 +71,7 @@ class PolygonBatchPreflightReport:
     execution_backend: str = "PBM"
     backend_ready: bool = False
     backend_message: str = "Backend readiness was not checked."
+    spatial_alignment_status: str = "Ready"
 
     @property
     def has_warnings(self) -> bool:
@@ -188,6 +190,7 @@ def polygon_preflight_text(report: PolygonBatchPreflightReport) -> str:
         f"Polygon area: {_format_area_hectares(report.request.polygon.area)}",
         "Products: " + ", ".join(product.value for product in report.request.products),
         f"Backend: PBM {'Ready' if report.backend_ready else 'Not Ready'}",
+        f"Spatial alignment: {report.spatial_alignment_status}",
         f"Estimated workload: {workload}",
         f"Estimated points: {estimate_text}",
         f"Output: {report.request.output_folder}",
@@ -299,6 +302,8 @@ def write_polygon_batch_manifest(
         "query": {
             "envelope": report.query_geometry.envelope.__dict__,
             "ept_bounds": report.query_geometry.ept_bounds,
+            "bounds_query_crs": report.query_geometry.catalog_crs,
+            "spatial_alignment": report.spatial_alignment_status,
             "query_seconds": None if query is None else query.query_seconds,
             "candidate_count": None if query is None else query.candidate_count,
             "exact_intersecting_count": None if query is None else query.exact_intersecting_count,
@@ -309,6 +314,11 @@ def write_polygon_batch_manifest(
             "source_description": report.request.polygon.source_description,
             "source_crs": report.request.polygon.source_crs,
             "processing_crs": report.request.polygon.processing_crs,
+            "polygon_original_crs": report.request.polygon.source_crs,
+            "ept_source_crs": report.query_geometry.catalog_crs,
+            "bounds_query_crs": report.query_geometry.catalog_crs,
+            "clipping_geometry_crs": report.query_geometry.catalog_crs,
+            "output_crs": report.request.polygon.processing_crs,
             "geometry_type": report.request.polygon.geometry_type,
             "feature_count": report.request.polygon.feature_count,
             "bounds": report.request.polygon.bounds.__dict__,
@@ -391,20 +401,27 @@ def _is_logical_spatial_report(report: PolygonBatchPreflightReport) -> bool:
 def _execute_logical_spatial_batch(report: PolygonBatchPreflightReport, adapter: PyForestScanAdapter, batch_folder: Path, *, item_callback=None) -> BatchResult:
     started_at = datetime.now(timezone.utc).isoformat()
     source = report.selected_sources[0]
-    context = batch_run_context(Path(source.path), batch_folder, reuse_existing=True).ensure_directories()
+    job_folder = batch_folder / "polygon_jobs" / unique_polygon_job_id(source.source_type)
+    context = batch_run_context(Path(source.path), job_folder, reuse_existing=True).ensure_directories()
+    for child in ("inputs", "staging", "outputs", "logs", "diagnostics"):
+        (job_folder / child).mkdir(parents=True, exist_ok=True)
     outputs: list[Path] = []
+    stages = _polygon_progress_stages(report.request.products)
     try:
+        _emit_polygon_stage(item_callback, source, context, "Preparing Inputs", "Preparing durable polygon job workspace.")
+        write_polygon_batch_manifest(report, [{"source": str(source.path), "clipped": "native", "points": str(source.point_count or "unknown"), "bounds_used": str(report.query_geometry.ept_bounds), "job_folder": str(job_folder)}], batch_folder=batch_folder)
         for product in report.request.products:
+            _emit_polygon_stage(item_callback, source, context, "Generating Product", f"Generating {product.value}.")
             result_path = _logical_product_output_path(context.outputs_dir, product)
             request = _logical_product_request(product, source.path, result_path, report)
             result = _run_logical_product(adapter, product, request)
             outputs.append(Path(getattr(result, "output_path")))
-        item = BatchItemResult(Path(source.path), context, "completed", "Logical EPT/COPC source processed through PBM backend.", tuple(outputs), _source_bounds_summary(source))
+        item = BatchItemResult(Path(source.path), context, "completed", "Logical EPT/COPC source processed through PBM backend.", tuple(outputs), "; ".join(stages))
     except Exception as exc:  # noqa: BLE001
         item = BatchItemResult(Path(source.path), context, "failed", _friendly_polygon_execution_error(str(exc)), tuple(outputs), _source_bounds_summary(source))
     finished_at = datetime.now(timezone.utc).isoformat()
     result = BatchResult("polygon-logical", report.request.title, started_at, finished_at, batch_folder, (item,), batch_folder / "batch_summary.json", batch_folder / "batch_summary.csv", batch_folder / "batch_summary.html")
-    write_polygon_batch_manifest(report, [{"source": str(source.path), "clipped": "native", "points": str(source.point_count or "unknown"), "bounds_used": str(report.query_geometry.ept_bounds)}], batch_folder=batch_folder)
+    write_polygon_batch_manifest(report, [{"source": str(source.path), "clipped": "native", "points": str(source.point_count or "unknown"), "bounds_used": str(report.query_geometry.ept_bounds), "job_folder": str(context.run_folder)}], batch_folder=batch_folder)
     if item_callback is not None:
         item_callback(item)
     return write_batch_summaries(result)
@@ -417,6 +434,7 @@ def _logical_product_request(product: ProductType, input_path: Path, output_path
         "crs": report.query_geometry.catalog_crs or report.request.polygon.processing_crs,
         "bounds": report.query_geometry.ept_bounds,
         "crop_polygon": report.query_geometry.exact_polygon_wkt,
+        "polygon_execution_input": polygon_execution_input_from_selection(report.request.polygon, transformed_wkt=report.query_geometry.exact_polygon_wkt),
     }
     settings = report.request.settings
     if product == ProductType.CHM:
@@ -453,6 +471,29 @@ def _run_logical_product(adapter: PyForestScanAdapter, product: ProductType, req
         ProductType.VOXEL_STAT: "create_voxel_stat",
     }
     return getattr(adapter, method_names[product])(request)
+
+
+def _emit_polygon_stage(item_callback, source: LidarSourceRecord, context, stage: str, message: str) -> None:
+    if item_callback is not None:
+        item_callback(BatchItemResult(Path(source.path), context, "running", f"{stage}: {message}", (), stage))
+
+
+def _polygon_progress_stages(products: tuple[ProductType, ...]) -> tuple[str, ...]:
+    product_labels = tuple(product.value for product in products)
+    return (
+        "Preparing Inputs",
+        "Validating Geometry",
+        "Preparing Spatial Read",
+        "Applying EPT Bounds",
+        "Reading Point Cloud",
+        "Normalizing Heights",
+        "Generating Product: " + ", ".join(product_labels),
+        "Writing Raster",
+        "Masking Output",
+        "Writing Metadata",
+        "Finalizing",
+        "Completed",
+    )
 
 
 def _logical_product_output_path(folder: Path, product: ProductType) -> Path:

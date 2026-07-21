@@ -179,3 +179,8 @@ Batch execution and scientific processing are unchanged. External Worker mode re
 Polygon Area Processing preflight now checks the PBM backend that will execute the job. Ready can be YES only when the polygon, repository/catalog, products, output, manifest, and managed backend are usable. Missing PyForestScan imports are reported before Run.
 
 EPT and COPC logical sources no longer use the local-file staging model. EPT sends one `ept.json` source plus bounds and exact polygon WKT to PBM.
+
+
+## Phase 27K Polygon Job Workspace
+
+Logical EPT/COPC polygon jobs create a durable  workspace with , , , , and . The backend materializes the clipping polygon under  and named progress stages describe input preparation, spatial read, product generation, masking, metadata, and finalization.

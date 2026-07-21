@@ -104,7 +104,7 @@ from ..core.workspace import (
     create_run_context,
 )
 from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
-from .help import info_help_button
+from .help import info_badge, info_help_button
 from .output_loading import LoadableOutput, collect_loadable_outputs, compact_dataset_summary_lines, output_loading_summary
 from .state import ProjectSummary
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
@@ -1962,22 +1962,11 @@ class BatchPage(MissionPage):
         self.polygon_source_combo.currentIndexChanged.connect(self._update_polygon_source_visibility)
         lidar_repository_row = QHBoxLayout()
         lidar_repository_row.addLayout(polygon_folder_row, 1)
-        lidar_repository_row.addWidget(info_help_button(
-            "Choose the folder or ept.json for the LiDAR data you want to analyze.",
-            "For EPT datasets, you may choose ept.json, the EPT root folder, or the ept-data folder. Mission Control automatically uses the parent EPT dataset and does not index internal EPT node files.",
-            accessible_name="LiDAR Repository Help",
-            documentation_anchor="docs/user-guide/polygon-folder-processing.md",
-            parent=self,
-        ), 0)
+        lidar_repository_row.addWidget(info_badge("batch.lidar_repository", parent=self), 0)
         polygon_form.addRow("LiDAR Repository", lidar_repository_row)
         polygon_source_row = QHBoxLayout()
         polygon_source_row.addWidget(self.polygon_source_combo, 1)
-        polygon_source_row.addWidget(info_help_button(
-            "Choose where the area of interest polygon comes from.",
-            "Use selected features when you have selected one or more polygons in QGIS. Use Entire Layer when the whole polygon layer is the area to process. Advanced WKT stays hidden for troubleshooting and reproducible tests.",
-            accessible_name="Polygon Source Help",
-            parent=self,
-        ), 0)
+        polygon_source_row.addWidget(info_badge("batch.polygon", parent=self), 0)
         polygon_form.addRow("Polygon source", polygon_source_row)
         polygon_source.addLayout(polygon_form)
         self.polygon_catalog_status_label = _details_label("Repository not prepared - choose a LiDAR repository, then Prepare Repository.")
@@ -1993,13 +1982,7 @@ class BatchPage(MissionPage):
         self.polygon_index_strategy_combo.addItem("Scan File Headers", LidarIndexStrategy.FULL_HEADER_CATALOG.value)
         strategy_row = QHBoxLayout()
         strategy_row.addWidget(self.polygon_index_strategy_combo, 1)
-        strategy_row.addWidget(info_help_button(
-            "Automatic Setup recommends the fastest trustworthy way to prepare the repository.",
-            "Leave this on Automatic Setup unless you know the repository has a footprint index, built-in EPT/COPC spatial access, a validated tile naming system, or mapped folder regions. Scan File Headers is the most compatible method but can be slow for very large repositories.",
-            accessible_name="Repository Setup Method Help",
-            documentation_anchor="docs/user-guide/choosing-lidar-index-strategy.md",
-            parent=self,
-        ), 0)
+        strategy_row.addWidget(info_badge("batch.repository_setup_method", parent=self), 0)
         strategy_form.addRow("Repository setup method", strategy_row)
         existing_index_row = QHBoxLayout()
         self.polygon_existing_index_edit = QLineEdit()

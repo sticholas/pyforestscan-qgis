@@ -18,6 +18,7 @@ from .config import AdapterConfig, DatasetOpenOptions, InspectionOptions
 from .dependency_check import EnvironmentReport, collect_environment_report
 from .exceptions import AdapterError, DatasetError, EnvironmentError, ProcessingError
 from .pad_products import pad_band_mapping, pad_metadata_tags
+from .polygon_transport import looks_like_wkt, materialize_polygon_input, polygon_execution_input_from_mapping
 from .ept_subset import EptSubsetRequest, EptSubsetResult, ept_read_lidar_kwargs
 from .types import (
     Bounds3D,
@@ -1191,11 +1192,20 @@ def _read_lidar_spatial_kwargs(request: object, *, hag: bool) -> dict[str, objec
     kwargs: dict[str, object] = {"hag": hag}
     bounds = getattr(request, "bounds", None)
     crop_polygon = getattr(request, "crop_polygon", None)
+    crop_polygon_path = getattr(request, "crop_polygon_path", None)
+    polygon_input = polygon_execution_input_from_mapping(getattr(request, "polygon_execution_input", None))
+    if crop_polygon_path is None and polygon_input is not None:
+        output_path = Path(getattr(request, "output_path", Path.cwd()))
+        prepared = materialize_polygon_input(polygon_input, output_path.parent / ".polygon_inputs")
+        crop_polygon_path = prepared.temporary_vector_path
     if bounds is not None:
         kwargs["bounds"] = bounds
-    if crop_polygon:
+    if crop_polygon_path:
         kwargs["crop_poly"] = True
-        kwargs["poly"] = crop_polygon
+        kwargs["poly"] = str(crop_polygon_path)
+    elif crop_polygon and not looks_like_wkt(crop_polygon):
+        kwargs["crop_poly"] = True
+        kwargs["poly"] = str(crop_polygon)
     return kwargs
 
 def _dataset_inspection_from_backend_metrics(metrics: dict[str, object]) -> DatasetInspection:

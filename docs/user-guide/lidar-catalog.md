@@ -71,3 +71,8 @@ See [Choosing A LiDAR Index Strategy](choosing-lidar-index-strategy.md) and [Rep
 If an older catalog indexed internal EPT node files individually, Mission Control shows **Incorrect EPT Catalog Detected**. Use **Repair EPT Catalog** to back up the catalog, remove node-level records, and register the single logical `ept.json` source without rescanning the EPT node tree.
 
 For network or mounted repositories, new catalogs default to user-local PyForestScan catalog storage while retaining the remote repository path in the catalog records. If Mission Control finds an older repository-side catalog on slower storage, use **Move Catalog Local** to copy it into the user-local catalog store while preserving the original catalog file.
+
+
+## Estimate Confidence
+
+For EPT and COPC, root metadata point counts describe the source and are not automatically used as polygon-subset estimates. Mission Control reports estimated points as unavailable when the available metadata cannot support a reliable estimate. This is intentional and avoids misleading high-confidence counts.

@@ -42,3 +42,8 @@ Adaptive LiDAR indexing can detect and plan lower-cost strategies, but not every
 ## Phase 27J Remaining EPT Limits
 
 EPT node cataloging is blocked and repair is available for older incorrect catalogs. Clean-machine testing is still needed against the reported 2.6-million-node repository to measure real RTree lookup, row loading, and workload-estimation timings. CRS transformation quality still depends on QGIS/OGR transformation availability in the UI layer.
+
+
+## Phase 27K Remaining Validation
+
+The polygon transport fix is covered by QGIS-free regression tests and synthetic backend materialization tests. The real Windows/QGIS network EPT workflow must still be run manually with the checklist in [Real EPT Polygon Validation](testing/REAL_EPT_POLYGON_VALIDATION.md) before claiming that specific dataset passed.

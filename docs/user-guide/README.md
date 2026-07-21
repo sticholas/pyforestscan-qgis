@@ -16,3 +16,8 @@ Recommended reading order:
 - [Process LiDAR Folder by Polygon](polygon-folder-processing.md)
 - [Choosing A LiDAR Index Strategy](choosing-lidar-index-strategy.md)
 - [Repository Profiles](repository-profiles.md)
+
+
+## Contextual Help
+
+See [Contextual Help](contextual-help.md) for how Mission Control information badges work offline.
