@@ -109,3 +109,7 @@ Preflight now checks the managed PBM backend before Run. If the backend cannot i
 ## Polygon Input Contract
 
 When you run Polygon Area Processing, Mission Control stores the selected geometry and CRS in the job manifest. The managed backend creates a real clipping polygon file inside the job folder before processing. This prevents WKT text from being mistaken for a filename and keeps the job independent of the original QGIS layer after submission.
+
+## Request validation
+
+Before polygon EPT products run, PBM validates the EPT metadata, polygon file, CRS, output folder, API contract, and canonical bounds expression. This should catch malformed range requests before a CHM or other product starts reading points.

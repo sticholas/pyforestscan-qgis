@@ -62,7 +62,7 @@ class EptSubsetTests(unittest.TestCase):
         self.assertEqual(
             ept_read_lidar_kwargs(request),
             {
-                "bounds": ((1.0, 2.0), (3.0, 4.0), (5.0, 6.0)),
+                "bounds": ([1.0, 2.0], [3.0, 4.0], [5.0, 6.0]),
                 "thin_radius": 0.5,
                 "hag": False,
                 "hag_dtm": True,

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .ept_bounds import EptBounds
 from .exceptions import ProcessingError
 
 BoundsTuple = tuple[tuple[float, float], ...]
@@ -113,8 +114,11 @@ def parse_ept_bounds(text: str | None) -> BoundsTuple | None:
 
 def ept_read_lidar_kwargs(request: EptSubsetRequest) -> dict[str, Any]:
     """Return kwargs that map directly to pyforestscan.handlers.read_lidar."""
+    bounds = None
+    if request.bounds is not None:
+        bounds = EptBounds.from_value(request.bounds, crs=request.crs, source="user_override").to_pyforestscan_value()
     return {
-        "bounds": request.bounds,
+        "bounds": bounds,
         "thin_radius": request.thin_radius,
         "hag": request.hag,
         "hag_dtm": request.hag_dtm,

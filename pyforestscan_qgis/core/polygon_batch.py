@@ -14,6 +14,7 @@ from .adapter import PyForestScanAdapter
 from .batch import BatchItemResult, BatchProductSettings, BatchRequest, BatchResult, batch_run_context, create_batch_folder
 from .batch_results import write_batch_summaries
 from .batch_executor import BatchExecutor
+from .ept_bounds import EptBounds
 from .ept_repository import incorrect_ept_catalog_detected
 from .lidar_catalog import catalog_summary
 from .lidar_catalog_models import CatalogThresholds, LidarCatalogQueryResult, PolygonQueryGeometry, default_lidar_catalog_path
@@ -301,7 +302,8 @@ def write_polygon_batch_manifest(
         "output_folder": str(report.request.output_folder),
         "query": {
             "envelope": report.query_geometry.envelope.__dict__,
-            "ept_bounds": report.query_geometry.ept_bounds,
+            "ept_bounds": EptBounds.from_value(report.query_geometry.ept_bounds, crs=report.query_geometry.catalog_crs).to_json(),
+            "pdal_bounds_expression": EptBounds.from_value(report.query_geometry.ept_bounds, crs=report.query_geometry.catalog_crs).to_pdal_range_string(),
             "bounds_query_crs": report.query_geometry.catalog_crs,
             "spatial_alignment": report.spatial_alignment_status,
             "query_seconds": None if query is None else query.query_seconds,
@@ -416,9 +418,9 @@ def _execute_logical_spatial_batch(report: PolygonBatchPreflightReport, adapter:
             request = _logical_product_request(product, source.path, result_path, report)
             result = _run_logical_product(adapter, product, request)
             outputs.append(Path(getattr(result, "output_path")))
-        item = BatchItemResult(Path(source.path), context, "completed", "Logical EPT/COPC source processed through PBM backend.", tuple(outputs), "; ".join(stages))
+        item = BatchItemResult(Path(source.path), context, "completed", "Logical EPT/COPC source processed through PBM backend.", tuple(outputs), _requested_extent_summary(report))
     except Exception as exc:  # noqa: BLE001
-        item = BatchItemResult(Path(source.path), context, "failed", _friendly_polygon_execution_error(str(exc)), tuple(outputs), _source_bounds_summary(source))
+        item = BatchItemResult(Path(source.path), context, "failed", _friendly_polygon_execution_error(str(exc)), tuple(outputs), _requested_extent_summary(report))
     finished_at = datetime.now(timezone.utc).isoformat()
     result = BatchResult("polygon-logical", report.request.title, started_at, finished_at, batch_folder, (item,), batch_folder / "batch_summary.json", batch_folder / "batch_summary.csv", batch_folder / "batch_summary.html")
     write_polygon_batch_manifest(report, [{"source": str(source.path), "clipped": "native", "points": str(source.point_count or "unknown"), "bounds_used": str(report.query_geometry.ept_bounds), "job_folder": str(context.run_folder)}], batch_folder=batch_folder)
@@ -432,7 +434,7 @@ def _logical_product_request(product: ProductType, input_path: Path, output_path
         "input_path": input_path,
         "output_path": output_path,
         "crs": report.query_geometry.catalog_crs or report.request.polygon.processing_crs,
-        "bounds": report.query_geometry.ept_bounds,
+        "bounds": EptBounds.from_value(report.query_geometry.ept_bounds, crs=report.query_geometry.catalog_crs).to_json(),
         "crop_polygon": report.query_geometry.exact_polygon_wkt,
         "polygon_execution_input": polygon_execution_input_from_selection(report.request.polygon, transformed_wkt=report.query_geometry.exact_polygon_wkt),
     }
@@ -544,6 +546,12 @@ def _format_area_hectares(area: float) -> str:
     if area <= 0:
         return "Unknown"
     return f"{area / 10000.0:.1f} ha"
+
+
+def _requested_extent_summary(report: PolygonBatchPreflightReport) -> str:
+    bounds = report.query_geometry.ept_bounds
+    area_ha = report.request.polygon.area / 10000.0 if report.request.polygon.area else 0.0
+    return f"Requested area {area_ha:.1f} ha; Read extent polygon envelope X {bounds[0][0]:.3f} to {bounds[0][1]:.3f}; Y {bounds[1][0]:.3f} to {bounds[1][1]:.3f}"
 
 
 def _source_bounds_summary(source: LidarSourceRecord) -> str:

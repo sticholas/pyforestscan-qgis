@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from .config import AdapterConfig, DatasetOpenOptions, InspectionOptions
 from .dependency_check import EnvironmentReport, collect_environment_report
 from .exceptions import AdapterError, DatasetError, EnvironmentError, ProcessingError
+from .ept_bounds import EptBounds, EptBoundsError, validate_pyforestscan_bounds_value
 from .pad_products import pad_band_mapping, pad_metadata_tags
 from .polygon_transport import looks_like_wkt, materialize_polygon_input, polygon_execution_input_from_mapping
 from .ept_subset import EptSubsetRequest, EptSubsetResult, ept_read_lidar_kwargs
@@ -759,18 +760,14 @@ class PyForestScanAdapter:
         self._log(LogLevel.INFO, "Starting HAG normalization", input=str(request.input_path))
         try:
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_cloud = handlers.read_lidar(
-                str(request.input_path),
-                request.crs,
-                bounds=request.bounds,
+            read_kwargs = _read_lidar_spatial_kwargs(request, hag=not request.use_dtm)
+            read_kwargs.update(
                 thin_radius=request.thin_radius,
-                hag=not request.use_dtm,
                 hag_dtm=request.use_dtm,
                 dtm=str(request.dtm_path) if request.dtm_path is not None else None,
-                crop_poly=bool(request.crop_polygon),
-                poly=request.crop_polygon,
                 reproject=request.reproject,
             )
+            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **read_kwargs)
             if point_cloud is None:
                 raise ProcessingError("PyForestScan returned no point data for HAG normalization.")
             point_count = _point_count_from_point_cloud(point_cloud)
@@ -814,7 +811,7 @@ class PyForestScanAdapter:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
             filters = _import_required("pyforestscan.filters", ProcessingError)
-            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, hag=False)
+            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **_read_lidar_spatial_kwargs(request, hag=False))
             if point_cloud is None:
                 raise ProcessingError("PyForestScan returned no point data for DTM generation.")
             self._progress.update(30, "Point cloud loaded")
@@ -1199,7 +1196,8 @@ def _read_lidar_spatial_kwargs(request: object, *, hag: bool) -> dict[str, objec
         prepared = materialize_polygon_input(polygon_input, output_path.parent / ".polygon_inputs")
         crop_polygon_path = prepared.temporary_vector_path
     if bounds is not None:
-        kwargs["bounds"] = bounds
+        kwargs["bounds"] = prepare_ept_bounds(bounds, crs=str(getattr(request, "crs", ""))).to_pyforestscan_value()
+        validate_pyforestscan_bounds_value(kwargs["bounds"])
     if crop_polygon_path:
         kwargs["crop_poly"] = True
         kwargs["poly"] = str(crop_polygon_path)
@@ -1207,6 +1205,14 @@ def _read_lidar_spatial_kwargs(request: object, *, hag: bool) -> dict[str, objec
         kwargs["crop_poly"] = True
         kwargs["poly"] = str(crop_polygon)
     return kwargs
+
+
+def prepare_ept_bounds(bounds: object, *, crs: str, source: str = "polygon_envelope", transformed: bool = True) -> EptBounds:
+    """Normalize EPT bounds at the one authoritative adapter boundary."""
+    try:
+        return EptBounds.from_value(bounds, crs=crs, source=source, transformed=transformed)
+    except EptBoundsError as exc:
+        raise ProcessingError(f"Invalid EPT bounds for PyForestScan request: {exc}") from exc
 
 def _dataset_inspection_from_backend_metrics(metrics: dict[str, object]) -> DatasetInspection:
     source_data = dict(metrics.get("source", {}) or {})

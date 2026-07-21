@@ -33,3 +33,7 @@ Advanced sections should remain collapsed by default, include help when settings
 ## Phase 27K InfoBadge Registry
 
 Contextual help content now lives in . UI code should prefer  so wording, recommended defaults, consequences, and documentation anchors stay centralized. The reusable  is a small blue circular information badge with tooltip, click detail, keyboard activation, and accessible name. Run  to report registered, used, missing, and orphan topics.
+
+## Phase 27L help topics
+
+Mission Control help now includes topics for Validate Processing Request, Test Spatial Read, Diagnostic Test Run, Export Diagnostic Bundle, Copy Support Summary, and requested extent versus dataset extent.

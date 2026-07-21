@@ -16,3 +16,7 @@ This checklist is for manual Windows/QGIS validation and must not be treated as 
 12. Confirm the output is limited to the requested area and loads into QGIS.
 
 Record QGIS version, Windows version, package SHA256, backend status, screenshots, output path, and any blockers.
+
+## Phase 27L validation script
+
+Use `scripts/validate_real_ept_polygon_request.py --validate-only` with a PBM Python path, `ept.json`, polygon WKT/vector, requested bounds, and output directory to capture the API contract, normalized EPT bounds, PDAL expression, CRS chain, output validation, and diagnostic bundle without running a full dataset.

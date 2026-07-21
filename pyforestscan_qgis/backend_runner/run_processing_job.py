@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import traceback as traceback_module
+import json
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,7 +12,10 @@ from typing import Any
 
 from .job_result import BackendJobResult
 from .job_spec import BackendJobSpec
+from .api_contract import print_api_contract
+from .request_validation import RequestValidationError, validate_processing_request
 from pyforestscan_qgis.core.adapter import PyForestScanAdapter
+from pyforestscan_qgis.core.job_diagnostics import classify_exception, create_diagnostics_dir, support_summary, write_failure_bundle, write_json
 from pyforestscan_qgis.core.config import InspectionOptions
 from pyforestscan_qgis.core.ept_subset import EptSubsetRequest
 from pyforestscan_qgis.core.polygon_transport import materialize_polygon_input
@@ -52,6 +56,7 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
             outputs = {}
         else:
             request = _request_from_spec(spec)
+            validation = validate_processing_request(spec, request)
             _request_class, method_name = PRODUCT_REQUESTS[spec.product]
             result = getattr(adapter, method_name)(request)
             metrics = _json_ready(asdict(result))
@@ -66,11 +71,32 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
             product_metrics=metrics,
         )
     except Exception as exc:  # noqa: BLE001 - backend runner must serialize failures.
+        diagnostics_dir = create_diagnostics_dir(spec.run_folder)
+        structured_error = classify_exception(exc, stage="Request Validation" if isinstance(exc, RequestValidationError) else "Processing")
+        write_failure_bundle(diagnostics_dir, job_id=spec.job_id, product=spec.product, error=structured_error)
+        try:
+            contract = json.loads((diagnostics_dir / "backend_contract.json").read_text(encoding="utf-8")) if (diagnostics_dir / "backend_contract.json").exists() else {}
+        except Exception:
+            contract = {}
+        write_json(
+            diagnostics_dir / "support_summary.json",
+            {
+                "text": support_summary(
+                    job_id=spec.job_id,
+                    plugin_version=spec.plugin_version,
+                    product=spec.product,
+                    error=structured_error,
+                    backend=contract,
+                    diagnostic_bundle=diagnostics_dir,
+                )
+            },
+        )
         return BackendJobResult(
             job_id=spec.job_id,
             product=spec.product,
             status="failed",
-            errors=(str(exc),),
+            warnings=(f"Diagnostics written to {diagnostics_dir}",),
+            errors=(structured_error.user_message, structured_error.technical_message),
             started_at=started,
             finished_at=_utc_now(),
             traceback=traceback_module.format_exc(),
@@ -96,6 +122,8 @@ def _request_from_spec(spec: BackendJobSpec) -> Any:
     params["crs"] = spec.crs
     if "primary" in spec.output_paths:
         params["output_path"] = spec.output_paths["primary"]
+    if params.get("ept_bounds") and "bounds" in request_class.__dataclass_fields__:
+        params["bounds"] = params["ept_bounds"]
     if spec.dtm_path is not None and "dtm_path" in request_class.__dataclass_fields__:
         params["dtm_path"] = spec.dtm_path
     if params.get("polygon_execution_input") and "crop_polygon_path" in request_class.__dataclass_fields__:
@@ -133,12 +161,18 @@ def _json_ready(value: Any) -> Any:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--spec", required=True, type=Path, help="Path to a PBM backend job spec JSON file.")
+    parser.add_argument("command", nargs="?", choices=("inspect_api_contract",), help="Run a PBM-side diagnostic command and exit.")
+    parser.add_argument("--spec", type=Path, help="Path to a PBM backend job spec JSON file.")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    if args.command == "inspect_api_contract":
+        print_api_contract()
+        return 0
+    if args.spec is None:
+        raise SystemExit("--spec is required unless a diagnostic command is supplied.")
     spec = BackendJobSpec.read(args.spec)
     result = run_spec(spec)
     result.write(spec.result_path)

@@ -216,3 +216,7 @@ Preflight shows compact execution readiness: repository type, logical inputs, ba
 ## Phase 27K Polygon And Help Updates
 
 Polygon Area Processing now distinguishes geometry content from backend vector paths. PBM materializes the clipping polygon in the job workspace and PyForestScan receives a real GeoPackage or GeoJSON path. The Batch page uses central InfoBadge topics for repository, polygon source, and setup method help.
+
+## Phase 27L processing validation
+
+The Processing page includes **Validate Processing Request**. It explains the PBM request-validation gate that checks backend API compatibility, EPT metadata, bounds syntax, polygon input, CRS, and output writability before product execution.

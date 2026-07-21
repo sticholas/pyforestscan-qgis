@@ -51,3 +51,7 @@ EPT bounds are derived from the polygon query geometry, not from the full EPT ro
 ## Progress Stages
 
 Polygon logical jobs use named stages: Preparing Inputs, Validating Geometry, Preparing Spatial Read, Applying EPT Bounds, Reading Point Cloud, Normalizing Heights, Generating Product, Writing Raster, Masking Output, Writing Metadata, Finalizing, and Completed.
+
+## Phase 27L EPT request validation
+
+Polygon EPT jobs now use `EptBounds` as the typed bounds contract. The polygon envelope is stored in manifests as `ept_bounds` JSON and converted to PyForestScan list-ranges only by the adapter. PBM request validation runs before product generation and blocks incompatible API signatures, malformed bounds, non-overlapping EPT bounds, invalid polygon files, CRS gaps, and unwritable output folders.

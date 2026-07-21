@@ -38,3 +38,7 @@ Local tiled LAS/LAZ processing still uses catalog query plus staged clipped file
 ## Phase 27K Polygon Transport
 
 EPT polygon jobs now keep the EPT source as one logical  input and pass polygon-derived EPT bounds to the backend. Exact clipping geometry is serialized in the job spec and materialized inside the PBM job workspace as a vector file before PyForestScan is called. WKT is diagnostics content, not a polygon filename.
+
+## Bounds contract and diagnostics
+
+EPT repository processing must pass polygon-derived bounds to PyForestScan as list coordinate ranges. Derived PDAL expressions are recorded in diagnostics for troubleshooting, but manifests keep `ept_bounds` as a typed JSON object.

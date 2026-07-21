@@ -26,3 +26,7 @@ Phase 27K introduced a central HelpTopic registry and InfoBadge component. The a
 | Settings | Diagnostics | Diagnostics | Move to Troubleshooting | settings.diagnostics | Troubleshooting | Topic registered | Logs are secondary unless debugging. |
 
 Current automated coverage is reported by `python3 scripts/check_help_coverage.py`. The script reports registered, used, missing, and orphan topics. Missing used topics fail validation; orphan topics are allowed because the registry documents the full audit before every topic is placed in UI.
+
+## Phase 27L additions
+
+Added help coverage for request validation and diagnostic actions so Guided Mode can explain failures without exposing raw backend internals by default.

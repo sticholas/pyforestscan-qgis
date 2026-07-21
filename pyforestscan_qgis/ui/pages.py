@@ -1562,6 +1562,10 @@ class ProcessingPage(MissionPage):
         self.start_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.start_button.clicked.connect(self.start_job)
         _apply_button_role(self.start_button, "primary")
+        self.validate_request_button = QPushButton("Validate Processing Request")
+        self.validate_request_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
+        self.validate_request_button.clicked.connect(self.validate_processing_request)
+        _apply_button_role(self.validate_request_button, "secondary")
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.cancel_button.clicked.connect(self.cancel_current_job)
@@ -1571,6 +1575,7 @@ class ProcessingPage(MissionPage):
         self.refresh_processing_button.clicked.connect(self.refresh_processing_state)
         _apply_button_role(self.refresh_processing_button, "neutral")
         button_row.addWidget(self.start_button)
+        button_row.addWidget(self.validate_request_button)
         button_row.addWidget(self.cancel_button)
         button_row.addWidget(self.refresh_processing_button)
         button_row.addStretch(1)
@@ -1614,6 +1619,16 @@ class ProcessingPage(MissionPage):
         self.log_text.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)
         technical.addWidget(self.log_text)
         _wire_collapsible_group(technical_group)
+
+    def validate_processing_request(self) -> None:
+        """Explain the PBM-side validation gate before running products."""
+        if self.run_context is None or not self.run_context.product_plan_json.exists():
+            _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: Not set up - build a Product Plan before validation.")
+            self.log_text.setPlainText((self.log_text.toPlainText().strip() + "\n" if self.log_text.toPlainText().strip() else "") + "Validate Processing Request: build a Product Plan first.")
+            return
+        _set_status_badge(self.status_label, "READY", "Status: Request validation will run in PBM before product execution.")
+        self.processing_stage_label.setText("Stage: Request validation ready")
+        self.log_text.setPlainText((self.log_text.toPlainText().strip() + "\n" if self.log_text.toPlainText().strip() else "") + "Validate Processing Request: PBM will check API compatibility, EPT metadata, bounds syntax, polygon file, CRS, and output writability before reading point data.")
 
     def refresh_processing_state(self) -> None:
         """Recover Processing controls from the current run context and job state."""

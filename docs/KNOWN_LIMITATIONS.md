@@ -47,3 +47,7 @@ EPT node cataloging is blocked and repair is available for older incorrect catal
 ## Phase 27K Remaining Validation
 
 The polygon transport fix is covered by QGIS-free regression tests and synthetic backend materialization tests. The real Windows/QGIS network EPT workflow must still be run manually with the checklist in [Real EPT Polygon Validation](testing/REAL_EPT_POLYGON_VALIDATION.md) before claiming that specific dataset passed.
+
+## Phase 27L limitations
+
+`Test Spatial Read` is documented as a troubleshooting-only behavior and is not automatically run during preflight. Real Windows/QGIS EPT production success must not be claimed unless the specific dataset was actually run. Diagnostics are standard for failures, while sanitized export controls remain basic.

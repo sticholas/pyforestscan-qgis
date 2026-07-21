@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import Any
 
+from pyforestscan_qgis.core.ept_bounds import EptBounds, EptBoundsError
+
 try:
     from pyforestscan_qgis import __version__
 except Exception:  # pragma: no cover - backend runner may be imported from source checkouts.
@@ -84,6 +86,7 @@ def build_job_spec_from_request(product: str, request: Any, run_folder: Path | N
     if not is_dataclass(request):
         raise TypeError("PBM backend jobs require dataclass adapter requests.")
     params = _json_ready(asdict(request))
+    _normalize_ept_bounds_parameters(params)
     input_path = Path(str(params.get("input_path", "")))
     output_path = Path(str(params.get("output_path", "")))
     crs = str(params.get("crs", ""))
@@ -115,6 +118,20 @@ def build_job_spec_from_request(product: str, request: Any, run_folder: Path | N
         dtm_path=dtm_path,
         plugin_version=version,
     )
+
+
+def _normalize_ept_bounds_parameters(params: dict[str, Any]) -> None:
+    """Store EPT bounds as a typed manifest object across the PBM boundary."""
+    bounds = params.get("bounds")
+    crs = str(params.get("crs") or "")
+    if bounds is None or not crs:
+        return
+    try:
+        model = EptBounds.from_value(bounds, crs=crs, source="polygon_envelope", transformed=True)
+    except EptBoundsError:
+        return
+    params["ept_bounds"] = model.to_json()
+    params["pdal_bounds_expression"] = model.to_pdal_range_string()
 
 
 def _default_run_folder_for_request(params: dict[str, Any], output_path: Path) -> Path:

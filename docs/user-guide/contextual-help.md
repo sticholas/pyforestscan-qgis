@@ -7,3 +7,7 @@ Hover a badge for a short tooltip. Click or focus the badge and press Enter or S
 The badge is not a substitute for clear labels. Guided mode should use plain language first. Advanced and Troubleshooting sections contain technical controls, diagnostics, and implementation details.
 
 Help works offline because topics are bundled with the plugin in `pyforestscan_qgis/ui/help_topics.py`.
+
+## Processing diagnostics
+
+Help topics are available for Validate Processing Request, Test Spatial Read, Diagnostic Test Run, Export Diagnostic Bundle, Copy Support Summary, Retry versus new attempt, and requested extent versus dataset extent.

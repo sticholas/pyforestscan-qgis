@@ -184,3 +184,7 @@ EPT and COPC logical sources no longer use the local-file staging model. EPT sen
 ## Phase 27K Polygon Job Workspace
 
 Logical EPT/COPC polygon jobs create a durable  workspace with , , , , and . The backend materializes the clipping polygon under  and named progress stages describe input preparation, spatial read, product generation, masking, metadata, and finalization.
+
+## Polygon EPT diagnostics
+
+Polygon Area Processing writes backend request diagnostics under each logical EPT job workspace. Failed jobs should present the final status first and keep historical progress events as expandable chronology.
