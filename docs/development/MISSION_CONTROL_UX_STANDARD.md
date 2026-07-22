@@ -101,3 +101,7 @@ Mission Control uses `InfoHelpButton` for concise help on controls that affect C
 ## Phase 27K Help Standard
 
 Use clear labels before adding help. Add InfoBadge controls only for scientific terms, CRS behavior, backend/runtime behavior, workload uncertainty, performance, memory, output meaning, or risky Advanced/Troubleshooting settings. Keep Guided mode clean and place raw WKT, raw bounds, enum values, and command details under Technical diagnostics.
+
+## Phase 27N Polygon Guidance
+
+Polygon Area Processing uses the guided sequence Data, Area, Outputs, Settings, Review, Results. Advanced settings stay collapsed, and no-intersection states offer spatial preview and extent actions.

@@ -57,3 +57,7 @@ The polygon transport fix is covered by QGIS-free regression tests and synthetic
 - Live QGIS automatic loading and real EPT polygon mask validation require a QGIS/PBM test machine and are not proven by the headless unit suite.
 - QGIS/GDAL mask integration is exposed through a normalized Processing parameter wrapper; backend rasterio masking remains the default finalization path for PBM-generated rasters.
 - Retry Mask and Retry Load are represented in the execution contract, but full independent UI retry buttons remain a future refinement.
+
+## Phase 27N Remaining Limitations
+
+Live QGIS spatial diagnostic layers are represented by UI actions and structured details, but full temporary map-layer rendering still needs live QGIS validation. Saved-workspace stale-plan blocking is recorded by plan signature but remains a follow-up for deeper workspace integration.

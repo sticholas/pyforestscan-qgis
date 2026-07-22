@@ -41,3 +41,7 @@ Mission Control help now includes topics for Validate Processing Request, Test S
 ## Phase 27M Batch Help Topics
 
 The registry includes advanced Batch and polygon finalization topics. Place badges only on controls where the explanation changes user decisions; avoid scattering badges on obvious labels.
+
+## Phase 27N Workflow Help
+
+Guided Polygon workflow copy should use LiDAR data, Data coverage, Selected processing area, Spatial subset, Processing capacity, and Final polygon clipping in primary UI. Technical names remain in expanded diagnostics.

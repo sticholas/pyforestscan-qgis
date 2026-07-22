@@ -20,6 +20,7 @@ from .ept_repository import incorrect_ept_catalog_detected
 from .lidar_catalog import catalog_summary
 from .lidar_catalog_models import CatalogThresholds, LidarCatalogQueryResult, PolygonQueryGeometry, default_lidar_catalog_path
 from .lidar_catalog_query import derive_polygon_query_geometry, query_catalog_for_polygon
+from .polygon_source_selection import PolygonExecutionPlan, PolygonSourceSelectionResult, PolygonSourceSelectionService, build_polygon_execution_plan
 from .lidar_inventory import LidarInventory, LidarSourceRecord
 from .polygon_processing import PolygonProcessingPlan, build_polygon_processing_plan
 from .polygon_source import NormalizedPolygonSelection
@@ -77,6 +78,12 @@ class PolygonBatchPreflightReport:
     backend_ready: bool = False
     backend_message: str = "Backend readiness was not checked."
     spatial_alignment_status: str = "Ready"
+    repository: object | None = None
+    source_selection: PolygonSourceSelectionResult | None = None
+    execution_plan: PolygonExecutionPlan | None = None
+    structured_warnings: tuple[object, ...] = ()
+    structured_blockers: tuple[object, ...] = ()
+    plan_signature: str = ""
 
     @property
     def has_warnings(self) -> bool:
@@ -84,12 +91,14 @@ class PolygonBatchPreflightReport:
 
 
 def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: Callable[[], tuple[bool, str]] | None = None) -> PolygonBatchPreflightReport:
-    """Query the spatial catalog, intersect sources with the polygon, and assess readiness."""
-    catalog_path = request.catalog_path or default_lidar_catalog_path(request.lidar_folder)
-    query_geometry = derive_polygon_query_geometry(request.polygon, catalog_crs=request.catalog_crs)
+    """Resolve repository identity, select sources, and build one execution plan."""
+    service = PolygonSourceSelectionService()
+    repository = service.resolve_repository(request.lidar_folder, request.catalog_path)
+    catalog_path = repository.catalog_path or request.catalog_path or default_lidar_catalog_path(repository.normalized_path)
+    query_geometry = derive_polygon_query_geometry(request.polygon, catalog_crs=repository.source_crs or request.catalog_crs)
     batch_folder = request.batch_folder or _planned_polygon_batch_folder(request.output_folder)
     manifest_path = batch_folder / POLYGON_MANIFEST_NAME
-    empty_inventory = LidarInventory(request.lidar_folder, ())
+    empty_inventory = LidarInventory(repository.normalized_path, ())
     blockers: list[str] = []
     warnings: list[str] = list(query_geometry.warnings)
     backend_ready, backend_message = _probe_pbm_backend(backend_probe)
@@ -97,11 +106,37 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         blockers.append("Managed processing backend cannot import PyForestScan. Repair or rebuild the backend from Environment.")
     if not request.products:
         blockers.append("Select at least one product.")
-    if not Path(request.lidar_folder).is_dir():
-        blockers.append(f"LiDAR repository does not exist: {request.lidar_folder}")
-    if not Path(catalog_path).exists():
+    if not Path(repository.normalized_path).is_dir():
+        blockers.append(f"LiDAR repository does not exist: {repository.normalized_path}")
+    if repository.repository_kind != "ept" and not Path(catalog_path).exists():
         blockers.append("Build a LiDAR catalog before running Polygon Area Processing. Normal preflight does not recursively scan the repository.")
         plan = _empty_plan(empty_inventory, request, query_geometry, warnings)
+        execution_plan = build_polygon_execution_plan(
+            repository=repository,
+            polygon_context=service.last_polygon_context or _fallback_polygon_context(request.polygon, query_geometry),
+            source_selection=PolygonSourceSelectionResult(
+                repository_kind=repository.repository_kind,
+                logical_candidates=(),
+                selected_sources=(),
+                rejected_sources=(),
+                transformed_polygon=query_geometry.exact_polygon_wkt,
+                transformed_envelope=__import__("pyforestscan_qgis.core.polygon_source_selection", fromlist=["SpatialEnvelope"]).SpatialEnvelope.from_bounds(query_geometry.envelope, query_geometry.catalog_crs),
+                source_extent=None,
+                overlap_result="not-run",
+                exact_intersection_result="not-run",
+                warnings=(),
+                blockers=(),
+                timings={},
+            ),
+            products=tuple(product.value for product in request.products),
+            shared_batch_options=request.shared_execution_options or BatchExecutionOptions.from_batch_settings(request.settings),
+            polygon_batch_options=request.polygon_options,
+            requested_concurrency=request.shared_execution_options.maximum_parallel_jobs if request.shared_execution_options else BatchExecutionOptions.from_batch_settings(request.settings).maximum_parallel_jobs,
+            effective_concurrency=1,
+            output_folder=request.output_folder,
+            backend_ready=backend_ready,
+            backend_message=backend_message,
+        )
         return PolygonBatchPreflightReport(
             request=request,
             inventory=empty_inventory,
@@ -121,18 +156,18 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
             catalog_skipped_count=0,
             backend_ready=backend_ready,
             backend_message=backend_message,
+            repository=repository,
+            execution_plan=execution_plan,
+            plan_signature=execution_plan.plan_signature,
         )
-    if incorrect_ept_catalog_detected(catalog_path, request.lidar_folder):
+    if repository.repository_kind == "ept" and Path(catalog_path).exists() and incorrect_ept_catalog_detected(catalog_path, repository.normalized_path):
         blockers.append("Incorrect EPT Catalog Detected. Repair EPT Catalog before running; internal EPT node files should be one logical EPT dataset.")
-    query = query_catalog_for_polygon(
-        catalog_path,
-        request.lidar_folder,
-        request.polygon,
-        catalog_crs=request.catalog_crs,
-        thresholds=request.thresholds,
-    )
-    selected = query.source_records
-    inventory = LidarInventory(request.lidar_folder, selected, cache_path=Path(catalog_path))
+    selection = service.select_sources(repository, request.polygon, catalog_crs=request.catalog_crs, thresholds=request.thresholds)
+    query = selection.query_result
+    selected = selection.selected_sources
+    inventory = LidarInventory(repository.normalized_path, selected, cache_path=Path(catalog_path))
+    warnings.extend(message.to_text() for message in selection.warnings)
+    blockers.extend(message.to_text() for message in selection.blockers)
     try:
         plan = build_polygon_processing_plan(
             inventory,
@@ -144,20 +179,36 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
     except ValueError as exc:
         blockers.append(str(exc))
         plan = _empty_plan(inventory, request, query_geometry, warnings)
-    warnings.extend(query.warnings)
     warnings.extend(plan.warnings)
-    if not selected:
-        blockers.append("No cataloged LiDAR sources intersect the selected polygon envelope.")
-    if query.metadata_error_count:
+    if not selected and not any("No LiDAR coverage" in item for item in blockers):
+        blockers.append("No LiDAR coverage was found for this area.")
+    point_count = selection.workload_estimate.point_estimate if selection.workload_estimate is not None else (None if query is None else query.estimated_point_count)
+    source_bytes = 0 if query is None else query.estimated_bytes
+    if repository.repository_kind not in {"ept", "copc"}:
+        if len(selected) >= DEFAULT_POLYGON_SOURCE_WARNING:
+            warnings.append("Large polygon batch: many intersecting sources selected.")
+        if point_count is not None and point_count >= DEFAULT_POLYGON_POINT_WARNING:
+            warnings.append("Large polygon batch: estimated point count is high; run sequentially unless carefully tested.")
+    if query is not None and query.metadata_error_count:
         warnings.append(f"{query.metadata_error_count:,} catalog source(s) have metadata errors; polygon selection may be incomplete until they are retried.")
-    point_count = query.estimated_point_count
-    source_bytes = query.estimated_bytes
-    if len(selected) >= DEFAULT_POLYGON_SOURCE_WARNING:
-        warnings.append("Large polygon batch: many intersecting sources selected.")
-    if point_count is not None and point_count >= DEFAULT_POLYGON_POINT_WARNING:
-        warnings.append("Large polygon batch: estimated point count is high; run sequentially unless carefully tested.")
     if source_bytes >= DEFAULT_POLYGON_SIZE_WARNING_BYTES:
         warnings.append("Large polygon batch: source file size is high; ensure disk and memory headroom.")
+    options = request.shared_execution_options or BatchExecutionOptions.from_batch_settings(request.settings)
+    concurrency = requested_effective_concurrency(options, source_types={source.source_type for source in selected}, product_count=len(request.products))
+    polygon_context = service.last_polygon_context or _fallback_polygon_context(request.polygon, query_geometry)
+    execution_plan = build_polygon_execution_plan(
+        repository=repository,
+        polygon_context=polygon_context,
+        source_selection=selection,
+        products=tuple(product.value for product in request.products),
+        shared_batch_options=options,
+        polygon_batch_options=request.polygon_options,
+        requested_concurrency=int(concurrency["requested_concurrent_jobs"]),
+        effective_concurrency=int(concurrency["effective_concurrent_jobs"]),
+        output_folder=request.output_folder,
+        backend_ready=backend_ready,
+        backend_message=backend_message,
+    )
     return PolygonBatchPreflightReport(
         request=request,
         inventory=inventory,
@@ -174,16 +225,24 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         catalog_path=Path(catalog_path),
         query_geometry=query_geometry,
         query_result=query,
-        catalog_skipped_count=query.skipped_count,
+        catalog_skipped_count=selection.catalog_skipped_count,
         backend_ready=backend_ready,
         backend_message=backend_message,
+        spatial_alignment_status="Ready" if not selection.blockers else "Needs review",
+        repository=repository,
+        source_selection=selection,
+        execution_plan=execution_plan,
+        structured_warnings=selection.warnings,
+        structured_blockers=selection.blockers,
+        plan_signature=execution_plan.plan_signature,
     )
 
 
 def polygon_preflight_text(report: PolygonBatchPreflightReport) -> str:
     """Format a concise Batch-page polygon preflight report."""
     query = report.query_result
-    repository_type = "EPT dataset" if _is_logical_spatial_report(report) and report.selected_sources[0].source_type == "ept" else "LiDAR repository"
+    repository_kind = getattr(getattr(report, "repository", None), "repository_kind", "")
+    repository_type = "EPT dataset" if repository_kind == "ept" or (_is_logical_spatial_report(report) and report.selected_sources[0].source_type == "ept") else "LiDAR repository"
     estimate_text = _readable_point_estimate(report.estimated_point_count, None if query is None else query.point_estimate_confidence)
     workload = _workload_label(report.estimated_point_count, report.estimated_source_bytes)
     timing = getattr(query, "timing_seconds", {}) if query is not None else {}
@@ -196,6 +255,7 @@ def polygon_preflight_text(report: PolygonBatchPreflightReport) -> str:
         "Products: " + ", ".join(product.value for product in report.request.products),
         f"Backend: PBM {'Ready' if report.backend_ready else 'Not Ready'}",
         f"Spatial alignment: {report.spatial_alignment_status}",
+        f"Plan status: Current",
         f"Estimated workload: {workload}",
         f"Estimated points: {estimate_text}",
         f"Output: {report.request.output_folder}",
@@ -226,8 +286,26 @@ def polygon_preflight_text(report: PolygonBatchPreflightReport) -> str:
         lines.append(f"- Workload estimation: {timing.get('workload_estimation', 0.0):.4f} s")
         lines.append(f"- Total preflight query work: {query.query_seconds:.4f} s")
         lines.append(f"- Catalog candidates: {query.candidate_count}")
-        lines.append(f"- Skipped catalog sources: {report.catalog_skipped_count}")
+        if repository_kind == "ept":
+            lines.append("- Selection method: native EPT extent overlap")
+        else:
+            lines.append(f"- Skipped catalog sources: {report.catalog_skipped_count}")
         lines.append(f"- Metadata errors: {query.metadata_error_count}")
+    if report.source_selection is not None:
+        lines.append(f"- Polygon original CRS: {report.request.polygon.source_crs}")
+        lines.append(f"- Repository CRS: {getattr(report.repository, 'source_crs', None) or report.query_geometry.catalog_crs}")
+        lines.append(f"- Comparison CRS: {report.source_selection.transformed_envelope.crs}")
+        lines.append(f"- Transformed polygon bounds: {report.source_selection.transformed_envelope.xmin:g}, {report.source_selection.transformed_envelope.ymin:g}, {report.source_selection.transformed_envelope.xmax:g}, {report.source_selection.transformed_envelope.ymax:g}")
+        if report.source_selection.source_extent is not None:
+            extent = report.source_selection.source_extent
+            lines.append(f"- Repository extent: {extent.xmin:g}, {extent.ymin:g}, {extent.xmax:g}, {extent.ymax:g}")
+        lines.append(f"- Overlap: {'Yes' if report.source_selection.overlap_result == 'yes' else 'No'}")
+        if report.source_selection.rejected_sources:
+            lines.append("- Rejected sources:")
+            for rejected in report.source_selection.rejected_sources[:5]:
+                lines.append(f"  - {rejected.path} ({rejected.rejection_code}): {rejected.user_reason}")
+    if report.plan_signature:
+        lines.append(f"- Plan signature: {report.plan_signature[:16]}")
     lines.append(f"- Backend check: {report.backend_message}")
     return "\n".join(lines)
 
@@ -310,6 +388,10 @@ def write_polygon_batch_manifest(
         "polygon_options": report.request.polygon_options.to_dict(),
         "option_applicability": [item.to_dict() for item in _option_applicability(report)],
         "concurrency": requested_effective_concurrency(_shared_options(report), source_types=_source_types(report), product_count=len(report.request.products)),
+        "execution_plan": None if report.execution_plan is None else report.execution_plan.to_dict(),
+        "plan_signature": report.plan_signature,
+        "repository_identity": None if report.repository is None else report.repository.to_dict(),
+        "source_selection": None if report.source_selection is None else report.source_selection.to_dict(),
         "query": {
             "envelope": report.query_geometry.envelope.__dict__,
             "ept_bounds": EptBounds.from_value(report.query_geometry.ept_bounds, crs=report.query_geometry.catalog_crs).to_json(),
@@ -388,6 +470,23 @@ def _empty_plan(inventory: LidarInventory, request: PolygonBatchRequest, query_g
         warnings=tuple(warnings),
     )
 
+
+
+def _fallback_polygon_context(polygon, query_geometry):
+    from .polygon_source_selection import PolygonSpatialContext, SpatialEnvelope, polygon_normalization_report
+
+    envelope = SpatialEnvelope.from_bounds(query_geometry.envelope, query_geometry.catalog_crs)
+    return PolygonSpatialContext(
+        original_geometry=polygon.geometry_wkt,
+        original_crs=polygon.source_crs,
+        normalized_geometry=polygon.geometry_wkt,
+        processing_geometry=polygon.geometry_wkt,
+        processing_crs=polygon.processing_crs,
+        source_geometry=query_geometry.exact_polygon_wkt,
+        source_crs=query_geometry.catalog_crs,
+        source_envelope=envelope,
+        normalization_report=polygon_normalization_report(polygon),
+    )
 
 
 def _probe_pbm_backend(probe: Callable[[], tuple[bool, str]] | None) -> tuple[bool, str]:

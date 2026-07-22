@@ -40,3 +40,7 @@ Masked rasters record tags such as:
 ## Failure Semantics
 
 The default mask failure policy is `fail_product`. This prevents a rectangular unmasked envelope raster from appearing as a successful polygon result. If retained for diagnostics, unmasked intermediates are not registered as primary Results outputs.
+
+## Phase 27N Plan Integration
+
+The masking plan is serialized inside `PolygonExecutionPlan`. Exact polygon clipping remains enabled by default and final masked outputs remain the only primary Results outputs.

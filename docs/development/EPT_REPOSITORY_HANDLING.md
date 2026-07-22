@@ -42,3 +42,7 @@ EPT polygon jobs now keep the EPT source as one logical  input and pass polygon-
 ## Bounds contract and diagnostics
 
 EPT repository processing must pass polygon-derived bounds to PyForestScan as list coordinate ranges. Derived PDAL expressions are recorded in diagnostics for troubleshooting, but manifests keep `ept_bounds` as a typed JSON object.
+
+## Phase 27N Native EPT Selection
+
+EPT repository identity is resolved before polygon preflight and no longer depends on polygon shape. Native EPT preflight selects one logical `ept.json` source by comparing a CRS-safe polygon envelope with the root EPT extent.

@@ -52,12 +52,12 @@ class PolygonBatchPreflightTests(unittest.TestCase):
     def test_polygon_preflight_blocks_no_intersection(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            (root / "ept.json").write_text(json.dumps({"bounds": [10, 10, 0, 15, 15, 5], "points": 100}), encoding="utf-8")
+            (root / "ept.json").write_text(json.dumps({"bounds": [10, 10, 0, 15, 15, 5], "points": 100, "srs": {"authority": "EPSG:32610"}}), encoding="utf-8")
             build_lidar_catalog(root)
             report = run_polygon_batch_preflight(self._request(root), backend_probe=lambda: (True, "PBM backend is ready."))
 
         self.assertFalse(report.ready)
-        self.assertTrue(any("No cataloged LiDAR sources intersect" in item for item in report.blockers))
+        self.assertTrue(any("No LiDAR coverage" in item for item in report.blockers))
 
     def test_unknown_bounds_warn_and_are_not_selected(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -72,7 +72,7 @@ class PolygonBatchPreflightTests(unittest.TestCase):
     def test_polygon_manifest_records_polygon_and_source_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            (root / "ept.json").write_text(json.dumps({"bounds": [0, 0, 0, 5, 5, 5], "points": 100}), encoding="utf-8")
+            (root / "ept.json").write_text(json.dumps({"bounds": [0, 0, 0, 5, 5, 5], "points": 100, "srs": {"authority": "EPSG:32610"}}), encoding="utf-8")
             build_lidar_catalog(root)
             report = run_polygon_batch_preflight(self._request(root), backend_probe=lambda: (True, "PBM backend is ready."))
             path = write_polygon_batch_manifest(report)
@@ -100,7 +100,7 @@ class PolygonBatchPreflightTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            (root / "ept.json").write_text(json.dumps({"bounds": [0, 0, 0, 5, 5, 5], "points": 100}), encoding="utf-8")
+            (root / "ept.json").write_text(json.dumps({"bounds": [0, 0, 0, 5, 5, 5], "points": 100, "srs": {"authority": "EPSG:32610"}}), encoding="utf-8")
             build_lidar_catalog(root)
             report = run_polygon_batch_preflight(self._request(root), backend_probe=lambda: (True, "PBM backend is ready."))
             fake_adapter = FakeAdapter()

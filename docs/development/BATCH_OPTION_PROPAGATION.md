@@ -34,3 +34,7 @@ The requested value is the user’s configured maximum concurrent logical jobs. 
 ## Output Loading Boundary
 
 Automatic loading is a UI-side action after product generation, exact masking, metadata writing, and output registration. PBM never calls QGIS layer APIs.
+
+## Phase 27N Plan Ownership
+
+Shared Batch options now flow into `PolygonExecutionPlan` as well as the polygon manifest. Requested/effective concurrency is computed from the selected logical sources and remains one for a single EPT product.

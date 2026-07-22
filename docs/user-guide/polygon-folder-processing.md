@@ -120,3 +120,7 @@ Before polygon EPT products run, PBM validates the EPT metadata, polygon file, C
 Under Advanced Batch Options > Polygon Finalization, Exact raster mask is enabled by default. Automatic uses the managed backend mask path for PBM-produced rasters and can use QGIS/GDAL Clip Raster by Mask Layer when selected inside QGIS.
 
 Load generated outputs into QGIS waits for final masking and output registration. Temporary unmasked intermediates are not loaded as successful polygon outputs.
+
+## Guided Polygon Workflow
+
+Use the Batch page in order: choose LiDAR data, choose area, choose outputs, choose output and quality settings, review the plan, then run. EPT repositories stay identified as EPT regardless of polygon shape; outside polygons show a coverage diagnosis rather than a generic catalog message.

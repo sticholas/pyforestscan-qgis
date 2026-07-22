@@ -28,3 +28,7 @@ Historical phase validation records live in [docs/archive/phase-history](../arch
 
 - [Batch Option Propagation](BATCH_OPTION_PROPAGATION.md)
 - [Raster Masking Architecture](RASTER_MASKING_ARCHITECTURE.md)
+
+- [Polygon Source Selection](POLYGON_SOURCE_SELECTION.md)
+- [Polygon Execution Plan](POLYGON_EXECUTION_PLAN.md)
+- [Guided Processing Workflow](GUIDED_PROCESSING_WORKFLOW.md)

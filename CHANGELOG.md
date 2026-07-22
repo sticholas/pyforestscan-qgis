@@ -138,3 +138,10 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 - Added exact polygon raster masking with backend rasterio and QGIS/GDAL service abstractions.
 - Routed polygon output registration into Results so automatic and manual loading can find final masked rasters.
 - Added Batch Advanced help topics for concurrency, output loading, conflict policy, and polygon mask controls.
+
+## Phase 27N
+
+- Added authoritative polygon repository identity and source-selection models.
+- Routed native EPT preflight around generic catalog rediscovery so polygon shape cannot change repository kind.
+- Added CRS-safe envelope comparisons, rejected-source diagnostics, execution-plan signatures, guided Polygon review, processing profiles, and spatial-preview actions.
+- Removed operational use of implausible EPT root point estimates from guided preflight output.

@@ -15,3 +15,7 @@ Help topics are available for Validate Processing Request, Test Spatial Read, Di
 ## Phase 27M Batch Advanced Help
 
 Polygon Area Processing includes help topics for requested/effective concurrency, exact raster masks, mask implementation, crop-to-polygon extent, touched cells, retained intermediates, and mask failure policy. These topics are available offline in Mission Control.
+
+## Phase 27N Guided Terms
+
+Mission Control now uses user-facing terms for Polygon workflows: LiDAR data, Data coverage, Selected processing area, Spatial subset, Processing capacity, and Final polygon clipping.

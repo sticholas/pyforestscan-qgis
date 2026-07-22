@@ -194,3 +194,7 @@ Polygon Area Processing writes backend request diagnostics under each logical EP
 Standard File Batch and Polygon Area Processing now share `BatchExecutionOptions`. Polygon mode also receives `PolygonBatchOptions` for exact raster finalization. Polygon manifests record shared options, polygon-specific options, applicability rows, and requested/effective concurrency.
 
 Polygon raster outputs are masked after product generation and before output registration. The final `generated_outputs.json` registry is the Results source of truth for both manual and automatic QGIS loading.
+
+## Phase 27N Guided Polygon Workflow
+
+Polygon Area Processing now builds a `PolygonExecutionPlan` during preflight and presents a compact guided review before the technical report. Repository identity, source selection, concurrency, exact clipping, and output loading all come from the same plan.

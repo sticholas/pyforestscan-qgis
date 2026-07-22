@@ -73,6 +73,7 @@ from ..core.dependency_check import CheckStatus, EnvironmentReport
 from ..core.exceptions import AdapterError, ProcessingError
 from ..core.ept_repository import incorrect_ept_catalog_detected, repair_ept_catalog
 from ..core.ept_subset import build_ept_subset_request, compact_ept_subset_summary
+from ..core.guided_polygon_workflow import PROCESSING_PROFILES, guided_review_summary, guided_step_indicator, profile_by_key
 from ..core.polygon_source import POLYGON_VECTOR_FILE_FILTER, PolygonSource, selected_feature_count_text
 from ..core.polygon_normalization import normalize_polygon_source
 from ..core.lidar_catalog_jobs import CatalogJobRunner, CatalogJobSpec, CatalogJobStatus, latest_catalog_job_state
@@ -1949,7 +1950,9 @@ class BatchPage(MissionPage):
 
         polygon_source = self.add_section("1. Polygon Area Processing")
         self.polygon_batch_section = polygon_source.parentWidget()
-        polygon_source.addWidget(_body_label("Choose a LiDAR repository and polygon. Build or update the indexed catalog once, then Batch queries only intersecting sources."))
+        self.polygon_guided_step_label = _body_label(guided_step_indicator("data"))
+        polygon_source.addWidget(self.polygon_guided_step_label)
+        polygon_source.addWidget(_body_label("Choose LiDAR data and area. Mission Control resolves repository identity once, then validates spatial coverage before Run."))
         polygon_form = QFormLayout()
         polygon_form.setVerticalSpacing(SECTION_SPACING)
         self.polygon_lidar_folder_edit = QLineEdit()
@@ -2133,7 +2136,23 @@ class BatchPage(MissionPage):
         self.reset_polygon_batch_button = QPushButton("Reset Polygon Batch")
         self.reset_polygon_batch_button.clicked.connect(self.reset_polygon_batch)
         _apply_button_role(self.reset_polygon_batch_button, "danger")
+        self.preview_spatial_selection_button = QPushButton("Preview Spatial Selection")
+        self.preview_spatial_selection_button.clicked.connect(self.preview_polygon_spatial_selection)
+        _apply_button_role(self.preview_spatial_selection_button, "secondary")
+        self.zoom_polygon_button = QPushButton("Zoom to Polygon")
+        self.zoom_polygon_button.clicked.connect(lambda: self._show_spatial_action("Zoom to Polygon"))
+        _apply_button_role(self.zoom_polygon_button, "neutral")
+        self.zoom_repository_button = QPushButton("Zoom to Repository Extent")
+        self.zoom_repository_button.clicked.connect(lambda: self._show_spatial_action("Zoom to Repository Extent"))
+        _apply_button_role(self.zoom_repository_button, "neutral")
+        self.zoom_combined_button = QPushButton("Zoom to Combined Extent")
+        self.zoom_combined_button.clicked.connect(lambda: self._show_spatial_action("Zoom to Combined Extent"))
+        _apply_button_role(self.zoom_combined_button, "neutral")
         polygon_actions.addWidget(self.rerun_polygon_preflight_button)
+        polygon_actions.addWidget(self.preview_spatial_selection_button)
+        polygon_actions.addWidget(self.zoom_polygon_button)
+        polygon_actions.addWidget(self.zoom_repository_button)
+        polygon_actions.addWidget(self.zoom_combined_button)
         polygon_actions.addWidget(self.reset_polygon_batch_button)
         polygon_actions.addStretch(1)
         polygon_source.addLayout(polygon_actions)
@@ -2192,6 +2211,15 @@ class BatchPage(MissionPage):
         advanced_batch_group, advanced_batch = _collapsible_section(self.content_layout, "Advanced Batch Options", checked=False)
         advanced_form = QFormLayout()
         advanced_form.setVerticalSpacing(SECTION_SPACING)
+        self.processing_profile_combo = QComboBox()
+        for profile in PROCESSING_PROFILES:
+            self.processing_profile_combo.addItem(profile.label, profile.key)
+        self.processing_profile_combo.setCurrentIndex(1)
+        self.processing_profile_combo.currentIndexChanged.connect(lambda _index: self._apply_processing_profile())
+        profile_row = QHBoxLayout()
+        profile_row.addWidget(self.processing_profile_combo, 1)
+        profile_row.addWidget(info_badge("batch.processing_concurrency", parent=self), 0)
+        advanced_form.addRow("Processing profile", profile_row)
         self.execution_mode_combo = QComboBox()
         self.execution_mode_combo.addItem("Sequential", SEQUENTIAL_MODE)
         self.execution_mode_combo.addItem("Parallel safe mode", PARALLEL_SAFE_MODE)
@@ -2406,6 +2434,56 @@ class BatchPage(MissionPage):
         self._update_polygon_source_visibility()
         self.refresh_catalog_status()
         self._update_run_button_enabled()
+
+    def _apply_processing_profile(self) -> None:
+        if not hasattr(self, "processing_profile_combo"):
+            return
+        profile = profile_by_key(str(self.processing_profile_combo.currentData() or "recommended"))
+        if profile.key != "custom":
+            self.max_workers_spin.setValue(min(self.max_workers_spin.maximum(), max(self.max_workers_spin.minimum(), profile.recommended_workers)))
+            self.execution_mode_combo.setCurrentIndex(0 if profile.recommended_workers <= 1 else 1)
+        self._refresh_footprint_label()
+
+    def _polygon_guided_review_text(self, report: object) -> str:
+        plan = getattr(report, "execution_plan", None)
+        lines = ["Polygon Processing Review", *guided_review_summary(plan), ""]
+        lines.append("Warnings:")
+        warnings = getattr(report, "warnings", ())
+        lines.extend(f"- {item}" for item in warnings[:5])
+        if not warnings:
+            lines.append("- None")
+        lines.extend(("", "Blockers:"))
+        blockers = getattr(report, "blockers", ())
+        lines.extend(f"- {item}" for item in blockers[:5])
+        if not blockers:
+            lines.append("- None")
+        lines.extend(("", "Technical Report:", polygon_preflight_text(report)))
+        return "\n".join(lines)
+
+    def preview_polygon_spatial_selection(self) -> None:
+        report = self.preflight_report
+        if report is None or getattr(report, "source_selection", None) is None:
+            self.preflight_text.setPlainText("Preview Spatial Selection needs a current preflight plan. Click Run Preflight Check first.")
+            return
+        selection = report.source_selection
+        lines = [
+            "Spatial Diagnostic Preview",
+            "Temporary QGIS group: PyForestScan - Spatial Diagnostics",
+            f"Repository kind: {selection.repository_kind}",
+            f"Selected logical inputs: {len(selection.selected_sources)}",
+            f"Overlap: {'Yes' if selection.overlap_result == 'yes' else 'No'}",
+            f"Polygon extent ({selection.transformed_envelope.crs}): {selection.transformed_envelope.xmin:g}, {selection.transformed_envelope.ymin:g}, {selection.transformed_envelope.xmax:g}, {selection.transformed_envelope.ymax:g}",
+        ]
+        if selection.source_extent is not None:
+            extent = selection.source_extent
+            lines.append(f"Repository extent ({extent.crs}): {extent.xmin:g}, {extent.ymin:g}, {extent.xmax:g}, {extent.ymax:g}")
+        if selection.rejected_sources:
+            lines.append("Rejected sources:")
+            lines.extend(f"- {item.path}: {item.rejection_code} - {item.user_reason}" for item in selection.rejected_sources[:8])
+        self.preflight_text.setPlainText("\n".join(lines))
+
+    def _show_spatial_action(self, action: str) -> None:
+        self.preflight_text.setPlainText(f"{action} requested. In live QGIS, use Preview Spatial Selection to inspect polygon and repository coverage overlays.")
 
     def browse_polygon_lidar_folder(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Choose LiDAR repository")
@@ -2876,7 +2954,8 @@ class BatchPage(MissionPage):
             finally:
                 self.preflight_button.setEnabled(True)
             self.preflight_report = report
-            self.preflight_text.setPlainText(polygon_preflight_text(report))
+            self.preflight_text.setPlainText(self._polygon_guided_review_text(report))
+            self.polygon_guided_step_label.setText(guided_step_indicator("review"))
             self.acknowledge_warnings_check.setEnabled(report.has_warnings and not report.blockers)
             if not report.has_warnings:
                 self.acknowledge_warnings_check.setChecked(False)

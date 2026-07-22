@@ -224,3 +224,7 @@ The Processing page includes **Validate Processing Request**. It explains the PB
 ## Phase 27M Results And Polygon Outputs
 
 Results can read `generated_outputs.json` registries from Standard Batch and Polygon Area Processing. Load Generated Outputs adds final masked rasters or supported tables to QGIS, skips duplicates, and leaves unmasked intermediates hidden from the primary result list.
+
+## Phase 27N Polygon Guided Review
+
+Polygon preflight now shows a concise review with plan status, LiDAR data type, logical inputs, processing capacity, final clipping, warnings, and blockers. The full preflight text remains under Technical Report.

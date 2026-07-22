@@ -34,3 +34,7 @@ Added help coverage for request validation and diagnostic actions so Guided Mode
 ## Phase 27M Help Coverage
 
 Batch Advanced Options now use InfoBadge topics for processing concurrency, concurrent logical jobs, effective concurrency, continue-on-error behavior, retry behavior, output conflict policy, load-after-completion, exact raster masking, mask implementation, crop-to-extent, touched cells, retained intermediates, and mask failure policy.
+
+## Phase 27N Guided Help
+
+The Batch page now exposes spatial-selection preview actions and processing profiles. Future help expansion should add badges to guided step headings only where the term changes user decisions.

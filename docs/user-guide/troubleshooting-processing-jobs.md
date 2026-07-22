@@ -15,3 +15,7 @@ If a job fails, open the job folder and inspect `diagnostics/`. The most useful 
 **Diagnostic Test Run** means validating the request and, optionally, probing the reader without generating a full CHM or other product.
 
 Support summaries should include product, failed stage, error code, request bounds, backend versions, and the diagnostic bundle path. They should not include credentials or raw environment dumps.
+
+## Polygon No-Coverage Diagnostics
+
+If Polygon Area Processing finds no coverage, use Preview Spatial Selection, Zoom to Polygon, Zoom to Repository Extent, and Check Coordinate Systems. For EPT datasets, no-coverage does not mean the repository stopped being EPT.

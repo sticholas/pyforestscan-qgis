@@ -26,3 +26,7 @@ See [Contextual Help](contextual-help.md) for how Mission Control information ba
 
 - [Process LiDAR Folder by Polygon](polygon-folder-processing.md) covers exact raster masking and output loading.
 - [Contextual Help](contextual-help.md) covers the new Batch Advanced help badges.
+
+## Phase 27N Polygon Guidance
+
+See [Process LiDAR Folder by Polygon](polygon-folder-processing.md) for the guided Polygon workflow and no-coverage recovery actions.
