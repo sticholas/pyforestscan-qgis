@@ -188,3 +188,9 @@ Logical EPT/COPC polygon jobs create a durable  workspace with , , , , and . The
 ## Polygon EPT diagnostics
 
 Polygon Area Processing writes backend request diagnostics under each logical EPT job workspace. Failed jobs should present the final status first and keep historical progress events as expandable chronology.
+
+## Phase 27M Shared Options
+
+Standard File Batch and Polygon Area Processing now share `BatchExecutionOptions`. Polygon mode also receives `PolygonBatchOptions` for exact raster finalization. Polygon manifests record shared options, polygon-specific options, applicability rows, and requested/effective concurrency.
+
+Polygon raster outputs are masked after product generation and before output registration. The final `generated_outputs.json` registry is the Results source of truth for both manual and automatic QGIS loading.

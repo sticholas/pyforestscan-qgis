@@ -37,3 +37,7 @@ Contextual help content now lives in . UI code should prefer  so wording, recomm
 ## Phase 27L help topics
 
 Mission Control help now includes topics for Validate Processing Request, Test Spatial Read, Diagnostic Test Run, Export Diagnostic Bundle, Copy Support Summary, and requested extent versus dataset extent.
+
+## Phase 27M Batch Help Topics
+
+The registry includes advanced Batch and polygon finalization topics. Place badges only on controls where the explanation changes user decisions; avoid scattering badges on obvious labels.

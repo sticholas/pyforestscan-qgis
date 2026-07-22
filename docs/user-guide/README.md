@@ -21,3 +21,8 @@ Recommended reading order:
 ## Contextual Help
 
 See [Contextual Help](contextual-help.md) for how Mission Control information badges work offline.
+
+## Phase 27M Polygon Output Notes
+
+- [Process LiDAR Folder by Polygon](polygon-folder-processing.md) covers exact raster masking and output loading.
+- [Contextual Help](contextual-help.md) covers the new Batch Advanced help badges.

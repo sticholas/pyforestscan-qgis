@@ -14,6 +14,7 @@ from typing import Callable
 from .adapter import PyForestScanAdapter
 from .batch import BatchItemResult, BatchRequest, BatchResult, batch_run_context, create_batch_folder
 from .batch_results import write_batch_summaries
+from .output_registry import generated_output_for_path, write_output_registry
 from .batch_manifest import MANIFEST_NAME, create_manifest, load_manifest, update_manifest_item, write_manifest
 from .batch_runner import BatchControlCallback, BatchExecutionError, BatchJobCallback, BatchProgressCallback, BatchRunner
 from .external_worker import (
@@ -219,7 +220,9 @@ class BatchExecutor:
             summary_json=batch_folder / "batch_summary.json",
             summary_csv=batch_folder / "batch_summary.csv",
             summary_html=batch_folder / "batch_summary.html",
+            load_outputs_after_completion=request.settings.load_outputs_into_qgis,
         )
+        result = _with_output_registry(result, source_mode="standard_file_batch")
         return write_batch_summaries(result)
 
     def _item_from_worker_process(self, process: subprocess.Popen[str], dataset: Path, batch_folder: Path, result_path: Path) -> BatchItemResult:
@@ -306,7 +309,9 @@ class BatchExecutor:
             summary_json=batch_folder / "batch_summary.json",
             summary_csv=batch_folder / "batch_summary.csv",
             summary_html=batch_folder / "batch_summary.html",
+            load_outputs_after_completion=request.settings.load_outputs_into_qgis,
         )
+        result = _with_output_registry(result, source_mode="standard_file_batch")
         return write_batch_summaries(result)
 
     def _run_one_dataset(
@@ -331,7 +336,9 @@ class BatchExecutor:
             summary_json=batch_folder / "batch_summary.json",
             summary_csv=batch_folder / "batch_summary.csv",
             summary_html=batch_folder / "batch_summary.html",
+            load_outputs_after_completion=request.settings.load_outputs_into_qgis,
         )
+        partial = _with_output_registry(partial, source_mode="standard_file_batch")
         write_batch_summaries(partial)
 
     def _skipped_item(self, dataset: Path, batch_folder: Path, message: str) -> BatchItemResult:
@@ -341,3 +348,20 @@ class BatchExecutor:
     def _failed_item(self, dataset: Path, batch_folder: Path, message: str) -> BatchItemResult:
         context = batch_run_context(dataset, batch_folder, reuse_existing=True).ensure_directories()
         return BatchItemResult(dataset, context, "failed", message, (), "Unavailable")
+
+
+
+def _with_output_registry(result: BatchResult, *, source_mode: str) -> BatchResult:
+    outputs = [
+        generated_output_for_path(output, job_id=result.batch_id, source_mode=source_mode)
+        for item in result.items
+        if item.status == "completed"
+        for output in item.outputs
+        if Path(output).exists()
+    ]
+    if not outputs:
+        return result
+    registry_path = write_output_registry(outputs, result.batch_folder)
+    from dataclasses import replace
+
+    return replace(result, output_registry_path=registry_path)

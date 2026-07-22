@@ -51,3 +51,9 @@ The polygon transport fix is covered by QGIS-free regression tests and synthetic
 ## Phase 27L limitations
 
 `Test Spatial Read` is documented as a troubleshooting-only behavior and is not automatically run during preflight. Real Windows/QGIS EPT production success must not be claimed unless the specific dataset was actually run. Diagnostics are standard for failures, while sanitized export controls remain basic.
+
+## Phase 27M Remaining Limitations
+
+- Live QGIS automatic loading and real EPT polygon mask validation require a QGIS/PBM test machine and are not proven by the headless unit suite.
+- QGIS/GDAL mask integration is exposed through a normalized Processing parameter wrapper; backend rasterio masking remains the default finalization path for PBM-generated rasters.
+- Retry Mask and Retry Load are represented in the execution contract, but full independent UI retry buttons remain a future refinement.

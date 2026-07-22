@@ -113,3 +113,10 @@ When you run Polygon Area Processing, Mission Control stores the selected geomet
 ## Request validation
 
 Before polygon EPT products run, PBM validates the EPT metadata, polygon file, CRS, output folder, API contract, and canonical bounds expression. This should catch malformed range requests before a CHM or other product starts reading points.
+
+
+## Exact Raster Masking
+
+Under Advanced Batch Options > Polygon Finalization, Exact raster mask is enabled by default. Automatic uses the managed backend mask path for PBM-produced rasters and can use QGIS/GDAL Clip Raster by Mask Layer when selected inside QGIS.
+
+Load generated outputs into QGIS waits for final masking and output registration. Temporary unmasked intermediates are not loaded as successful polygon outputs.

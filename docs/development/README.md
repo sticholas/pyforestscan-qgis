@@ -25,3 +25,6 @@ Historical phase validation records live in [docs/archive/phase-history](../arch
 - [Adaptive LiDAR Indexing](ADAPTIVE_LIDAR_INDEXING.md)
 - [EPT Repository Handling](EPT_REPOSITORY_HANDLING.md)
 - [Contextual Help System](CONTEXTUAL_HELP_SYSTEM.md)
+
+- [Batch Option Propagation](BATCH_OPTION_PROPAGATION.md)
+- [Raster Masking Architecture](RASTER_MASKING_ARCHITECTURE.md)

@@ -30,3 +30,7 @@ Current automated coverage is reported by `python3 scripts/check_help_coverage.p
 ## Phase 27L additions
 
 Added help coverage for request validation and diagnostic actions so Guided Mode can explain failures without exposing raw backend internals by default.
+
+## Phase 27M Help Coverage
+
+Batch Advanced Options now use InfoBadge topics for processing concurrency, concurrent logical jobs, effective concurrency, continue-on-error behavior, retry behavior, output conflict policy, load-after-completion, exact raster masking, mask implementation, crop-to-extent, touched cells, retained intermediates, and mask failure policy.

@@ -220,3 +220,7 @@ Polygon Area Processing now distinguishes geometry content from backend vector p
 ## Phase 27L processing validation
 
 The Processing page includes **Validate Processing Request**. It explains the PBM request-validation gate that checks backend API compatibility, EPT metadata, bounds syntax, polygon input, CRS, and output writability before product execution.
+
+## Phase 27M Results And Polygon Outputs
+
+Results can read `generated_outputs.json` registries from Standard Batch and Polygon Area Processing. Load Generated Outputs adds final masked rasters or supported tables to QGIS, skips duplicates, and leaves unmasked intermediates hidden from the primary result list.

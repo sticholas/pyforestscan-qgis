@@ -39,6 +39,8 @@ def batch_result_to_dict(result: BatchResult) -> dict[str, Any]:
         "summary_json": str(result.summary_json),
         "summary_csv": str(result.summary_csv),
         "summary_html": str(result.summary_html),
+        "output_registry_path": str(result.output_registry_path) if result.output_registry_path else None,
+        "load_outputs_after_completion": result.load_outputs_after_completion,
     }
 
 

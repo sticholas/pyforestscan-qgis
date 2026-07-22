@@ -11,3 +11,7 @@ Help works offline because topics are bundled with the plugin in `pyforestscan_q
 ## Processing diagnostics
 
 Help topics are available for Validate Processing Request, Test Spatial Read, Diagnostic Test Run, Export Diagnostic Bundle, Copy Support Summary, Retry versus new attempt, and requested extent versus dataset extent.
+
+## Phase 27M Batch Advanced Help
+
+Polygon Area Processing includes help topics for requested/effective concurrency, exact raster masks, mask implementation, crop-to-polygon extent, touched cells, retained intermediates, and mask failure policy. These topics are available offline in Mission Control.

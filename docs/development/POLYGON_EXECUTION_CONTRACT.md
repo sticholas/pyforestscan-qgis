@@ -55,3 +55,7 @@ Polygon logical jobs use named stages: Preparing Inputs, Validating Geometry, Pr
 ## Phase 27L EPT request validation
 
 Polygon EPT jobs now use `EptBounds` as the typed bounds contract. The polygon envelope is stored in manifests as `ept_bounds` JSON and converted to PyForestScan list-ranges only by the adapter. PBM request validation runs before product generation and blocks incompatible API signatures, malformed bounds, non-overlapping EPT bounds, invalid polygon files, CRS gaps, and unwritable output folders.
+
+## Phase 27M Finalization Contract
+
+Polygon raster jobs are not complete until product generation, exact polygon masking, validation, and output registration finish. Temporary unmasked rasters may be retained for diagnostics, but they are not registered as primary user outputs. Default mask failure policy fails the product rather than presenting an unmasked envelope raster as successful.

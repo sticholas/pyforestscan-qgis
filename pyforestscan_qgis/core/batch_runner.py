@@ -11,6 +11,7 @@ from typing import Callable
 from .adapter import PyForestScanAdapter
 from .batch import BatchItemResult, BatchRequest, BatchResult, batch_run_context, create_batch_folder
 from .batch_results import write_batch_summaries
+from .output_registry import generated_output_for_path, write_output_registry
 from .batch_manifest import MANIFEST_NAME, create_manifest, load_manifest, update_manifest_item, write_manifest
 from .dataset_report import build_dataset_explorer_report, report_to_dict, write_csv_summary, write_html_report, write_json_report
 from .job_manager import JobManager
@@ -96,7 +97,9 @@ class BatchRunner:
             summary_json=batch_folder / "batch_summary.json",
             summary_csv=batch_folder / "batch_summary.csv",
             summary_html=batch_folder / "batch_summary.html",
+            load_outputs_after_completion=request.settings.load_outputs_into_qgis,
         )
+        result = _with_output_registry(result, source_mode="standard_file_batch")
         return write_batch_summaries(result)
 
     def _write_partial_summary(self, batch_id: str, request: BatchRequest, batch_folder: Path, started_at: str, items: list[BatchItemResult]) -> None:
@@ -111,7 +114,9 @@ class BatchRunner:
             summary_json=batch_folder / "batch_summary.json",
             summary_csv=batch_folder / "batch_summary.csv",
             summary_html=batch_folder / "batch_summary.html",
+            load_outputs_after_completion=request.settings.load_outputs_into_qgis,
         )
+        partial = _with_output_registry(partial, source_mode="standard_file_batch")
         write_batch_summaries(partial)
 
     def run_dataset(self, dataset: Path, batch_folder: Path, request: BatchRequest) -> BatchItemResult:
@@ -200,3 +205,20 @@ def _bounds_summary(bounds: object) -> str:
     if None in (min_x, max_x, min_y, max_y):
         return "Unavailable"
     return f"X {float(min_x):.3f} to {float(max_x):.3f}; Y {float(min_y):.3f} to {float(max_y):.3f}"
+
+
+
+def _with_output_registry(result: BatchResult, *, source_mode: str) -> BatchResult:
+    outputs = [
+        generated_output_for_path(output, job_id=result.batch_id, source_mode=source_mode)
+        for item in result.items
+        if item.status == "completed"
+        for output in item.outputs
+        if Path(output).exists()
+    ]
+    if not outputs:
+        return result
+    registry_path = write_output_registry(outputs, result.batch_folder)
+    from dataclasses import replace
+
+    return replace(result, output_registry_path=registry_path)

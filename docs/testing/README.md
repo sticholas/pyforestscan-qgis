@@ -5,3 +5,6 @@ test instructions, and release validation evidence.
 
 The current testing strategy is documented in `docs/TESTING_STRATEGY.md`.
 
+## Polygon Output Validation
+
+- [Real Polygon Output Validation](REAL_POLYGON_OUTPUT_VALIDATION.md)

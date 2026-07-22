@@ -399,7 +399,15 @@ class MissionControlDock(QDockWidget):
         skipped_count = getattr(result, "skipped_count", 0)
         self.batch_status = f"Completed {success_count}; failed {failure_count}; skipped {skipped_count}"
         state = self.state.with_activity("Batch complete", self.batch_status)
-        for path in (summary_html, summary_csv, summary_json):
+        output_paths = tuple(
+            Path(output)
+            for item in getattr(result, "items", ())
+            if getattr(item, "status", "") == "completed"
+            for output in getattr(item, "outputs", ())
+            if Path(output).exists()
+        )
+        registry_path = getattr(result, "output_registry_path", None)
+        for path in (*output_paths, registry_path, summary_html, summary_csv, summary_json):
             if isinstance(path, Path):
                 state = state.with_report_path(path)
         self.state = state
@@ -408,6 +416,12 @@ class MissionControlDock(QDockWidget):
         for path in (summary_html, summary_csv, summary_json):
             if isinstance(path, Path):
                 self._record_workspace_recent("batch_report", path, path.name)
+        if output_paths:
+            self.results_page.set_report_paths(output_paths)
+        if isinstance(registry_path, Path):
+            self.results_page.set_report_paths((registry_path,))
+        if getattr(result, "load_outputs_after_completion", False):
+            self.results_page.load_outputs_to_qgis()
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()

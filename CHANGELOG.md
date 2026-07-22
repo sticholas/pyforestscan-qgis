@@ -130,3 +130,11 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 
 
 - Phase 27K: Fixed polygon transport so PBM materializes a real clipping vector file before PyForestScan execution, made EPT/COPC workload estimates conservative, added polygon progress stages, introduced a styled InfoBadge help registry, and documented real EPT validation steps.
+
+## Phase 27M
+
+- Added shared Batch execution and polygon finalization option models.
+- Registered Standard Batch and Polygon outputs through a shared generated-output registry.
+- Added exact polygon raster masking with backend rasterio and QGIS/GDAL service abstractions.
+- Routed polygon output registration into Results so automatic and manual loading can find final masked rasters.
+- Added Batch Advanced help topics for concurrency, output loading, conflict policy, and polygon mask controls.

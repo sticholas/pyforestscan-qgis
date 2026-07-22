@@ -83,6 +83,8 @@ class BatchResult:
     summary_json: Path
     summary_csv: Path
     summary_html: Path
+    output_registry_path: Path | None = None
+    load_outputs_after_completion: bool = False
 
     @property
     def success_count(self) -> int:

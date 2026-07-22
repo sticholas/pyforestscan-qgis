@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterable
 
 from ..core.dataset_report import DatasetExplorerReport, format_count_for_display, format_crs_for_display
+from ..core.output_registry import REGISTRY_NAME, read_output_registry
 
 RASTER_SUFFIXES = frozenset({".tif", ".tiff"})
 TABLE_SUFFIXES = frozenset({".csv"})
@@ -55,8 +56,17 @@ def collect_loadable_outputs(
     seen: set[str] = set()
     existing = {_normalize_path(source) for source in existing_sources}
     outputs: list[LoadableOutput] = []
+    expanded_paths: list[Path] = []
     for raw_path in paths:
         path = Path(raw_path)
+        if path.name == REGISTRY_NAME and path.exists():
+            try:
+                expanded_paths.extend(output.path for output in read_output_registry(path) if output.complete and output.valid)
+            except Exception:
+                pass
+        else:
+            expanded_paths.append(path)
+    for path in expanded_paths:
         key = _normalize_path(path)
         if key in seen or key in existing:
             continue
@@ -70,8 +80,15 @@ def collect_loadable_outputs(
     return tuple(outputs)
 
 
-def output_loading_summary(loaded_count: int, candidate_count: int) -> str:
-    """Return concise Load Outputs feedback."""
+def output_loading_summary(loaded_count: int, candidate_count: int, *, already_loaded_count: int = 0, skipped_count: int = 0, failed_count: int = 0) -> str:
+    """Return concise Load Outputs feedback with optional per-state counts."""
+    if any((already_loaded_count, skipped_count, failed_count)):
+        return "\n".join((
+            f"Loaded: {loaded_count}",
+            f"Already loaded: {already_loaded_count}",
+            f"Skipped: {skipped_count}",
+            f"Failed: {failed_count}",
+        ))
     if loaded_count > 0:
         noun = "output" if loaded_count == 1 else "outputs"
         return f"Loaded {loaded_count} {noun} into QGIS."

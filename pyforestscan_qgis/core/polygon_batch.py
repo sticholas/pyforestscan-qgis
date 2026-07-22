@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
 from .adapter import PyForestScanAdapter
 from .batch import BatchItemResult, BatchProductSettings, BatchRequest, BatchResult, batch_run_context, create_batch_folder
+from .batch_options import BatchExecutionOptions, PolygonBatchOptions, polygon_option_applicability, requested_effective_concurrency
 from .batch_results import write_batch_summaries
 from .batch_executor import BatchExecutor
 from .ept_bounds import EptBounds
@@ -23,7 +24,8 @@ from .lidar_inventory import LidarInventory, LidarSourceRecord
 from .polygon_processing import PolygonProcessingPlan, build_polygon_processing_plan
 from .polygon_source import NormalizedPolygonSelection
 from .polygon_transport import polygon_execution_input_from_selection, unique_polygon_job_id
-from .raster_mask import RasterMaskResult, apply_polygon_mask_to_outputs
+from .raster_mask import RasterMaskOptions, RasterMaskResult, apply_polygon_mask_to_outputs, is_maskable_raster
+from .output_registry import generated_output_for_path, write_output_registry
 from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, HagNormalizationRequest, PadRequest, PaiRequest, PointDensityRequest, ProductType, RumpleRequest, VoxelStatRequest
 
 POLYGON_MANIFEST_NAME = "polygon_batch_manifest.json"
@@ -47,6 +49,8 @@ class PolygonBatchRequest:
     catalog_path: Path | None = None
     catalog_crs: str | None = None
     thresholds: CatalogThresholds = CatalogThresholds()
+    shared_execution_options: BatchExecutionOptions | None = None
+    polygon_options: PolygonBatchOptions = PolygonBatchOptions()
 
 
 @dataclass(frozen=True)
@@ -279,7 +283,9 @@ def execute_polygon_batch(
     runner = executor or BatchExecutor()
     result = runner.run(batch_request, item_callback=item_callback, job_callback=job_callback, control_callback=control_callback)
     mask_results = _mask_result_outputs(result, report)
-    write_polygon_batch_manifest(report, clip_records, batch_folder=batch_folder, mask_records=[item.__dict__ | {"path": str(item.path)} for item in mask_results])
+    result = _apply_mask_failures(result, mask_results, report)
+    result = _register_polygon_outputs(result, report, mask_results)
+    write_polygon_batch_manifest(report, clip_records, batch_folder=batch_folder, mask_records=[_mask_record(item) for item in mask_results])
     return result
 
 
@@ -300,6 +306,10 @@ def write_polygon_batch_manifest(
         "lidar_repository": str(report.request.lidar_folder),
         "catalog_path": str(report.catalog_path),
         "output_folder": str(report.request.output_folder),
+        "shared_execution_options": _shared_options(report).to_dict(),
+        "polygon_options": report.request.polygon_options.to_dict(),
+        "option_applicability": [item.to_dict() for item in _option_applicability(report)],
+        "concurrency": requested_effective_concurrency(_shared_options(report), source_types=_source_types(report), product_count=len(report.request.products)),
         "query": {
             "envelope": report.query_geometry.envelope.__dict__,
             "ept_bounds": EptBounds.from_value(report.query_geometry.ept_bounds, crs=report.query_geometry.catalog_crs).to_json(),
@@ -418,12 +428,32 @@ def _execute_logical_spatial_batch(report: PolygonBatchPreflightReport, adapter:
             request = _logical_product_request(product, source.path, result_path, report)
             result = _run_logical_product(adapter, product, request)
             outputs.append(Path(getattr(result, "output_path")))
-        item = BatchItemResult(Path(source.path), context, "completed", "Logical EPT/COPC source processed through PBM backend.", tuple(outputs), _requested_extent_summary(report))
+        mask_results = _mask_paths(outputs, report)
+        status = "completed"
+        message = "Logical EPT/COPC source processed through PBM backend and exact polygon finalization."
+        failures = [item for item in mask_results if item.status == "failed"]
+        if failures and report.request.polygon_options.mask_failure_policy == "fail_product":
+            status = "failed"
+            message = "; ".join(item.message for item in failures)
+        item = BatchItemResult(Path(source.path), context, status, message, tuple(outputs), _requested_extent_summary(report))
     except Exception as exc:  # noqa: BLE001
+        mask_results = ()
         item = BatchItemResult(Path(source.path), context, "failed", _friendly_polygon_execution_error(str(exc)), tuple(outputs), _requested_extent_summary(report))
     finished_at = datetime.now(timezone.utc).isoformat()
-    result = BatchResult("polygon-logical", report.request.title, started_at, finished_at, batch_folder, (item,), batch_folder / "batch_summary.json", batch_folder / "batch_summary.csv", batch_folder / "batch_summary.html")
-    write_polygon_batch_manifest(report, [{"source": str(source.path), "clipped": "native", "points": str(source.point_count or "unknown"), "bounds_used": str(report.query_geometry.ept_bounds), "job_folder": str(context.run_folder)}], batch_folder=batch_folder)
+    result = BatchResult(
+        "polygon-logical",
+        report.request.title,
+        started_at,
+        finished_at,
+        batch_folder,
+        (item,),
+        batch_folder / "batch_summary.json",
+        batch_folder / "batch_summary.csv",
+        batch_folder / "batch_summary.html",
+        load_outputs_after_completion=_shared_options(report).load_outputs_after_completion,
+    )
+    result = _register_polygon_outputs(result, report, mask_results)
+    write_polygon_batch_manifest(report, [{"source": str(source.path), "clipped": "native", "points": str(source.point_count or "unknown"), "bounds_used": str(report.query_geometry.ept_bounds), "job_folder": str(context.run_folder)}], batch_folder=batch_folder, mask_records=[_mask_record(item) for item in mask_results])
     if item_callback is not None:
         item_callback(item)
     return write_batch_summaries(result)
@@ -563,12 +593,109 @@ def _mask_result_outputs(result: BatchResult, report: PolygonBatchPreflightRepor
     paths: list[Path] = []
     for item in result.items:
         paths.extend(Path(output) for output in item.outputs)
+    return _mask_paths(paths, report)
+
+
+def _mask_paths(paths: list[Path], report: PolygonBatchPreflightReport) -> tuple[RasterMaskResult, ...]:
+    if not report.request.polygon_options.exact_raster_mask:
+        return ()
+    options = RasterMaskOptions(
+        engine=report.request.polygon_options.mask_engine,
+        all_touched=report.request.polygon_options.all_touched,
+        crop_to_polygon_extent=report.request.polygon_options.crop_to_polygon_extent,
+        nodata=report.request.polygon_options.mask_nodata if report.request.polygon_options.mask_nodata is not None else -9999.0,
+        retain_unmasked_intermediate=report.request.polygon_options.retain_unmasked_intermediate,
+    )
     return apply_polygon_mask_to_outputs(
         paths,
         report.query_geometry.exact_polygon_wkt,
         polygon_crs=report.request.polygon.source_crs,
         processing_crs=report.request.polygon.processing_crs,
+        options=options,
     )
+
+
+def _apply_mask_failures(result: BatchResult, mask_results: tuple[RasterMaskResult, ...], report: PolygonBatchPreflightReport) -> BatchResult:
+    if report.request.polygon_options.mask_failure_policy != "fail_product":
+        return result
+    failed = {Path(item.path) for item in mask_results if item.status == "failed"}
+    if not failed:
+        return result
+    next_items = []
+    for item in result.items:
+        if any(Path(output) in failed for output in item.outputs):
+            next_items.append(replace(item, status="failed", message="Exact polygon mask failed; unmasked raster is not presented as final output."))
+        else:
+            next_items.append(item)
+    return replace(result, items=tuple(next_items))
+
+
+def _register_polygon_outputs(result: BatchResult, report: PolygonBatchPreflightReport, mask_results: tuple[RasterMaskResult, ...]) -> BatchResult:
+    successful_masks = {Path(item.path) for item in mask_results if item.status == "masked"}
+    outputs = []
+    group_name = f"PyForestScan/{report.request.polygon.source_description or 'Polygon Area'}"
+    for item in result.items:
+        if item.status != "completed":
+            continue
+        for output in item.outputs:
+            path = Path(output)
+            if not path.exists():
+                continue
+            outputs.append(
+                generated_output_for_path(
+                    path,
+                    job_id=result.batch_id,
+                    product_key=_product_key_from_output(path),
+                    source_mode="polygon_area_processing",
+                    masked=path in successful_masks or not is_maskable_raster(path),
+                    mask_geometry_id=report.request.polygon.source_description,
+                    group_name=group_name,
+                )
+            )
+    if not outputs:
+        return result
+    registry_path = write_output_registry(outputs, result.batch_folder)
+    return replace(result, output_registry_path=registry_path)
+
+
+def _product_key_from_output(path: Path) -> str:
+    stem = path.stem.lower()
+    if "canopy_cover" in stem:
+        return "canopy_cover"
+    if "point_density" in stem:
+        return "point_density"
+    if "voxel" in stem:
+        return "voxel_stat"
+    for key in ("chm", "dtm", "pad", "pai", "fhd", "rumple"):
+        if stem == key or key in stem:
+            return key
+    return "output"
+
+
+def _mask_record(item: RasterMaskResult) -> dict[str, object]:
+    return {
+        "path": str(item.path),
+        "status": item.status,
+        "message": item.message,
+        "engine": item.engine,
+        "output_path": str(item.output_path) if item.output_path else "",
+        "intermediate_path": str(item.intermediate_path) if item.intermediate_path else "",
+        "masked": item.masked,
+        "nodata": item.nodata,
+        "band_count": item.band_count,
+    }
+
+
+def _shared_options(report: PolygonBatchPreflightReport) -> BatchExecutionOptions:
+    return report.request.shared_execution_options or BatchExecutionOptions.from_batch_settings(report.request.settings)
+
+
+def _source_types(report: PolygonBatchPreflightReport) -> set[str]:
+    return {str(source.source_type).lower() for source in report.selected_sources}
+
+
+def _option_applicability(report: PolygonBatchPreflightReport):
+    return polygon_option_applicability(_shared_options(report), source_types=_source_types(report), product_count=len(report.request.products))
 
 
 def _planned_polygon_batch_folder(output_folder: Path) -> Path:

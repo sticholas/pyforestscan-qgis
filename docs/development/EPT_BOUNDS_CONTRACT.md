@@ -38,3 +38,7 @@ Manifest round trip:
 4. Diagnostics may record a derived `pdal_bounds_expression`, but that expression is not the source of truth.
 
 The grammar validator `validate_pdal_bounds_expression()` exists as a defensive diagnostic check and rejects malformed expressions before expensive point-cloud reads begin.
+
+## Phase 27M Concurrency Note
+
+EPT remains one logical spatial source. Requested Batch concurrency is recorded, but single-product single-polygon EPT/COPC processing has an effective concurrency of one. This preserves the square-bracket bounds contract and avoids treating internal EPT hierarchy nodes as separate files.

@@ -54,6 +54,7 @@ from ..core.adaptive_lidar_indexing import (
     register_native_sources,
 )
 from ..core.batch import BatchProductSettings, BatchRequest, discover_lidar_files
+from ..core.batch_options import BatchExecutionOptions, PolygonBatchOptions, requested_effective_concurrency
 from ..core.batch_executor import PARALLEL_SAFE_MODE, SEQUENTIAL_MODE, BatchExecutor
 from ..core.batch_preflight import BatchPreflightReport, run_batch_preflight
 from ..core.batch_runner import BatchExecutionError
@@ -2200,8 +2201,14 @@ class BatchPage(MissionPage):
         self.max_workers_spin.setMaximum(6)
         self.max_workers_spin.setValue(2)
         self.max_workers_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
-        advanced_form.addRow("Execution mode", self.execution_mode_combo)
-        advanced_form.addRow("Max workers", self.max_workers_spin)
+        execution_mode_row = QHBoxLayout()
+        execution_mode_row.addWidget(self.execution_mode_combo, 1)
+        execution_mode_row.addWidget(info_badge("batch.processing_concurrency", parent=self), 0)
+        max_workers_row = QHBoxLayout()
+        max_workers_row.addWidget(self.max_workers_spin, 1)
+        max_workers_row.addWidget(info_badge("batch.concurrent_jobs", parent=self), 0)
+        advanced_form.addRow("Execution mode", execution_mode_row)
+        advanced_form.addRow("Max workers", max_workers_row)
         advanced_batch.addLayout(advanced_form)
         mode_help = _details_label(
             "Sequential is safest. Parallel Safe is available with confirmation and guardrails. "
@@ -2217,15 +2224,82 @@ class BatchPage(MissionPage):
         self.skip_completed_check.setChecked(True)
         self.retry_failed_only_check = QCheckBox("Retry failed files only")
         self.overwrite_existing_check = QCheckBox("Overwrite existing outputs")
-        for check in (
-            self.stop_on_error_check,
-            self.load_outputs_check,
-            self.confirm_parallel_check,
-            self.skip_completed_check,
-            self.retry_failed_only_check,
-            self.overwrite_existing_check,
-        ):
-            advanced_batch.addWidget(check)
+        self.stop_on_error_check.setToolTip("When off, Batch records the failed item and continues with independent items.")
+        self.retry_failed_only_check.setToolTip("Retry only previously failed logical jobs when resume data is available.")
+        self.overwrite_existing_check.setToolTip("When off, existing completed outputs are skipped or treated according to the safe conflict policy.")
+        stop_on_error_row = QHBoxLayout()
+        stop_on_error_row.addWidget(self.stop_on_error_check, 1)
+        stop_on_error_row.addWidget(info_badge("batch.continue_on_error", parent=self), 0)
+        advanced_batch.addLayout(stop_on_error_row)
+        load_outputs_row = QHBoxLayout()
+        load_outputs_row.addWidget(self.load_outputs_check, 1)
+        load_outputs_row.addWidget(info_badge("batch.load_outputs_after_completion", parent=self), 0)
+        advanced_batch.addLayout(load_outputs_row)
+        effective_concurrency_row = QHBoxLayout()
+        effective_concurrency_row.addWidget(self.confirm_parallel_check, 1)
+        effective_concurrency_row.addWidget(info_badge("batch.effective_concurrency", parent=self), 0)
+        advanced_batch.addLayout(effective_concurrency_row)
+        skip_completed_row = QHBoxLayout()
+        skip_completed_row.addWidget(self.skip_completed_check, 1)
+        skip_completed_row.addWidget(info_badge("batch.output_conflict_policy", parent=self), 0)
+        advanced_batch.addLayout(skip_completed_row)
+        retry_failed_row = QHBoxLayout()
+        retry_failed_row.addWidget(self.retry_failed_only_check, 1)
+        retry_failed_row.addWidget(info_badge("batch.retry_failed_jobs", parent=self), 0)
+        advanced_batch.addLayout(retry_failed_row)
+        overwrite_existing_row = QHBoxLayout()
+        overwrite_existing_row.addWidget(self.overwrite_existing_check, 1)
+        overwrite_existing_row.addWidget(info_badge("batch.output_conflict_policy", parent=self), 0)
+        advanced_batch.addLayout(overwrite_existing_row)
+
+        polygon_finalization_group, polygon_finalization = _collapsible_section(advanced_batch, "Polygon Finalization", checked=False)
+        polygon_form = QFormLayout()
+        polygon_form.setVerticalSpacing(SECTION_SPACING)
+        self.exact_raster_mask_check = QCheckBox("Exact raster mask")
+        self.exact_raster_mask_check.setChecked(True)
+        self.exact_raster_mask_check.toggled.connect(lambda _checked: self._refresh_footprint_label())
+        exact_mask_row = QHBoxLayout()
+        exact_mask_row.addWidget(self.exact_raster_mask_check, 1)
+        exact_mask_row.addWidget(info_badge("batch.exact_raster_mask", parent=self), 0)
+        polygon_form.addRow("Raster finalization", exact_mask_row)
+        self.mask_engine_combo = QComboBox()
+        self.mask_engine_combo.addItem("Automatic - Recommended", "automatic")
+        self.mask_engine_combo.addItem("Managed Backend", "backend_rasterio_mask")
+        self.mask_engine_combo.addItem("QGIS/GDAL", "qgis_gdal_mask")
+        self.mask_engine_combo.currentIndexChanged.connect(lambda _index: self._refresh_footprint_label())
+        mask_engine_row = QHBoxLayout()
+        mask_engine_row.addWidget(self.mask_engine_combo, 1)
+        mask_engine_row.addWidget(info_badge("batch.mask_implementation", parent=self), 0)
+        polygon_form.addRow("Mask implementation", mask_engine_row)
+        self.crop_to_polygon_extent_check = QCheckBox("Crop raster to polygon extent")
+        self.all_touched_mask_check = QCheckBox("Include touched cells")
+        self.retain_unmasked_intermediate_check = QCheckBox("Retain unmasked intermediate")
+        self.crop_to_polygon_extent_check.toggled.connect(lambda _checked: self._refresh_footprint_label())
+        crop_extent_row = QHBoxLayout()
+        crop_extent_row.addWidget(self.crop_to_polygon_extent_check, 1)
+        crop_extent_row.addWidget(info_badge("batch.crop_to_polygon_extent", parent=self), 0)
+        polygon_form.addRow("", crop_extent_row)
+        self.all_touched_mask_check.toggled.connect(lambda _checked: self._refresh_footprint_label())
+        all_touched_row = QHBoxLayout()
+        all_touched_row.addWidget(self.all_touched_mask_check, 1)
+        all_touched_row.addWidget(info_badge("batch.include_touched_cells", parent=self), 0)
+        polygon_form.addRow("", all_touched_row)
+        self.retain_unmasked_intermediate_check.toggled.connect(lambda _checked: self._refresh_footprint_label())
+        retain_intermediate_row = QHBoxLayout()
+        retain_intermediate_row.addWidget(self.retain_unmasked_intermediate_check, 1)
+        retain_intermediate_row.addWidget(info_badge("batch.retain_unmasked_intermediate", parent=self), 0)
+        polygon_form.addRow("", retain_intermediate_row)
+        self.mask_failure_policy_combo = QComboBox()
+        self.mask_failure_policy_combo.addItem("Fail product if mask fails", "fail_product")
+        self.mask_failure_policy_combo.addItem("Keep generated raster with warning", "warn_unmasked")
+        self.mask_failure_policy_combo.currentIndexChanged.connect(lambda _index: self._refresh_footprint_label())
+        mask_failure_row = QHBoxLayout()
+        mask_failure_row.addWidget(self.mask_failure_policy_combo, 1)
+        mask_failure_row.addWidget(info_badge("batch.mask_failure_policy", parent=self), 0)
+        polygon_form.addRow("Mask failure policy", mask_failure_row)
+        polygon_finalization.addLayout(polygon_form)
+        polygon_finalization.addWidget(_details_label("Applies to Polygon Area Processing raster outputs. Final registered outputs use the masked raster when exact masking is enabled."))
+        _wire_collapsible_group(polygon_finalization_group)
         _wire_collapsible_group(advanced_batch_group)
         for check in self.product_checks.values():
             check.toggled.connect(lambda _checked: self._refresh_footprint_label())
@@ -3003,6 +3077,15 @@ class BatchPage(MissionPage):
             recursive=True,
             title="PyForestScan Polygon Batch",
             catalog_path=self._polygon_catalog_path(),
+            shared_execution_options=BatchExecutionOptions.from_batch_settings(settings),
+            polygon_options=PolygonBatchOptions(
+                exact_raster_mask=self.exact_raster_mask_check.isChecked(),
+                mask_engine=str(self.mask_engine_combo.currentData() or "automatic"),
+                all_touched=self.all_touched_mask_check.isChecked(),
+                crop_to_polygon_extent=self.crop_to_polygon_extent_check.isChecked(),
+                retain_unmasked_intermediate=self.retain_unmasked_intermediate_check.isChecked(),
+                mask_failure_policy=str(self.mask_failure_policy_combo.currentData() or "fail_product"),
+            ),
         )
 
     def _update_run_button_enabled(self) -> None:
@@ -3094,11 +3177,27 @@ class BatchPage(MissionPage):
             selected_count = len(getattr(self.preflight_report, "selected_sources", ())) if self.preflight_report is not None else 0
             selected_products = [product for product, check in self.product_checks.items() if check.isChecked()]
             products = [PRODUCT_LABELS[product] for product in selected_products]
+            source_types = {getattr(source, "source_type", "unknown") for source in getattr(self.preflight_report, "selected_sources", ())} if self.preflight_report is not None else set()
+            settings = BatchProductSettings(
+                products=tuple(selected_products),
+                grid_resolution=self.resolution_spin.value(),
+                execution_mode=str(self.execution_mode_combo.currentData()),
+                max_workers=self.max_workers_spin.value(),
+                load_outputs_into_qgis=self.load_outputs_check.isChecked(),
+                stop_on_error=self.stop_on_error_check.isChecked(),
+                retry_failed_only=self.retry_failed_only_check.isChecked(),
+                overwrite_existing=self.overwrite_existing_check.isChecked(),
+                skip_completed=self.skip_completed_check.isChecked(),
+            )
+            concurrency = requested_effective_concurrency(BatchExecutionOptions.from_batch_settings(settings), source_types=source_types, product_count=max(1, len(selected_products)))
             self.footprint_label.setText(
                 f"Polygon intersecting sources: {selected_count} after preflight\n"
                 f"Selected products: {', '.join(products) if products else 'none'}\n"
                 f"Shared grid resolution: {self.resolution_spin.value():g}\n"
-                "Polygon Batch clips sources first, then runs the standard Batch product pipeline on clipped inputs."
+                f"Concurrency: requested {concurrency['requested_concurrent_jobs']}; effective {concurrency['effective_concurrent_jobs']}\n"
+                f"Exact raster mask: {'on' if self.exact_raster_mask_check.isChecked() else 'off'}; engine {self.mask_engine_combo.currentText()}\n"
+                f"Output loading: {'after completion' if self.load_outputs_check.isChecked() else 'manual from Results'}\n"
+                f"{concurrency['reason']}"
             )
             return
         selected_count = len(self._selected_paths())
@@ -3414,14 +3513,16 @@ class ResultsPage(MissionPage):
         all_candidates = collect_loadable_outputs(paths, self._job_result_types)
         existing_sources = tuple(self._loaded_output_paths) + self._project_layer_sources()
         candidates = collect_loadable_outputs(paths, self._job_result_types, existing_sources)
+        already_loaded = max(0, len(all_candidates) - len(candidates))
         if not candidates:
-            message = output_loading_summary(0, len(all_candidates))
+            message = output_loading_summary(0, len(all_candidates), already_loaded_count=already_loaded)
             self._set_load_message(message)
             self.load_outputs_button.setEnabled(bool(all_candidates))
             self.outputsLoaded.emit(message, 0, len(all_candidates))
             return
         if self.iface is None:
-            self._set_load_message("QGIS interface unavailable.")
+            message = output_loading_summary(0, len(candidates), already_loaded_count=already_loaded, failed_count=len(candidates))
+            self._set_load_message("QGIS interface unavailable.\n" + message)
             self.load_outputs_button.setEnabled(True)
             self.outputsLoaded.emit("QGIS interface unavailable.", 0, len(candidates))
             return
@@ -3430,7 +3531,8 @@ class ResultsPage(MissionPage):
             if self._load_output(output):
                 self._loaded_output_paths.add(output.path)
                 loaded += 1
-        message = output_loading_summary(loaded, len(candidates))
+        failed = max(0, len(candidates) - loaded)
+        message = output_loading_summary(loaded, len(all_candidates), already_loaded_count=already_loaded, failed_count=failed)
         self._set_load_message(message)
         self.load_outputs_button.setEnabled(bool(self._candidate_output_paths()))
         self.outputsLoaded.emit(message, loaded, len(candidates))

@@ -25,3 +25,7 @@ Secrets are not logged. Environment diagnostics retain only a small allowlist of
 Structured errors use plugin-owned categories such as `REQUEST_VALIDATION_FAILED`, `BACKEND_CONTRACT_MISMATCH`, `EPT_BOUNDS_INVALID`, `EPT_BOUNDS_OUTSIDE_DATASET`, `EPT_READER_REJECTED_BOUNDS`, `POLYGON_FILE_INVALID`, `OUTPUT_NOT_WRITABLE`, `PYFORESTSCAN_EXECUTION_FAILED`, and `UNKNOWN_BACKEND_FAILURE`.
 
 Progress events carry a sequence number and timestamp model in `ProgressEvent`. The final job state should be shown as the primary card, with chronological progress history expanded only when needed.
+
+## Phase 27M Output Diagnostics
+
+Polygon manifests now include shared Batch options, polygon finalization options, applicability explanations, requested/effective concurrency, mask records, and generated output registry paths. Mask records distinguish backend rasterio and QGIS/GDAL service contracts.

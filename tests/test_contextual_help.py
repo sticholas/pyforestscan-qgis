@@ -42,9 +42,24 @@ class ContextualHelpStaticTests(unittest.TestCase):
 
     def test_batch_help_uses_registered_topic_keys(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
-        self.assertIn('info_badge("batch.lidar_repository"', source)
-        self.assertIn('info_badge("batch.polygon"', source)
-        self.assertIn('info_badge("batch.repository_setup_method"', source)
+        topics = (ROOT / "pyforestscan_qgis/ui/help_topics.py").read_text(encoding="utf-8")
+        for key in (
+            "batch.lidar_repository",
+            "batch.polygon",
+            "batch.repository_setup_method",
+            "batch.processing_concurrency",
+            "batch.concurrent_jobs",
+            "batch.effective_concurrency",
+            "batch.load_outputs_after_completion",
+            "batch.exact_raster_mask",
+            "batch.mask_implementation",
+            "batch.crop_to_polygon_extent",
+            "batch.include_touched_cells",
+            "batch.retain_unmasked_intermediate",
+            "batch.mask_failure_policy",
+        ):
+            self.assertIn(f'info_badge("{key}"', source)
+            self.assertIn(f'"{key}": HelpTopic', topics)
 
 
 if __name__ == "__main__":
