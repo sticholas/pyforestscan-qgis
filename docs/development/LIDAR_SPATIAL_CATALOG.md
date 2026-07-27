@@ -142,3 +142,7 @@ Mounted and network-like paths default to user-local catalog storage under PyFor
 ## Phase 27K Workload Estimates
 
 Catalog point counts from EPT or COPC root metadata are not treated as polygon-subset estimates. Unless a measured or otherwise defensible subset estimate exists, preflight reports estimated points as unavailable and records the reason. Independent local tile point-count sums may still be shown with High confidence when catalog assumptions are valid.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.

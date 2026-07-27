@@ -18,3 +18,7 @@ Unknown or mismatched CRS is a blocker unless the polygon has already been trans
 ## No-Coverage Experience
 
 Outside polygons keep the repository identity as EPT and report no LiDAR coverage. Diagnostics include polygon extent, repository extent, comparison CRS, overlap status, and rejected-source reason codes.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.

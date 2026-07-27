@@ -38,3 +38,7 @@ Batch Advanced Options now use InfoBadge topics for processing concurrency, conc
 ## Phase 27N Guided Help
 
 The Batch page now exposes spatial-selection preview actions and processing profiles. Future help expansion should add badges to guided step headings only where the term changes user decisions.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.

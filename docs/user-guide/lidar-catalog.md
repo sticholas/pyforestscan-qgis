@@ -76,3 +76,7 @@ For network or mounted repositories, new catalogs default to user-local PyForest
 ## Estimate Confidence
 
 For EPT and COPC, root metadata point counts describe the source and are not automatically used as polygon-subset estimates. Mission Control reports estimated points as unavailable when the available metadata cannot support a reliable estimate. This is intentional and avoids misleading high-confidence counts.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.

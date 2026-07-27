@@ -61,3 +61,7 @@ The polygon transport fix is covered by QGIS-free regression tests and synthetic
 ## Phase 27N Remaining Limitations
 
 Live QGIS spatial diagnostic layers are represented by UI actions and structured details, but full temporary map-layer rendering still needs live QGIS validation. Saved-workspace stale-plan blocking is recorded by plan signature but remains a follow-up for deeper workspace integration.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.

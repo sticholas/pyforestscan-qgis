@@ -198,3 +198,7 @@ Polygon raster outputs are masked after product generation and before output reg
 ## Phase 27N Guided Polygon Workflow
 
 Polygon Area Processing now builds a `PolygonExecutionPlan` during preflight and presents a compact guided review before the technical report. Repository identity, source selection, concurrency, exact clipping, and output loading all come from the same plan.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.

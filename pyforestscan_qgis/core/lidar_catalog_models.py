@@ -160,6 +160,10 @@ class LidarCatalogQueryResult:
     timing_seconds: dict[str, float] | None = None
     point_estimate_confidence: str = "Unavailable"
     workload_estimate: WorkloadEstimate | None = None
+    catalog_integrity_status: str = "Unknown"
+    catalog_usable_source_count: int = 0
+    skip_reason_counts: dict[str, int] | None = None
+    repository_extent: Bounds2D | None = None
 
     @property
     def source_records(self) -> tuple[LidarSourceRecord, ...]:

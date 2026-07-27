@@ -22,3 +22,7 @@
 The signature includes repository identity, polygon geometry hash, CRS, products, Batch options, mask options, output folder, and backend readiness. When polygon, repository, products, settings, or output folder change, a new preflight produces a new signature.
 
 Run buttons should only execute a current plan. The current implementation records and displays the signature; fuller stale-plan blocking across saved workspaces remains a follow-up.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.

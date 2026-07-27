@@ -19,3 +19,7 @@ Support summaries should include product, failed stage, error code, request boun
 ## Polygon No-Coverage Diagnostics
 
 If Polygon Area Processing finds no coverage, use Preview Spatial Selection, Zoom to Polygon, Zoom to Repository Extent, and Check Coordinate Systems. For EPT datasets, no-coverage does not mean the repository stopped being EPT.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.

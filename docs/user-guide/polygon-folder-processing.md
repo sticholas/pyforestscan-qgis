@@ -124,3 +124,7 @@ Load generated outputs into QGIS waits for final masking and output registration
 ## Guided Polygon Workflow
 
 Use the Batch page in order: choose LiDAR data, choose area, choose outputs, choose output and quality settings, review the plan, then run. EPT repositories stay identified as EPT regardless of polygon shape; outside polygons show a coverage diagnosis rather than a generic catalog message.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.

@@ -180,7 +180,7 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         blockers.append(str(exc))
         plan = _empty_plan(inventory, request, query_geometry, warnings)
     warnings.extend(plan.warnings)
-    if not selected and not any("No LiDAR coverage" in item for item in blockers):
+    if not selected and not any("No LiDAR coverage" in item or "Catalog" in item or "spatial bounds" in item for item in blockers):
         blockers.append("No LiDAR coverage was found for this area.")
     point_count = selection.workload_estimate.point_estimate if selection.workload_estimate is not None else (None if query is None else query.estimated_point_count)
     source_bytes = 0 if query is None else query.estimated_bytes
@@ -289,7 +289,12 @@ def polygon_preflight_text(report: PolygonBatchPreflightReport) -> str:
         if repository_kind == "ept":
             lines.append("- Selection method: native EPT extent overlap")
         else:
+            lines.append(f"- Catalog integrity: {getattr(query, 'catalog_integrity_status', 'Unknown')}")
+            lines.append(f"- Usable spatial sources: {getattr(query, 'catalog_usable_source_count', 0)}")
             lines.append(f"- Skipped catalog sources: {report.catalog_skipped_count}")
+            skip_counts = getattr(query, 'skip_reason_counts', None) or {}
+            for code, count in sorted(skip_counts.items()):
+                lines.append(f"  - {count:,} {code}")
         lines.append(f"- Metadata errors: {query.metadata_error_count}")
     if report.source_selection is not None:
         lines.append(f"- Polygon original CRS: {report.request.polygon.source_crs}")

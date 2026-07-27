@@ -23,3 +23,7 @@ Guided mode uses profiles instead of making users reason about worker topology:
 - Custom: exposes detailed worker settings.
 
 Specialist controls remain under Advanced Batch Options and Polygon Finalization.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.

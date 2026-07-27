@@ -56,3 +56,7 @@ Technical strategy names are kept for logs and Advanced diagnostics.
 ## Guided Help
 
 Use the blue information badges beside repository setup controls for concise explanations. Automatic Setup remains recommended. Technical strategy names are reserved for Advanced diagnostics and logs.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.

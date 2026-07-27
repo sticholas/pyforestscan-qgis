@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import math
 import os
 import struct
 from pathlib import Path
 from typing import Callable, Iterable
 
 from .lidar_catalog import connect_catalog, record_for_relative_path, upsert_records
+from .lidar_catalog_integrity import write_catalog_identity
 from .ept_repository import prune_ept_traversal, resolve_ept_selection, is_ept_internal_path
 from .lidar_catalog_models import CatalogBuildOptions, LidarCatalogBuildResult, LidarCatalogRecord, default_lidar_catalog_path, source_id_for, stable_root_id, utc_now_iso
 from .lidar_inventory import lidar_source_type
@@ -105,6 +107,8 @@ def build_lidar_catalog(
             connection.executemany("DELETE FROM lidar_source_bounds WHERE id = ?", ((item,) for item in deleted_ids))
             deleted = len(deleted_ids)
             connection.commit()
+        write_catalog_identity(connection, root, source_count=discovered)
+        connection.commit()
         if progress_callback is not None:
             progress_callback({"stage": "Verifying Catalog", "discovered": discovered, "indexed": indexed, "errors": errors, "unchanged": unchanged, "deleted": deleted})
             progress_callback({"stage": "Finalizing", "discovered": discovered, "indexed": indexed, "errors": errors, "unchanged": unchanged, "deleted": deleted})
@@ -165,6 +169,8 @@ def inspect_lidar_header(path: Path, root: Path, root_id: str) -> LidarCatalogRe
             metadata = _inspect_ept(path)
         else:
             metadata = _inspect_las_public_header(path)
+        if not _metadata_has_usable_bounds(metadata):
+            raise ValueError(_metadata_bounds_error(metadata))
         signature = _header_signature(stat.st_size, stat.st_mtime_ns, metadata)
         return LidarCatalogRecord(
             source_id=source_id,
@@ -251,6 +257,42 @@ def _inspect_las_public_header(path: Path) -> dict[str, object]:
         "scale_signature": f"{x_scale:g},{y_scale:g},{z_scale:g}:{x_offset:g},{y_offset:g},{z_offset:g}",
     }
 
+
+
+def _metadata_has_usable_bounds(metadata: dict[str, object]) -> bool:
+    try:
+        xmin = float(metadata.get("xmin"))
+        xmax = float(metadata.get("xmax"))
+        ymin = float(metadata.get("ymin"))
+        ymax = float(metadata.get("ymax"))
+    except (TypeError, ValueError):
+        return False
+    values = (xmin, xmax, ymin, ymax)
+    if not all(math.isfinite(value) for value in values):
+        return False
+    if xmin >= xmax or ymin >= ymax:
+        return False
+    if all(abs(value) < 1e-12 for value in values):
+        return False
+    if any(abs(value) > 1e12 for value in values):
+        return False
+    return True
+
+
+def _metadata_bounds_error(metadata: dict[str, object]) -> str:
+    values = tuple(metadata.get(key) for key in ("xmin", "xmax", "ymin", "ymax"))
+    if any(value is None for value in values):
+        return "BOUNDS_MISSING: source header does not provide complete XY bounds."
+    try:
+        floats = tuple(float(value) for value in values)
+    except (TypeError, ValueError):
+        return "BOUNDS_INVALID: source header bounds are not numeric."
+    if not all(math.isfinite(value) for value in floats):
+        return "BOUNDS_NONFINITE: source header bounds are not finite."
+    xmin, xmax, ymin, ymax = floats
+    if xmin >= xmax or ymin >= ymax:
+        return "BOUNDS_INVALID: source header bounds do not describe a positive XY extent."
+    return "BOUNDS_INVALID: source header bounds are implausible."
 
 def _header_signature(size: int, modified_ns: int, metadata: dict[str, object]) -> str:
     return ":".join(

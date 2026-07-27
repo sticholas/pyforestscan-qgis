@@ -322,8 +322,13 @@ class PolygonSourceSelectionService:
         )
         warnings = tuple(_message("CATALOG_WARNING", "warning", "Catalog warning", item) for item in query.warnings)
         blockers: tuple[PreflightMessage, ...] = ()
+        integrity_status = getattr(query, "catalog_integrity_status", "Unknown")
         if not query.records:
-            blockers = (_message("NO_COVERAGE", "blocker", "No LiDAR coverage", "No LiDAR coverage was found for this area."),)
+            if integrity_status != "Healthy":
+                blocker_text = next((item for item in query.warnings if "catalog" in item.lower() or "spatial bounds" in item.lower() or "supported" in item.lower()), "Repository catalog is not spatially usable.")
+                blockers = (_message("CATALOG_NOT_SPATIALLY_USABLE", "blocker", "Catalog Needs Repair", blocker_text, "Run Inspect Repository or Repair Catalog before polygon processing.", "Repair Catalog"),)
+            else:
+                blockers = (_message("NO_COVERAGE", "blocker", "No LiDAR coverage", "No LiDAR coverage was found for this area."),)
         return PolygonSourceSelectionResult(
             repository_kind=repository.repository_kind,
             logical_candidates=query.source_records,
@@ -331,8 +336,8 @@ class PolygonSourceSelectionService:
             rejected_sources=(),
             transformed_polygon=query_geometry.exact_polygon_wkt,
             transformed_envelope=transformed_envelope,
-            source_extent=None,
-            overlap_result="unknown" if query.records else "no",
+            source_extent=None if getattr(query, "repository_extent", None) is None else SpatialEnvelope.from_bounds(query.repository_extent, query_geometry.catalog_crs),
+            overlap_result="yes" if query.records else "no",
             exact_intersection_result="envelope",
             warnings=warnings,
             blockers=blockers,

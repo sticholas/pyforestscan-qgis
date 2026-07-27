@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 from .lidar_catalog import connect_catalog, query_intersecting_records
+from .lidar_catalog_integrity import inspect_catalog_integrity
 from .lidar_catalog_models import CatalogThresholds, LidarCatalogQuery, LidarCatalogQueryResult, PolygonQueryGeometry, WorkloadEstimate, stable_root_id
 from .polygon_source import NormalizedPolygonSelection
 from .spatial_selection import Bounds2D, polygon_selection_from_wkt
@@ -73,6 +74,7 @@ def query_catalog_for_polygon(
     geometry = derive_polygon_query_geometry(polygon, catalog_crs=catalog_crs)
     query = LidarCatalogQuery(Path(catalog_path), Path(root_path), geometry.envelope, geometry.exact_polygon_wkt, geometry.catalog_crs, thresholds)
     start = time.perf_counter()
+    integrity = inspect_catalog_integrity(catalog_path, root_path)
     connection = connect_catalog(catalog_path)
     try:
         root_id = stable_root_id(root_path)
@@ -100,6 +102,13 @@ def query_catalog_for_polygon(
     finally:
         connection.close()
     warnings = list(geometry.warnings)
+    if integrity.status != "Healthy":
+        blocker = integrity.preflight_blocker_message()
+        if blocker:
+            warnings.append(blocker)
+        warnings.extend(integrity.messages)
+    elif integrity.extent_union is not None and not geometry.envelope.intersects(integrity.extent_union):
+        warnings.append("Healthy catalog coverage does not overlap the selected polygon envelope.")
     candidate_count = len(records)
     limited = False
     if candidate_count > thresholds.max_candidates_per_run:
@@ -145,6 +154,10 @@ def query_catalog_for_polygon(
         },
         point_estimate_confidence=estimate_confidence,
         workload_estimate=workload_estimate,
+        catalog_integrity_status=integrity.status,
+        catalog_usable_source_count=integrity.rtree_row_count,
+        skip_reason_counts=integrity.skip_reason_counts,
+        repository_extent=integrity.extent_union,
     )
 
 

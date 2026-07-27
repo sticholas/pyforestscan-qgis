@@ -79,6 +79,11 @@ from ..core.polygon_normalization import normalize_polygon_source
 from ..core.lidar_catalog_jobs import CatalogJobRunner, CatalogJobSpec, CatalogJobStatus, latest_catalog_job_state
 from ..core.lidar_catalog_models import default_lidar_catalog_path, move_lidar_catalog_to_local_storage
 from ..core.lidar_catalog_probe import quick_probe_lidar_repository, select_lidar_repository_path
+from ..core.lidar_repository_discovery import discover_lidar_repository
+from ..core.lidar_catalog_integrity import inspect_catalog_integrity, repair_catalog, source_view_rows
+from ..core.repository_actions import repository_action_states, repository_setup_recommendation
+from ..core.repository_coverage import build_repository_coverage_model
+from ..core.repository_diagnostics import export_repository_diagnostic_report
 from ..core.polygon_batch import PolygonBatchRequest, catalog_status_text, execute_polygon_batch, polygon_preflight_text, run_polygon_batch_preflight, write_polygon_batch_manifest
 from ..core.job_manager import JobExecutionError, JobManager
 from ..core.knowledge import RecommendationReport
@@ -1963,8 +1968,8 @@ class BatchPage(MissionPage):
         self.use_polygon_path_button = QPushButton("Use Path")
         self.use_polygon_path_button.clicked.connect(self.use_polygon_repository_path)
         _apply_button_role(self.use_polygon_path_button, "neutral")
-        self.quick_probe_button = QPushButton("Quick Probe")
-        self.quick_probe_button.clicked.connect(self.quick_probe_polygon_repository)
+        self.quick_probe_button = QPushButton("Inspect Data Folder")
+        self.quick_probe_button.clicked.connect(self.inspect_polygon_repository)
         _apply_button_role(self.quick_probe_button, "secondary")
         self.polygon_refresh_folder_button = QPushButton("Refresh Catalog Status")
         self.polygon_refresh_folder_button.clicked.connect(self.refresh_polygon_lidar_folder)
@@ -2033,12 +2038,15 @@ class BatchPage(MissionPage):
         polygon_source.addWidget(self.polygon_index_plan_text)
         catalog_actions = QHBoxLayout()
         catalog_actions.setSpacing(ACTION_ROW_SPACING)
+        self.inspect_repository_button = QPushButton("Inspect Repository")
+        self.inspect_repository_button.clicked.connect(self.inspect_polygon_repository)
+        _apply_button_role(self.inspect_repository_button, "secondary")
         self.build_catalog_button = QPushButton("Scan File Headers")
         self.build_catalog_button.setToolTip("Build Catalog")
         self.build_catalog_button.clicked.connect(self.build_polygon_catalog)
         _apply_button_role(self.build_catalog_button, "secondary")
         self.update_catalog_button = QPushButton("Update Catalog")
-        self.update_catalog_button.clicked.connect(self.build_polygon_catalog)
+        self.update_catalog_button.clicked.connect(self.update_polygon_catalog)
         _apply_button_role(self.update_catalog_button, "secondary")
         self.resume_catalog_button = QPushButton("Resume Catalog Build")
         self.resume_catalog_button.clicked.connect(self.resume_polygon_catalog)
@@ -2047,6 +2055,18 @@ class BatchPage(MissionPage):
         self.pause_catalog_button.clicked.connect(self.pause_polygon_catalog)
         self.pause_catalog_button.setEnabled(False)
         _apply_button_role(self.pause_catalog_button, "secondary")
+        self.repair_catalog_button = QPushButton("Repair Catalog")
+        self.repair_catalog_button.clicked.connect(self.repair_polygon_catalog)
+        _apply_button_role(self.repair_catalog_button, "secondary")
+        self.add_coverage_button = QPushButton("Add Coverage to Map")
+        self.add_coverage_button.clicked.connect(self.add_polygon_repository_coverage)
+        _apply_button_role(self.add_coverage_button, "secondary")
+        self.view_sources_button = QPushButton("View Sources")
+        self.view_sources_button.clicked.connect(self.view_polygon_repository_sources)
+        _apply_button_role(self.view_sources_button, "neutral")
+        self.export_repository_diagnostic_button = QPushButton("Export Diagnostic Report")
+        self.export_repository_diagnostic_button.clicked.connect(self.export_polygon_repository_diagnostic)
+        _apply_button_role(self.export_repository_diagnostic_button, "neutral")
         self.repair_ept_catalog_button = QPushButton("Repair EPT Catalog")
         self.repair_ept_catalog_button.clicked.connect(self.repair_polygon_ept_catalog)
         self.repair_ept_catalog_button.setVisible(False)
@@ -2058,10 +2078,15 @@ class BatchPage(MissionPage):
         self.open_catalog_folder_button = QPushButton("Open Catalog Folder")
         self.open_catalog_folder_button.clicked.connect(self.open_polygon_catalog_folder)
         _apply_button_role(self.open_catalog_folder_button, "neutral")
+        catalog_actions.addWidget(self.inspect_repository_button)
         catalog_actions.addWidget(self.build_catalog_button)
         catalog_actions.addWidget(self.update_catalog_button)
         catalog_actions.addWidget(self.resume_catalog_button)
         catalog_actions.addWidget(self.pause_catalog_button)
+        catalog_actions.addWidget(self.repair_catalog_button)
+        catalog_actions.addWidget(self.add_coverage_button)
+        catalog_actions.addWidget(self.view_sources_button)
+        catalog_actions.addWidget(self.export_repository_diagnostic_button)
         catalog_actions.addWidget(self.repair_ept_catalog_button)
         catalog_actions.addWidget(self.move_catalog_local_button)
         catalog_actions.addWidget(self.open_catalog_folder_button)
@@ -2483,7 +2508,29 @@ class BatchPage(MissionPage):
         self.preflight_text.setPlainText("\n".join(lines))
 
     def _show_spatial_action(self, action: str) -> None:
-        self.preflight_text.setPlainText(f"{action} requested. In live QGIS, use Preview Spatial Selection to inspect polygon and repository coverage overlays.")
+        report = self.preflight_report
+        if report is None or getattr(report, "source_selection", None) is None:
+            self.preflight_text.setPlainText(f"{action} needs a current preflight plan. Click Re-run Preflight first.")
+            return
+        selection = report.source_selection
+        lines = [action, "Visible feedback: spatial action model prepared for live QGIS canvas."]
+        if action == "Zoom to Polygon":
+            extent = selection.transformed_envelope
+            lines.append(f"Target polygon extent ({extent.crs}): {extent.xmin:g}, {extent.ymin:g}, {extent.xmax:g}, {extent.ymax:g}")
+        elif action == "Zoom to Repository Extent":
+            extent = selection.source_extent
+            if extent is None:
+                lines.append("Repository extent is unavailable; inspect or repair the catalog.")
+            else:
+                lines.append(f"Target repository extent ({extent.crs}): {extent.xmin:g}, {extent.ymin:g}, {extent.xmax:g}, {extent.ymax:g}")
+        else:
+            extent = selection.source_extent
+            poly = selection.transformed_envelope
+            if extent is None:
+                lines.append(f"Combined extent uses polygon only because repository extent is unavailable: {poly.xmin:g}, {poly.ymin:g}, {poly.xmax:g}, {poly.ymax:g}")
+            else:
+                lines.append(f"Combined extent ({poly.crs}): {min(poly.xmin, extent.xmin):g}, {min(poly.ymin, extent.ymin):g}, {max(poly.xmax, extent.xmax):g}, {max(poly.ymax, extent.ymax):g}")
+        self.preflight_text.setPlainText("\n".join(lines))
 
     def browse_polygon_lidar_folder(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Choose LiDAR repository")
@@ -2508,6 +2555,29 @@ class BatchPage(MissionPage):
         self.refresh_catalog_status()
         self.preflight_text.setPlainText("Catalog status refreshed. No repository scan was performed. Run polygon preflight to query intersecting sources.")
         self._update_run_button_enabled()
+
+    def inspect_polygon_repository(self) -> None:
+        folder = self.polygon_lidar_folder_edit.text().strip()
+        if not folder:
+            self.polygon_catalog_status_label.setText("Inspect Repository needs a LiDAR repository path.")
+            return
+        discovery = discover_lidar_repository(folder)
+        path = self._polygon_catalog_path()
+        integrity = inspect_catalog_integrity(path, discovery.normalized_root) if path is not None else None
+        recommendation, action = repository_setup_recommendation(discovery, integrity)
+        lines = ["Repository Inspection", *discovery.summary_lines(), "", "Existing catalog:"]
+        if integrity is None:
+            lines.append("- Not found")
+        else:
+            lines.extend(f"- {line}" for line in integrity.summary_lines())
+            if integrity.skip_reason_counts:
+                lines.append("Skipped/problem sources:")
+                for code, count in sorted(integrity.skip_reason_counts.items()):
+                    lines.append(f"- {count:,} {code}")
+        lines.extend(("", f"Recommended action: {action}", recommendation))
+        self.polygon_index_plan_text.setPlainText("\n".join(lines))
+        self.polygon_catalog_status_label.setText(recommendation)
+        self.refresh_catalog_status()
 
     def quick_probe_polygon_repository(self) -> None:
         folder = self.polygon_lidar_folder_edit.text().strip()
@@ -2543,10 +2613,15 @@ class BatchPage(MissionPage):
             self.polygon_catalog_status_label.setText("Repository not prepared - choose a LiDAR repository, then Prepare Repository.")
             self.detect_index_strategy_button.setEnabled(False)
             self.build_relevant_index_button.setEnabled(False)
+            self.inspect_repository_button.setEnabled(False)
             self.build_catalog_button.setEnabled(False)
             self.update_catalog_button.setEnabled(False)
             self.resume_catalog_button.setEnabled(False)
             self.pause_catalog_button.setEnabled(False)
+            self.repair_catalog_button.setEnabled(False)
+            self.add_coverage_button.setEnabled(False)
+            self.view_sources_button.setEnabled(False)
+            self.export_repository_diagnostic_button.setEnabled(False)
             self.repair_ept_catalog_button.setVisible(False)
             self.repair_ept_catalog_button.setEnabled(False)
             self.move_catalog_local_button.setVisible(False)
@@ -2566,12 +2641,24 @@ class BatchPage(MissionPage):
         self.polygon_catalog_status_label.setText(state_text if selection.valid else selection.message)
         exists = bool(path and path.exists())
         interrupted = bool(latest is not None and latest.status in {CatalogJobStatus.INTERRUPTED, CatalogJobStatus.PAUSED})
+        integrity = inspect_catalog_integrity(path, selection.normalized_path) if path is not None else None
+        states = repository_action_states(has_repository=selection.valid, repository_readable=selection.readable, catalog_exists=exists, integrity=integrity, latest_job=latest, running=running)
         self.detect_index_strategy_button.setEnabled(selection.valid and not running)
         self.build_relevant_index_button.setEnabled(selection.valid and not running)
-        self.build_catalog_button.setEnabled(selection.valid and not running)
-        self.update_catalog_button.setEnabled(selection.valid and exists and not running)
-        self.resume_catalog_button.setEnabled(selection.valid and interrupted and not running)
-        self.pause_catalog_button.setEnabled(running)
+        self.inspect_repository_button.setEnabled(states.inspect_repository.enabled)
+        self.inspect_repository_button.setToolTip(states.inspect_repository.disabled_reason)
+        self.build_catalog_button.setEnabled(states.scan_file_headers.enabled)
+        self.update_catalog_button.setEnabled(states.update_catalog.enabled)
+        self.update_catalog_button.setToolTip(states.update_catalog.disabled_reason)
+        self.resume_catalog_button.setEnabled(states.resume_catalog_build.enabled)
+        self.resume_catalog_button.setToolTip(states.resume_catalog_build.disabled_reason)
+        self.pause_catalog_button.setEnabled(states.pause_after_current_chunk.enabled)
+        self.repair_catalog_button.setEnabled(states.repair_catalog.enabled)
+        self.repair_catalog_button.setToolTip(states.repair_catalog.disabled_reason)
+        self.add_coverage_button.setEnabled(states.add_coverage_to_map.enabled)
+        self.add_coverage_button.setToolTip(states.add_coverage_to_map.disabled_reason)
+        self.view_sources_button.setEnabled(exists and not running)
+        self.export_repository_diagnostic_button.setEnabled(selection.valid and exists and not running)
         local_catalog_path = default_lidar_catalog_path(selection.normalized_path)
         move_local_available = bool(selection.valid and path and path.exists() and Path(path) != local_catalog_path)
         self.repair_ept_catalog_button.setVisible(incorrect_ept_catalog)
@@ -2663,8 +2750,78 @@ class BatchPage(MissionPage):
     def build_polygon_catalog(self) -> None:
         self._start_polygon_catalog_job("lidar_catalog_build")
 
+    def update_polygon_catalog(self) -> None:
+        self._start_polygon_catalog_job("lidar_catalog_update")
+
     def resume_polygon_catalog(self) -> None:
+        path = self._polygon_catalog_path()
+        latest = latest_catalog_job_state(path) if path is not None else None
+        if latest is None or latest.status not in {CatalogJobStatus.INTERRUPTED, CatalogJobStatus.PAUSED}:
+            self.polygon_index_plan_text.setPlainText("No paused or incomplete catalog build exists for this repository.")
+            self.refresh_catalog_status()
+            return
         self._start_polygon_catalog_job("lidar_catalog_resume")
+
+    def repair_polygon_catalog(self) -> None:
+        folder = self.polygon_lidar_folder_edit.text().strip()
+        path = self._polygon_catalog_path()
+        if not folder or path is None:
+            self.polygon_index_plan_text.setPlainText("Choose a LiDAR repository before repairing a catalog.")
+            return
+        selection = select_lidar_repository_path(folder)
+        report = repair_catalog(path, selection.normalized_path)
+        lines = [report.message, "", "Before:", *report.before.summary_lines(), "", "After:", *report.after.summary_lines()]
+        if report.backup_path:
+            lines.append(f"Backup: {report.backup_path}")
+        self.polygon_index_plan_text.setPlainText("\n".join(lines))
+        self.refresh_catalog_status()
+
+    def add_polygon_repository_coverage(self) -> None:
+        folder = self.polygon_lidar_folder_edit.text().strip()
+        path = self._polygon_catalog_path()
+        if not folder or path is None:
+            self.polygon_index_plan_text.setPlainText("Choose a LiDAR repository before adding coverage.")
+            return
+        selection = select_lidar_repository_path(folder)
+        model = build_repository_coverage_model(path, selection.normalized_path, mode="outline")
+        lines = [
+            "Repository Coverage",
+            f"QGIS group: {model.group_name}",
+            f"Mode: {model.mode}",
+            f"Features prepared: {len(model.features)}",
+            model.message,
+        ]
+        if model.union_extent is not None:
+            lines.append(f"Extent: X {model.union_extent.xmin:g}-{model.union_extent.xmax:g}; Y {model.union_extent.ymin:g}-{model.union_extent.ymax:g}")
+        self.polygon_index_plan_text.setPlainText("\n".join(lines))
+
+    def view_polygon_repository_sources(self) -> None:
+        folder = self.polygon_lidar_folder_edit.text().strip()
+        path = self._polygon_catalog_path()
+        if not folder or path is None:
+            self.polygon_index_plan_text.setPlainText("Choose a LiDAR repository before viewing sources.")
+            return
+        selection = select_lidar_repository_path(folder)
+        rows = source_view_rows(path, selection.normalized_path, limit=40)
+        lines = ["Repository Sources", f"Showing {len(rows)} source row(s)", "file | type | status | CRS | bounds | problem"]
+        for row in rows[:40]:
+            bounds = "unavailable" if row.xmin is None else f"{row.xmin:g},{row.ymin:g},{row.xmax:g},{row.ymax:g}"
+            lines.append(f"{row.file} | {row.source_type} | {row.status} | {row.crs} | {bounds} | {row.problem or 'usable'}")
+        if not rows:
+            lines.append("No source rows are available.")
+        self.polygon_index_plan_text.setPlainText("\n".join(lines))
+
+    def export_polygon_repository_diagnostic(self) -> None:
+        folder = self.polygon_lidar_folder_edit.text().strip()
+        path = self._polygon_catalog_path()
+        if not folder or path is None:
+            self.polygon_index_plan_text.setPlainText("Choose a LiDAR repository before exporting diagnostics.")
+            return
+        selection = select_lidar_repository_path(folder)
+        output = Path(path).with_name("repository_diagnostic_report.json")
+        export_repository_diagnostic_report(selection.normalized_path, path, output)
+        self.polygon_index_plan_text.setPlainText(f"Repository diagnostic report exported:\n{output}")
+
 
     def _start_polygon_catalog_job(self, job_type: str) -> None:
         folder_text = self.polygon_lidar_folder_edit.text().strip()

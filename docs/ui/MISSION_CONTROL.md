@@ -228,3 +228,7 @@ Results can read `generated_outputs.json` registries from Standard Batch and Pol
 ## Phase 27N Polygon Guided Review
 
 Polygon preflight now shows a concise review with plan status, LiDAR data type, logical inputs, processing capacity, final clipping, warnings, and blockers. The full preflight text remains under Technical Report.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.
