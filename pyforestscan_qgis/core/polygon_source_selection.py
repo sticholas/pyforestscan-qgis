@@ -11,6 +11,7 @@ from typing import Any
 
 from .ept_repository import resolve_ept_selection
 from .lidar_catalog_models import LidarCatalogQuery, LidarCatalogQueryResult, WorkloadEstimate, default_lidar_catalog_path
+from .lidar_catalog_integrity import inspect_catalog_integrity
 from .lidar_catalog_query import derive_polygon_query_geometry, query_catalog_for_polygon
 from .lidar_inventory import LidarSourceRecord
 from .polygon_source import NormalizedPolygonSelection
@@ -272,6 +273,16 @@ class PolygonSourceSelectionService:
                 warnings=warnings,
                 errors=errors,
             )
+        source_crs = None
+        source_extent = None
+        warnings: tuple[str, ...] = ()
+        if catalog.exists():
+            integrity = inspect_catalog_integrity(catalog, resolved)
+            source_crs = integrity.repository_crs_override
+            if integrity.extent_union is not None and source_crs:
+                source_extent = SpatialEnvelope.from_bounds(integrity.extent_union, source_crs)
+            if integrity.status == "CRS Assignment Required":
+                warnings = ("Repository coordinate system assignment is required before coverage can be compared with polygons.",)
         return ResolvedLidarRepository(
             repository_id=_repo_id(resolved, "indexed_repository"),
             selected_path=selected,
@@ -280,9 +291,11 @@ class PolygonSourceSelectionService:
             logical_source_paths=(),
             local_tile_root=resolved if resolved.is_dir() else None,
             catalog_path=catalog,
+            source_crs=source_crs,
+            source_extent=source_extent,
             resolution_method="catalog_required",
             detection_confidence="medium" if catalog.exists() else "low",
-            warnings=(),
+            warnings=warnings,
             errors=(),
         )
 
@@ -324,7 +337,7 @@ class PolygonSourceSelectionService:
         blockers: tuple[PreflightMessage, ...] = ()
         integrity_status = getattr(query, "catalog_integrity_status", "Unknown")
         if not query.records:
-            if integrity_status != "Healthy":
+            if integrity_status not in {"Healthy", "Healthy with validated repository CRS override"}:
                 blocker_text = next((item for item in query.warnings if "catalog" in item.lower() or "spatial bounds" in item.lower() or "supported" in item.lower()), "Repository catalog is not spatially usable.")
                 blockers = (_message("CATALOG_NOT_SPATIALLY_USABLE", "blocker", "Catalog Needs Repair", blocker_text, "Run Inspect Repository or Repair Catalog before polygon processing.", "Repair Catalog"),)
             else:

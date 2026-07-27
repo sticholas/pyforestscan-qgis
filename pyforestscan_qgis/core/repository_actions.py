@@ -76,8 +76,10 @@ def repository_setup_recommendation(discovery: RepositoryDiscoveryReport, integr
         return ("No supported LAS, LAZ, COPC, or EPT data was found in this folder.", "Choose Folder")
     if integrity is None or integrity.status == "Empty":
         return (f"{discovery.supported_files_found:,} LiDAR file(s) found. No usable catalog exists.", "Build Catalog")
-    if integrity.status == "Healthy":
+    if integrity.status in {"Healthy", "Healthy with validated repository CRS override"}:
         return (f"Repository ready. {integrity.rtree_row_count:,} spatial source(s) available.", "Continue")
+    if integrity.status == "CRS Assignment Required":
+        return (f"{discovery.supported_files_found:,} LiDAR file(s) found with bounds, but coordinate system assignment is required.", "Assign Coordinate System")
     if integrity.source_row_count and integrity.rtree_row_count == 0:
         return (f"{discovery.supported_files_found:,} LiDAR file(s) found. Catalog has {integrity.source_row_count:,} source(s) but no valid spatial index.", "Repair Catalog")
     return (f"Catalog status: {integrity.status}. Review problems before processing.", "Repair Catalog")

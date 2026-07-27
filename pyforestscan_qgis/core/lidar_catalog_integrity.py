@@ -39,6 +39,41 @@ class CatalogIdentity:
     usable_spatial_source_count: int = 0
     rtree_row_count: int = 0
     failed_metadata_count: int = 0
+    repository_crs_override: str | None = None
+    crs_override_source: str | None = None
+
+
+@dataclass(frozen=True)
+class RepositoryCrsOverride:
+    crs: str
+    assigned_at: str
+    assigned_by: str
+    method: str
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class ExtentDefiningSource:
+    role: str
+    source_path: Path
+    value: float
+    source_id: str
+
+
+@dataclass(frozen=True)
+class CatalogRecordInspectionReport:
+    catalog_path: Path
+    catalog_repository_root: Path
+    selected_repository_root: Path
+    repository_fingerprint: str
+    source_row_count: int
+    rtree_row_count: int
+    first_paths: tuple[Path, ...]
+    last_paths: tuple[Path, ...]
+    sample_paths: tuple[Path, ...]
+    extent_defining_sources: tuple[ExtentDefiningSource, ...]
+    catalog_created_at: str | None
+    catalog_updated_at: str | None
 
 
 @dataclass(frozen=True)
@@ -67,18 +102,25 @@ class CatalogIntegrityReport:
     skip_reason_counts: dict[str, int] = field(default_factory=dict)
     messages: tuple[str, ...] = ()
     identity: CatalogIdentity | None = None
+    embedded_crs_known_count: int = 0
+    crs_unknown_bounded_count: int = 0
+    effective_crs_known_count: int = 0
+    effective_crs_unknown_count: int = 0
+    repository_crs_override: str | None = None
 
     @property
     def spatially_usable(self) -> bool:
-        return self.status == "Healthy" and self.usable_spatial_source_count > 0
+        return self.status in {"Healthy", "Healthy with validated repository CRS override"} and self.usable_spatial_source_count > 0
 
     @property
     def usable_spatial_source_count(self) -> int:
         return self.rtree_row_count
 
     def preflight_blocker_message(self) -> str | None:
-        if self.status == "Healthy":
+        if self.status in {"Healthy", "Healthy with validated repository CRS override"}:
             return None
+        if self.status == "CRS Assignment Required":
+            return "LiDAR files were indexed, but their coordinate system is unknown. Coverage cannot yet be compared with the selected polygon."
         if self.status == "Empty":
             return "No supported LAS, LAZ, COPC, or EPT data was found in this folder." if self.source_row_count == 0 else "Repository catalog is empty."
         if self.source_row_count and self.rtree_row_count == 0:
@@ -96,6 +138,8 @@ class CatalogIntegrityReport:
         return (
             f"Catalog status: {self.status}",
             f"Sources: {self.source_row_count:,}; spatial records: {self.rtree_row_count:,}; metadata errors: {self.failed_metadata_count:,}",
+            f"Embedded CRS known: {self.embedded_crs_known_count:,}; CRS-unknown bounded sources: {self.crs_unknown_bounded_count:,}",
+            f"Effective CRS-known sources: {self.effective_crs_known_count:,}; override: {self.repository_crs_override or 'none'}",
             f"Missing RTree entries: {self.source_rows_missing_rtree_entries:,}; orphan RTree rows: {self.rtree_rows_missing_source_records:,}",
             f"Coverage extent: {extent}",
         )
@@ -122,6 +166,9 @@ class RepositorySourceViewRow:
     source_type: str
     status: str
     crs: str
+    embedded_crs: str
+    effective_crs: str
+    crs_source: str
     xmin: float | None
     xmax: float | None
     ymin: float | None
@@ -177,6 +224,7 @@ def inspect_catalog_integrity(catalog_path: Path | str, root_path: Path | str) -
         if not schema_valid:
             return CatalogIntegrityReport(catalog, root, root_id, "Unusable", True, False, metadata_valid, False, messages=("Catalog schema is incomplete.",))
         identity = _read_identity(connection, root)
+        override = read_repository_crs_override_from_connection(connection)
         repository_root_matches = identity.repository_fingerprint == root_id if identity is not None else True
         rows = connection.execute("SELECT s.*, CASE WHEN b.id IS NULL THEN 0 ELSE 1 END AS has_rtree FROM lidar_sources s LEFT JOIN lidar_source_bounds b ON b.id=s.id WHERE s.root_id=?", (root_id,)).fetchall()
         source_count = len(rows)
@@ -193,6 +241,12 @@ def inspect_catalog_integrity(catalog_path: Path | str, root_path: Path | str) -
         crs_distribution = _crs_distribution(connection, root_id)
         extent = _extent_union(connection, root_id)
         skips = _skip_counts(rows, missing_rtree=missing_rtree, orphan_rtree=orphan_rtree)
+        embedded_known = sum(1 for row in rows if str(row["inventory_status"]) == "indexed" and _row_has_valid_bounds(row) and str(row["source_crs"] or "").strip())
+        crs_unknown_bounded = sum(1 for row in rows if str(row["inventory_status"]) == "indexed" and _row_has_valid_bounds(row) and not str(row["source_crs"] or "").strip())
+        effective_known = embedded_known + (crs_unknown_bounded if override is not None else 0)
+        effective_unknown = max(0, valid_bounds - effective_known)
+        if override is not None:
+            skips = {key: value for key, value in skips.items() if key != SKIP_CRS_MISSING}
         if not repository_root_matches:
             status = "Unusable"
             messages = ("Catalog identity does not match the selected repository.",)
@@ -203,12 +257,21 @@ def inspect_catalog_integrity(catalog_path: Path | str, root_path: Path | str) -
             status = "Unusable"
             messages = ("Catalog records exist but no usable spatial index rows are present.",)
         elif missing_rtree or orphan_rtree or malformed or missing_files or stale_files:
-            status = "Repair Recommended"
+            status = "Needs Repair"
             messages = ("Catalog has integrity issues; repair or refresh before critical processing.",)
+        elif valid_bounds and effective_known == 0:
+            status = "CRS Assignment Required"
+            messages = ("LiDAR files were indexed, but their coordinate system is unknown. Coverage cannot yet be compared with the selected polygon.",)
+        elif override is not None:
+            status = "Healthy with validated repository CRS override"
+            messages = (f"Catalog is spatially usable with repository CRS override {override.crs}.",)
+        elif effective_unknown:
+            status = "Incomplete"
+            messages = ("Some bounded source records still lack an effective CRS.",)
         else:
             status = "Healthy"
             messages = ("Catalog is spatially usable.",)
-        return CatalogIntegrityReport(catalog, root, root_id, status, True, schema_valid, metadata_valid, repository_root_matches, source_count, enabled, valid_bounds, rtree_count, missing_rtree, orphan_rtree, duplicate_paths, duplicate_ids, malformed, stale_files, missing_files, crs_distribution, extent, skips, messages, identity)
+        return CatalogIntegrityReport(catalog, root, root_id, status, True, schema_valid, metadata_valid, repository_root_matches, source_count, enabled, valid_bounds, rtree_count, missing_rtree, orphan_rtree, duplicate_paths, duplicate_ids, malformed, stale_files, missing_files, crs_distribution, extent, skips, messages, identity, embedded_known, crs_unknown_bounded, effective_known, effective_unknown, None if override is None else override.crs)
     finally:
         connection.close()
 
@@ -256,7 +319,7 @@ def repair_catalog(catalog_path: Path | str, root_path: Path | str, *, create_ba
     finally:
         connection.close()
     after = inspect_catalog_integrity(catalog, root_path)
-    repaired = after.status in {"Healthy", "Repair Recommended"} and after.rtree_row_count >= before.rtree_row_count
+    repaired = after.status in {"Healthy", "Healthy with validated repository CRS override", "Needs Repair", "CRS Assignment Required"} and after.rtree_row_count >= before.rtree_row_count
     message = "Catalog repair completed. " + " ".join(operations or ("No structural repairs were needed.",))
     return CatalogRepairReport(catalog, backup, before, after, tuple(operations), repaired, message)
 
@@ -275,10 +338,95 @@ def source_view_rows(catalog_path: Path | str, root_path: Path | str, *, status_
             problem = _row_problem(row)
             if not _row_matches_filter(row, problem, status_filter, polygon_extent):
                 continue
-            out.append(RepositorySourceViewRow(Path(str(row["source_path"])).name, str(row["source_type"]), str(row["inventory_status"]), str(row["source_crs"] or "unknown"), _float_or_none(row["xmin"]), _float_or_none(row["xmax"]), _float_or_none(row["ymin"]), _float_or_none(row["ymax"]), None if row["point_count"] is None else int(row["point_count"]), int(row["modified_time_ns"] or 0), problem, bool(row["has_rtree"])))
+            embedded = str(row["source_crs"] or "")
+            effective = embedded or (report.repository_crs_override or "")
+            crs_source = "embedded" if embedded else ("repository_override" if report.repository_crs_override else "unknown")
+            out.append(RepositorySourceViewRow(Path(str(row["source_path"])).name, str(row["source_type"]), str(row["inventory_status"]), effective or "unknown", embedded or "unknown", effective or "unknown", crs_source, _float_or_none(row["xmin"]), _float_or_none(row["xmax"]), _float_or_none(row["ymin"]), _float_or_none(row["ymax"]), None if row["point_count"] is None else int(row["point_count"]), int(row["modified_time_ns"] or 0), problem, bool(row["has_rtree"])))
         return tuple(out)
     finally:
         connection.close()
+
+
+def assign_repository_crs_override(catalog_path: Path | str, root_path: Path | str, crs: str, *, assigned_by: str = "user", method: str = "qgis_crs_selector", note: str = "") -> RepositoryCrsOverride:
+    value = (crs or "").strip()
+    if not value:
+        raise ValueError("Repository CRS override requires a CRS value.")
+    connection = connect_catalog(catalog_path)
+    try:
+        override = RepositoryCrsOverride(value, utc_now_iso(), assigned_by, method, note)
+        payload = {
+            "repository_crs_override": override.crs,
+            "repository_crs_override_assigned_at": override.assigned_at,
+            "repository_crs_override_assigned_by": override.assigned_by,
+            "repository_crs_override_method": override.method,
+            "repository_crs_override_note": override.note,
+        }
+        connection.executemany("INSERT OR REPLACE INTO catalog_meta(key, value) VALUES (?, ?)", tuple(payload.items()))
+        write_catalog_identity(connection, root_path)
+        connection.commit()
+        return override
+    finally:
+        connection.close()
+
+
+def remove_repository_crs_override(catalog_path: Path | str, root_path: Path | str) -> None:
+    connection = connect_catalog(catalog_path)
+    try:
+        connection.execute("DELETE FROM catalog_meta WHERE key LIKE 'repository_crs_override%'")
+        write_catalog_identity(connection, root_path)
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def read_repository_crs_override(catalog_path: Path | str) -> RepositoryCrsOverride | None:
+    connection = connect_catalog(catalog_path)
+    try:
+        return read_repository_crs_override_from_connection(connection)
+    finally:
+        connection.close()
+
+
+def read_repository_crs_override_from_connection(connection: sqlite3.Connection) -> RepositoryCrsOverride | None:
+    if not _has_table(connection, "catalog_meta"):
+        return None
+    meta = {str(row["key"]): str(row["value"]) for row in connection.execute("SELECT key, value FROM catalog_meta WHERE key LIKE 'repository_crs_override%'").fetchall()}
+    crs = meta.get("repository_crs_override")
+    if not crs:
+        return None
+    return RepositoryCrsOverride(crs, meta.get("repository_crs_override_assigned_at", ""), meta.get("repository_crs_override_assigned_by", "user"), meta.get("repository_crs_override_method", "unknown"), meta.get("repository_crs_override_note", ""))
+
+
+def inspect_catalog_records(catalog_path: Path | str, root_path: Path | str, *, sample_size: int = 10) -> CatalogRecordInspectionReport:
+    report = inspect_catalog_integrity(catalog_path, root_path)
+    if not report.sqlite_opens or not report.schema_valid:
+        return CatalogRecordInspectionReport(Path(catalog_path), Path(root_path), Path(root_path), report.root_id, 0, 0, (), (), (), (), None, None)
+    connection = sqlite3.connect(str(catalog_path))
+    connection.row_factory = sqlite3.Row
+    try:
+        root_id = stable_root_id(root_path)
+        rows = connection.execute("SELECT * FROM lidar_sources WHERE root_id=? ORDER BY relative_path", (root_id,)).fetchall()
+        first = tuple(Path(str(row["source_path"])) for row in rows[:10])
+        last = tuple(Path(str(row["source_path"])) for row in rows[-10:])
+        step = max(1, len(rows) // max(1, sample_size))
+        sample = tuple(Path(str(row["source_path"])) for row in rows[::step][:sample_size])
+        extent_sources = tuple(_extent_defining_sources(connection, root_id))
+        created = connection.execute("SELECT value FROM catalog_meta WHERE key='creation_time'").fetchone()
+        updated = connection.execute("SELECT value FROM catalog_meta WHERE key='last_update_time'").fetchone()
+        identity_root = report.identity.normalized_repository_root if report.identity is not None else Path(root_path)
+        return CatalogRecordInspectionReport(Path(catalog_path), identity_root, Path(root_path), report.root_id, len(rows), report.rtree_row_count, first, last, sample, extent_sources, None if created is None else str(created["value"]), None if updated is None else str(updated["value"]))
+    finally:
+        connection.close()
+
+
+def _extent_defining_sources(connection: sqlite3.Connection, root_id: str) -> tuple[ExtentDefiningSource, ...]:
+    specs = (("minimum_x", "xmin", "ASC"), ("maximum_x", "xmax", "DESC"), ("minimum_y", "ymin", "ASC"), ("maximum_y", "ymax", "DESC"))
+    out: list[ExtentDefiningSource] = []
+    for role, column, direction in specs:
+        row = connection.execute(f"SELECT s.source_path, s.source_id, b.{column} AS value FROM lidar_source_bounds b JOIN lidar_sources s ON s.id=b.id WHERE s.root_id=? ORDER BY b.{column} {direction} LIMIT 1", (root_id,)).fetchone()
+        if row is not None:
+            out.append(ExtentDefiningSource(role, Path(str(row["source_path"])), float(row["value"]), str(row["source_id"])))
+    return tuple(out)
 
 
 def _read_identity(connection: sqlite3.Connection, root: Path) -> CatalogIdentity | None:
@@ -299,6 +447,8 @@ def _read_identity(connection: sqlite3.Connection, root: Path) -> CatalogIdentit
         usable_spatial_source_count=_int_or_none(meta.get("usable_spatial_source_count")) or 0,
         rtree_row_count=_int_or_none(meta.get("rtree_row_count")) or 0,
         failed_metadata_count=_int_or_none(meta.get("failed_metadata_count")) or 0,
+        repository_crs_override=meta.get("repository_crs_override"),
+        crs_override_source=meta.get("repository_crs_override_method"),
     )
 
 

@@ -102,13 +102,15 @@ def query_catalog_for_polygon(
     finally:
         connection.close()
     warnings = list(geometry.warnings)
-    if integrity.status != "Healthy":
+    if integrity.status not in {"Healthy", "Healthy with validated repository CRS override"}:
         blocker = integrity.preflight_blocker_message()
         if blocker:
             warnings.append(blocker)
         warnings.extend(integrity.messages)
     elif integrity.extent_union is not None and not geometry.envelope.intersects(integrity.extent_union):
         warnings.append("Healthy catalog coverage does not overlap the selected polygon envelope.")
+    if integrity.status == "CRS Assignment Required":
+        records = ()
     candidate_count = len(records)
     limited = False
     if candidate_count > thresholds.max_candidates_per_run:

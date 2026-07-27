@@ -24,3 +24,7 @@ Polygon preflight now distinguishes true no coverage from broken catalog data. T
 ## Repair
 
 `repair_catalog` creates a timestamped backup before structural changes. It removes orphan RTree rows, rebuilds missing RTree entries from valid source bounds, removes invalid RTree entries, marks missing files as deleted, refreshes identity metadata, and reruns integrity validation.
+
+## Phase 27P Notes
+
+Catalog health now separates embedded CRS from effective CRS. A bounded LAS/LAZ catalog with all source CRS values missing is `CRS Assignment Required`, not healthy, and polygon preflight does not report true no coverage until comparable CRS metadata exists. Repository CRS override metadata is explicit and reversible. Live QGIS coverage/zoom services now require actual layer insertion or canvas extent changes before reporting success.

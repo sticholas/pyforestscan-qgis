@@ -37,6 +37,7 @@ from qgis.PyQt.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QDoubleSpinBox,
+    QInputDialog,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -80,7 +81,7 @@ from ..core.lidar_catalog_jobs import CatalogJobRunner, CatalogJobSpec, CatalogJ
 from ..core.lidar_catalog_models import default_lidar_catalog_path, move_lidar_catalog_to_local_storage
 from ..core.lidar_catalog_probe import quick_probe_lidar_repository, select_lidar_repository_path
 from ..core.lidar_repository_discovery import discover_lidar_repository
-from ..core.lidar_catalog_integrity import inspect_catalog_integrity, repair_catalog, source_view_rows
+from ..core.lidar_catalog_integrity import inspect_catalog_integrity, repair_catalog, source_view_rows, assign_repository_crs_override, inspect_catalog_records
 from ..core.repository_actions import repository_action_states, repository_setup_recommendation
 from ..core.repository_coverage import build_repository_coverage_model
 from ..core.repository_diagnostics import export_repository_diagnostic_report
@@ -115,6 +116,7 @@ from .help import info_badge, info_help_button
 from .output_loading import LoadableOutput, collect_loadable_outputs, compact_dataset_summary_lines, output_loading_summary
 from .state import ProjectSummary
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
+from .qgis_spatial_actions import add_repository_coverage_to_qgis, combine_bounds, preview_spatial_selection_in_qgis, remove_spatial_preview_layers, zoom_canvas_to_bounds
 from .polygon_source_selector import normalize_qgis_layer_selection, normalize_vector_file_selection, polygon_layer_items, vector_file_layer_options
 from .raster_styling import apply_generated_raster_renderer, layer_display_name
 from .ux_summary import action_icon_intent, backend_summary_from_environment, button_role_for_label, design_spacing_tokens, empty_state_message, environment_headline, home_environment_action_label, home_environment_readiness, primary_action_label, qgis_fallback_summary, readiness_status_text, routed_products_summary, status_badge_label, status_badge_tone, status_display_word, workflow_action_labels
@@ -2058,6 +2060,9 @@ class BatchPage(MissionPage):
         self.repair_catalog_button = QPushButton("Repair Catalog")
         self.repair_catalog_button.clicked.connect(self.repair_polygon_catalog)
         _apply_button_role(self.repair_catalog_button, "secondary")
+        self.assign_repository_crs_button = QPushButton("Assign Coordinate System")
+        self.assign_repository_crs_button.clicked.connect(self.assign_polygon_repository_crs)
+        _apply_button_role(self.assign_repository_crs_button, "secondary")
         self.add_coverage_button = QPushButton("Add Coverage to Map")
         self.add_coverage_button.clicked.connect(self.add_polygon_repository_coverage)
         _apply_button_role(self.add_coverage_button, "secondary")
@@ -2084,6 +2089,7 @@ class BatchPage(MissionPage):
         catalog_actions.addWidget(self.resume_catalog_button)
         catalog_actions.addWidget(self.pause_catalog_button)
         catalog_actions.addWidget(self.repair_catalog_button)
+        catalog_actions.addWidget(self.assign_repository_crs_button)
         catalog_actions.addWidget(self.add_coverage_button)
         catalog_actions.addWidget(self.view_sources_button)
         catalog_actions.addWidget(self.export_repository_diagnostic_button)
@@ -2491,9 +2497,11 @@ class BatchPage(MissionPage):
             self.preflight_text.setPlainText("Preview Spatial Selection needs a current preflight plan. Click Run Preflight Check first.")
             return
         selection = report.source_selection
+        coverage_result = preview_spatial_selection_in_qgis(report, self.iface)
         lines = [
             "Spatial Diagnostic Preview",
             "Temporary QGIS group: PyForestScan - Spatial Diagnostics",
+            f"Live QGIS action: {coverage_result.message if coverage_result else 'Repository extent unavailable; preview text only.'}",
             f"Repository kind: {selection.repository_kind}",
             f"Selected logical inputs: {len(selection.selected_sources)}",
             f"Overlap: {'Yes' if selection.overlap_result == 'yes' else 'No'}",
@@ -2513,23 +2521,32 @@ class BatchPage(MissionPage):
             self.preflight_text.setPlainText(f"{action} needs a current preflight plan. Click Re-run Preflight first.")
             return
         selection = report.source_selection
-        lines = [action, "Visible feedback: spatial action model prepared for live QGIS canvas."]
+        lines = [action]
         if action == "Zoom to Polygon":
             extent = selection.transformed_envelope
+            result = zoom_canvas_to_bounds(extent.to_bounds(), extent.crs, self.iface, label="polygon")
+            lines.append(result.message)
             lines.append(f"Target polygon extent ({extent.crs}): {extent.xmin:g}, {extent.ymin:g}, {extent.xmax:g}, {extent.ymax:g}")
         elif action == "Zoom to Repository Extent":
             extent = selection.source_extent
             if extent is None:
-                lines.append("Repository extent is unavailable; inspect or repair the catalog.")
+                lines.append("Repository coverage cannot be mapped until its coordinate system is known.")
             else:
+                result = zoom_canvas_to_bounds(extent.to_bounds(), extent.crs, self.iface, label="repository extent")
+                lines.append(result.message)
                 lines.append(f"Target repository extent ({extent.crs}): {extent.xmin:g}, {extent.ymin:g}, {extent.xmax:g}, {extent.ymax:g}")
         else:
             extent = selection.source_extent
             poly = selection.transformed_envelope
+            combined = combine_bounds(poly.to_bounds(), None if extent is None else extent.to_bounds())
+            result = zoom_canvas_to_bounds(combined, poly.crs, self.iface, label="combined extent")
+            lines.append(result.message)
             if extent is None:
                 lines.append(f"Combined extent uses polygon only because repository extent is unavailable: {poly.xmin:g}, {poly.ymin:g}, {poly.xmax:g}, {poly.ymax:g}")
             else:
                 lines.append(f"Combined extent ({poly.crs}): {min(poly.xmin, extent.xmin):g}, {min(poly.ymin, extent.ymin):g}, {max(poly.xmax, extent.xmax):g}, {max(poly.ymax, extent.ymax):g}")
+                if not poly.to_bounds().intersects(extent.to_bounds()):
+                    lines.append("Polygon and repository coverage are separated.")
         self.preflight_text.setPlainText("\n".join(lines))
 
     def browse_polygon_lidar_folder(self) -> None:
@@ -2619,6 +2636,7 @@ class BatchPage(MissionPage):
             self.resume_catalog_button.setEnabled(False)
             self.pause_catalog_button.setEnabled(False)
             self.repair_catalog_button.setEnabled(False)
+            self.assign_repository_crs_button.setEnabled(False)
             self.add_coverage_button.setEnabled(False)
             self.view_sources_button.setEnabled(False)
             self.export_repository_diagnostic_button.setEnabled(False)
@@ -2655,6 +2673,8 @@ class BatchPage(MissionPage):
         self.pause_catalog_button.setEnabled(states.pause_after_current_chunk.enabled)
         self.repair_catalog_button.setEnabled(states.repair_catalog.enabled)
         self.repair_catalog_button.setToolTip(states.repair_catalog.disabled_reason)
+        self.assign_repository_crs_button.setEnabled(bool(integrity and integrity.status == 'CRS Assignment Required') and not running)
+        self.assign_repository_crs_button.setToolTip('Assign an explicit CRS to bounded sources that lack embedded CRS metadata.')
         self.add_coverage_button.setEnabled(states.add_coverage_to_map.enabled)
         self.add_coverage_button.setToolTip(states.add_coverage_to_map.disabled_reason)
         self.view_sources_button.setEnabled(exists and not running)
@@ -2776,6 +2796,29 @@ class BatchPage(MissionPage):
         self.polygon_index_plan_text.setPlainText("\n".join(lines))
         self.refresh_catalog_status()
 
+    def assign_polygon_repository_crs(self) -> None:
+        folder = self.polygon_lidar_folder_edit.text().strip()
+        path = self._polygon_catalog_path()
+        if not folder or path is None:
+            self.polygon_index_plan_text.setPlainText("Choose a LiDAR repository before assigning a coordinate system.")
+            return
+        crs, ok = QInputDialog.getText(self, "Assign Repository Coordinate System", "CRS auth id, for example EPSG:6635")
+        if not ok or not crs.strip():
+            self.polygon_index_plan_text.setPlainText("Repository CRS assignment cancelled.")
+            return
+        selection = select_lidar_repository_path(folder)
+        before = inspect_catalog_integrity(path, selection.normalized_path)
+        override = assign_repository_crs_override(path, selection.normalized_path, crs.strip(), assigned_by="qgis_user", method="qgis_crs_selector", note="Assigned from Mission Control.")
+        after = inspect_catalog_integrity(path, selection.normalized_path)
+        self.polygon_index_plan_text.setPlainText("\n".join([
+            "Repository Coordinate System Assigned",
+            f"CRS: {override.crs}",
+            f"Embedded CRS known before: {before.embedded_crs_known_count:,}",
+            f"Effective CRS-known sources after: {after.effective_crs_known_count:,}",
+            "Original LAS/LAZ files were not modified.",
+        ]))
+        self.refresh_catalog_status()
+
     def add_polygon_repository_coverage(self) -> None:
         folder = self.polygon_lidar_folder_edit.text().strip()
         path = self._polygon_catalog_path()
@@ -2784,12 +2827,15 @@ class BatchPage(MissionPage):
             return
         selection = select_lidar_repository_path(folder)
         model = build_repository_coverage_model(path, selection.normalized_path, mode="outline")
+        result = add_repository_coverage_to_qgis(model, self.iface)
         lines = [
             "Repository Coverage",
+            result.message,
             f"QGIS group: {model.group_name}",
             f"Mode: {model.mode}",
-            f"Features prepared: {len(model.features)}",
-            model.message,
+            f"Layer ids: {', '.join(result.layer_ids) if result.layer_ids else 'none'}",
+            f"Feature count: {result.feature_count}",
+            f"CRS: {model.crs}",
         ]
         if model.union_extent is not None:
             lines.append(f"Extent: X {model.union_extent.xmin:g}-{model.union_extent.xmax:g}; Y {model.union_extent.ymin:g}-{model.union_extent.ymax:g}")
@@ -2803,10 +2849,15 @@ class BatchPage(MissionPage):
             return
         selection = select_lidar_repository_path(folder)
         rows = source_view_rows(path, selection.normalized_path, limit=40)
-        lines = ["Repository Sources", f"Showing {len(rows)} source row(s)", "file | type | status | CRS | bounds | problem"]
+        inspection = inspect_catalog_records(path, selection.normalized_path)
+        lines = ["Repository Sources", f"Showing {len(rows)} source row(s)", f"Catalog rows: {inspection.source_row_count}; RTree rows: {inspection.rtree_row_count}", "file | type | status | embedded CRS | effective CRS | bounds | problem"]
+        if inspection.extent_defining_sources:
+            lines.append("Extent-defining files:")
+            for item in inspection.extent_defining_sources:
+                lines.append(f"- {item.role}: {item.source_path.name} = {item.value:g}")
         for row in rows[:40]:
             bounds = "unavailable" if row.xmin is None else f"{row.xmin:g},{row.ymin:g},{row.xmax:g},{row.ymax:g}"
-            lines.append(f"{row.file} | {row.source_type} | {row.status} | {row.crs} | {bounds} | {row.problem or 'usable'}")
+            lines.append(f"{row.file} | {row.source_type} | {row.status} | {row.embedded_crs} | {row.effective_crs} | {bounds} | {row.problem or 'usable'}")
         if not rows:
             lines.append("No source rows are available.")
         self.polygon_index_plan_text.setPlainText("\n".join(lines))
@@ -3043,7 +3094,8 @@ class BatchPage(MissionPage):
         self.failed_paths = []
         self.batch_results.clear()
         self.progress_bar.setValue(0)
-        self.preflight_text.setPlainText("Polygon Batch reset. Choose a folder and polygon, then run preflight.")
+        removed = remove_spatial_preview_layers(self.iface)
+        self.preflight_text.setPlainText(f"Polygon Batch reset. {removed.message} Cleared current plan and source selection. Catalog and generated outputs were preserved.")
         _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: Not set up - run polygon preflight.")
         self._update_run_button_enabled()
 

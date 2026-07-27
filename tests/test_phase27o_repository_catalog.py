@@ -70,7 +70,7 @@ class Phase27ORepositoryCatalogTests(unittest.TestCase):
             result = build_lidar_catalog(root)
             report = inspect_catalog_integrity(result.catalog_path, root)
 
-        self.assertEqual(report.status, "Healthy")
+        self.assertEqual(report.status, "CRS Assignment Required")
         self.assertEqual(report.source_row_count, 1)
         self.assertEqual(report.rtree_row_count, 1)
         self.assertIsNotNone(report.identity)
@@ -121,7 +121,7 @@ class Phase27ORepositoryCatalogTests(unittest.TestCase):
 
         self.assertEqual(broken.status, "Unusable")
         self.assertIn("spatial", " ".join(query.warnings).lower())
-        self.assertEqual(repair.after.status, "Healthy")
+        self.assertEqual(repair.after.status, "CRS Assignment Required")
         self.assertEqual(fixed.rtree_row_count, 1)
 
     def test_polygon_preflight_uses_catalog_repair_message_for_broken_catalog(self) -> None:
@@ -148,13 +148,15 @@ class Phase27ORepositoryCatalogTests(unittest.TestCase):
             root = Path(tmpdir)
             write_las_header(root / "tile.las")
             result = build_lidar_catalog(root)
+            from pyforestscan_qgis.core.lidar_catalog_integrity import assign_repository_crs_override
+            assign_repository_crs_override(result.catalog_path, root, "EPSG:6635", assigned_by="test")
             polygon = normalized_selection_from_wkt("POLYGON ((1 1, 2 1, 2 2, 1 2, 1 1))", "EPSG:6635")
             settings = BatchProductSettings(products=(ProductType.CHM,), grid_resolution=1.0)
             report = run_polygon_batch_preflight(PolygonBatchRequest(root, root / "out", polygon, (ProductType.CHM,), settings), backend_probe=lambda: (True, "PBM ready"))
 
         self.assertFalse(report.ready)
         self.assertTrue(any("No LiDAR coverage" in item for item in report.blockers))
-        self.assertEqual(report.query_result.catalog_integrity_status, "Healthy")
+        self.assertEqual(report.query_result.catalog_integrity_status, "Healthy with validated repository CRS override")
 
     def test_stale_catalog_root_is_unusable_for_selected_repository(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -204,8 +206,8 @@ class Phase27ORepositoryCatalogTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(coverage.mode, "outline")
         self.assertEqual(len(coverage.features), 1)
-        self.assertEqual(payload["catalog"]["status"], "Healthy")
-        self.assertEqual(recommendation[1], "Continue")
+        self.assertEqual(payload["catalog"]["status"], "CRS Assignment Required")
+        self.assertEqual(recommendation[1], "Assign Coordinate System")
 
 
 if __name__ == "__main__":

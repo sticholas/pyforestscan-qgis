@@ -33,10 +33,11 @@ class RepositoryCoverageModel:
 
 def build_repository_coverage_model(catalog_path: Path | str, root_path: Path | str, *, mode: str = "outline", limit: int = 1000) -> RepositoryCoverageModel:
     report = inspect_catalog_integrity(catalog_path, root_path)
+    effective_crs = report.repository_crs_override or _dominant_crs({key: value for key, value in report.crs_distribution.items() if key != "unknown"})
     if report.extent_union is None:
-        return RepositoryCoverageModel("PyForestScan - Repository Coverage", mode, _dominant_crs(report.crs_distribution), None, (), "Coverage extent is unavailable because no valid spatial records exist.")
+        return RepositoryCoverageModel("PyForestScan - Repository Coverage", mode, effective_crs, None, (), "Coverage extent is unavailable because no valid spatial records exist.")
     if mode == "outline":
-        return RepositoryCoverageModel("PyForestScan - Repository Coverage", mode, _dominant_crs(report.crs_distribution), report.extent_union, (RepositoryCoverageFeature("Coverage outline", "union", "outline", report.status, report.extent_union),), "Repository coverage outline is ready to add to the map.")
+        return RepositoryCoverageModel("PyForestScan - Repository Coverage", mode, effective_crs, report.extent_union, (RepositoryCoverageFeature("Coverage outline", "union", "outline", report.status, report.extent_union),), "Repository coverage outline is ready to add to the map.")
     connection = sqlite3.connect(str(catalog_path))
     connection.row_factory = sqlite3.Row
     root_id = stable_root_id(root_path)
@@ -58,7 +59,7 @@ def build_repository_coverage_model(catalog_path: Path | str, root_path: Path | 
         )
         for row in rows
     )
-    return RepositoryCoverageModel("PyForestScan - Repository Coverage", mode, _dominant_crs(report.crs_distribution), report.extent_union, features, f"{len(features):,} source footprint(s) are ready to add to the map.")
+    return RepositoryCoverageModel("PyForestScan - Repository Coverage", mode, effective_crs, report.extent_union, features, f"{len(features):,} source footprint(s) are ready to add to the map.")
 
 
 def _dominant_crs(distribution: dict[str, int]) -> str:
