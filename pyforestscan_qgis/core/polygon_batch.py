@@ -17,6 +17,7 @@ from .batch_results import write_batch_summaries
 from .batch_executor import BatchExecutor
 from .ept_bounds import EptBounds
 from .ept_repository import incorrect_ept_catalog_detected
+from .direct_lidar_selection import DirectLidarFolderSelector, PolygonLidarSelectionResult, SelectionMethodComparison, compare_selection_methods
 from .lidar_catalog import catalog_summary
 from .lidar_catalog_models import CatalogThresholds, LidarCatalogQueryResult, PolygonQueryGeometry, default_lidar_catalog_path
 from .lidar_catalog_query import derive_polygon_query_geometry, query_catalog_for_polygon
@@ -52,6 +53,9 @@ class PolygonBatchRequest:
     thresholds: CatalogThresholds = CatalogThresholds()
     shared_execution_options: BatchExecutionOptions | None = None
     polygon_options: PolygonBatchOptions = PolygonBatchOptions()
+    selection_mode: str = "automatic"
+    direct_header_fallback: bool = True
+    repository_crs_override: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +88,9 @@ class PolygonBatchPreflightReport:
     structured_warnings: tuple[object, ...] = ()
     structured_blockers: tuple[object, ...] = ()
     plan_signature: str = ""
+    selection_method: str = "catalog"
+    direct_selection: PolygonLidarSelectionResult | None = None
+    selection_comparison: SelectionMethodComparison | None = None
 
     @property
     def has_warnings(self) -> bool:
@@ -108,8 +115,11 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         blockers.append("Select at least one product.")
     if not Path(repository.normalized_path).is_dir():
         blockers.append(f"LiDAR repository does not exist: {repository.normalized_path}")
+    if repository.repository_kind != "ept" and (request.selection_mode == "direct_header_scan" or (request.direct_header_fallback and not Path(catalog_path).exists())):
+        direct = DirectLidarFolderSelector().select(repository.normalized_path, request.polygon, repository_crs_override=request.repository_crs_override or repository.source_crs, recursive=request.recursive)
+        return _report_from_direct_selection(request, repository, service, query_geometry, batch_folder, manifest_path, direct, backend_ready, backend_message, catalog_path)
     if repository.repository_kind != "ept" and not Path(catalog_path).exists():
-        blockers.append("Build a LiDAR catalog before running Polygon Area Processing. Normal preflight does not recursively scan the repository.")
+        blockers.append("Build a LiDAR catalog before running Polygon Area Processing, or use Direct Header Scan.")
         plan = _empty_plan(empty_inventory, request, query_geometry, warnings)
         execution_plan = build_polygon_execution_plan(
             repository=repository,
@@ -165,6 +175,17 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
     selection = service.select_sources(repository, request.polygon, catalog_crs=request.catalog_crs, thresholds=request.thresholds)
     query = selection.query_result
     selected = selection.selected_sources
+    direct_selection = None
+    comparison = None
+    selection_method = "catalog"
+    if repository.repository_kind not in {"ept", "copc"} and request.direct_header_fallback:
+        direct_selection = DirectLidarFolderSelector().select(repository.normalized_path, request.polygon, repository_crs_override=request.repository_crs_override or repository.source_crs, recursive=request.recursive)
+        comparison = compare_selection_methods(direct_selection, selected, catalog_seconds=0 if query is None else query.query_seconds)
+        if (not selected and direct_selection.selected_sources and request.selection_mode in {"automatic", "direct_header_scan"}) or request.selection_mode == "direct_header_scan":
+            selected = direct_selection.selected_sources
+            selection_method = "direct_header_scan"
+            warnings.append("Catalog selection found no files. Direct Header Scan selected real source files; repair or rebuild the catalog when convenient.")
+            selection = _selection_from_direct(repository, request, query_geometry, direct_selection, service)
     inventory = LidarInventory(repository.normalized_path, selected, cache_path=Path(catalog_path))
     warnings.extend(message.to_text() for message in selection.warnings)
     blockers.extend(message.to_text() for message in selection.blockers)
@@ -185,6 +206,8 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
     point_count = selection.workload_estimate.point_estimate if selection.workload_estimate is not None else (None if query is None else query.estimated_point_count)
     source_bytes = 0 if query is None else query.estimated_bytes
     if repository.repository_kind not in {"ept", "copc"}:
+        if selection_method == "direct_header_scan":
+            warnings.extend(direct_selection.warnings if direct_selection is not None else ())
         if len(selected) >= DEFAULT_POLYGON_SOURCE_WARNING:
             warnings.append("Large polygon batch: many intersecting sources selected.")
         if point_count is not None and point_count >= DEFAULT_POLYGON_POINT_WARNING:
@@ -235,7 +258,109 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         structured_warnings=selection.warnings,
         structured_blockers=selection.blockers,
         plan_signature=execution_plan.plan_signature,
+        selection_method=selection_method,
+        direct_selection=direct_selection,
+        selection_comparison=comparison,
     )
+
+
+def _report_from_direct_selection(request, repository, service, query_geometry, batch_folder, manifest_path, direct, backend_ready, backend_message, catalog_path):
+    inventory = LidarInventory(repository.normalized_path, direct.selected_sources, cache_path=Path(catalog_path))
+    warnings = list(direct.warnings)
+    blockers = list(direct.blockers)
+    if not backend_ready:
+        blockers.append("Managed processing backend cannot import PyForestScan. Repair or rebuild the backend from Environment.")
+    try:
+        plan = build_polygon_processing_plan(
+            inventory,
+            request.polygon.to_polygon_selection(),
+            request.output_folder,
+            tuple(product.value for product in request.products),
+            processing_crs=request.polygon.processing_crs,
+        )
+    except ValueError as exc:
+        blockers.append(str(exc))
+        plan = _empty_plan(inventory, request, query_geometry, warnings)
+    selection = _selection_from_direct(repository, request, query_geometry, direct, service)
+    options = request.shared_execution_options or BatchExecutionOptions.from_batch_settings(request.settings)
+    polygon_context = service.last_polygon_context or _fallback_polygon_context(request.polygon, query_geometry)
+    concurrency = requested_effective_concurrency(options, source_types={source.source_type for source in direct.selected_sources}, product_count=len(request.products))
+    execution_plan = build_polygon_execution_plan(
+        repository=repository,
+        polygon_context=polygon_context,
+        source_selection=selection,
+        products=tuple(product.value for product in request.products),
+        shared_batch_options=options,
+        polygon_batch_options=request.polygon_options,
+        requested_concurrency=int(concurrency["requested_concurrent_jobs"]),
+        effective_concurrency=int(concurrency["effective_concurrent_jobs"]),
+        output_folder=request.output_folder,
+        backend_ready=backend_ready,
+        backend_message=backend_message,
+    )
+    return PolygonBatchPreflightReport(
+        request=request,
+        inventory=inventory,
+        plan=plan,
+        ready=not blockers,
+        blockers=tuple(dict.fromkeys(blockers)),
+        warnings=tuple(dict.fromkeys(warnings)),
+        selected_sources=direct.selected_sources,
+        skipped_sources=(),
+        estimated_point_count=_estimated_points_for_sources(direct.selected_sources),
+        estimated_source_bytes=sum(source.size_bytes for source in direct.selected_sources),
+        batch_folder=batch_folder,
+        manifest_path=manifest_path,
+        catalog_path=Path(catalog_path),
+        query_geometry=query_geometry,
+        query_result=None,
+        catalog_skipped_count=0,
+        backend_ready=backend_ready,
+        backend_message=backend_message,
+        spatial_alignment_status="Ready" if direct.ready else "Needs review",
+        repository=repository,
+        source_selection=selection,
+        execution_plan=execution_plan,
+        structured_warnings=selection.warnings,
+        structured_blockers=selection.blockers,
+        plan_signature=execution_plan.plan_signature,
+        selection_method="direct_header_scan",
+        direct_selection=direct,
+        selection_comparison=None,
+    )
+
+
+def _selection_from_direct(repository, request, query_geometry, direct, service):
+    from .polygon_source_selection import PolygonSourceSelectionResult, PreflightMessage, SpatialEnvelope
+
+    transformed = SpatialEnvelope.from_bounds(query_geometry.envelope, query_geometry.catalog_crs)
+    setattr(service, "_last_polygon_context", _fallback_polygon_context(request.polygon, query_geometry))
+    warnings = tuple(PreflightMessage("DIRECT_HEADER_SCAN", "warning", "Direct Header Scan", item) for item in direct.warnings)
+    blockers = tuple(PreflightMessage("DIRECT_SELECTION_BLOCKED", "blocker", "Selection blocked", item) for item in direct.blockers)
+    return PolygonSourceSelectionResult(
+        repository_kind=repository.repository_kind,
+        logical_candidates=direct.selected_sources,
+        selected_sources=direct.selected_sources,
+        rejected_sources=(),
+        transformed_polygon=query_geometry.exact_polygon_wkt,
+        transformed_envelope=transformed,
+        source_extent=None,
+        overlap_result="yes" if direct.selected_sources else "no",
+        exact_intersection_result="direct_header_scan",
+        warnings=warnings,
+        blockers=blockers,
+        timings={"direct_header_scan": direct.elapsed_seconds},
+        query_result=None,
+        catalog_skipped_count=len(direct.rejected_sources),
+        workload_estimate=None,
+    )
+
+
+def _estimated_points_for_sources(sources):
+    counts = [source.point_count for source in sources]
+    if not counts or any(count is None for count in counts):
+        return None
+    return int(sum(count for count in counts if count is not None))
 
 
 def polygon_preflight_text(report: PolygonBatchPreflightReport) -> str:
@@ -255,6 +380,7 @@ def polygon_preflight_text(report: PolygonBatchPreflightReport) -> str:
         "Products: " + ", ".join(product.value for product in report.request.products),
         f"Backend: PBM {'Ready' if report.backend_ready else 'Not Ready'}",
         f"Spatial alignment: {report.spatial_alignment_status}",
+        f"Selection method: {report.selection_method}",
         f"Plan status: Current",
         f"Estimated workload: {workload}",
         f"Estimated points: {estimate_text}",
@@ -397,6 +523,15 @@ def write_polygon_batch_manifest(
         "plan_signature": report.plan_signature,
         "repository_identity": None if report.repository is None else report.repository.to_dict(),
         "source_selection": None if report.source_selection is None else report.source_selection.to_dict(),
+        "selection_method": report.selection_method,
+        "direct_selection": None if report.direct_selection is None else {
+            "discovered_file_count": report.direct_selection.discovered_file_count,
+            "metadata_read_count": report.direct_selection.metadata_read_count,
+            "usable_source_count": report.direct_selection.usable_source_count,
+            "intersecting_source_paths": [str(path) for path in report.direct_selection.intersecting_source_paths],
+            "blockers": list(report.direct_selection.blockers),
+            "warnings": list(report.direct_selection.warnings),
+        },
         "query": {
             "envelope": report.query_geometry.envelope.__dict__,
             "ept_bounds": EptBounds.from_value(report.query_geometry.ept_bounds, crs=report.query_geometry.catalog_crs).to_json(),

@@ -2019,6 +2019,14 @@ class BatchPage(MissionPage):
         existing_index_row.addWidget(self.polygon_existing_index_edit, 1)
         existing_index_row.addWidget(self.polygon_existing_index_button, 0)
         strategy_form.addRow("Existing index", existing_index_row)
+        self.polygon_selection_mode_combo = QComboBox()
+        self.polygon_selection_mode_combo.addItem("Automatic - Recommended", "automatic")
+        self.polygon_selection_mode_combo.addItem("Catalog Index", "catalog")
+        self.polygon_selection_mode_combo.addItem("Direct Header Scan", "direct_header_scan")
+        strategy_form.addRow("Selection mode", self.polygon_selection_mode_combo)
+        self.polygon_direct_fallback_check = QCheckBox("Fallback to Direct Header Scan when catalog selection is inconclusive")
+        self.polygon_direct_fallback_check.setChecked(True)
+        strategy_form.addRow("", self.polygon_direct_fallback_check)
         polygon_source.addLayout(strategy_form)
         strategy_actions = QHBoxLayout()
         strategy_actions.setSpacing(ACTION_ROW_SPACING)
@@ -3356,6 +3364,14 @@ class BatchPage(MissionPage):
             overwrite_existing=self.overwrite_existing_check.isChecked(),
             preflight_acknowledged=self.acknowledge_warnings_check.isChecked(),
         )
+        catalog_path = self._polygon_catalog_path()
+        repository_crs_override = None
+        if catalog_path is not None:
+            try:
+                selection = select_lidar_repository_path(folder)
+                repository_crs_override = inspect_catalog_integrity(catalog_path, selection.normalized_path).repository_crs_override
+            except Exception:
+                repository_crs_override = None
         return PolygonBatchRequest(
             lidar_folder=Path(folder),
             output_folder=Path(output_folder),
@@ -3364,8 +3380,11 @@ class BatchPage(MissionPage):
             settings=settings,
             recursive=True,
             title="PyForestScan Polygon Batch",
-            catalog_path=self._polygon_catalog_path(),
+            catalog_path=catalog_path,
             shared_execution_options=BatchExecutionOptions.from_batch_settings(settings),
+            selection_mode=str(self.polygon_selection_mode_combo.currentData() or "automatic"),
+            direct_header_fallback=self.polygon_direct_fallback_check.isChecked(),
+            repository_crs_override=repository_crs_override,
             polygon_options=PolygonBatchOptions(
                 exact_raster_mask=self.exact_raster_mask_check.isChecked(),
                 mask_engine=str(self.mask_engine_combo.currentData() or "automatic"),

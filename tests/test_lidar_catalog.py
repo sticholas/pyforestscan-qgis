@@ -128,13 +128,24 @@ class LidarCatalogTests(unittest.TestCase):
         self.assertEqual(len(report.selected_sources), 1)
         self.assertIn("hit", str(report.selected_sources[0].path))
 
-    def test_missing_catalog_blocks_preflight_with_build_guidance(self) -> None:
+    def test_missing_catalog_blocks_catalog_only_preflight_with_build_guidance(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            write_ept(root / "hit" / "ept.json", [0, 0, 0, 5, 5, 5])
+            write_las_header(root / "tile.las", bounds=(0, 5, 0, 5, 0, 2))
             polygon = normalized_selection_from_wkt("POLYGON ((1 1, 4 1, 4 4, 1 4, 1 1))", "EPSG:32610")
             settings = BatchProductSettings(products=(ProductType.CHM,), grid_resolution=1.0)
-            report = run_polygon_batch_preflight(PolygonBatchRequest(root, root / "out", polygon, (ProductType.CHM,), settings), backend_probe=lambda: (True, "PBM backend is ready."))
+            report = run_polygon_batch_preflight(
+                PolygonBatchRequest(
+                    root,
+                    root / "out",
+                    polygon,
+                    (ProductType.CHM,),
+                    settings,
+                    selection_mode="catalog",
+                    direct_header_fallback=False,
+                ),
+                backend_probe=lambda: (True, "PBM backend is ready."),
+            )
 
         self.assertFalse(report.ready)
         self.assertTrue(any("Build a LiDAR catalog" in item for item in report.blockers))

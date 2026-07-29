@@ -71,7 +71,8 @@ Preflight also compares intersecting LiDAR source CRS metadata when available an
 
 - Requires an existing LiDAR catalog; normal preflight does not recursively scan the repository.
 - Refuses arbitrary JSON as EPT.
-- Queries the SQLite/RTree catalog with the polygon envelope.
+- Queries the SQLite/RTree catalog with the polygon envelope when using the catalog path.
+- In Automatic mode, cross-checks ordinary LAS/LAZ/COPC folders with Direct Header Scan and can use real overlapping files if the catalog is missing or inconclusive.
 - Reports catalog query time, candidate count, metadata-error count, estimated points, and estimated bytes.
 - Normalizes the chosen polygon source into one Polygon/MultiPolygon geometry.
 - Attempts safe QGIS geometry repair when available.
@@ -97,7 +98,7 @@ Use **Detect Best Indexing Strategy** first. Then use **Build Relevant Index** w
 
 Polygon Area Processing now separates repository strategy detection from heavy catalog work. **Detect Best Indexing Strategy** is safe to run first because it uses a bounded top-level probe only. It can identify existing PyForestScan catalogs, PDAL tile indexes, CSV/GeoJSON footprint indexes, EPT roots, COPC sources, and configured repository profiles.
 
-The default path remains safe: if no trustworthy shortcut is found, use **Build Complete Repository Index**. Batch preflight still requires a usable catalog before processing.
+The default path remains safe: if no trustworthy shortcut is found, use **Build Complete Repository Index**. Batch preflight uses a usable catalog when available. For ordinary local LAS/LAZ/COPC folders, Automatic mode can fall back to Direct Header Scan when a catalog is missing or returns no intersecting files even though real headers overlap the polygon.
 
 ## EPT Datasets
 
@@ -132,3 +133,7 @@ Repository discovery, catalog identity, catalog integrity, repair, source-view, 
 ## Phase 27P Notes
 
 Catalog health now separates embedded CRS from effective CRS. A bounded LAS/LAZ catalog with all source CRS values missing is `CRS Assignment Required`, not healthy, and polygon preflight does not report true no coverage until comparable CRS metadata exists. Repository CRS override metadata is explicit and reversible. Live QGIS coverage/zoom services now require actual layer insertion or canvas extent changes before reporting success.
+
+## Phase 27Q Notes
+
+The Batch page now exposes selection mode controls for Polygon Area Processing: Automatic, Catalog Index, and Direct Header Scan. Automatic is recommended. Direct Header Scan is slower on large repositories, but it reads real file headers and restores the folder-selection behavior used before the indexed catalog became the default. It still requires a known effective CRS before comparing source and polygon bounds.
