@@ -116,7 +116,7 @@ from .help import info_badge, info_help_button
 from .output_loading import LoadableOutput, collect_loadable_outputs, compact_dataset_summary_lines, output_loading_summary
 from .state import ProjectSummary
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
-from .qgis_spatial_actions import add_repository_coverage_to_qgis, combine_bounds, preview_spatial_selection_in_qgis, remove_spatial_preview_layers, zoom_canvas_to_bounds
+from .qgis_spatial_actions import add_repository_coverage_to_qgis, add_selected_lidar_to_qgis, combine_bounds, preview_spatial_selection_in_qgis, remove_spatial_preview_layers, zoom_canvas_to_bounds
 from .polygon_source_selector import normalize_qgis_layer_selection, normalize_vector_file_selection, polygon_layer_items, vector_file_layer_options
 from .raster_styling import apply_generated_raster_renderer, layer_display_name
 from .ux_summary import action_icon_intent, backend_summary_from_environment, button_role_for_label, design_spacing_tokens, empty_state_message, environment_headline, home_environment_action_label, home_environment_readiness, primary_action_label, qgis_fallback_summary, readiness_status_text, routed_products_summary, status_badge_label, status_badge_tone, status_display_word, workflow_action_labels
@@ -2021,8 +2021,8 @@ class BatchPage(MissionPage):
         strategy_form.addRow("Existing index", existing_index_row)
         self.polygon_selection_mode_combo = QComboBox()
         self.polygon_selection_mode_combo.addItem("Automatic - Recommended", "automatic")
-        self.polygon_selection_mode_combo.addItem("Catalog Index", "catalog")
-        self.polygon_selection_mode_combo.addItem("Direct Header Scan", "direct_header_scan")
+        self.polygon_selection_mode_combo.addItem("Direct Header Metadata", "direct_header_scan")
+        self.polygon_selection_mode_combo.addItem("Verified Catalog", "verified_catalog")
         strategy_form.addRow("Selection mode", self.polygon_selection_mode_combo)
         self.polygon_direct_fallback_check = QCheckBox("Fallback to Direct Header Scan when catalog selection is inconclusive")
         self.polygon_direct_fallback_check.setChecked(True)
@@ -2175,7 +2175,7 @@ class BatchPage(MissionPage):
         self.reset_polygon_batch_button = QPushButton("Reset Polygon Batch")
         self.reset_polygon_batch_button.clicked.connect(self.reset_polygon_batch)
         _apply_button_role(self.reset_polygon_batch_button, "danger")
-        self.preview_spatial_selection_button = QPushButton("Preview Spatial Selection")
+        self.preview_spatial_selection_button = QPushButton("Show Selected Files on Map")
         self.preview_spatial_selection_button.clicked.connect(self.preview_polygon_spatial_selection)
         _apply_button_role(self.preview_spatial_selection_button, "secondary")
         self.zoom_polygon_button = QPushButton("Zoom to Polygon")
@@ -2505,13 +2505,13 @@ class BatchPage(MissionPage):
             self.preflight_text.setPlainText("Preview Spatial Selection needs a current preflight plan. Click Run Preflight Check first.")
             return
         selection = report.source_selection
-        coverage_result = preview_spatial_selection_in_qgis(report, self.iface)
+        coverage_result = add_selected_lidar_to_qgis(report, self.iface)
         lines = [
-            "Spatial Diagnostic Preview",
-            "Temporary QGIS group: PyForestScan - Spatial Diagnostics",
+            "Selected LiDAR Map Preview",
+            "Temporary QGIS group: PyForestScan - Selected LiDAR",
             f"Live QGIS action: {coverage_result.message if coverage_result else 'Repository extent unavailable; preview text only.'}",
             f"Repository kind: {selection.repository_kind}",
-            f"Selected logical inputs: {len(selection.selected_sources)}",
+            f"Intersecting LiDAR files: {len(selection.selected_sources)}",
             f"Overlap: {'Yes' if selection.overlap_result == 'yes' else 'No'}",
             f"Polygon extent ({selection.transformed_envelope.crs}): {selection.transformed_envelope.xmin:g}, {selection.transformed_envelope.ymin:g}, {selection.transformed_envelope.xmax:g}, {selection.transformed_envelope.ymax:g}",
         ]

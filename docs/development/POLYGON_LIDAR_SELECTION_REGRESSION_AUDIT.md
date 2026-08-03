@@ -39,3 +39,7 @@ Live QGIS validation is still required for a real Windows tester repository:
 5. Run one small polygon batch and verify clipped-source and final-product outputs.
 
 Do not record this as live-QGIS passed until those steps are executed in QGIS.
+
+## Phase 27R Notes
+
+Phase 27R adds the stabilized ordinary-folder contract: direct header metadata is the beta correctness reference, catalogs are optional optimization, selected real paths are serialized and invariant-checked before PBM clipping, and EPT remains a separate logical-source path. See [Polygon LiDAR Stabilization](POLYGON_LIDAR_STABILIZATION.md).

@@ -39,3 +39,7 @@ When CRS metadata is missing, users should either assign a repository CRS throug
 ## Regression Boundary
 
 The direct folder contract was first introduced for polygon processing in Phase 27D and was Batch-integrated in Phase 27F. Phase 27G introduced the SQLite/RTree catalog fast path, after which ordinary folder selection could become catalog-only. Phase 27Q restores the Phase 27D/27F direct overlap contract as a fallback and diagnostic reference while keeping the Phase 27G+ catalog path for performance.
+
+## Phase 27R Notes
+
+Phase 27R adds the stabilized ordinary-folder contract: direct header metadata is the beta correctness reference, catalogs are optional optimization, selected real paths are serialized and invariant-checked before PBM clipping, and EPT remains a separate logical-source path. See [Polygon LiDAR Stabilization](POLYGON_LIDAR_STABILIZATION.md).

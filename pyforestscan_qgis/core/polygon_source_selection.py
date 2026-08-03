@@ -478,6 +478,7 @@ def build_polygon_execution_plan(
         "output_folder": str(output_folder),
         "backend_ready": backend_ready,
         "backend_message": backend_message,
+        "selected_source_paths": [str(source.path) for source in source_selection.selected_sources],
     }
     signature = _hash_text(json.dumps(payload, sort_keys=True, default=str))
     return PolygonExecutionPlan(
@@ -489,7 +490,7 @@ def build_polygon_execution_plan(
         polygon_batch_options=polygon_batch_options,
         requested_concurrency=requested_concurrency,
         effective_concurrency=effective_concurrency,
-        spatial_read_plan={"mode": repository.repository_kind, "bounds": source_selection.transformed_envelope.to_dict(), "selected_sources": len(source_selection.selected_sources)},
+        spatial_read_plan={"mode": repository.repository_kind, "bounds": source_selection.transformed_envelope.to_dict(), "selected_sources": len(source_selection.selected_sources), "selected_source_paths": [str(source.path) for source in source_selection.selected_sources]},
         masking_plan={"exact_raster_mask": bool(getattr(polygon_batch_options, "exact_raster_mask", True)), "engine": getattr(polygon_batch_options, "mask_engine", "automatic")},
         output_plan={"folder": str(output_folder), "registry": "generated_outputs.json"},
         loading_plan={"load_after_completion": bool(getattr(shared_batch_options, "load_outputs_after_completion", False)), "qgis_thread": "ui"},

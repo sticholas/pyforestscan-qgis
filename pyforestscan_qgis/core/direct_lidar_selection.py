@@ -9,16 +9,16 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
-from .lidar_catalog_builder import inspect_lidar_header, iter_lidar_paths
-from .lidar_catalog_models import CatalogBuildOptions, LidarCatalogRecord, stable_root_id
+from .lidar_catalog_models import CatalogBuildOptions
 from .lidar_inventory import LidarSourceRecord
+from .lidar_source_metadata import HeaderMetadataService, LidarSourceMetadata
 from .polygon_source import NormalizedPolygonSelection
 from .spatial_selection import Bounds2D
 
 
-HeaderReader = Callable[[Path, Path, str], LidarCatalogRecord]
+BoundsTransformer = Callable[[Bounds2D, str, str], Bounds2D]
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,7 @@ class DirectRejectedSource:
     bounds: Bounds2D | None = None
     embedded_crs: str | None = None
     effective_crs: str | None = None
+    metadata_signature: str = ""
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,8 @@ class PolygonLidarSelectionResult:
     ready: bool
     blockers: tuple[str, ...]
     warnings: tuple[str, ...]
+    metadata: tuple[LidarSourceMetadata, ...] = ()
+    selected_metadata: tuple[LidarSourceMetadata, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -63,10 +66,11 @@ class SelectionMethodComparison:
 
 
 class DirectLidarFolderSelector:
-    """Discover headers and apply the bbox overlap equation directly."""
+    """Apply the bbox overlap equation to shared source metadata."""
 
-    def __init__(self, *, header_reader: HeaderReader | None = None) -> None:
-        self.header_reader = header_reader or inspect_lidar_header
+    def __init__(self, *, metadata_service: HeaderMetadataService | None = None, bounds_transformer: BoundsTransformer | None = None) -> None:
+        self.metadata_service = metadata_service or HeaderMetadataService()
+        self.bounds_transformer = bounds_transformer
 
     def select(
         self,
@@ -76,64 +80,66 @@ class DirectLidarFolderSelector:
         repository_crs_override: str | None = None,
         recursive: bool = True,
         options: CatalogBuildOptions | None = None,
+        metadata: Iterable[LidarSourceMetadata] | None = None,
     ) -> PolygonLidarSelectionResult:
         start = time.perf_counter()
         root = Path(repository_root).expanduser()
         normalized = root.resolve() if root.exists() else root.absolute()
         polygon_crs = (polygon.processing_crs or polygon.source_crs).strip()
-        comparison_crs = (repository_crs_override or polygon_crs).strip()
         blockers: list[str] = []
         warnings: list[str] = []
         selected: list[LidarSourceRecord] = []
+        selected_metadata: list[LidarSourceMetadata] = []
         rejected: list[DirectRejectedSource] = []
-        metadata_read = 0
-        discovered = 0
-        usable = 0
         if not normalized.is_dir():
-            return PolygonLidarSelectionResult(normalized, polygon_crs, comparison_crs, polygon.bounds, 0, 0, 0, 0, (), (), (), time.perf_counter() - start, "direct_header_scan", False, (f"LiDAR repository does not exist: {normalized}",), ())
-        scan_options = options or CatalogBuildOptions(recursive=recursive, source_types=("las", "laz", "copc"))
-        if options is None and not recursive:
-            scan_options = CatalogBuildOptions(recursive=False, source_types=("las", "laz", "copc"))
-        root_id = stable_root_id(normalized)
-        for path in iter_lidar_paths(normalized, options=scan_options):
-            source_type = path.suffix.lower().lstrip(".")
-            if str(path).lower().endswith(".copc.laz"):
-                source_type = "copc"
-            if source_type not in {"las", "laz", "copc"}:
+            return PolygonLidarSelectionResult(normalized, polygon_crs, polygon_crs, polygon.bounds, 0, 0, 0, 0, (), (), (), time.perf_counter() - start, "direct_header_metadata", False, (f"LiDAR repository does not exist: {normalized}",), ())
+        records = tuple(metadata) if metadata is not None else self.metadata_service.discover(normalized, repository_crs_override=repository_crs_override, recursive=recursive, options=options)
+        if repository_crs_override:
+            records = tuple(item.with_repository_crs_override(repository_crs_override) for item in records)
+        discovered = len(records)
+        metadata_read = sum(1 for item in records if item.readable and item.bounds is not None)
+        usable = 0
+        comparison_crs_values: set[str] = set()
+        for item in records:
+            bounds = item.bounds
+            if item.source_type not in {"las", "laz", "copc"}:
                 continue
-            discovered += 1
-            try:
-                record = self.header_reader(path, normalized, root_id)
-                metadata_read += 1
-            except Exception as exc:  # noqa: BLE001 - selection must surface per-file failures.
-                rejected.append(DirectRejectedSource(path, "HEADER_READ_FAILED", str(exc)))
+            if not item.exists:
+                rejected.append(DirectRejectedSource(item.path, "SOURCE_MISSING", "Source file no longer exists.", bounds, item.embedded_crs, item.effective_crs, item.metadata_signature))
                 continue
-            if record.bounds is None:
-                rejected.append(DirectRejectedSource(path, "BOUNDS_MISSING", "Header bounds are unavailable.", embedded_crs=record.source_crs))
+            if not item.readable or bounds is None:
+                rejected.append(DirectRejectedSource(item.path, "BOUNDS_MISSING", "; ".join(item.errors) or "Header bounds are unavailable.", bounds, item.embedded_crs, item.effective_crs, item.metadata_signature))
                 continue
-            effective_crs = record.source_crs or repository_crs_override
+            effective_crs = item.effective_crs
             if not effective_crs:
-                rejected.append(DirectRejectedSource(path, "CRS_MISSING", "LiDAR bounds were read, but their coordinate system is unknown.", record.bounds, record.source_crs, None))
+                rejected.append(DirectRejectedSource(item.path, "CRS_MISSING", "LiDAR bounds were read, but their coordinate system is unknown.", bounds, item.embedded_crs, None, item.metadata_signature))
                 continue
-            if _norm_crs(effective_crs) != _norm_crs(polygon_crs):
-                rejected.append(DirectRejectedSource(path, "CRS_TRANSFORM_UNAVAILABLE", "Direct scan cannot compare source and polygon bounds without a CRS transformer.", record.bounds, record.source_crs, effective_crs))
+            try:
+                query_bounds = _polygon_bounds_for_source(polygon.bounds, polygon_crs, effective_crs, self.bounds_transformer)
+            except ValueError as exc:
+                rejected.append(DirectRejectedSource(item.path, "CRS_TRANSFORM_UNAVAILABLE", str(exc), bounds, item.embedded_crs, effective_crs, item.metadata_signature))
                 continue
             usable += 1
-            source = LidarSourceRecord(path, record.source_type, record.file_size, record.modified_time_ns, bounds=record.bounds, crs=effective_crs, point_count=record.point_count)
-            if _overlaps(record.bounds, polygon.bounds):
+            comparison_crs_values.add(_norm_crs(effective_crs))
+            source = item.to_source_record()
+            if _overlaps(bounds, query_bounds):
                 selected.append(source)
+                selected_metadata.append(item)
             else:
-                rejected.append(DirectRejectedSource(path, "OUTSIDE_QUERY_EXTENT", "Source bounds do not overlap the selected polygon bounds.", record.bounds, record.source_crs, effective_crs))
+                rejected.append(DirectRejectedSource(item.path, "OUTSIDE_QUERY_EXTENT", "Source bounds do not overlap the selected polygon envelope.", bounds, item.embedded_crs, effective_crs, item.metadata_signature))
         if discovered == 0:
             blockers.append("No supported LAS, LAZ, or COPC files were found.")
         elif metadata_read == 0:
             blockers.append("LiDAR files were found, but their headers could not be read.")
         elif usable == 0 and any(item.reason_code == "CRS_MISSING" for item in rejected):
             blockers.append("LiDAR bounds were read, but their coordinate system is unknown.")
+        elif usable == 0 and any(item.reason_code == "CRS_TRANSFORM_UNAVAILABLE" for item in rejected):
+            blockers.append("LiDAR bounds were read, but source and polygon CRSs could not be compared safely.")
         elif not selected:
             blockers.append("The repository is valid, but no LiDAR tiles overlap the selected area.")
         if repository_crs_override:
             warnings.append(f"Repository CRS override applied to CRS-missing files: {repository_crs_override}.")
+        comparison_crs = polygon_crs if not comparison_crs_values else (next(iter(comparison_crs_values)) if len(comparison_crs_values) == 1 else "mixed")
         elapsed = time.perf_counter() - start
         return PolygonLidarSelectionResult(
             normalized,
@@ -148,10 +154,12 @@ class DirectLidarFolderSelector:
             tuple(selected),
             tuple(rejected),
             elapsed,
-            "direct_header_scan",
+            "direct_header_metadata",
             not blockers and bool(selected),
             tuple(dict.fromkeys(blockers)),
             tuple(dict.fromkeys(warnings)),
+            records,
+            tuple(selected_metadata),
         )
 
 
@@ -161,12 +169,20 @@ def compare_selection_methods(direct: PolygonLidarSelectionResult, catalog_sourc
     direct_only = tuple(sorted(direct_paths - catalog_paths, key=str))
     catalog_only = tuple(sorted(catalog_paths - direct_paths, key=str))
     if direct_only and not catalog_paths:
-        summary = "Catalog selection failure: direct scan found files while catalog selection found none."
+        summary = "Catalog selection failure: direct metadata found files while catalog selection found none."
     elif direct_only or catalog_only:
-        summary = "Catalog and direct selections differ."
+        summary = "Catalog and direct metadata selections differ."
     else:
-        summary = "Catalog and direct selections match."
+        summary = "Catalog and direct metadata selections match."
     return SelectionMethodComparison(direct, tuple(sorted(catalog_paths, key=str)), catalog_seconds, direct_only, catalog_only, summary, bool(direct_only and not catalog_paths))
+
+
+def _polygon_bounds_for_source(polygon_bounds: Bounds2D, polygon_crs: str, source_crs: str, transformer: BoundsTransformer | None) -> Bounds2D:
+    if _norm_crs(polygon_crs) == _norm_crs(source_crs):
+        return polygon_bounds
+    if transformer is None:
+        raise ValueError("Direct metadata selection cannot compare source and polygon bounds without a CRS transformer.")
+    return transformer(polygon_bounds, polygon_crs, source_crs)
 
 
 def _overlaps(source: Bounds2D, polygon: Bounds2D) -> bool:

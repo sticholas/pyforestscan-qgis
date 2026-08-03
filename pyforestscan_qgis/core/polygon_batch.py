@@ -28,6 +28,7 @@ from .polygon_source import NormalizedPolygonSelection
 from .polygon_transport import polygon_execution_input_from_selection, unique_polygon_job_id
 from .raster_mask import RasterMaskOptions, RasterMaskResult, apply_polygon_mask_to_outputs, is_maskable_raster
 from .output_registry import generated_output_for_path, write_output_registry
+from .polygon_lidar_processing import selected_path_invariant
 from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, HagNormalizationRequest, PadRequest, PaiRequest, PointDensityRequest, ProductType, RumpleRequest, VoxelStatRequest
 
 POLYGON_MANIFEST_NAME = "polygon_batch_manifest.json"
@@ -201,6 +202,8 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         blockers.append(str(exc))
         plan = _empty_plan(inventory, request, query_geometry, warnings)
     warnings.extend(plan.warnings)
+    if repository.repository_kind not in {"ept", "copc"}:
+        blockers.extend(selected_path_invariant(selected, ordinary=True))
     if not selected and not any("No LiDAR coverage" in item or "Catalog" in item or "spatial bounds" in item for item in blockers):
         blockers.append("No LiDAR coverage was found for this area.")
     point_count = selection.workload_estimate.point_estimate if selection.workload_estimate is not None else (None if query is None else query.estimated_point_count)
@@ -452,6 +455,10 @@ def execute_polygon_batch(
     """Clip intersecting sources to the exact polygon, then execute the normal Batch runner."""
     if report.blockers:
         raise ValueError("Polygon batch preflight blockers must be resolved before execution.")
+    if not _is_logical_spatial_report(report):
+        path_blockers = selected_path_invariant(report.selected_sources, ordinary=True)
+        if path_blockers:
+            raise ValueError("; ".join(path_blockers))
     adapter = adapter or PyForestScanAdapter()
     batch_folder = report.batch_folder if report.batch_folder.exists() else create_batch_folder(report.request.output_folder)
     if _is_logical_spatial_report(report):
@@ -524,6 +531,8 @@ def write_polygon_batch_manifest(
         "repository_identity": None if report.repository is None else report.repository.to_dict(),
         "source_selection": None if report.source_selection is None else report.source_selection.to_dict(),
         "selection_method": report.selection_method,
+        "selected_source_paths": [str(source.path) for source in report.selected_sources],
+        "selected_path_invariant": {"ordinary": not _is_logical_spatial_report(report), "readable_path_count": sum(1 for source in report.selected_sources if Path(source.path).is_file()), "selected_source_count": len(report.selected_sources)},
         "direct_selection": None if report.direct_selection is None else {
             "discovered_file_count": report.direct_selection.discovered_file_count,
             "metadata_read_count": report.direct_selection.metadata_read_count,
@@ -646,7 +655,8 @@ def _probe_pbm_backend(probe: Callable[[], tuple[bool, str]] | None) -> tuple[bo
 
 
 def _is_logical_spatial_report(report: PolygonBatchPreflightReport) -> bool:
-    return bool(report.selected_sources) and all(source.source_type in {"ept", "copc"} for source in report.selected_sources)
+    repository_kind = getattr(getattr(report, "repository", None), "repository_kind", "")
+    return bool(report.selected_sources) and len(report.selected_sources) == 1 and repository_kind == "ept" and report.selected_sources[0].source_type == "ept"
 
 
 def _execute_logical_spatial_batch(report: PolygonBatchPreflightReport, adapter: PyForestScanAdapter, batch_folder: Path, *, item_callback=None) -> BatchResult:

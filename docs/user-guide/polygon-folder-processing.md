@@ -137,3 +137,7 @@ Catalog health now separates embedded CRS from effective CRS. A bounded LAS/LAZ 
 ## Phase 27Q Notes
 
 The Batch page now exposes selection mode controls for Polygon Area Processing: Automatic, Catalog Index, and Direct Header Scan. Automatic is recommended. Direct Header Scan is slower on large repositories, but it reads real file headers and restores the folder-selection behavior used before the indexed catalog became the default. It still requires a known effective CRS before comparing source and polygon bounds.
+
+## Phase 27R Notes
+
+Phase 27R makes ordinary LAS/LAZ/COPC folder processing use direct header metadata when a verified catalog is unavailable or inconsistent. Catalog tools remain available under Repository Tools, but catalog absence should not block a normal folder run after an explicit CRS assignment. See [Polygon LiDAR Stabilization](../development/POLYGON_LIDAR_STABILIZATION.md).

@@ -30,3 +30,7 @@ Catalog health now separates embedded CRS from effective CRS. A bounded LAS/LAZ 
 ## Phase 27Q Notes
 
 Ordinary LAS/LAZ/COPC repositories now have a direct header-scan correctness fallback. Automatic polygon preflight still prefers the catalog fast path, but it compares catalog output with real header selection and uses direct real paths when the catalog returns no files while headers show overlap. See [Polygon LiDAR Selection Contract](POLYGON_LIDAR_SELECTION_CONTRACT.md) and [Direct Header Selection](DIRECT_HEADER_SELECTION.md).
+
+## Phase 27R Notes
+
+Phase 27R adds the stabilized ordinary-folder contract: direct header metadata is the beta correctness reference, catalogs are optional optimization, selected real paths are serialized and invariant-checked before PBM clipping, and EPT remains a separate logical-source path. See [Polygon LiDAR Stabilization](POLYGON_LIDAR_STABILIZATION.md).

@@ -48,3 +48,7 @@ python3 scripts/audit_polygon_lidar_selection.py \
 By default the script is read-only. It prints direct selection, catalog selection when a catalog path is supplied, comparison results, and polygon preflight behavior. Use `--export-report` to write the JSON report.
 
 `--rebuild-catalog` is the explicit write path. Do not use it during evidence capture unless the test step intentionally repairs/rebuilds the catalog.
+
+## Phase 27R Notes
+
+Phase 27R adds the stabilized ordinary-folder contract: direct header metadata is the beta correctness reference, catalogs are optional optimization, selected real paths are serialized and invariant-checked before PBM clipping, and EPT remains a separate logical-source path. See [Polygon LiDAR Stabilization](POLYGON_LIDAR_STABILIZATION.md).

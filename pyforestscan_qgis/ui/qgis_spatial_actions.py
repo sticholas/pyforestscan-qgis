@@ -136,6 +136,77 @@ def preview_spatial_selection_in_qgis(report: Any, iface: Any) -> QgisSpatialAct
     return QgisSpatialActionResult(bool(layer_ids), "Spatial selection preview layers were added to the map." if layer_ids else "No preview layers could be added.", tuple(layer_ids), feature_count, combine_bounds(selection.transformed_envelope.to_bounds(), None if selection.source_extent is None else selection.source_extent.to_bounds()))
 
 
+
+def add_selected_lidar_to_qgis(report: Any, iface: Any) -> QgisSpatialActionResult:
+    """Add selected LiDAR footprints and the selected polygon to live QGIS."""
+    if iface is None:
+        return QgisSpatialActionResult(False, "No live QGIS project is available.")
+    selection = getattr(report, "source_selection", None)
+    if selection is None:
+        return QgisSpatialActionResult(False, "No current polygon source-selection report is available.")
+    try:
+        from qgis.PyQt.QtGui import QColor
+        from qgis.core import QgsFeature, QgsField, QgsGeometry, QgsPointXY, QgsProject, QgsVectorLayer
+        from qgis.PyQt.QtCore import QVariant
+    except Exception as exc:  # noqa: BLE001
+        return QgisSpatialActionResult(False, f"QGIS selected-file APIs are unavailable: {exc}")
+    project = QgsProject.instance()
+    group_name = "PyForestScan - Selected LiDAR"
+    _remove_group_layers(project, group_name)
+    group = project.layerTreeRoot().findGroup(group_name) or project.layerTreeRoot().addGroup(group_name)
+    layer_ids: list[str] = []
+    crs = selection.transformed_envelope.crs
+    source_layer = QgsVectorLayer(f"Polygon?crs={crs}", "Selected LiDAR Files", "memory")
+    feature_count = 0
+    if source_layer.isValid():
+        provider = source_layer.dataProvider()
+        provider.addAttributes([
+            QgsField("filename", QVariant.String),
+            QgsField("source_type", QVariant.String),
+            QgsField("effective_crs", QVariant.String),
+            QgsField("point_count", QVariant.String),
+            QgsField("selection", QVariant.String),
+        ])
+        source_layer.updateFields()
+        features = []
+        selection_method = str(getattr(report, "selection_method", "unknown"))
+        for source in getattr(selection, "selected_sources", ()):
+            bounds = getattr(source, "bounds", None)
+            if bounds is None:
+                continue
+            feature = QgsFeature(source_layer.fields())
+            feature.setGeometry(_rect_geometry(bounds, QgsPointXY, QgsGeometry))
+            feature.setAttributes([str(getattr(source, "path", "")).split("/")[-1].split("\\")[-1], str(getattr(source, "source_type", "")), str(getattr(source, "crs", "") or ""), str(getattr(source, "point_count", "") or ""), selection_method])
+            features.append(feature)
+        if features:
+            provider.addFeatures(features)
+            source_layer.updateExtents()
+            _style_layer(source_layer, QColor(123, 31, 162, 25), QColor(123, 31, 162))
+            project.addMapLayer(source_layer, False)
+            group.addLayer(source_layer)
+            layer_ids.append(source_layer.id())
+            feature_count += len(features)
+    polygon_layer = QgsVectorLayer(f"Polygon?crs={crs}", "Selected Polygon", "memory")
+    if polygon_layer.isValid():
+        provider = polygon_layer.dataProvider()
+        provider.addAttributes([QgsField("kind", QVariant.String)])
+        polygon_layer.updateFields()
+        feature = QgsFeature(polygon_layer.fields())
+        feature.setGeometry(QgsGeometry.fromWkt(selection.transformed_polygon))
+        feature.setAttributes(["polygon"])
+        provider.addFeatures([feature])
+        polygon_layer.updateExtents()
+        _style_layer(polygon_layer, QColor(25, 118, 210, 30), QColor(25, 118, 210))
+        project.addMapLayer(polygon_layer, False)
+        group.addLayer(polygon_layer)
+        layer_ids.append(polygon_layer.id())
+        feature_count += 1
+    canvas = iface.mapCanvas()
+    if canvas is not None:
+        canvas.refresh()
+    return QgisSpatialActionResult(bool(layer_ids), "Selected LiDAR footprints were added to the map." if layer_ids else "No selected LiDAR footprints could be added.", tuple(layer_ids), feature_count, combine_bounds(selection.transformed_envelope.to_bounds(), None if selection.source_extent is None else selection.source_extent.to_bounds()))
+
+
 def remove_spatial_preview_layers(iface: Any) -> QgisSpatialActionResult:
     if iface is None:
         return QgisSpatialActionResult(False, "No live QGIS project is available.")
