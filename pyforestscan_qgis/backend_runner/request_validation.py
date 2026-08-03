@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from pyforestscan_qgis.backend_runner.api_contract import inspect_api_contract
 from pyforestscan_qgis.core.ept_bounds import EptBounds, EptBoundsError, validate_pdal_bounds_expression, validate_pyforestscan_bounds_value
+from pyforestscan_qgis.core.ept_spatial_reference import resolve_ept_spatial_reference
 from pyforestscan_qgis.core.job_diagnostics import create_diagnostics_dir, write_environment_diagnostics, write_json, write_text
 
 
@@ -119,14 +120,10 @@ def _check(checks: list[dict[str, Any]], name: str, passed: bool, passed_message
 
 
 def _ept_crs(payload: dict[str, Any] | None) -> str:
-    if not isinstance(payload, dict):
-        return ""
-    srs = payload.get("srs")
-    if isinstance(srs, dict):
-        authority = srs.get("authority") or srs.get("horizontal") or srs.get("wkt")
-        if authority:
-            return str(authority)
-    return str(payload.get("crs") or "")
+    resolved = resolve_ept_spatial_reference(payload)
+    if resolved.valid:
+        return resolved.crs_text
+    return ""
 
 
 def _overlaps_ept_bounds(bounds: EptBounds, raw: Any) -> bool:
@@ -140,7 +137,7 @@ def _overlaps_ept_bounds(bounds: EptBounds, raw: Any) -> bool:
             return True
     except Exception:
         return True
-    return not (bounds.xmax <= xmin or bounds.xmin >= xmax or bounds.ymax <= ymin or bounds.ymin >= ymax)
+    return not (bounds.xmax < xmin or bounds.xmin > xmax or bounds.ymax < ymin or bounds.ymin > ymax)
 
 
 def _validate_polygon_path(checks: list[dict[str, Any]], path: Path, expected_crs: str) -> None:

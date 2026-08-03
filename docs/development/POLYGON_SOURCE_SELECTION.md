@@ -34,3 +34,7 @@ Ordinary LAS/LAZ/COPC repositories now have a direct header-scan correctness fal
 ## Phase 27R Notes
 
 Phase 27R adds the stabilized ordinary-folder contract: direct header metadata is the beta correctness reference, catalogs are optional optimization, selected real paths are serialized and invariant-checked before PBM clipping, and EPT remains a separate logical-source path. See [Polygon LiDAR Stabilization](POLYGON_LIDAR_STABILIZATION.md).
+
+## Phase 27S EPT CRS Source Selection
+
+EPT source selection treats `ept.json` as one logical source only after CRS resolution succeeds. Technical diagnostics record the raw SRS object, parser source, repository CRS, polygon CRS, transformed polygon bounds, EPT extent, and overlap result. Guided mode keeps this simple: Spatial alignment is either ready, automatically transformed, or requires a LiDAR coordinate-system choice.

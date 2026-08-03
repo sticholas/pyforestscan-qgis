@@ -141,3 +141,9 @@ The Batch page now exposes selection mode controls for Polygon Area Processing: 
 ## Phase 27R Notes
 
 Phase 27R makes ordinary LAS/LAZ/COPC folder processing use direct header metadata when a verified catalog is unavailable or inconsistent. Catalog tools remain available under Repository Tools, but catalog absence should not block a normal folder run after an explicit CRS assignment. See [Polygon LiDAR Stabilization](../development/POLYGON_LIDAR_STABILIZATION.md).
+
+## EPT Coordinate Systems
+
+For EPT repositories, Mission Control reads coordinate-system metadata from `ept.json`. Common EPT metadata such as `authority=EPSG` and `horizontal=6635` is normalized to `EPSG:6635` automatically. If the polygon and EPT use compatible CRS values, preflight reports **Spatial alignment: Ready**. If they differ and QGIS or the managed backend can transform them, Mission Control performs that transform automatically.
+
+Only when EPT metadata is incomplete does Mission Control ask for a LiDAR coordinate system. It does not ask users to calculate coordinates manually.

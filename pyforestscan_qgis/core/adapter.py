@@ -18,6 +18,7 @@ from .config import AdapterConfig, DatasetOpenOptions, InspectionOptions
 from .dependency_check import EnvironmentReport, collect_environment_report
 from .exceptions import AdapterError, DatasetError, EnvironmentError, ProcessingError
 from .ept_bounds import EptBounds, EptBoundsError, validate_pyforestscan_bounds_value
+from .ept_spatial_reference import resolve_ept_spatial_reference
 from .pad_products import pad_band_mapping, pad_metadata_tags
 from .polygon_transport import looks_like_wkt, materialize_polygon_input, polygon_execution_input_from_mapping
 from .ept_subset import EptSubsetRequest, EptSubsetResult, ept_read_lidar_kwargs
@@ -1552,15 +1553,8 @@ def _bounds_from_ept_metadata(metadata: dict[str, Any]) -> Bounds3D | None:
 
 
 def _crs_from_ept_metadata(metadata: dict[str, Any]) -> str | None:
-    srs = metadata.get("srs") or {}
-    if isinstance(srs, dict):
-        authority = srs.get("authority")
-        horizontal = srs.get("horizontal")
-        if authority and horizontal:
-            return f"{authority}:{horizontal}"
-        if srs.get("wkt"):
-            return str(srs["wkt"])
-    return None
+    resolved = resolve_ept_spatial_reference(metadata)
+    return resolved.crs_text if resolved.valid else None
 
 
 def _point_count_from_ept_metadata(metadata: dict[str, Any]) -> int | None:

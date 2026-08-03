@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .lidar_catalog import connect_catalog, upsert_records
+from .ept_spatial_reference import is_incomplete_crs_identifier
 from .lidar_catalog_models import LidarCatalogRecord, default_lidar_catalog_path, stable_root_id
 
 EPT_DATA_DIRS = {"ept-data", "ept-hierarchy"}
@@ -35,6 +36,17 @@ class EptCatalogRepairReport:
     repaired: bool
     logical_source_path: Path | None
     removed_internal_records: int
+    message: str
+
+
+@dataclass(frozen=True)
+class EptCrsStateRepairReport:
+    """Result from repairing stale EPT CRS state in an existing catalog."""
+
+    catalog_path: Path
+    repaired: bool
+    previous_crs: str | None
+    repaired_crs: str | None
     message: str
 
 
@@ -128,6 +140,36 @@ def repair_ept_catalog(catalog_path: Path | str, root_path: Path | str, *, backu
     finally:
         connection.close()
     return EptCatalogRepairReport(catalog, backup_path, True, selection.ept_json, len(ids), "Incorrect EPT catalog repaired: one logical ept.json source is registered.")
+
+
+def repair_ept_crs_catalog_state(catalog_path: Path | str, root_path: Path | str) -> EptCrsStateRepairReport:
+    """Repair stale incomplete CRS values for a logical EPT catalog record."""
+    catalog = Path(catalog_path)
+    root = Path(root_path).expanduser().resolve()
+    selection = resolve_ept_selection(root)
+    if selection is None or not catalog.exists():
+        return EptCrsStateRepairReport(catalog, False, None, None, "No EPT catalog CRS state was available to repair.")
+    root_id = stable_root_id(selection.normalized_repository)
+    connection = connect_catalog(catalog)
+    previous = None
+    try:
+        row = connection.execute(
+            "SELECT source_crs FROM lidar_sources WHERE root_id = ? AND relative_path = ?",
+            (root_id, "ept.json"),
+        ).fetchone()
+        previous = None if row is None else str(row["source_crs"] or "")
+        if row is not None and not is_incomplete_crs_identifier(previous):
+            return EptCrsStateRepairReport(catalog, False, previous, previous, "EPT catalog CRS state is already complete.")
+        from .lidar_catalog_builder import inspect_lidar_header
+
+        record = inspect_lidar_header(selection.ept_json, selection.normalized_repository, root_id)
+        if not record.source_crs or is_incomplete_crs_identifier(record.source_crs):
+            return EptCrsStateRepairReport(catalog, False, previous, record.source_crs, "EPT metadata still does not provide a complete CRS.")
+        upsert_records(connection, (record,))
+        connection.commit()
+        return EptCrsStateRepairReport(catalog, True, previous, record.source_crs, "EPT coordinate-system metadata was repaired.")
+    finally:
+        connection.close()
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:

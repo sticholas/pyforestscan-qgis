@@ -77,3 +77,7 @@ Polygon Area Processing can now compare the catalog path with Direct Header Scan
 ## Phase 27R Notes
 
 Phase 27R documents that ordinary folder processing now treats direct header metadata as the beta correctness reference and catalogs as optional optimization. Live QGIS validation is still required for the user's real repositories. See [Polygon LiDAR Stabilization](development/POLYGON_LIDAR_STABILIZATION.md) and [Real Ordinary LiDAR Polygon Validation](testing/REAL_ORDINARY_LIDAR_POLYGON_VALIDATION.md).
+
+## Phase 27S EPT CRS Notes
+
+EPT CRS detection now handles WKT/WKT2, PROJJSON, and authority plus horizontal code. Live end-to-end QGIS validation against the real 130 ha EPT polygon remains a manual QA item; automated tests cover the reported EPSG:6635 extent overlap and CRS failure messaging without user-specific paths.

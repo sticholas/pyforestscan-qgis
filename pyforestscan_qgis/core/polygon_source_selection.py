@@ -9,8 +9,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .ept_repository import resolve_ept_selection
-from .lidar_catalog_models import LidarCatalogQuery, LidarCatalogQueryResult, WorkloadEstimate, default_lidar_catalog_path
+from .crs_alignment import SpatialAlignmentResult, align_polygon_to_crs
+from .ept_repository import repair_ept_crs_catalog_state, resolve_ept_selection
+from .ept_spatial_reference import ResolvedSpatialReference, ept_spatial_metadata_summary, is_incomplete_crs_identifier, resolve_ept_spatial_reference
+from .lidar_catalog_models import LidarCatalogQuery, LidarCatalogQueryResult, PolygonQueryGeometry, WorkloadEstimate, default_lidar_catalog_path
 from .lidar_catalog_integrity import inspect_catalog_integrity
 from .lidar_catalog_query import derive_polygon_query_geometry, query_catalog_for_polygon
 from .lidar_inventory import LidarSourceRecord
@@ -58,7 +60,6 @@ class PolygonNormalizationReport:
     area_change_percent: float
     warnings: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
-
     def to_dict(self) -> dict[str, object]:
         return dict(self.__dict__)
 
@@ -99,6 +100,12 @@ class ResolvedLidarRepository:
     detection_confidence: str = "low"
     warnings: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
+    source_spatial_reference: ResolvedSpatialReference | None = None
+    ept_spatial_metadata: dict[str, object] | None = None
+
+    @property
+    def crs_resolution_source(self) -> str:
+        return self.source_spatial_reference.source if self.source_spatial_reference is not None else ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -117,6 +124,9 @@ class ResolvedLidarRepository:
             "detection_confidence": self.detection_confidence,
             "warnings": list(self.warnings),
             "errors": list(self.errors),
+            "crs_resolution_source": self.crs_resolution_source,
+            "source_spatial_reference": None if self.source_spatial_reference is None else self.source_spatial_reference.to_dict(),
+            "ept_spatial_metadata": self.ept_spatial_metadata,
         }
 
 
@@ -180,6 +190,7 @@ class PolygonSourceSelectionResult:
     query_result: LidarCatalogQueryResult | None = None
     catalog_skipped_count: int = 0
     workload_estimate: WorkloadEstimate | None = None
+    spatial_alignment: SpatialAlignmentResult | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -196,6 +207,7 @@ class PolygonSourceSelectionResult:
             "blockers": [item.to_dict() for item in self.blockers],
             "timings": self.timings,
             "catalog_skipped_count": self.catalog_skipped_count,
+            "spatial_alignment": None if self.spatial_alignment is None else self.spatial_alignment.to_dict(),
         }
 
 
@@ -250,14 +262,17 @@ class PolygonSourceSelectionService:
         catalog = Path(catalog_path) if catalog_path is not None else default_lidar_catalog_path(resolved)
         ept = resolve_ept_selection(resolved)
         if ept is not None:
-            bounds, crs, points = _read_ept_metadata(ept.ept_json)
+            bounds, crs, points, resolved, payload = _read_ept_metadata(ept.ept_json)
             source_extent = SpatialEnvelope.from_bounds(bounds, crs) if bounds is not None and crs else None
-            warnings = ()
-            errors = ()
+            state_repair = repair_ept_crs_catalog_state(catalog, ept.ept_json) if catalog.exists() else None
+            warnings = tuple(resolved.warnings)
+            if state_repair is not None and state_repair.repaired:
+                warnings = (*warnings, state_repair.message)
+            errors = tuple(resolved.errors)
             if bounds is None:
-                errors = ("EPT metadata does not provide a usable root extent.",)
+                errors = (*errors, "EPT metadata does not provide a usable root extent.")
             if not crs:
-                errors = (*errors, "EPT metadata does not provide a usable CRS.")
+                errors = (*errors, "The EPT coordinate system could not be determined.")
             return ResolvedLidarRepository(
                 repository_id=_repo_id(ept.normalized_repository, "ept"),
                 selected_path=selected,
@@ -268,10 +283,12 @@ class PolygonSourceSelectionService:
                 catalog_path=catalog,
                 source_crs=crs,
                 source_extent=source_extent,
-                resolution_method="native_ept_metadata",
-                detection_confidence="high",
+                resolution_method=resolved.source if resolved.valid else "ept_metadata_unresolved",
+                detection_confidence="high" if resolved.valid else "low",
                 warnings=warnings,
-                errors=errors,
+                errors=tuple(dict.fromkeys(errors)),
+                source_spatial_reference=resolved,
+                ept_spatial_metadata=ept_spatial_metadata_summary(str(ept.ept_json), payload, resolved),
             )
         source_crs = None
         source_extent = None
@@ -310,6 +327,8 @@ class PolygonSourceSelectionService:
         start = time.perf_counter()
         normalization = polygon_normalization_report(polygon)
         source_crs = repository.source_crs or catalog_crs or polygon.processing_crs
+        if repository.repository_kind == "ept":
+            return self._select_native_ept(repository, polygon, start)
         query_geometry = derive_polygon_query_geometry(polygon, catalog_crs=source_crs)
         transformed_envelope = SpatialEnvelope.from_bounds(query_geometry.envelope, query_geometry.catalog_crs)
         polygon_context = PolygonSpatialContext(
@@ -324,8 +343,6 @@ class PolygonSourceSelectionService:
             normalization_report=normalization,
         )
         setattr(self, "_last_polygon_context", polygon_context)
-        if repository.repository_kind == "ept":
-            return self._select_native_ept(repository, polygon, query_geometry, transformed_envelope, start)
         query = query_catalog_for_polygon(
             repository.catalog_path or default_lidar_catalog_path(repository.normalized_path),
             repository.normalized_path,
@@ -368,8 +385,6 @@ class PolygonSourceSelectionService:
         self,
         repository: ResolvedLidarRepository,
         polygon: NormalizedPolygonSelection,
-        query_geometry,
-        transformed_envelope: SpatialEnvelope,
         start: float,
     ) -> PolygonSourceSelectionResult:
         warnings: list[PreflightMessage] = []
@@ -377,20 +392,43 @@ class PolygonSourceSelectionService:
         rejected: list[RejectedSource] = []
         selected: tuple[LidarSourceRecord, ...] = ()
         source_extent = repository.source_extent
-        polygon_processing_crs = _norm_crs(polygon.processing_crs or polygon.source_crs)
-        repository_crs = _norm_crs(repository.source_crs)
-        if repository.errors:
-            blockers.extend(_message("EPT_METADATA_ERROR", "blocker", "EPT metadata incomplete", item) for item in repository.errors)
-        elif repository_crs and polygon_processing_crs and repository_crs != polygon_processing_crs:
-            blockers.append(_message("CRS_MISMATCH", "blocker", "Coordinate systems need review", "Polygon and repository extents cannot be compared until the polygon is transformed to the repository CRS.", f"Polygon CRS: {polygon.processing_crs}; repository CRS: {repository.source_crs}", "Check Coordinate Systems"))
-            if source_extent is not None:
-                rejected.append(RejectedSource(repository.ept_json_path or repository.normalized_path, "ept", "CRS_TRANSFORM_FAILED", "Coordinate systems could not be compared safely.", "Native EPT selection requires polygon coordinates in the EPT CRS before overlap testing.", repository.source_crs, source_extent, transformed_envelope))
+        alignment = align_polygon_to_crs(polygon, repository.source_crs)
+        transformed_envelope = SpatialEnvelope.from_bounds(alignment.transformed_bounds, alignment.target_crs) if alignment.transformed_bounds is not None else SpatialEnvelope.from_bounds(polygon.bounds, polygon.processing_crs or polygon.source_crs)
+        query_geometry = PolygonQueryGeometry(
+            envelope=transformed_envelope.to_bounds(),
+            exact_polygon_wkt=alignment.transformed_wkt,
+            source_crs=alignment.original_crs,
+            catalog_crs=alignment.target_crs,
+            ept_bounds=transformed_envelope.to_bounds().to_ept_bounds(),
+            warnings=alignment.warnings,
+        )
+        polygon_context = PolygonSpatialContext(
+            original_geometry=polygon.geometry_wkt,
+            original_crs=polygon.source_crs,
+            normalized_geometry=polygon.geometry_wkt,
+            processing_geometry=polygon.geometry_wkt,
+            processing_crs=polygon.processing_crs,
+            source_geometry=query_geometry.exact_polygon_wkt,
+            source_crs=query_geometry.catalog_crs,
+            source_envelope=transformed_envelope,
+            normalization_report=polygon_normalization_report(polygon),
+        )
+        setattr(self, "_last_polygon_context", polygon_context)
+        if repository.errors and not repository.source_crs:
+            title = "EPT coordinate system incomplete" if any("INCOMPLETE_CRS_AUTHORITY" in item for item in repository.errors) else "EPT coordinate system unavailable"
+            user_text = "The EPT coordinate-system metadata is incomplete." if title.endswith("incomplete") else "The EPT coordinate system could not be determined."
+            blockers.append(_message("EPT_CRS_UNRESOLVED", "blocker", title, user_text, "; ".join(repository.errors), "Choose Coordinate System"))
         elif source_extent is None:
             blockers.append(_message("INVALID_SOURCE_EXTENT", "blocker", "EPT extent unavailable", "Repository extent could not be read from ept.json."))
+        elif not alignment.ready:
+            blockers.append(_message("CRS_TRANSFORM_FAILED", "blocker", "Coordinate systems need review", alignment.user_message, alignment.technical_details, "Choose Coordinate System"))
+            rejected.append(RejectedSource(repository.ept_json_path or repository.normalized_path, "ept", "CRS_TRANSFORM_FAILED", "Coordinate systems could not be compared safely.", alignment.technical_details, repository.source_crs, source_extent, transformed_envelope, details={"spatial_alignment": alignment.to_dict()}))
         elif _norm_crs(transformed_envelope.crs) != _norm_crs(source_extent.crs):
-            blockers.append(_message("CRS_MISMATCH", "blocker", "Coordinate systems need review", "Polygon and repository extents cannot be compared until they are in the same CRS.", f"Polygon CRS: {transformed_envelope.crs}; repository CRS: {source_extent.crs}", "Check Coordinate Systems"))
+            blockers.append(_message("CRS_TRANSFORM_FAILED", "blocker", "Spatial alignment unavailable", "The polygon could not be transformed into the EPT coordinate system.", f"Polygon CRS: {transformed_envelope.crs}; repository CRS: {source_extent.crs}", "Choose Coordinate System"))
             rejected.append(RejectedSource(repository.ept_json_path or repository.normalized_path, "ept", "CRS_TRANSFORM_FAILED", "Coordinate systems could not be compared safely.", "No CRS transformer was available for native EPT source selection.", repository.source_crs, source_extent, transformed_envelope))
         elif transformed_envelope.intersects(source_extent):
+            if alignment.transformation_required:
+                warnings.append(_message("SPATIAL_ALIGNMENT_AUTOMATIC", "warning", "Spatial alignment ready", "The polygon will be transformed automatically to match the LiDAR data.", alignment.technical_details))
             path = repository.ept_json_path or repository.logical_source_paths[0]
             size = path.stat().st_size if path.exists() else 0
             modified = path.stat().st_mtime_ns if path.exists() else 0
@@ -448,6 +486,7 @@ class PolygonSourceSelectionService:
             query_result=result,
             catalog_skipped_count=0,
             workload_estimate=workload,
+            spatial_alignment=alignment,
         )
 
 
@@ -542,11 +581,12 @@ def _message(code: str, severity: str, title: str, message: str, technical: str 
     return PreflightMessage(code, severity, title, message, technical, action, code)
 
 
-def _read_ept_metadata(path: Path) -> tuple[Bounds2D | None, str | None, int | None]:
+def _read_ept_metadata(path: Path) -> tuple[Bounds2D | None, str | None, int | None, ResolvedSpatialReference, dict[str, Any]]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return None, None, None
+        empty = resolve_ept_spatial_reference(None)
+        return None, None, None, empty, {}
     bounds_value = payload.get("bounds") if isinstance(payload, dict) else None
     bounds = None
     if isinstance(bounds_value, list) and len(bounds_value) >= 5:
@@ -554,21 +594,14 @@ def _read_ept_metadata(path: Path) -> tuple[Bounds2D | None, str | None, int | N
             bounds = Bounds2D(float(bounds_value[0]), float(bounds_value[1]), float(bounds_value[3]), float(bounds_value[4]))
         except (TypeError, ValueError):
             bounds = None
-    srs = payload.get("srs") if isinstance(payload, dict) else None
-    crs = None
-    if isinstance(srs, dict):
-        authority = srs.get("authority")
-        horizontal = srs.get("horizontal")
-        if isinstance(authority, str) and authority:
-            crs = authority
-        elif isinstance(horizontal, str) and horizontal:
-            crs = horizontal
+    resolved = resolve_ept_spatial_reference(payload if isinstance(payload, dict) else None)
+    crs = resolved.crs_text if resolved.valid and not is_incomplete_crs_identifier(resolved.crs_text) else None
     point_count = payload.get("points") if isinstance(payload, dict) else None
     try:
         count = int(point_count) if point_count is not None else None
     except (TypeError, ValueError):
         count = None
-    return bounds, crs, count
+    return bounds, crs, count, resolved, payload if isinstance(payload, dict) else {}
 
 
 def _source_to_dict(source: LidarSourceRecord) -> dict[str, object]:

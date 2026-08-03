@@ -13,6 +13,7 @@ from typing import Callable, Iterable
 from .lidar_catalog import connect_catalog, record_for_relative_path, upsert_records
 from .lidar_catalog_integrity import write_catalog_identity
 from .ept_repository import prune_ept_traversal, resolve_ept_selection, is_ept_internal_path
+from .ept_spatial_reference import resolve_ept_spatial_reference
 from .lidar_catalog_models import CatalogBuildOptions, LidarCatalogBuildResult, LidarCatalogRecord, default_lidar_catalog_path, source_id_for, stable_root_id, utc_now_iso
 from .lidar_inventory import lidar_source_type
 
@@ -214,10 +215,8 @@ def _inspect_ept(path: Path) -> dict[str, object]:
     bounds_value = payload.get("bounds") if isinstance(payload, dict) else None
     if not isinstance(bounds_value, list) or len(bounds_value) < 6:
         raise ValueError("EPT metadata does not include six-value bounds.")
-    srs = payload.get("srs") if isinstance(payload, dict) else None
-    crs = None
-    if isinstance(srs, dict):
-        crs = srs.get("authority") or srs.get("horizontal") or srs.get("wkt")
+    resolved = resolve_ept_spatial_reference(payload if isinstance(payload, dict) else None)
+    crs = resolved.crs_text if resolved.valid else None
     points = payload.get("points") if isinstance(payload, dict) else None
     return {
         "xmin": float(bounds_value[0]),

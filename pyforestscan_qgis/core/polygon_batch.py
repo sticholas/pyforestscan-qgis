@@ -20,6 +20,7 @@ from .ept_repository import incorrect_ept_catalog_detected
 from .direct_lidar_selection import DirectLidarFolderSelector, PolygonLidarSelectionResult, SelectionMethodComparison, compare_selection_methods
 from .lidar_catalog import catalog_summary
 from .lidar_catalog_models import CatalogThresholds, LidarCatalogQueryResult, PolygonQueryGeometry, default_lidar_catalog_path
+from .spatial_selection import Bounds2D
 from .lidar_catalog_query import derive_polygon_query_geometry, query_catalog_for_polygon
 from .polygon_source_selection import PolygonExecutionPlan, PolygonSourceSelectionResult, PolygonSourceSelectionService, build_polygon_execution_plan
 from .lidar_inventory import LidarInventory, LidarSourceRecord
@@ -174,6 +175,15 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
     if repository.repository_kind == "ept" and Path(catalog_path).exists() and incorrect_ept_catalog_detected(catalog_path, repository.normalized_path):
         blockers.append("Incorrect EPT Catalog Detected. Repair EPT Catalog before running; internal EPT node files should be one logical EPT dataset.")
     selection = service.select_sources(repository, request.polygon, catalog_crs=request.catalog_crs, thresholds=request.thresholds)
+    if repository.repository_kind == "ept":
+        query_geometry = PolygonQueryGeometry(
+            envelope=selection.transformed_envelope.to_bounds(),
+            exact_polygon_wkt=selection.transformed_polygon,
+            source_crs=request.polygon.processing_crs or request.polygon.source_crs,
+            catalog_crs=selection.transformed_envelope.crs,
+            ept_bounds=selection.transformed_envelope.to_bounds().to_ept_bounds(),
+            warnings=tuple(message.to_text() for message in selection.warnings),
+        )
     query = selection.query_result
     selected = selection.selected_sources
     direct_selection = None
@@ -254,7 +264,7 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         catalog_skipped_count=selection.catalog_skipped_count,
         backend_ready=backend_ready,
         backend_message=backend_message,
-        spatial_alignment_status="Ready" if not selection.blockers else "Needs review",
+        spatial_alignment_status=_spatial_alignment_status(selection),
         repository=repository,
         source_selection=selection,
         execution_plan=execution_plan,
@@ -546,7 +556,10 @@ def write_polygon_batch_manifest(
             "ept_bounds": EptBounds.from_value(report.query_geometry.ept_bounds, crs=report.query_geometry.catalog_crs).to_json(),
             "pdal_bounds_expression": EptBounds.from_value(report.query_geometry.ept_bounds, crs=report.query_geometry.catalog_crs).to_pdal_range_string(),
             "bounds_query_crs": report.query_geometry.catalog_crs,
+            "ept_query_crs": report.query_geometry.catalog_crs,
             "spatial_alignment": report.spatial_alignment_status,
+            "spatial_alignment_details": None if report.source_selection is None or report.source_selection.spatial_alignment is None else report.source_selection.spatial_alignment.to_dict(),
+            "crs_resolution_source": "" if report.repository is None else getattr(report.repository, "crs_resolution_source", ""),
             "query_seconds": None if query is None else query.query_seconds,
             "candidate_count": None if query is None else query.candidate_count,
             "exact_intersecting_count": None if query is None else query.exact_intersecting_count,
@@ -558,10 +571,17 @@ def write_polygon_batch_manifest(
             "source_crs": report.request.polygon.source_crs,
             "processing_crs": report.request.polygon.processing_crs,
             "polygon_original_crs": report.request.polygon.source_crs,
+            "polygon_transformed_crs": report.query_geometry.catalog_crs,
+            "repository_crs": "" if report.repository is None else getattr(report.repository, "source_crs", None),
+            "ept_query_crs": report.query_geometry.catalog_crs,
             "ept_source_crs": report.query_geometry.catalog_crs,
             "bounds_query_crs": report.query_geometry.catalog_crs,
+            "clipping_polygon_crs": report.query_geometry.catalog_crs,
             "clipping_geometry_crs": report.query_geometry.catalog_crs,
-            "output_crs": report.request.polygon.processing_crs,
+            "processing_crs": report.query_geometry.catalog_crs,
+            "output_crs": report.query_geometry.catalog_crs if _is_logical_spatial_report(report) else report.request.polygon.processing_crs,
+            "transformation_required": bool(report.source_selection and report.source_selection.spatial_alignment and report.source_selection.spatial_alignment.transformation_required),
+            "transformation_validation_result": report.spatial_alignment_status,
             "geometry_type": report.request.polygon.geometry_type,
             "feature_count": report.request.polygon.feature_count,
             "bounds": report.request.polygon.bounds.__dict__,
@@ -594,6 +614,19 @@ def write_polygon_batch_manifest(
 def selected_source_paths(report: PolygonBatchPreflightReport) -> tuple[Path, ...]:
     """Return intersecting source paths for tests and UI summaries."""
     return tuple(source.path for source in report.selected_sources)
+
+
+def _spatial_alignment_status(selection: PolygonSourceSelectionResult) -> str:
+    alignment = selection.spatial_alignment
+    if alignment is None:
+        return "Ready" if not selection.blockers else "Needs review"
+    if alignment.ready:
+        return "Ready"
+    if alignment.status == "crs_malformed":
+        return "EPT CRS incomplete"
+    if alignment.status == "transformation_unavailable":
+        return "CRS transform unavailable"
+    return "Needs review"
 
 
 def catalog_status_text(lidar_folder: Path | str, catalog_path: Path | str | None = None) -> str:

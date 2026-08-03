@@ -207,6 +207,80 @@ def add_selected_lidar_to_qgis(report: Any, iface: Any) -> QgisSpatialActionResu
     return QgisSpatialActionResult(bool(layer_ids), "Selected LiDAR footprints were added to the map." if layer_ids else "No selected LiDAR footprints could be added.", tuple(layer_ids), feature_count, combine_bounds(selection.transformed_envelope.to_bounds(), None if selection.source_extent is None else selection.source_extent.to_bounds()))
 
 
+def preview_spatial_alignment_in_qgis(report: Any, iface: Any) -> QgisSpatialActionResult:
+    """Add original polygon, transformed polygon, and EPT coverage layers to live QGIS."""
+    if iface is None:
+        return QgisSpatialActionResult(False, "No live QGIS project is available.")
+    selection = getattr(report, "source_selection", None)
+    request = getattr(report, "request", None)
+    polygon = getattr(request, "polygon", None)
+    if selection is None or polygon is None:
+        return QgisSpatialActionResult(False, "No current polygon source-selection report is available.")
+    try:
+        from qgis.PyQt.QtGui import QColor
+        from qgis.core import QgsFeature, QgsField, QgsGeometry, QgsPointXY, QgsProject, QgsVectorLayer
+        from qgis.PyQt.QtCore import QVariant
+    except Exception as exc:  # noqa: BLE001
+        return QgisSpatialActionResult(False, f"QGIS spatial-alignment APIs are unavailable: {exc}")
+    project = QgsProject.instance()
+    group_name = "PyForestScan - Spatial Alignment"
+    _remove_group_layers(project, group_name)
+    group = project.layerTreeRoot().findGroup(group_name) or project.layerTreeRoot().addGroup(group_name)
+    layer_ids: list[str] = []
+    feature_count = 0
+
+    original_crs = getattr(polygon, "processing_crs", "") or getattr(polygon, "source_crs", "")
+    original_layer = _wkt_layer(
+        "Original Polygon",
+        getattr(polygon, "geometry_wkt", ""),
+        original_crs,
+        "original_polygon",
+        QColor(25, 118, 210, 24),
+        QColor(25, 118, 210),
+        QgsFeature,
+        QgsField,
+        QgsGeometry,
+        QgsVectorLayer,
+        QVariant,
+    )
+    if original_layer is not None:
+        project.addMapLayer(original_layer, False)
+        group.addLayer(original_layer)
+        layer_ids.append(original_layer.id())
+        feature_count += 1
+
+    transformed_layer = _wkt_layer(
+        "Transformed Polygon",
+        selection.transformed_polygon,
+        selection.transformed_envelope.crs,
+        "transformed_polygon",
+        QColor(245, 124, 0, 24),
+        QColor(245, 124, 0),
+        QgsFeature,
+        QgsField,
+        QgsGeometry,
+        QgsVectorLayer,
+        QVariant,
+    )
+    if transformed_layer is not None:
+        project.addMapLayer(transformed_layer, False)
+        group.addLayer(transformed_layer)
+        layer_ids.append(transformed_layer.id())
+        feature_count += 1
+
+    if selection.source_extent is not None:
+        repo_layer = _extent_layer("EPT Coverage Extent", selection.source_extent.to_bounds(), selection.source_extent.crs, "ept_coverage", QColor(46, 125, 50, 22), QColor(46, 125, 50), QgsFeature, QgsField, QgsPointXY, QgsGeometry, QgsVectorLayer, QVariant)
+        if repo_layer is not None:
+            project.addMapLayer(repo_layer, False)
+            group.addLayer(repo_layer)
+            layer_ids.append(repo_layer.id())
+            feature_count += 1
+    canvas = iface.mapCanvas()
+    if canvas is not None:
+        canvas.refresh()
+    return QgisSpatialActionResult(bool(layer_ids), "Spatial alignment preview layers were added to the map." if layer_ids else "No spatial alignment preview layers could be added.", tuple(layer_ids), feature_count, combine_bounds(selection.transformed_envelope.to_bounds(), None if selection.source_extent is None else selection.source_extent.to_bounds()))
+
+
 def remove_spatial_preview_layers(iface: Any) -> QgisSpatialActionResult:
     if iface is None:
         return QgisSpatialActionResult(False, "No live QGIS project is available.")
@@ -231,6 +305,24 @@ def _extent_layer(name: str, bounds: Bounds2D, crs: str, kind: str, fill: Any, s
     layer.updateFields()
     feature = feature_cls(layer.fields())
     feature.setGeometry(_rect_geometry(bounds, point_cls, geometry_cls))
+    feature.setAttributes([kind])
+    provider.addFeatures([feature])
+    layer.updateExtents()
+    _style_layer(layer, fill, stroke)
+    return layer
+
+
+def _wkt_layer(name: str, wkt: str, crs: str, kind: str, fill: Any, stroke: Any, feature_cls: Any, field_cls: Any, geometry_cls: Any, layer_cls: Any, variant_cls: Any) -> Any:
+    if not wkt or not crs:
+        return None
+    layer = layer_cls(f"Polygon?crs={crs}", name, "memory")
+    if not layer.isValid():
+        return None
+    provider = layer.dataProvider()
+    provider.addAttributes([field_cls("kind", variant_cls.String)])
+    layer.updateFields()
+    feature = feature_cls(layer.fields())
+    feature.setGeometry(geometry_cls.fromWkt(wkt))
     feature.setAttributes([kind])
     provider.addFeatures([feature])
     layer.updateExtents()

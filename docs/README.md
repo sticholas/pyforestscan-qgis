@@ -104,6 +104,7 @@ This documentation is organized for users, scientists, developers, maintainers, 
 - [Internal Release Checklist](releases/INTERNAL_RELEASE_CHECKLIST.md)
 - [PBM Internal Beta Smoke Test](releases/PBM_INTERNAL_BETA_SMOKE_TEST.md)
 - [No-Manual-Setup Beta Smoke Test](releases/NO_MANUAL_SETUP_BETA_SMOKE_TEST.md)
+- [Real EPT CRS Alignment Validation](testing/REAL_EPT_CRS_ALIGNMENT_VALIDATION.md)
 - [Packaging](releases/PACKAGING.md)
 - [Release Notes Template](releases/RELEASE_NOTES_TEMPLATE.md)
 - [v0.1.0-beta.2 Release Notes](releases/v0.1.0-beta.2.md)
@@ -124,4 +125,5 @@ This documentation is organized for users, scientists, developers, maintainers, 
 - [Citation](../CITATION.cff)
 - [Adaptive LiDAR Indexing](development/ADAPTIVE_LIDAR_INDEXING.md)
 - [EPT Repository Handling](development/EPT_REPOSITORY_HANDLING.md)
+- [EPT CRS Resolution](development/EPT_CRS_RESOLUTION.md)
 - [Contextual Help System](development/CONTEXTUAL_HELP_SYSTEM.md)

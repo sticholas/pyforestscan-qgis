@@ -35,3 +35,13 @@ Polygon Area Processing can now compare the catalog path with Direct Header Scan
 ## Phase 27R Notes
 
 Phase 27R makes ordinary LAS/LAZ/COPC folder processing use direct header metadata when a verified catalog is unavailable or inconsistent. Catalog tools remain available under Repository Tools, but catalog absence should not block a normal folder run after an explicit CRS assignment. See [Polygon LiDAR Stabilization](../development/POLYGON_LIDAR_STABILIZATION.md).
+
+## EPT CRS Troubleshooting
+
+If Polygon Area Processing says the EPT coordinate system is incomplete, inspect the EPT metadata rather than treating the result as no coverage. Support diagnostics can run:
+
+```bash
+python3 scripts/inspect_ept_spatial_reference.py /path/to/ept.json
+```
+
+The output includes the raw SRS object, resolved CRS, parser source, root bounds, point count, and parser errors without reading the full EPT dataset.

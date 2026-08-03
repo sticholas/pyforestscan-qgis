@@ -39,3 +39,7 @@ Polygon Area Processing can now compare the catalog path with Direct Header Scan
 ## Phase 27R Notes
 
 Phase 27R adds the stabilized ordinary-folder contract: direct header metadata is the beta correctness reference, catalogs are optional optimization, selected real paths are serialized and invariant-checked before PBM clipping, and EPT remains a separate logical-source path. See [Polygon LiDAR Stabilization](POLYGON_LIDAR_STABILIZATION.md).
+
+## Phase 27S Guided CRS Behavior
+
+Guided Polygon Area Processing hides CRS mechanics when automatic resolution succeeds. Users see simple spatial-alignment text, such as that the polygon and LiDAR data use compatible coordinate systems or that the polygon will be transformed automatically. A CRS selector is reserved for genuine unresolved or incomplete EPT metadata.

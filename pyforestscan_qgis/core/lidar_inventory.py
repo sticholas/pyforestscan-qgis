@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+
+from .ept_spatial_reference import resolve_ept_spatial_reference
 from pathlib import Path
 from typing import Iterable
 
@@ -128,18 +130,8 @@ def _read_ept_metadata(path: Path) -> tuple[Bounds2D | None, str | None, int | N
             bounds = Bounds2D(float(bounds_value[0]), float(bounds_value[1]), float(bounds_value[3]), float(bounds_value[4])) if len(bounds_value) >= 5 else None
         except (TypeError, ValueError):
             bounds = None
-    srs = payload.get("srs") if isinstance(payload, dict) else None
-    crs = None
-    if isinstance(srs, dict):
-        authority = srs.get("authority")
-        horizontal = srs.get("horizontal")
-        wkt = srs.get("wkt")
-        if isinstance(authority, str) and authority:
-            crs = authority
-        elif isinstance(horizontal, str) and horizontal:
-            crs = horizontal
-        elif isinstance(wkt, str) and wkt:
-            crs = wkt
+    resolved = resolve_ept_spatial_reference(payload if isinstance(payload, dict) else None)
+    crs = resolved.crs_text if resolved.valid else None
     point_count = payload.get("points") if isinstance(payload, dict) else None
     try:
         count = int(point_count) if point_count is not None else None

@@ -59,3 +59,7 @@ Polygon EPT jobs now use `EptBounds` as the typed bounds contract. The polygon e
 ## Phase 27M Finalization Contract
 
 Polygon raster jobs are not complete until product generation, exact polygon masking, validation, and output registration finish. Temporary unmasked rasters may be retained for diagnostics, but they are not registered as primary user outputs. Default mask failure policy fails the product rather than presenting an unmasked envelope raster as successful.
+
+## Phase 27S Alignment Invariants
+
+Before Run, EPT polygon processing requires a valid repository CRS, valid polygon CRS, validated transformation state, finite EPT bounds, root-extent overlap, exact polygon geometry in the EPT/clipping CRS, one logical `ept.json` source, and a current plan signature. It must not silently fall back to untransformed coordinates.

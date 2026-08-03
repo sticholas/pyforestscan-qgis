@@ -79,3 +79,7 @@ Multiple COPC files are treated as ordinary file-level candidates. A single futu
 ## Current Limits
 
 The automated suite verifies the selected-path contract, durable polygon handoff, exact masking integration, and output registry behavior with QGIS-free fakes. Live QGIS validation is still required before claiming a specific Windows/QGIS repository passed. Use [Real Ordinary LiDAR Polygon Validation](../testing/REAL_ORDINARY_LIDAR_POLYGON_VALIDATION.md).
+
+## Phase 27S EPT Alignment
+
+Native EPT source selection now resolves the EPT CRS before comparing extents. Malformed CRS metadata produces a CRS-specific blocker, not a false no-coverage result. When CRS values match semantically, preflight takes a fast path; when they differ and a QGIS or PBM transformer is available, the exact polygon geometry is transformed before the broad EPT envelope is derived.

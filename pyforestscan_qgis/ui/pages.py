@@ -116,7 +116,7 @@ from .help import info_badge, info_help_button
 from .output_loading import LoadableOutput, collect_loadable_outputs, compact_dataset_summary_lines, output_loading_summary
 from .state import ProjectSummary
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
-from .qgis_spatial_actions import add_repository_coverage_to_qgis, add_selected_lidar_to_qgis, combine_bounds, preview_spatial_selection_in_qgis, remove_spatial_preview_layers, zoom_canvas_to_bounds
+from .qgis_spatial_actions import add_repository_coverage_to_qgis, add_selected_lidar_to_qgis, combine_bounds, preview_spatial_alignment_in_qgis, preview_spatial_selection_in_qgis, remove_spatial_preview_layers, zoom_canvas_to_bounds
 from .polygon_source_selector import normalize_qgis_layer_selection, normalize_vector_file_selection, polygon_layer_items, vector_file_layer_options
 from .raster_styling import apply_generated_raster_renderer, layer_display_name
 from .ux_summary import action_icon_intent, backend_summary_from_environment, button_role_for_label, design_spacing_tokens, empty_state_message, environment_headline, home_environment_action_label, home_environment_readiness, primary_action_label, qgis_fallback_summary, readiness_status_text, routed_products_summary, status_badge_label, status_badge_tone, status_display_word, workflow_action_labels
@@ -2178,6 +2178,9 @@ class BatchPage(MissionPage):
         self.preview_spatial_selection_button = QPushButton("Show Selected Files on Map")
         self.preview_spatial_selection_button.clicked.connect(self.preview_polygon_spatial_selection)
         _apply_button_role(self.preview_spatial_selection_button, "secondary")
+        self.preview_spatial_alignment_button = QPushButton("Preview Spatial Alignment")
+        self.preview_spatial_alignment_button.clicked.connect(self.preview_polygon_spatial_alignment)
+        _apply_button_role(self.preview_spatial_alignment_button, "secondary")
         self.zoom_polygon_button = QPushButton("Zoom to Polygon")
         self.zoom_polygon_button.clicked.connect(lambda: self._show_spatial_action("Zoom to Polygon"))
         _apply_button_role(self.zoom_polygon_button, "neutral")
@@ -2189,6 +2192,7 @@ class BatchPage(MissionPage):
         _apply_button_role(self.zoom_combined_button, "neutral")
         polygon_actions.addWidget(self.rerun_polygon_preflight_button)
         polygon_actions.addWidget(self.preview_spatial_selection_button)
+        polygon_actions.addWidget(self.preview_spatial_alignment_button)
         polygon_actions.addWidget(self.zoom_polygon_button)
         polygon_actions.addWidget(self.zoom_repository_button)
         polygon_actions.addWidget(self.zoom_combined_button)
@@ -2521,6 +2525,26 @@ class BatchPage(MissionPage):
         if selection.rejected_sources:
             lines.append("Rejected sources:")
             lines.extend(f"- {item.path}: {item.rejection_code} - {item.user_reason}" for item in selection.rejected_sources[:8])
+        self.preflight_text.setPlainText("\n".join(lines))
+
+    def preview_polygon_spatial_alignment(self) -> None:
+        report = self.preflight_report
+        if report is None or getattr(report, "source_selection", None) is None:
+            self.preflight_text.setPlainText("Preview Spatial Alignment needs a current preflight plan. Click Run Preflight Check first.")
+            return
+        result = preview_spatial_alignment_in_qgis(report, self.iface)
+        selection = report.source_selection
+        alignment = getattr(selection, "spatial_alignment", None)
+        lines = [
+            "Spatial Alignment Preview",
+            "Temporary QGIS group: PyForestScan - Spatial Alignment",
+            f"Live QGIS action: {result.message if result else 'Spatial alignment preview unavailable.'}",
+            f"Spatial alignment: {getattr(report, 'spatial_alignment_status', 'Unknown')}",
+            f"Polygon CRS: {getattr(report.request.polygon, 'source_crs', '')}",
+            f"Repository CRS: {getattr(report.repository, 'source_crs', '')}",
+            f"Transformation required: {'Yes' if alignment and alignment.transformation_required else 'No'}",
+            f"Overlap: {'Yes' if selection.overlap_result == 'yes' else 'No'}",
+        ]
         self.preflight_text.setPlainText("\n".join(lines))
 
     def _show_spatial_action(self, action: str) -> None:

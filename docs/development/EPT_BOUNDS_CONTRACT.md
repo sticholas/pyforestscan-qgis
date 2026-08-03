@@ -42,3 +42,7 @@ The grammar validator `validate_pdal_bounds_expression()` exists as a defensive 
 ## Phase 27M Concurrency Note
 
 EPT remains one logical spatial source. Requested Batch concurrency is recorded, but single-product single-polygon EPT/COPC processing has an effective concurrency of one. This preserves the square-bracket bounds contract and avoids treating internal EPT hierarchy nodes as separate files.
+
+## Phase 27S CRS Label Contract
+
+EPT bounds must carry the resolved repository/query CRS. The bounds may be derived from a transformed polygon envelope, but they must not be labeled with an incomplete value such as `EPSG` or with a CRS different from the coordinate values.
