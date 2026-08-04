@@ -75,9 +75,9 @@ class PolygonSourceUiStaticTests(unittest.TestCase):
 
     def test_batch_page_exposes_guided_polygon_sources(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
-        self.assertIn("Use QGIS Layer", source)
-        self.assertIn("Choose Vector File", source)
-        self.assertIn("Advanced WKT", source)
+        self.assertIn("QGIS polygon layer", source)
+        self.assertIn("Vector file", source)
+        self.assertIn("Technical WKT", source)
         self.assertIn("Refresh Polygon Layers", source)
         self.assertIn("Use Selected Features", source)
         self.assertIn("Use Entire Layer", source)

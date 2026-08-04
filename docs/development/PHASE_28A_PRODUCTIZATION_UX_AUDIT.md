@@ -69,3 +69,7 @@ QGIS 3.44.9 / Python 3.12 offscreen runtime construction and two plugin init/unl
 ## Phase 28B follow-up
 
 Retained-page state now flows through `MissionControlSessionState`; Advanced Toolbox has a visible service-backed action and fallback page.
+
+## Phase 28C compaction
+
+The product-focused sidebar is unchanged. Retained pages now use content-driven sizing and state-dependent visibility; the minimum dock width is 620 pixels.

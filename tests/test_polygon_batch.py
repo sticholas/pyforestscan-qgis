@@ -132,7 +132,7 @@ class PolygonBatchUiStaticTests(unittest.TestCase):
         self.assertIn("Refresh Polygon Layers", batch_source)
         self.assertIn("Refresh Catalog Status", batch_source)
         self.assertIn("Build Catalog", batch_source)
-        self.assertIn("Process Selection", batch_source)
+        self.assertIn("Process LiDAR", batch_source)
         self.assertIn("_build_polygon_batch_request", batch_source)
 
 

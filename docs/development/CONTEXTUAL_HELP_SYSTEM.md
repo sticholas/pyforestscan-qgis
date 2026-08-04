@@ -49,3 +49,7 @@ Guided Polygon workflow copy should use LiDAR data, Data coverage, Selected proc
 ## Retained interface help
 
 Advanced Toolbox failures use inline actionable guidance. Scientific Advisor remains optional and explains only the current signed session state.
+
+## Phase 28C disclosure
+
+Normal terminology avoids catalog, worker, WKT, pipeline, and manifest language. Their existing InfoBadge topics remain available inside Repository Tools, Advanced Batch Options, Technical WKT, and Technical Report.

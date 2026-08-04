@@ -153,3 +153,5 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 - Removed operational use of implausible EPT root point estimates from guided preflight output.
 
 - Phase 28B adds shared retained-interface state, automatic stale-safe Scientific Advisor refresh, and a service-backed Advanced Toolbox page with provider status and duplicate-safe refresh.
+
+- Phase 28C compacts retained Mission Control pages, moves specialist controls behind progressive disclosure, adds concise Prerun/Results states, supports a 620 px dock minimum, and validates QGIS 3.44.9 offscreen layouts at 100% and 150% scaling.

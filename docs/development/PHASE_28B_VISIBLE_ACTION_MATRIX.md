@@ -13,3 +13,7 @@
 The primary sidebar order is Batch, Results, Scientific Advisor, Environment, Settings, Advanced Toolbox. Hidden pages remain constructible but are absent from primary navigation. Advanced Toolbox is a real compact page and never resets to a prior navigation row after a silent attempt.
 
 Disabled controls retain their existing readiness rules. Placeholder-only controls were not introduced. Advanced Toolbox reports a missing toolbox/provider instead of failing silently.
+
+## Phase 28C hierarchy
+
+Actions are now classified as primary, secondary, advanced, or state-hidden. Repository maintenance and spatial diagnostics remain functional but collapsed; resume and output actions appear only when valid.

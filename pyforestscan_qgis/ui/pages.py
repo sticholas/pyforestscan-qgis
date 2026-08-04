@@ -131,8 +131,8 @@ SPACING_SM = DESIGN_SPACING["sm"]
 SPACING_MD = DESIGN_SPACING["md"]
 SPACING_LG = DESIGN_SPACING["lg"]
 SPACING_XL = DESIGN_SPACING["xl"]
-PAGE_MARGINS = (SPACING_XL, SPACING_MD, SPACING_XL, SPACING_XL)
-SECTION_MARGINS = (SPACING_MD, SPACING_LG, SPACING_MD, SPACING_MD)
+PAGE_MARGINS = (SPACING_LG, SPACING_SM, SPACING_LG, SPACING_LG)
+SECTION_MARGINS = (SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
 SECTION_SPACING = SPACING_MD
 ACTION_ROW_SPACING = SPACING_SM
 PRIMARY_BUTTON_HEIGHT = 40
@@ -578,11 +578,13 @@ class EnvironmentPage(MissionPage):
         fallback_group, fallback = _collapsible_section(self.content_layout, "QGIS Python fallback environment", checked=False)
         fallback.addWidget(_details_label("Optional when PBM backend is READY. Expand only for tools that still use QGIS Python or for troubleshooting."))
         self.fallback_checks_list = QListWidget()
+        self.fallback_checks_list.setMaximumHeight(140)
         fallback.addWidget(self.fallback_checks_list)
         _wire_collapsible_group(fallback_group)
 
         technical_group, technical = _collapsible_section(self.content_layout, "Technical dependency details", checked=False)
         self.checks_list = QListWidget()
+        self.checks_list.setMaximumHeight(180)
         technical.addWidget(self.checks_list)
         _wire_collapsible_group(technical_group)
 
@@ -1072,7 +1074,7 @@ class ScientificAdvisorPage(MissionPage):
         self.open_output_folder_button = QPushButton("Open Output Folder")
         self.open_output_folder_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
         self.open_output_folder_button.clicked.connect(self.open_output_folder)
-        _apply_button_role(self.open_output_folder_button, "primary")
+        _apply_button_role(self.open_output_folder_button, "secondary")
         qgis_tools.addWidget(self.open_output_folder_button)
         tools_group, tools_layout = _collapsible_section(self.advisor_layout, "QGIS Tool Instructions", checked=False)
         self.qgis_tools_details = _details_label(_tool_instruction_text())
@@ -1139,7 +1141,7 @@ class ScientificAdvisorPage(MissionPage):
         """Render only guidance derived from the current source signature."""
         self.current_session_summary = summary
         self.executive_summary_label.setText(summary.executive_summary)
-        self.session_context_label.setText(f"Current state: {summary.source_signature[:12]}")
+        self.session_context_label.setText("Guidance reflects the current Batch selections.")
         for widget, values in ((self.recommendation_list, summary.key_recommendations),
                                (self.warning_list, summary.warnings),
                                (self.product_list, summary.recommended_products),
@@ -1948,11 +1950,14 @@ class AdvancedToolboxPage(MissionPage):
         row = QHBoxLayout()
         self.open_button = QPushButton("Open Processing Toolbox")
         self.refresh_button = QPushButton("Refresh Tools")
+        self.documentation_button = QPushButton("View Tool Documentation")
         self.open_button.clicked.connect(self.open_toolbox)
         self.refresh_button.clicked.connect(self.refresh_tools)
+        self.documentation_button.clicked.connect(self.open_documentation)
         _apply_button_role(self.open_button, "primary")
         _apply_button_role(self.refresh_button, "secondary")
-        row.addWidget(self.open_button); row.addWidget(self.refresh_button); row.addStretch(1)
+        _apply_button_role(self.documentation_button, "neutral")
+        row.addWidget(self.open_button); row.addWidget(self.refresh_button); row.addWidget(self.documentation_button); row.addStretch(1)
         layout.addLayout(row)
         self.feedback_label = _details_label("")
         layout.addWidget(self.feedback_label)
@@ -1969,6 +1974,11 @@ class AdvancedToolboxPage(MissionPage):
         self.feedback_label.setText(result.user_message)
         self.refresh_from_session()
         return result
+
+    def open_documentation(self) -> None:
+        docs = plugin_root().parent / "docs" / "development" / "ADVANCED_PROCESSING_TOOLBOX.md"
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(docs)))
+        self.feedback_label.setText("Opened Advanced Toolbox documentation.")
 
     def refresh_tools(self) -> object:
         from ..processing_provider import PyForestScanProvider
@@ -2006,16 +2016,18 @@ class BatchPage(MissionPage):
         self.preflight_report: object | None = None
         self.current_index_plan: object | None = None
 
-        self.mode_section, mode_layout = self.create_section("Choose Processing Mode")
+        self.mode_section, mode_layout = self.create_section("Processing Mode")
         self.batch_mode_combo = QComboBox()
         self.batch_mode_combo.addItem("LiDAR Folder Selection", "standard")
         self.batch_mode_combo.addItem("Polygon Selection", "polygon")
         self.batch_mode_combo.currentIndexChanged.connect(self._update_batch_mode_visibility)
         mode_layout.addWidget(self.batch_mode_combo)
-        self.batch_mode_summary_label = _body_label("Choose a LiDAR folder, products, and output folder. PyForestScan handles the processing details.")
+        self.batch_mode_combo.setAccessibleName("Processing mode")
+        self.batch_mode_combo.setToolTip("Choose folder processing or processing limited to a polygon.")
+        self.batch_mode_summary_label = _details_label("Process LiDAR files found in a selected folder.")
         mode_layout.addWidget(self.batch_mode_summary_label)
 
-        self.repository_section, repository_layout = self.create_section("1. LiDAR Folder Selection")
+        self.repository_section, repository_layout = self.create_section("LiDAR Data")
         self.standard_batch_section = self.repository_section
         folder_row = QHBoxLayout()
         self.input_folder_edit = QLineEdit()
@@ -2046,7 +2058,7 @@ class BatchPage(MissionPage):
         self.file_list.setMinimumHeight(COMPACT_LIST_HEIGHT)
         repository_layout.addWidget(self.file_list)
 
-        self.polygon_section, polygon_layout = self.create_section("1. Polygon Selection")
+        self.polygon_section, polygon_layout = self.create_section("Processing Area")
         self.polygon_batch_section = self.polygon_section
         self.polygon_guided_step_label = _body_label(guided_step_indicator("data"))
         polygon_layout.addWidget(self.polygon_guided_step_label)
@@ -2070,9 +2082,9 @@ class BatchPage(MissionPage):
         polygon_folder_row.addWidget(self.polygon_lidar_folder_edit, 1)
         polygon_folder_row.addWidget(polygon_folder_browse, 0)
         self.polygon_source_combo = QComboBox()
-        self.polygon_source_combo.addItem("Use QGIS Layer", "qgis")
-        self.polygon_source_combo.addItem("Choose Vector File", "file")
-        self.polygon_source_combo.addItem("Advanced WKT", "wkt")
+        self.polygon_source_combo.addItem("QGIS polygon layer", "qgis")
+        self.polygon_source_combo.addItem("Vector file", "file")
+        self.polygon_source_combo.addItem("Technical WKT", "wkt")
         self.polygon_source_combo.currentIndexChanged.connect(self._update_polygon_source_visibility)
         lidar_repository_row = QHBoxLayout()
         lidar_repository_row.addLayout(polygon_folder_row, 1)
@@ -2083,8 +2095,11 @@ class BatchPage(MissionPage):
         polygon_source_row.addWidget(info_badge("batch.polygon", parent=self), 0)
         polygon_form.addRow("Polygon source", polygon_source_row)
         polygon_layout.addLayout(polygon_form)
-        self.polygon_catalog_status_label = _details_label("Repository needs attention - choose a LiDAR repository, then Build Index.")
+        self.polygon_catalog_status_label = _details_label("Status: choose LiDAR data.")
         polygon_layout.addWidget(self.polygon_catalog_status_label)
+        self.polygon_summary_label = _body_label("Area: Not selected   Geometry: Not selected   CRS: Unknown")
+        self.polygon_summary_label.setAccessibleName("Processing area summary")
+        polygon_layout.addWidget(self.polygon_summary_label)
         strategy_form = QFormLayout()
         strategy_form.setVerticalSpacing(SECTION_SPACING)
         self.polygon_index_strategy_combo = QComboBox()
@@ -2130,7 +2145,7 @@ class BatchPage(MissionPage):
         strategy_actions.addWidget(self.update_catalog_button)
         strategy_actions.addStretch(1)
         polygon_layout.addLayout(strategy_actions)
-        self.advanced_repository_section, advanced_repository = _collapsible_section(polygon_layout, "Advanced Repository Tools", checked=False)
+        self.advanced_repository_section, advanced_repository = _collapsible_section(polygon_layout, "Repository Tools", checked=False)
         advanced_repository.addWidget(_details_label("Automatic setup is recommended. Expand only to diagnose, repair, resume, or override repository preparation."))
         advanced_repository.addLayout(strategy_form)
         advanced_repository.addWidget(self.detect_index_strategy_button)
@@ -2295,12 +2310,12 @@ class BatchPage(MissionPage):
         polygon_actions.addWidget(self.zoom_combined_button)
         polygon_actions.addWidget(self.reset_polygon_batch_button)
         polygon_actions.addStretch(1)
-        self.advanced_spatial_section, advanced_spatial = _collapsible_section(polygon_layout, "Advanced Spatial Tools", checked=False)
+        self.advanced_spatial_section, advanced_spatial = _collapsible_section(polygon_layout, "Map and Spatial Tools", checked=False)
         advanced_spatial.addWidget(_details_label("Use these map previews and recovery controls only when reviewing coverage or coordinate-system alignment."))
         advanced_spatial.addLayout(polygon_actions)
         _wire_collapsible_group(self.advanced_spatial_section)
 
-        self.output_section, output_layout = self.create_section("Output")
+        self.output_section, output_layout = self.create_section("Output Folder")
         self.batch_output_section = self.output_section
         output_row = QHBoxLayout()
         self.output_folder_edit = QLineEdit()
@@ -2313,10 +2328,11 @@ class BatchPage(MissionPage):
         output_layout.addWidget(_body_label("Mission Control creates one batch folder, then one organized run folder per selected dataset."))
         self.open_batch_folder_button = QPushButton("Open Batch Output Folder")
         self.open_batch_folder_button.setEnabled(False)
+        self.open_batch_folder_button.setVisible(False)
         self.open_batch_folder_button.clicked.connect(self.open_batch_output_folder)
         output_layout.addWidget(self.open_batch_folder_button)
 
-        self.products_section, products_layout = self.create_section("Products and Shared Settings", index=self.content_layout.indexOf(self.output_section))
+        self.products_section, products_layout = self.create_section("Products", index=self.content_layout.indexOf(self.output_section))
         self.product_checks: dict[ProductType, QCheckBox] = {}
         product_grid = QGridLayout()
         product_grid.setHorizontalSpacing(SPACING_XL)
@@ -2329,6 +2345,18 @@ class BatchPage(MissionPage):
             self.product_checks[product] = check
             product_grid.addWidget(check, index // 2, index % 2)
         products_layout.addLayout(product_grid)
+        product_actions = QHBoxLayout()
+        self.select_recommended_products_button = QPushButton("Select Recommended")
+        self.clear_products_button = QPushButton("Clear Selection")
+        self.select_recommended_products_button.clicked.connect(self._select_recommended_products)
+        self.clear_products_button.clicked.connect(lambda: self._set_all_products(False))
+        _apply_button_role(self.select_recommended_products_button, "secondary")
+        _apply_button_role(self.clear_products_button, "neutral")
+        product_actions.addWidget(self.select_recommended_products_button)
+        product_actions.addWidget(self.clear_products_button)
+        product_actions.addStretch(1)
+        products_layout.addLayout(product_actions)
+        settings_group, settings_layout = _collapsible_section(products_layout, "Advanced Product Settings", checked=False)
         settings_form = QFormLayout()
         settings_form.setVerticalSpacing(SECTION_SPACING)
         self.resolution_spin = QDoubleSpinBox()
@@ -2350,7 +2378,8 @@ class BatchPage(MissionPage):
         settings_form.addRow("Height bin size", self.height_bin_spin)
         settings_form.addRow("Canopy cover threshold", self.canopy_threshold_spin)
         settings_form.addRow("CHM interpolation", self.chm_interpolation_combo)
-        products_layout.addLayout(settings_form)
+        settings_layout.addLayout(settings_form)
+        _wire_collapsible_group(settings_group)
         self.advanced_batch_section, advanced_batch = _collapsible_section(self.content_layout, "Advanced Batch Options", checked=False)
         advanced_form = QFormLayout()
         advanced_form.setVerticalSpacing(SECTION_SPACING)
@@ -2478,12 +2507,10 @@ class BatchPage(MissionPage):
         self.height_bin_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
         self.file_list.itemChanged.connect(lambda _item: self._refresh_footprint_label())
 
-        footprint_group, footprint = _collapsible_section(self.content_layout, "Batch Footprint Estimate", checked=False)
-        self.footprint_label = _body_label("Select files and products to review the batch footprint. Raster dimensions are estimated per file after Dataset Explorer runs.")
-        footprint.addWidget(self.footprint_label)
-        _wire_collapsible_group(footprint_group)
+        self.footprint_label = _details_label("Batch performance details are calculated for diagnostics.")
+        self.footprint_label.setVisible(False)
 
-        self.prerun_section, prerun_layout = self.create_section("5. Prerun Check")
+        self.prerun_section, prerun_layout = self.create_section("Prerun Check")
         self.preflight_button = QPushButton("Run Prerun Check")
         self.preflight_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.preflight_button.clicked.connect(self.run_preflight)
@@ -2493,13 +2520,18 @@ class BatchPage(MissionPage):
         self.acknowledge_warnings_check.toggled.connect(lambda _checked: self._update_run_button_enabled())
         self.acknowledge_warnings_check.setEnabled(False)
         prerun_layout.addWidget(self.acknowledge_warnings_check)
+        self.preflight_summary_label = _body_label("Needs attention: choose data, products, and an output folder.")
+        prerun_layout.addWidget(self.preflight_summary_label)
+        technical_report_group, technical_report = _collapsible_section(prerun_layout, "Technical Report", checked=False)
         self.preflight_text = QTextEdit()
         self.preflight_text.setReadOnly(True)
-        self.preflight_text.setMinimumHeight(COMPACT_LIST_HEIGHT)
+        self.preflight_text.setMaximumHeight(140)
+        self.preflight_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.preflight_text.setPlainText("Run the Prerun Check when your data, products, and output folder are ready.")
-        prerun_layout.addWidget(self.preflight_text)
+        technical_report.addWidget(self.preflight_text)
+        _wire_collapsible_group(technical_report_group)
 
-        self.process_section, process_layout = self.create_section("6. Process")
+        self.process_section, process_layout = self.create_section("Process")
         self.run_button = QPushButton(primary_action_label("batch"))
         self.run_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.run_button.clicked.connect(self.run_batch)
@@ -2514,14 +2546,17 @@ class BatchPage(MissionPage):
         button_row.addWidget(self.resume_button)
         self.pause_button = QPushButton("Pause After Current File")
         self.pause_button.setEnabled(False)
+        self.pause_button.setVisible(False)
         self.pause_button.clicked.connect(self.toggle_pause)
         _apply_button_role(self.pause_button, "secondary")
         self.cancel_button = QPushButton("Cancel Remaining")
         self.cancel_button.setEnabled(False)
+        self.cancel_button.setVisible(False)
         self.cancel_button.clicked.connect(self.cancel_remaining)
         _apply_button_role(self.cancel_button, "danger")
         self.retry_failed_button = QPushButton("Retry Failed Files")
         self.retry_failed_button.setEnabled(False)
+        self.retry_failed_button.setVisible(False)
         self.retry_failed_button.clicked.connect(self.retry_failed_files)
         _apply_button_role(self.retry_failed_button, "secondary")
         button_row.addWidget(self.pause_button)
@@ -2539,7 +2574,8 @@ class BatchPage(MissionPage):
         self.worker_status_label = _body_label("Active workers: 0")
         process_layout.addWidget(self.worker_status_label)
         filter_row = QHBoxLayout()
-        filter_row.addWidget(QLabel("Show"))
+        self.result_filter_label = QLabel("Show")
+        filter_row.addWidget(self.result_filter_label)
         self.result_filter_combo = QComboBox()
         self.result_filter_combo.addItems(("All", "Failed", "Completed", "Skipped"))
         self.result_filter_combo.currentTextChanged.connect(lambda _value: self._refresh_batch_results())
@@ -2549,11 +2585,24 @@ class BatchPage(MissionPage):
         self.summary_label = _body_label("4. Review Results after the batch completes.")
         process_layout.addWidget(self.summary_label)
         self.batch_results = QListWidget()
-        self.batch_results.setMinimumHeight(COMPACT_LIST_HEIGHT)
+        self.batch_results.setMaximumHeight(180)
+        self.result_filter_label.setVisible(False)
+        self.result_filter_combo.setVisible(False)
+        self.batch_results.setVisible(False)
         process_layout.addWidget(self.batch_results)
         self._update_batch_mode_visibility()
         self._wire_session_state_inputs()
         QTimer.singleShot(0, self._publish_session_state)
+
+    def _select_recommended_products(self) -> None:
+        """Apply the concise guided default without requiring Advisor."""
+        self._set_all_products(False)
+        if ProductType.CHM in self.product_checks:
+            self.product_checks[ProductType.CHM].setChecked(True)
+
+    def _set_all_products(self, checked: bool) -> None:
+        for product_check in self.product_checks.values():
+            product_check.setChecked(checked)
 
     def _wire_session_state_inputs(self) -> None:
         """Publish authoritative snapshots when retained Batch inputs change."""
@@ -2574,6 +2623,8 @@ class BatchPage(MissionPage):
         self.preflight_report = None
         if hasattr(self, "preflight_text"):
             self.preflight_text.setPlainText("Prerun Check needs refresh for the current inputs.")
+        if hasattr(self, "preflight_summary_label"):
+            self.preflight_summary_label.setText("Needs attention: Prerun Check must be refreshed.")
         self._publish_session_state()
 
     def _publish_session_state(self, *, plan_status: str = "needs refresh") -> None:
@@ -2595,6 +2646,10 @@ class BatchPage(MissionPage):
                 crs = polygon.processing_crs or polygon.source_crs
             except Exception:
                 pass
+        if hasattr(self, "polygon_summary_label"):
+            area_text = f"{area / 10000:.3g} ha" if area is not None else "Not selected"
+            geometry_text = "Valid Polygon" if geometry_signature else "Not selected"
+            self.polygon_summary_label.setText(f"Area: {area_text}   Geometry: {geometry_text}   CRS: {crs or 'Unknown'}")
         products = tuple(PRODUCT_LABELS[p] for p, check in self.product_checks.items() if check.isChecked())
         state = MissionControlSessionState(
             current_mode=mode, repository_path=repository,
@@ -2615,15 +2670,15 @@ class BatchPage(MissionPage):
         self.standard_batch_section.setVisible(not polygon)
         self.polygon_batch_section.setVisible(polygon)
         self.batch_mode_summary_label.setText(
-            "Polygon Selection: choose a LiDAR repository, area, products, and output folder."
+            "Process LiDAR covering a selected polygon."
             if polygon else
-            "LiDAR Folder Selection: choose a folder, products, and output folder."
+            "Process LiDAR files found in a selected folder."
         )
         self.preflight_report = None
         self.acknowledge_warnings_check.setChecked(False)
         self.acknowledge_warnings_check.setEnabled(False)
         self.preflight_text.setPlainText("Run the Prerun Check before processing the selected polygon." if polygon else "Run the Prerun Check before processing the folder.")
-        self.run_button.setText("Process Selection" if polygon else "Process Folder")
+        self.run_button.setText("Process LiDAR")
         self.resume_button.setVisible(not polygon)
         self.retry_failed_button.setText("Retry Failed" if polygon else "Retry Failed Files")
         self.summary_label.setText("Review Polygon Batch outputs after execution." if polygon else "4. Review Results after the batch completes.")
@@ -3349,6 +3404,7 @@ class BatchPage(MissionPage):
                 self.preflight_button.setEnabled(True)
             self.preflight_report = report
             self.preflight_text.setPlainText(self._polygon_guided_review_text(report))
+            self.preflight_summary_label.setText("Ready to process." if not report.blockers else f"{len(report.blockers)} item(s) need attention.")
             self.polygon_guided_step_label.setText(guided_step_indicator("review"))
             self.acknowledge_warnings_check.setEnabled(report.has_warnings and not report.blockers)
             if not report.has_warnings:
@@ -3371,6 +3427,7 @@ class BatchPage(MissionPage):
             self.preflight_button.setEnabled(True)
         self.preflight_report = report
         self.preflight_text.setPlainText(_format_preflight_report(report))
+        self.preflight_summary_label.setText("Ready to process." if not report.blockers else f"{len(report.blockers)} item(s) need attention.")
         self.acknowledge_warnings_check.setEnabled(report.has_warnings and not report.blockers)
         if not report.has_warnings:
             self.acknowledge_warnings_check.setChecked(False)
@@ -3407,8 +3464,11 @@ class BatchPage(MissionPage):
         self.run_button.setEnabled(False)
         self.resume_button.setEnabled(False)
         self.pause_button.setEnabled(True)
+        self.pause_button.setVisible(True)
         self.cancel_button.setEnabled(True)
+        self.cancel_button.setVisible(True)
         self.retry_failed_button.setEnabled(False)
+        self.retry_failed_button.setVisible(False)
         _set_status_badge(self.status_label, "RUNNING", f"Status: Running - {len(selected)} dataset(s).")
         self._processed_items = 0
         self._total_items = max(1, len(selected) + len(self.preflight_report.files_to_skip))
@@ -3459,8 +3519,11 @@ class BatchPage(MissionPage):
         self.run_button.setEnabled(False)
         self.resume_button.setEnabled(False)
         self.pause_button.setEnabled(True)
+        self.pause_button.setVisible(True)
         self.cancel_button.setEnabled(True)
+        self.cancel_button.setVisible(True)
         self.retry_failed_button.setEnabled(False)
+        self.retry_failed_button.setVisible(False)
         self._processed_items = 0
         self._total_items = max(1, len(selected))
         _set_status_badge(self.status_label, "RUNNING", f"Status: Running - clipping and processing {len(selected)} intersecting source(s).")
@@ -3584,11 +3647,13 @@ class BatchPage(MissionPage):
             enabled = bool(report and selected and not blockers and (not warnings or self.acknowledge_warnings_check.isChecked()))
             self.run_button.setEnabled(enabled)
             self.resume_button.setEnabled(False)
+            self.resume_button.setVisible(False)
             return
         enabled = bool(report and report.files_to_process and not report.blockers and (not report.warnings or self.acknowledge_warnings_check.isChecked()))
         self.run_button.setEnabled(enabled)
         resumable = bool(report and report.manifest_path.exists() and (report.files_completed or report.files_to_retry or report.files_to_skip))
         self.resume_button.setEnabled(enabled and resumable)
+        self.resume_button.setVisible(enabled and resumable)
 
     def _on_batch_complete(self, result: object) -> None:
         """Finalize UI state after a worker-thread batch completes."""
@@ -3602,7 +3667,9 @@ class BatchPage(MissionPage):
         )
         self._set_batch_summary(result)
         self.open_batch_folder_button.setEnabled(True)
+        self.open_batch_folder_button.setVisible(True)
         self.retry_failed_button.setEnabled(bool(self.failed_paths))
+        self.retry_failed_button.setVisible(bool(self.failed_paths))
         self.batchCompleted.emit(result)
         self._finish_batch_run()
 
@@ -3616,7 +3683,9 @@ class BatchPage(MissionPage):
         self.run_button.setEnabled(True)
         self._update_run_button_enabled()
         self.pause_button.setEnabled(False)
+        self.pause_button.setVisible(False)
         self.cancel_button.setEnabled(False)
+        self.cancel_button.setVisible(False)
         self.pause_requested = False
         self.pause_button.setText("Pause After Current File")
         self.active_workers = 0
@@ -3764,7 +3833,8 @@ class BatchPage(MissionPage):
             self.file_list.addItem(row)
         self.failed_paths = []
         self.retry_failed_button.setEnabled(False)
-        _set_status_badge(self.status_label, "WARNING", "Status: Needs review - failed files are queued for retry. Click Process.")
+        self.retry_failed_button.setVisible(False)
+        _set_status_badge(self.status_label, "WARNING", "Status: Needs review - failed files are queued for retry. Click Process LiDAR.")
         self._refresh_footprint_label()
 
     def open_batch_output_folder(self) -> None:
@@ -3798,6 +3868,10 @@ class BatchPage(MissionPage):
                 f"Bounds: {bounds}\n"
                 f"Message: {message}"
             )
+        has_results = self.batch_results.count() > 0
+        self.result_filter_label.setVisible(bool(self.batch_items))
+        self.result_filter_combo.setVisible(bool(self.batch_items))
+        self.batch_results.setVisible(has_results)
 
     def _set_batch_summary(self, result: object) -> None:
         """Display the completed batch summary."""
@@ -3818,6 +3892,7 @@ class ResultsPage(MissionPage):
 
     outputsLoaded = pyqtSignal(str, int, int)
     currentRunCleared = pyqtSignal()
+    goToBatchRequested = pyqtSignal()
 
     def __init__(self, iface: object | None = None, parent: QWidget | None = None) -> None:
         """Create the results page."""
@@ -3831,21 +3906,26 @@ class ResultsPage(MissionPage):
         self._current_output_folder: Path | None = None
 
         links = self.add_section("Generated Outputs")
-        self.results_empty_label = _body_label(empty_state_message("results"))
+        self.results_empty_label = _body_label("No products have been generated yet.")
         links.addWidget(self.results_empty_label)
+        self.go_to_batch_button = QPushButton("Go to Batch")
+        self.go_to_batch_button.clicked.connect(self.goToBatchRequested.emit)
+        _apply_button_role(self.go_to_batch_button, "primary")
+        links.addWidget(self.go_to_batch_button)
         self.friendly_links = QListWidget()
+        self.friendly_links.setMaximumHeight(180)
         links.addWidget(self.friendly_links)
         self.friendly_links.setVisible(False)
         button_row = QHBoxLayout()
         self.open_output_folder_button = QPushButton("Open Output Folder")
         self.open_output_folder_button.setEnabled(False)
         self.open_output_folder_button.clicked.connect(self.open_output_folder)
-        _apply_button_role(self.open_output_folder_button, "primary")
+        _apply_button_role(self.open_output_folder_button, "secondary")
         self.load_outputs_button = QPushButton("Load into QGIS")
         self.load_outputs_button.setEnabled(False)
         self.load_outputs_button.setToolTip("Load GeoTIFF and CSV outputs into the current QGIS project.")
         self.load_outputs_button.clicked.connect(self.load_outputs_to_qgis)
-        _apply_button_role(self.load_outputs_button, "secondary")
+        _apply_button_role(self.load_outputs_button, "primary")
         self.refresh_results_button = QPushButton("Refresh Results")
         self.refresh_results_button.clicked.connect(self.refresh_results)
         _apply_button_role(self.refresh_results_button, "neutral")
@@ -3859,7 +3939,7 @@ class ResultsPage(MissionPage):
         button_row.addWidget(self.clear_current_run_button)
         button_row.addStretch(1)
         links.addLayout(button_row)
-        self.product_status_label = _body_label("Generated Products: None\nLoaded Products: None\nAvailable Products: None")
+        self.product_status_label = _body_label("No generated products.")
         links.addWidget(self.product_status_label)
         self.load_message_label = _body_label("")
         self.load_message_label.setVisible(False)
@@ -3885,8 +3965,20 @@ class ResultsPage(MissionPage):
         row.addWidget(open_button)
         advanced_layout.addLayout(row)
         self.previous_reports = QListWidget()
+        self.previous_reports.setMaximumHeight(120)
         advanced_layout.addWidget(self.previous_reports)
         _wire_collapsible_group(advanced)
+        self._sync_compact_visibility(False)
+
+    def _sync_compact_visibility(self, has_outputs: bool) -> None:
+        """Keep empty Results content small and reveal actions only when useful."""
+        self.results_empty_label.setVisible(not has_outputs)
+        self.go_to_batch_button.setVisible(not has_outputs)
+        self.friendly_links.setVisible(has_outputs and bool(self._friendly_paths))
+        self.product_status_label.setVisible(has_outputs)
+        self.open_output_folder_button.setVisible(has_outputs)
+        self.load_outputs_button.setVisible(has_outputs)
+        self.clear_current_run_button.setVisible(has_outputs)
 
     def set_project_summary(self, summary: ProjectSummary) -> None:
         """Display generated, loaded, and available product state."""
@@ -3894,12 +3986,14 @@ class ResultsPage(MissionPage):
         loaded = ", ".join(item.label for item in summary.loaded_products) or "None"
         available = ", ".join(item.label for item in summary.available_products) or "None"
         missing = ", ".join(item.label for item in summary.missing_products) or "None"
-        self.product_status_label.setText(
-            f"Generated Products: {generated}\n"
-            f"Loaded Products: {loaded}\n"
-            f"Available Products: {available}\n"
-            f"Missing Requested Products: {missing}"
-        )
+        if summary.generated_products:
+            self.product_status_label.setText(
+                f"Generated: {generated}   Loaded: {loaded}   Ready to load: {available}"
+                + (f"   Missing: {missing}" if summary.missing_products else "")
+            )
+        else:
+            self.product_status_label.setText("No generated products.")
+        self._sync_compact_visibility(bool(summary.generated_products or self._friendly_paths or self._job_result_paths))
 
     def loaded_output_paths(self) -> tuple[Path, ...]:
         """Return outputs loaded through the Results page in this session."""
@@ -3915,6 +4009,7 @@ class ResultsPage(MissionPage):
         self.open_output_folder_button.setEnabled(self._current_output_folder is not None and self._current_output_folder.exists())
         self.load_outputs_button.setEnabled(bool(loadable))
         self.clear_current_run_button.setEnabled(has_paths or self._current_output_folder is not None)
+        self._sync_compact_visibility(has_paths)
         self._set_load_message("Results refreshed." if has_paths else "Results refreshed. No current outputs found.")
 
     def set_run_context(self, context: RunContext | None) -> None:
@@ -3934,6 +4029,7 @@ class ResultsPage(MissionPage):
         self.load_message_label.setVisible(False)
         if context is None:
             self._loaded_output_paths = set()
+            self._sync_compact_visibility(False)
             return
         self._current_output_folder = context.outputs_dir
         self.clear_current_run_button.setEnabled(True)
@@ -3945,6 +4041,7 @@ class ResultsPage(MissionPage):
         self.results_empty_label.setVisible(not has_outputs)
         self.open_output_folder_button.setEnabled(has_outputs)
         self.load_outputs_button.setEnabled(has_outputs)
+        self._sync_compact_visibility(has_outputs)
         for label, path in context.advanced_paths:
             self._advanced_paths.append(path)
             self.previous_reports.addItem(f"{label}: {path}")
@@ -3970,6 +4067,7 @@ class ResultsPage(MissionPage):
                 self.open_output_folder_button.setEnabled(self._current_output_folder is not None)
                 self.load_outputs_button.setEnabled(True)
                 self.clear_current_run_button.setEnabled(True)
+                self._sync_compact_visibility(True)
             if not any(self.previous_reports.item(index).text().endswith(text) for index in range(self.previous_reports.count())):
                 self.previous_reports.addItem(text)
                 self._advanced_paths.append(path)
@@ -3989,6 +4087,7 @@ class ResultsPage(MissionPage):
                 detail = f"{detail} - {job.results[-1].path}"
             self.job_history.addItem(detail)
         self.load_outputs_button.setEnabled(bool(self._candidate_output_paths()))
+        self._sync_compact_visibility(bool(self._candidate_output_paths()))
 
     def load_outputs_to_qgis(self) -> None:
         """Load current run GeoTIFF and CSV outputs into QGIS without duplicates."""
@@ -4139,7 +4238,7 @@ class SettingsPage(MissionPage):
         apply_button.clicked.connect(self.emit_default_output_folder)
         defaults.addWidget(apply_button)
 
-        workspace = self.add_section("Workspace Defaults")
+        workspace_group, workspace = _collapsible_section(self.content_layout, "Advanced Settings", checked=False)
         workspace_form = QFormLayout()
         self.remember_workspace_check = QCheckBox("Remember last workspace")
         self.remember_workspace_check.setChecked(True)
@@ -4159,8 +4258,9 @@ class SettingsPage(MissionPage):
         workspace_form.addRow("Auto-save", self.auto_save_workspace_check)
         workspace_form.addRow("Recent item limit", self.maximum_recent_items_spin)
         workspace.addLayout(workspace_form)
+        _wire_collapsible_group(workspace_group)
 
-        backend = self.add_section("Backend")
+        backend = self.add_section("Managed Backend")
         backend.addWidget(_body_label("Windows beta builds can install a user-local backend. This does not modify QGIS Python, system Python, PATH, shell profiles, or QGIS folders."))
         self.backend_service = BackendService()
         self.backend_install_running = False
@@ -4288,8 +4388,9 @@ class SettingsPage(MissionPage):
         self.backend_details = QTextEdit()
         self.backend_details.setReadOnly(True)
         self.backend_details.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)
+        self.backend_details.setMaximumHeight(140)
         self.backend_details.setPlainText("Verify or install the user-local backend from this page. Technical reports and logs stay under Advanced / Troubleshooting.")
-        backend.addWidget(self.backend_details)
+        backend_detail_layout.addWidget(self.backend_details)
         self.backend_technical_log_group = QGroupBox("Troubleshooting: technical log")
         self.backend_technical_log_group.setCheckable(True)
         self.backend_technical_log_group.setChecked(False)

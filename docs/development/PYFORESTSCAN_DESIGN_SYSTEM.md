@@ -254,3 +254,7 @@ Mission Control opens on **Batch** and shows the primary sidebar **Batch, Result
 ## Stale and action feedback
 
 Hide obsolete derived content immediately and show one compact updating message. Every visible action must change a view/state, open QGIS UI, show progress, or return an actionable result.
+
+## Content sizing
+
+Use content-sized group boxes and maximum heights for expanded technical reports. Do not use a large minimum height for an empty list or report. At most one workflow action should use the primary role in a state. QGIS theme icons remain preferred with Qt fallbacks.

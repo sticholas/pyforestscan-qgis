@@ -119,3 +119,7 @@ QGIS 3.44.9 / Python 3.12 offscreen runtime construction and two plugin init/unl
 ## Reactive retained pages
 
 Retained pages render typed session/read-model state. Input changes invalidate derived plans immediately; page navigation must not be used as a refresh mechanism.
+
+## Compact retained workflow
+
+Normal Batch order is Processing Mode, LiDAR Data or Processing Area, Products, Output Folder, Prerun Check, Process. Derived reports are summarized normally and expanded only under Technical Report. Empty controls release layout space.

@@ -160,7 +160,7 @@ class PolygonFolderPlanningTests(unittest.TestCase):
 
         self.assertNotIn("Process Folder by Polygon", dataset_source)
         self.assertIn("Polygon Selection", batch_source)
-        self.assertIn("Process Selection", batch_source)
+        self.assertIn("Process LiDAR", batch_source)
         self.assertIn("run_polygon_batch_preflight", batch_source)
 
 

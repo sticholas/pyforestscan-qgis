@@ -230,3 +230,7 @@ Mission Control opens on **Batch** and shows the primary sidebar **Batch, Result
 ## Retained-page synchronization
 
 Batch selections update Results context and Scientific Advisor automatically. Advanced Toolbox opens or focuses QGIS Processing and also shows provider registration, algorithm count, groups, and refresh feedback.
+
+## Compact retained interface
+
+Batch follows Processing Mode -> LiDAR Data/Processing Area -> Products -> Output Folder -> Prerun Check -> Process. Results hides output actions until products exist. Advisor, Environment, Settings, and Advanced Toolbox keep technical details collapsed by default.

@@ -34,3 +34,7 @@ See [Process LiDAR Folder by Polygon](polygon-folder-processing.md) for the guid
 ## Current Mission Control behavior
 
 Polygon, product, resolution, repository, and output changes refresh optional Scientific Advisor guidance automatically. Use Advanced Toolbox to open QGIS Processing and inspect PyForestScan provider status.
+
+## Compact Batch workflow
+
+Choose folder or polygon processing, select LiDAR data and products, choose an output folder, run Prerun Check, then process. Repository maintenance, spatial diagnostics, performance controls, and technical reports are optional collapsed sections.

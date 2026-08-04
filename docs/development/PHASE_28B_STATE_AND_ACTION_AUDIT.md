@@ -25,3 +25,7 @@ Repository, source, layer, selected/full-layer mode, vector sublayer, WKT, CRS, 
 ## Refresh cost
 
 Session rendering is automatic and lightweight. Environment and provider inspection are manual. Processing, repository scanning, and scientific work are never started by page activation.
+
+## Phase 28C rendering contract
+
+The Phase 28B state flow is unchanged. Phase 28C uses it to hide irrelevant mode sections, stale Prerun state, empty Results controls, and result lists until their state is meaningful.
