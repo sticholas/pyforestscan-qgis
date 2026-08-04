@@ -32,8 +32,8 @@ class Phase28AProductizationTests(unittest.TestCase):
             self.assertIn(label, self.pages)
 
     def test_repository_and_spatial_tools_are_collapsed(self):
-        self.assertIn('_collapsible_section(polygon_source, "Advanced Repository Tools", checked=False)', self.pages)
-        self.assertIn('_collapsible_section(polygon_source, "Advanced Spatial Tools", checked=False)', self.pages)
+        self.assertIn('_collapsible_section(polygon_layout, "Advanced Repository Tools", checked=False)', self.pages)
+        self.assertIn('_collapsible_section(polygon_layout, "Advanced Spatial Tools", checked=False)', self.pages)
 
     def test_required_primary_repository_controls_remain(self):
         for label in ("Browse Repository", "Repository needs attention", "Build Index", "Update Index"):

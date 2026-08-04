@@ -61,6 +61,7 @@ This documentation is organized for users, scientists, developers, maintainers, 
 - [Phase 28A Productization UX Audit](development/PHASE_28A_PRODUCTIZATION_UX_AUDIT.md)
 - [PyForestScan Design System](development/PYFORESTSCAN_DESIGN_SYSTEM.md)
 - [Testing Strategy](TESTING_STRATEGY.md)
+- [Phase 28A Hotfix QGIS Validation](testing/PHASE_28A_HOTFIX_QGIS_VALIDATION.md)
 
 ## Backend Manager
 

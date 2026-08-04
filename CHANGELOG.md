@@ -6,6 +6,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ## Unreleased
 
+- Phase 28A hotfix repairs Batch startup by constructing product and workflow sections as explicit Qt widgets in final order, eliminating layout-wrapper reparenting that could access a deleted QVBoxLayout.
 - Phase 28A productizes Mission Control around Batch, Results, optional scientific guidance, readiness, settings, and Advanced Toolbox; legacy guided pages remain internal, specialist repository/spatial controls are collapsed, and processing behavior is unchanged.
 - Phase 27S repairs EPT CRS detection by centralizing EPT SRS parsing, rejecting incomplete values such as `EPSG`, resolving authority plus horizontal code to complete CRS IDs, adding CRS-aware EPT polygon alignment, preserving transformed EPT bounds/manifests, adding support diagnostics, and covering the reported EPSG:6635 overlap regression with QGIS-free tests.
 - Phase 27R stabilizes ordinary-folder Polygon Area Processing by adding shared LiDAR source metadata, a direct header-metadata correctness path, a PolygonLidarProcessingService plan, selected-path invariants through preflight/manifest/execution, safer EPT-only logical execution detection, selected LiDAR QGIS map-layer service wiring, regression tests, and live-validation documentation while preserving PBM, exact masking, output registration/loading, diagnostics, and disabled External Workers.
