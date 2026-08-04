@@ -85,7 +85,7 @@ class PolygonSourceUiStaticTests(unittest.TestCase):
 
     def test_guided_mode_no_longer_requires_wkt(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
-        self.assertIn("Polygon Area Processing", source)
+        self.assertIn("Polygon Selection", source)
         self.assertNotIn("selected QGIS feature support is planned", source)
 
     def test_qgis_helper_filters_polygon_layers_and_vector_containers(self) -> None:

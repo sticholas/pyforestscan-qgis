@@ -25,41 +25,27 @@ flowchart TD
 
 ## Pages
 
-The sidebar order is Home, Workspace, Dataset, Planning, Processing, Batch,
-Results, Scientific Advisor, Environment, and Settings.
+The primary sidebar order is Batch, Results, Scientific Advisor, Environment,
+Settings, and Advanced Toolbox. Batch is the startup workspace. Advanced
+Toolbox opens the existing QGIS Processing Toolbox.
 
-- Home: compact workflow overview with backend/environment readiness, selected
-  dataset, workflow status, current output folder, Continue, and Check
-  Environment. Version details and recent activity are collapsed by default.
-- Workspace: welcome/resume surface with Resume Workspace, Start New
-  Workspace, Recent Workspaces, status, recent runs, key output links, timeline,
-  notes, and reset controls collapsed under Troubleshooting.
-- Dataset: choose LAS, LAZ, COPC, or EPT plus an output folder, analyze the dataset, create the active
-  run folder, show a compact key-facts dataset summary and spatial footprint preview,
-  keep lower-priority fields/report paths under content-sized Technical Metadata, add the footprint to
-  QGIS, and zoom the main map canvas. Folder and polygon-area workflows live in Batch.
-- Planning: Product Planner uses the active Dataset Explorer report, keeps the
-  normal product/settings path first, and collapses output-folder overrides under
-  Advanced Output Folder. No product execution is performed.
-- Processing: start implemented product jobs from the active Product Planner
-  report, view selected products, output folder, Processing Footprint, current status,
-  and progress by default. Product Plan JSON paths, pipeline stages, and logs are
-  available under Technical Details.
-- Batch: optional folder-to-products workflow for users who explicitly choose
-  batch processing. It defaults to Standard File Batch and offers Polygon Area
-  Processing for catalog-backed LiDAR repository clipping by QGIS layer, vector file, or Advanced WKT.
-  It is not part of the default Continue path.
-- Results: show a compact teaching empty state until outputs exist, then make
-  Open Output Folder and Load Outputs dominant. Load Outputs adds current-run
-  `.tif`, `.tiff`, and supported `.csv` outputs to QGIS, skips duplicates, and
-  reuses product raster styling. Raw paths stay under Run files and logs.
-- Scientific Advisor: optional Knowledge Engine guidance after Dataset Explorer,
-  including warnings, product explanations, parameter suggestions, and QGIS QA
-  tools. Empty recommendation cards are hidden until recommendations exist.
-- Environment: execution-readiness summary with PBM backend status first,
-  active execution backend, a Refresh action, and an Open Backend Settings action.
-  QGIS Python fallback checks and technical dependency details are collapsed by default.
-- Settings: default output folder for Mission Control runs and PBM backend controls.
+- Batch: the primary workspace. Choose **LiDAR Folder Selection** or **Polygon
+  Selection**, select data, products, and an output folder, run the **Prerun
+  Check**, then process. Automatic repository, CRS, strategy, and concurrency
+  decisions are the default; specialist controls are collapsed.
+- Results: generated products first, followed by Open Output Folder and Load
+  into QGIS. Processing summaries and diagnostics are collapsed.
+- Scientific Advisor: optional Knowledge Engine guidance. It is never required
+  before processing.
+- Environment: PBM readiness and active execution backend first. QGIS Python
+  fallback and technical dependency details are collapsed.
+- Settings: user defaults and PBM backend controls. Technical logs remain
+  collapsed.
+- Advanced Toolbox: opens the existing parameter-rich Processing Toolbox.
+
+Home, Workspace, Dataset, Planning, and Processing remain internal compatibility
+pages. Their state, services, and signal wiring are preserved, but they are not
+shown in primary navigation.
 
 ## UI Architecture
 
@@ -79,9 +65,9 @@ Mission Control follows the permanent [Mission Control UX Standard](../developme
 - `pyforestscan_qgis/ui/state.py`: plain-Python immutable Mission Control state.
 - `pyforestscan_qgis/core/workspace/`: QGIS-free workspace package containing run-folder context, workspace persistence, session/state/history/timeline/notes models, and display helpers.
 
-## Guided Workflow Continuity
+## Internal Workflow Compatibility
 
-The primary single-dataset path is Home -> Workspace if needed -> Dataset -> Planning -> Processing -> Results. Home summarizes backend/environment readiness, selected data, workflow status, and output location, then uses Continue to move to the next incomplete step. If readiness is not established, Continue and Check Environment route to Environment. Dataset routes to Planning, Planning routes to Processing, and Processing completion points to Results. Batch is optional and is never inserted into the default Continue path. Scientific Advisor is support guidance and is not required before Processing.
+The legacy single-dataset path remains available internally as Home -> Workspace if needed -> Dataset -> Planning -> Processing -> Results. Home summarizes backend/environment readiness, selected data, workflow status, and output location, then uses Continue to move to the next incomplete step. If readiness is not established, Continue and Check Environment route to Environment. Dataset routes to Planning, Planning routes to Processing, and Processing completion points to Results. Batch is optional and is never inserted into the default Continue path. Scientific Advisor is support guidance and is not required before Processing.
 
 Mission Control keeps pages synchronized as the workflow changes. Choosing a new dataset clears stale Planning, Processing, Advisor, and Results content until Dataset Explorer runs again. Backend verification or install completion refreshes Environment and Home. Processing completion updates Results and Home, and Load Outputs records a concise result message without exposing raw logs in the primary UI.
 
@@ -236,3 +222,7 @@ Repository discovery, catalog identity, catalog integrity, repair, source-view, 
 ## Phase 27P Notes
 
 Catalog health now separates embedded CRS from effective CRS. A bounded LAS/LAZ catalog with all source CRS values missing is `CRS Assignment Required`, not healthy, and polygon preflight does not report true no coverage until comparable CRS metadata exists. Repository CRS override metadata is explicit and reversible. Live QGIS coverage/zoom services now require actual layer insertion or canvas extent changes before reporting success.
+
+## Phase 28A productized workflow
+
+Mission Control opens on **Batch** and shows the primary sidebar **Batch, Results, Scientific Advisor, Environment, Settings, Advanced Toolbox**. Home, Workspace, Dataset, Planning, and Processing remain internal compatibility pages. Normal processing uses **LiDAR Folder Selection** or **Polygon Selection**, then products, output folder, **Prerun Check**, and **Process**. Repository and spatial specialist controls are collapsed under Advanced sections.

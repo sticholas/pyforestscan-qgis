@@ -1915,16 +1915,16 @@ class BatchPage(MissionPage):
         self.preflight_report: object | None = None
         self.current_index_plan: object | None = None
 
-        mode_section = self.add_section("Batch Mode")
+        mode_section = self.add_section("Choose Processing Mode")
         self.batch_mode_combo = QComboBox()
-        self.batch_mode_combo.addItem("Standard File Batch", "standard")
-        self.batch_mode_combo.addItem("Polygon Area Processing", "polygon")
+        self.batch_mode_combo.addItem("LiDAR Folder Selection", "standard")
+        self.batch_mode_combo.addItem("Polygon Selection", "polygon")
         self.batch_mode_combo.currentIndexChanged.connect(self._update_batch_mode_visibility)
         mode_section.addWidget(self.batch_mode_combo)
-        self.batch_mode_summary_label = _body_label("Standard File Batch: discover files, choose files, run preflight, then run Batch.")
+        self.batch_mode_summary_label = _body_label("Choose a LiDAR folder, products, and output folder. PyForestScan handles the processing details.")
         mode_section.addWidget(self.batch_mode_summary_label)
 
-        source = self.add_section("1. Discover Files")
+        source = self.add_section("1. LiDAR Folder Selection")
         self.standard_batch_section = source.parentWidget()
         folder_row = QHBoxLayout()
         self.input_folder_edit = QLineEdit()
@@ -1955,7 +1955,7 @@ class BatchPage(MissionPage):
         self.file_list.setMinimumHeight(COMPACT_LIST_HEIGHT)
         source.addWidget(self.file_list)
 
-        polygon_source = self.add_section("1. Polygon Area Processing")
+        polygon_source = self.add_section("1. Polygon Selection")
         self.polygon_batch_section = polygon_source.parentWidget()
         self.polygon_guided_step_label = _body_label(guided_step_indicator("data"))
         polygon_source.addWidget(self.polygon_guided_step_label)
@@ -1965,7 +1965,7 @@ class BatchPage(MissionPage):
         self.polygon_lidar_folder_edit = QLineEdit()
         self.polygon_lidar_folder_edit.setPlaceholderText("LiDAR repository containing LAS, LAZ, COPC, or local ept.json sources")
         polygon_folder_row = QHBoxLayout()
-        polygon_folder_browse = QPushButton("Browse")
+        polygon_folder_browse = QPushButton("Browse Repository")
         polygon_folder_browse.clicked.connect(self.browse_polygon_lidar_folder)
         self.use_polygon_path_button = QPushButton("Use Path")
         self.use_polygon_path_button.clicked.connect(self.use_polygon_repository_path)
@@ -1978,9 +1978,6 @@ class BatchPage(MissionPage):
         _apply_button_role(self.polygon_refresh_folder_button, "neutral")
         polygon_folder_row.addWidget(self.polygon_lidar_folder_edit, 1)
         polygon_folder_row.addWidget(polygon_folder_browse, 0)
-        polygon_folder_row.addWidget(self.use_polygon_path_button, 0)
-        polygon_folder_row.addWidget(self.quick_probe_button, 0)
-        polygon_folder_row.addWidget(self.polygon_refresh_folder_button, 0)
         self.polygon_source_combo = QComboBox()
         self.polygon_source_combo.addItem("Use QGIS Layer", "qgis")
         self.polygon_source_combo.addItem("Choose Vector File", "file")
@@ -1995,7 +1992,7 @@ class BatchPage(MissionPage):
         polygon_source_row.addWidget(info_badge("batch.polygon", parent=self), 0)
         polygon_form.addRow("Polygon source", polygon_source_row)
         polygon_source.addLayout(polygon_form)
-        self.polygon_catalog_status_label = _details_label("Repository not prepared - choose a LiDAR repository, then Prepare Repository.")
+        self.polygon_catalog_status_label = _details_label("Repository needs attention - choose a LiDAR repository, then Build Index.")
         polygon_source.addWidget(self.polygon_catalog_status_label)
         strategy_form = QFormLayout()
         strategy_form.setVerticalSpacing(SECTION_SPACING)
@@ -2027,25 +2024,37 @@ class BatchPage(MissionPage):
         self.polygon_direct_fallback_check = QCheckBox("Fallback to Direct Header Scan when catalog selection is inconclusive")
         self.polygon_direct_fallback_check.setChecked(True)
         strategy_form.addRow("", self.polygon_direct_fallback_check)
-        polygon_source.addLayout(strategy_form)
         strategy_actions = QHBoxLayout()
         strategy_actions.setSpacing(ACTION_ROW_SPACING)
         self.detect_index_strategy_button = QPushButton("Preview Setup Method")
         self.detect_index_strategy_button.clicked.connect(self.detect_polygon_index_strategy)
         _apply_button_role(self.detect_index_strategy_button, "secondary")
-        self.build_relevant_index_button = QPushButton("Prepare Repository")
+        self.build_relevant_index_button = QPushButton("Build Index")
         self.build_relevant_index_button.clicked.connect(self.build_relevant_polygon_index)
         _apply_button_role(self.build_relevant_index_button, "primary")
-        strategy_actions.addWidget(self.detect_index_strategy_button)
+        self.update_catalog_button = QPushButton("Update Index")
+        self.update_catalog_button.clicked.connect(self.update_polygon_catalog)
+        _apply_button_role(self.update_catalog_button, "secondary")
         strategy_actions.addWidget(self.build_relevant_index_button)
+        strategy_actions.addWidget(self.update_catalog_button)
         strategy_actions.addStretch(1)
         polygon_source.addLayout(strategy_actions)
+        advanced_repository_group, advanced_repository = _collapsible_section(polygon_source, "Advanced Repository Tools", checked=False)
+        advanced_repository.addWidget(_details_label("Automatic setup is recommended. Expand only to diagnose, repair, resume, or override repository preparation."))
+        advanced_repository.addLayout(strategy_form)
+        advanced_repository.addWidget(self.detect_index_strategy_button)
+        advanced_path_actions = QHBoxLayout()
+        advanced_path_actions.addWidget(self.use_polygon_path_button)
+        advanced_path_actions.addWidget(self.quick_probe_button)
+        advanced_path_actions.addWidget(self.polygon_refresh_folder_button)
+        advanced_path_actions.addStretch(1)
+        advanced_repository.addLayout(advanced_path_actions)
         self.polygon_index_plan_text = QTextEdit()
         self.polygon_index_plan_text.setReadOnly(True)
         self.polygon_index_plan_text.setMinimumHeight(72)
         self.polygon_index_plan_text.setMaximumHeight(140)
         self.polygon_index_plan_text.setPlainText("Preview Setup Method checks the repository lightly and recommends a preparation method without scanning every file.")
-        polygon_source.addWidget(self.polygon_index_plan_text)
+        advanced_repository.addWidget(self.polygon_index_plan_text)
         catalog_actions = QHBoxLayout()
         catalog_actions.setSpacing(ACTION_ROW_SPACING)
         self.inspect_repository_button = QPushButton("Inspect Repository")
@@ -2055,9 +2064,6 @@ class BatchPage(MissionPage):
         self.build_catalog_button.setToolTip("Build Catalog")
         self.build_catalog_button.clicked.connect(self.build_polygon_catalog)
         _apply_button_role(self.build_catalog_button, "secondary")
-        self.update_catalog_button = QPushButton("Update Catalog")
-        self.update_catalog_button.clicked.connect(self.update_polygon_catalog)
-        _apply_button_role(self.update_catalog_button, "secondary")
         self.resume_catalog_button = QPushButton("Resume Catalog Build")
         self.resume_catalog_button.clicked.connect(self.resume_polygon_catalog)
         _apply_button_role(self.resume_catalog_button, "secondary")
@@ -2093,7 +2099,6 @@ class BatchPage(MissionPage):
         _apply_button_role(self.open_catalog_folder_button, "neutral")
         catalog_actions.addWidget(self.inspect_repository_button)
         catalog_actions.addWidget(self.build_catalog_button)
-        catalog_actions.addWidget(self.update_catalog_button)
         catalog_actions.addWidget(self.resume_catalog_button)
         catalog_actions.addWidget(self.pause_catalog_button)
         catalog_actions.addWidget(self.repair_catalog_button)
@@ -2105,7 +2110,8 @@ class BatchPage(MissionPage):
         catalog_actions.addWidget(self.move_catalog_local_button)
         catalog_actions.addWidget(self.open_catalog_folder_button)
         catalog_actions.addStretch(1)
-        polygon_source.addLayout(catalog_actions)
+        advanced_repository.addLayout(catalog_actions)
+        _wire_collapsible_group(advanced_repository_group)
 
         self.polygon_qgis_source_frame = QFrame()
         qgis_source_layout = QVBoxLayout(self.polygon_qgis_source_frame)
@@ -2169,7 +2175,7 @@ class BatchPage(MissionPage):
         _wire_collapsible_group(self.polygon_wkt_group)
         polygon_actions = QHBoxLayout()
         polygon_actions.setSpacing(ACTION_ROW_SPACING)
-        self.rerun_polygon_preflight_button = QPushButton("Re-run Preflight")
+        self.rerun_polygon_preflight_button = QPushButton("Re-run Prerun Check")
         self.rerun_polygon_preflight_button.clicked.connect(self.run_preflight)
         _apply_button_role(self.rerun_polygon_preflight_button, "secondary")
         self.reset_polygon_batch_button = QPushButton("Reset Polygon Batch")
@@ -2198,7 +2204,10 @@ class BatchPage(MissionPage):
         polygon_actions.addWidget(self.zoom_combined_button)
         polygon_actions.addWidget(self.reset_polygon_batch_button)
         polygon_actions.addStretch(1)
-        polygon_source.addLayout(polygon_actions)
+        advanced_spatial_group, advanced_spatial = _collapsible_section(polygon_source, "Advanced Spatial Tools", checked=False)
+        advanced_spatial.addWidget(_details_label("Use these map previews and recovery controls only when reviewing coverage or coordinate-system alignment."))
+        advanced_spatial.addLayout(polygon_actions)
+        _wire_collapsible_group(advanced_spatial_group)
 
         output = self.add_section("Output")
         self.batch_output_section = output.parentWidget()
@@ -2251,6 +2260,8 @@ class BatchPage(MissionPage):
         settings_form.addRow("Canopy cover threshold", self.canopy_threshold_spin)
         settings_form.addRow("CHM interpolation", self.chm_interpolation_combo)
         products.addLayout(settings_form)
+        self.content_layout.removeWidget(products.parentWidget())
+        self.content_layout.insertWidget(self.content_layout.indexOf(self.batch_output_section), products.parentWidget())
         advanced_batch_group, advanced_batch = _collapsible_section(self.content_layout, "Advanced Batch Options", checked=False)
         advanced_form = QFormLayout()
         advanced_form.setVerticalSpacing(SECTION_SPACING)
@@ -2369,7 +2380,7 @@ class BatchPage(MissionPage):
         mask_failure_row.addWidget(info_badge("batch.mask_failure_policy", parent=self), 0)
         polygon_form.addRow("Mask failure policy", mask_failure_row)
         polygon_finalization.addLayout(polygon_form)
-        polygon_finalization.addWidget(_details_label("Applies to Polygon Area Processing raster outputs. Final registered outputs use the masked raster when exact masking is enabled."))
+        polygon_finalization.addWidget(_details_label("Applies to Polygon Selection raster outputs. Final registered outputs use the masked raster when exact masking is enabled."))
         _wire_collapsible_group(polygon_finalization_group)
         _wire_collapsible_group(advanced_batch_group)
         for check in self.product_checks.values():
@@ -2383,8 +2394,8 @@ class BatchPage(MissionPage):
         footprint.addWidget(self.footprint_label)
         _wire_collapsible_group(footprint_group)
 
-        preflight = self.add_section("2. Preflight")
-        self.preflight_button = QPushButton("Run Preflight Check")
+        preflight = self.add_section("5. Prerun Check")
+        self.preflight_button = QPushButton("Run Prerun Check")
         self.preflight_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.preflight_button.clicked.connect(self.run_preflight)
         _apply_button_role(self.preflight_button, "primary")
@@ -2395,11 +2406,11 @@ class BatchPage(MissionPage):
         preflight.addWidget(self.acknowledge_warnings_check)
         self.preflight_text = QTextEdit()
         self.preflight_text.setReadOnly(True)
-        self.preflight_text.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)
-        self.preflight_text.setPlainText("Run preflight before starting a batch.")
+        self.preflight_text.setMinimumHeight(COMPACT_LIST_HEIGHT)
+        self.preflight_text.setPlainText("Run the Prerun Check when your data, products, and output folder are ready.")
         preflight.addWidget(self.preflight_text)
 
-        run_section = self.add_section("3. Run Batch / Review Results")
+        run_section = self.add_section("6. Process")
         self.run_button = QPushButton(primary_action_label("batch"))
         self.run_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.run_button.clicked.connect(self.run_batch)
@@ -2434,7 +2445,7 @@ class BatchPage(MissionPage):
         self.progress_bar.setValue(0)
         run_section.addWidget(self.progress_bar)
         self.status_label = QLabel()
-        _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: Not set up - discover files and run preflight.")
+        _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: Needs Attention - choose data and run the Prerun Check.")
         run_section.addWidget(self.status_label)
         self.worker_status_label = _body_label("Active workers: 0")
         run_section.addWidget(self.worker_status_label)
@@ -2462,15 +2473,15 @@ class BatchPage(MissionPage):
         self.standard_batch_section.setVisible(not polygon)
         self.polygon_batch_section.setVisible(polygon)
         self.batch_mode_summary_label.setText(
-            "Polygon Area Processing: choose a LiDAR repository and polygon; Batch queries the catalog and clips intersecting sources before product runs."
+            "Polygon Selection: choose a LiDAR repository, area, products, and output folder."
             if polygon else
-            "Standard File Batch: discover files, choose files, run preflight, then run Batch."
+            "LiDAR Folder Selection: choose a folder, products, and output folder."
         )
         self.preflight_report = None
         self.acknowledge_warnings_check.setChecked(False)
         self.acknowledge_warnings_check.setEnabled(False)
-        self.preflight_text.setPlainText("Run polygon preflight before starting Polygon Area Processing." if polygon else "Run preflight before starting a batch.")
-        self.run_button.setText("Run Polygon Batch" if polygon else primary_action_label("batch"))
+        self.preflight_text.setPlainText("Run the Prerun Check before processing the selected polygon." if polygon else "Run the Prerun Check before processing the folder.")
+        self.run_button.setText("Process Selection" if polygon else "Process Folder")
         self.resume_button.setVisible(not polygon)
         self.retry_failed_button.setText("Retry Failed" if polygon else "Retry Failed Files")
         self.summary_label.setText("Review Polygon Batch outputs after execution." if polygon else "4. Review Results after the batch completes.")
@@ -2506,7 +2517,7 @@ class BatchPage(MissionPage):
     def preview_polygon_spatial_selection(self) -> None:
         report = self.preflight_report
         if report is None or getattr(report, "source_selection", None) is None:
-            self.preflight_text.setPlainText("Preview Spatial Selection needs a current preflight plan. Click Run Preflight Check first.")
+            self.preflight_text.setPlainText("Preview Spatial Selection needs a current preflight plan. Click Run the Prerun Check first.")
             return
         selection = report.source_selection
         coverage_result = add_selected_lidar_to_qgis(report, self.iface)
@@ -2530,7 +2541,7 @@ class BatchPage(MissionPage):
     def preview_polygon_spatial_alignment(self) -> None:
         report = self.preflight_report
         if report is None or getattr(report, "source_selection", None) is None:
-            self.preflight_text.setPlainText("Preview Spatial Alignment needs a current preflight plan. Click Run Preflight Check first.")
+            self.preflight_text.setPlainText("Preview Spatial Alignment needs a current preflight plan. Click Run the Prerun Check first.")
             return
         result = preview_spatial_alignment_in_qgis(report, self.iface)
         selection = report.source_selection
@@ -2550,7 +2561,7 @@ class BatchPage(MissionPage):
     def _show_spatial_action(self, action: str) -> None:
         report = self.preflight_report
         if report is None or getattr(report, "source_selection", None) is None:
-            self.preflight_text.setPlainText(f"{action} needs a current preflight plan. Click Re-run Preflight first.")
+            self.preflight_text.setPlainText(f"{action} needs a current preflight plan. Click Re-run Prerun Check first.")
             return
         selection = report.source_selection
         lines = [action]
@@ -2602,7 +2613,7 @@ class BatchPage(MissionPage):
     def refresh_polygon_lidar_folder(self) -> None:
         self.preflight_report = None
         self.refresh_catalog_status()
-        self.preflight_text.setPlainText("Catalog status refreshed. No repository scan was performed. Run polygon preflight to query intersecting sources.")
+        self.preflight_text.setPlainText("Catalog status refreshed. No repository scan was performed. Run the Prerun Check to find intersecting sources.")
         self._update_run_button_enabled()
 
     def inspect_polygon_repository(self) -> None:
@@ -2659,7 +2670,7 @@ class BatchPage(MissionPage):
         folder = self.polygon_lidar_folder_edit.text().strip()
         running = self.catalog_thread is not None
         if not folder:
-            self.polygon_catalog_status_label.setText("Repository not prepared - choose a LiDAR repository, then Prepare Repository.")
+            self.polygon_catalog_status_label.setText("Repository needs attention - choose a LiDAR repository, then Build Index.")
             self.detect_index_strategy_button.setEnabled(False)
             self.build_relevant_index_button.setEnabled(False)
             self.inspect_repository_button.setEnabled(False)
@@ -2985,7 +2996,7 @@ class BatchPage(MissionPage):
             self.preflight_text.setPlainText("Catalog build was interrupted after a safe chunk. Resume Catalog Build to continue without discarding indexed records.")
         else:
             _set_status_badge(self.status_label, "READY", f"Status: Ready - catalog indexed {getattr(result, 'indexed_count', 0):,}; unchanged {getattr(result, 'unchanged_count', 0):,}; errors {getattr(result, 'error_count', 0):,}.")
-            self.preflight_text.setPlainText("Catalog ready. Run polygon preflight to query intersecting sources.")
+            self.preflight_text.setPlainText("Catalog ready. Run the Prerun Check to find intersecting sources.")
         self.refresh_catalog_status()
 
     def _on_catalog_build_failed(self, message: str) -> None:
@@ -3128,7 +3139,7 @@ class BatchPage(MissionPage):
         self.progress_bar.setValue(0)
         removed = remove_spatial_preview_layers(self.iface)
         self.preflight_text.setPlainText(f"Polygon Batch reset. {removed.message} Cleared current plan and source selection. Catalog and generated outputs were preserved.")
-        _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: Not set up - run polygon preflight.")
+        _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: Not set up - run the Prerun Check.")
         self._update_run_button_enabled()
 
     def set_default_output_folder(self, folder: Path | None) -> None:
@@ -3179,7 +3190,7 @@ class BatchPage(MissionPage):
     def run_preflight(self) -> None:
         """Run batch preflight and update readiness display."""
         self.preflight_button.setEnabled(False)
-        self.preflight_text.setPlainText("Preparing preflight check...")
+        self.preflight_text.setPlainText("Running Prerun Check...")
         QApplication.processEvents()
         if self._current_batch_mode() == "polygon":
             try:
@@ -3225,16 +3236,16 @@ class BatchPage(MissionPage):
     def run_batch(self) -> None:
         """Run selected datasets through preflight-approved batch execution."""
         if self.preflight_report is None:
-            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - run preflight before starting the batch.")
+            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - run the Prerun Check before processing.")
             return
         if self._current_batch_mode() == "polygon":
             self._run_polygon_batch()
             return
         if self.preflight_report.blockers:
-            _set_status_badge(self.status_label, "FAILED", "Status: Failed - preflight blockers must be resolved before running.")
+            _set_status_badge(self.status_label, "FAILED", "Status: Failed - Prerun Check issues must be resolved before processing.")
             return
         if self.preflight_report.warnings and not self.acknowledge_warnings_check.isChecked():
-            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - review and acknowledge preflight warnings before running.")
+            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - review and acknowledge Prerun Check warnings before processing.")
             return
         try:
             request = self._build_batch_request(self.preflight_report.batch_folder, self.preflight_report.files_to_process)
@@ -3289,7 +3300,7 @@ class BatchPage(MissionPage):
         if report is None:
             return
         if getattr(report, "blockers", ()):
-            _set_status_badge(self.status_label, "FAILED", "Status: Failed - polygon preflight blockers must be resolved before running.")
+            _set_status_badge(self.status_label, "FAILED", "Status: Failed - polygon Prerun Check issues must be resolved before processing.")
             return
         if getattr(report, "warnings", ()) and not self.acknowledge_warnings_check.isChecked():
             _set_status_badge(self.status_label, "WARNING", "Status: Needs review - review and acknowledge polygon warnings before running.")
@@ -3366,7 +3377,7 @@ class BatchPage(MissionPage):
         folder = self.polygon_lidar_folder_edit.text().strip()
         output_folder = self.output_folder_edit.text().strip()
         if not folder:
-            raise BatchExecutionError("Choose a LiDAR repository for Polygon Area Processing.")
+            raise BatchExecutionError("Choose a LiDAR repository for Polygon Selection.")
         if not output_folder:
             raise BatchExecutionError("Choose an output folder.")
         products = tuple(product for product, check in self.product_checks.items() if check.isChecked())
@@ -3609,7 +3620,7 @@ class BatchPage(MissionPage):
             self.file_list.addItem(row)
         self.failed_paths = []
         self.retry_failed_button.setEnabled(False)
-        _set_status_badge(self.status_label, "WARNING", "Status: Needs review - failed files are queued for retry. Click Run Batch.")
+        _set_status_badge(self.status_label, "WARNING", "Status: Needs review - failed files are queued for retry. Click Process.")
         self._refresh_footprint_label()
 
     def open_batch_output_folder(self) -> None:
@@ -3686,7 +3697,7 @@ class ResultsPage(MissionPage):
         self.open_output_folder_button.setEnabled(False)
         self.open_output_folder_button.clicked.connect(self.open_output_folder)
         _apply_button_role(self.open_output_folder_button, "primary")
-        self.load_outputs_button = QPushButton("Load Outputs")
+        self.load_outputs_button = QPushButton("Load into QGIS")
         self.load_outputs_button.setEnabled(False)
         self.load_outputs_button.setToolTip("Load GeoTIFF and CSV outputs into the current QGIS project.")
         self.load_outputs_button.clicked.connect(self.load_outputs_to_qgis)
@@ -3716,7 +3727,7 @@ class ResultsPage(MissionPage):
         jobs.addWidget(self.job_history)
         self.jobs_section.setVisible(False)
 
-        advanced, advanced_layout = _collapsible_section(self.content_layout, "Run files and logs", checked=False)
+        advanced, advanced_layout = _collapsible_section(self.content_layout, "Processing Summary and Diagnostics", checked=False)
         advanced_layout.addWidget(_details_label("Internal JSON, CSV, HTML reports, and logs are available here for reproducibility and troubleshooting."))
         row = QHBoxLayout()
         self.report_path_edit = QLineEdit()

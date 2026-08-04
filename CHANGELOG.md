@@ -1,5 +1,4 @@
 # Changelog
-
 All notable changes to this project will be documented in this file.
 
 This project follows semantic versioning once plugin releases begin. Until the
@@ -7,6 +6,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ## Unreleased
 
+- Phase 28A productizes Mission Control around Batch, Results, optional scientific guidance, readiness, settings, and Advanced Toolbox; legacy guided pages remain internal, specialist repository/spatial controls are collapsed, and processing behavior is unchanged.
 - Phase 27S repairs EPT CRS detection by centralizing EPT SRS parsing, rejecting incomplete values such as `EPSG`, resolving authority plus horizontal code to complete CRS IDs, adding CRS-aware EPT polygon alignment, preserving transformed EPT bounds/manifests, adding support diagnostics, and covering the reported EPSG:6635 overlap regression with QGIS-free tests.
 - Phase 27R stabilizes ordinary-folder Polygon Area Processing by adding shared LiDAR source metadata, a direct header-metadata correctness path, a PolygonLidarProcessingService plan, selected-path invariants through preflight/manifest/execution, safer EPT-only logical execution detection, selected LiDAR QGIS map-layer service wiring, regression tests, and live-validation documentation while preserving PBM, exact masking, output registration/loading, diagnostics, and disabled External Workers.
 - Phase 27Q restores polygon-to-LiDAR folder source selection by adding a direct header-scan correctness path, automatic catalog-vs-direct comparison/fallback for ordinary local repositories, selection-method controls, manifest diagnostics, an audit script, regression tests, and selection-contract documentation while preserving EPT native handling, PBM behavior, Advanced Toolbox behavior, and disabled External Workers.

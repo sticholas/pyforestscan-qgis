@@ -318,7 +318,7 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn("continueLastRequested = pyqtSignal()", source)
         self.assertIn("def set_continue_available", source)
         self.assertIn('QPushButton("Open Output Folder")', source)
-        self.assertIn('QPushButton("Load Outputs")', source)
+        self.assertIn('QPushButton("Load into QGIS")', source)
         self.assertIn('QPushButton("Clear Current Run")', source)
         self.assertIn("Execution backend: PBM when READY", source)
         self.assertIn("Plugin ZIP: ready for QGIS Plugin Manager installs", source)

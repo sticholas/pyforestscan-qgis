@@ -40,7 +40,7 @@ FORM_CLASS, _ = uic.loadUiType(str(plugin_root() / "ui" / "forms" / "mission_con
 class MissionControlDock(QDockWidget):
     """Dockable Mission Control interface for PyForestScan QGIS."""
 
-    PAGE_NAMES = (
+    INTERNAL_PAGE_NAMES = (
         "Home",
         "Workspace",
         "Dataset",
@@ -51,6 +51,14 @@ class MissionControlDock(QDockWidget):
         "Scientific Advisor",
         "Environment",
         "Settings",
+    )
+    PAGE_NAMES = (
+        "Batch",
+        "Results",
+        "Scientific Advisor",
+        "Environment",
+        "Settings",
+        "Advanced Toolbox",
     )
 
     def __init__(self, iface: Any, parent: QWidget | None = None) -> None:
@@ -116,6 +124,8 @@ class MissionControlDock(QDockWidget):
             self.environment_page,
             self.settings_page,
         )
+        self.page_by_name = dict(zip(self.INTERNAL_PAGE_NAMES, self.pages))
+        self._last_content_navigation_row = 0
 
         self._configure_style()
         self._populate_navigation()
@@ -125,8 +135,8 @@ class MissionControlDock(QDockWidget):
         self._update_status_bar()
 
     def show_home(self) -> None:
-        """Show the home page."""
-        self.ui.navigationList.setCurrentRow(0)
+        """Show the primary Mission Control workspace."""
+        self._navigate_to("Batch")
 
     def closeEvent(self, event: object) -> None:  # noqa: N802 - Qt API name.
         """Save the Mission Control workspace session when the window closes."""
@@ -162,23 +172,25 @@ class MissionControlDock(QDockWidget):
                 self.restoreGeometry(QByteArray.fromBase64(session.window_geometry.encode("ascii")))
             except Exception:  # noqa: BLE001 - geometry restore is best effort.
                 pass
-        if session.last_page in self.PAGE_NAMES:
-            self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index(session.last_page))
+        if session.last_page in self.PAGE_NAMES and session.last_page != "Advanced Toolbox":
+            self._navigate_to(session.last_page)
 
     def _populate_navigation(self) -> None:
-        for name, page in zip(self.PAGE_NAMES, self.pages):
-            self.ui.navigationList.addItem(name)
+        for page in self.pages:
             self.ui.pageStack.addWidget(page)
+        for name in self.PAGE_NAMES:
+            self.ui.navigationList.addItem(name)
         self.ui.navigationList.setCurrentRow(0)
+        self.ui.pageStack.setCurrentWidget(self.batch_page)
 
     def _wire_signals(self) -> None:
-        self.ui.navigationList.currentRowChanged.connect(self.ui.pageStack.setCurrentIndex)
+        self.ui.navigationList.currentRowChanged.connect(self._on_navigation_changed)
         self.ui.navigationList.currentRowChanged.connect(lambda _row: self._refresh_guided_workflow())
         self.home_page.continueWorkflowRequested.connect(self._continue_guided_workflow)
         self.home_page.checkEnvironmentRequested.connect(self._open_environment_and_refresh)
         self.home_page.refreshSummaryRequested.connect(self._refresh_summary_from_home)
         self.home_page.continueLastRequested.connect(self._continue_last_workspace)
-        self.environment_page.backendSettingsRequested.connect(lambda: self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Settings")))
+        self.environment_page.backendSettingsRequested.connect(lambda: self._navigate_to("Settings"))
         self.workspace_page.continueLastRequested.connect(self._continue_last_workspace)
         self.workspace_page.startNewRequested.connect(self._start_new_workspace)
         self.workspace_page.workspaceSelected.connect(self._open_workspace_path)
@@ -252,8 +264,41 @@ class MissionControlDock(QDockWidget):
 
     def _open_environment_and_refresh(self) -> None:
         """Open Environment and immediately refresh readiness."""
-        self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Environment"))
+        self._navigate_to("Environment")
         self.environment_page.refresh()
+
+    def _on_navigation_changed(self, row: int) -> None:
+        """Route primary navigation while keeping legacy workflow pages internal."""
+        if row < 0 or row >= len(self.PAGE_NAMES):
+            return
+        name = self.PAGE_NAMES[row]
+        if name == "Advanced Toolbox":
+            method = getattr(self.iface, "openProcessingToolbox", None)
+            if callable(method):
+                method()
+            self.ui.navigationList.blockSignals(True)
+            self.ui.navigationList.setCurrentRow(self._last_content_navigation_row)
+            self.ui.navigationList.blockSignals(False)
+            return
+        page = self.page_by_name.get(name)
+        if page is not None:
+            self._last_content_navigation_row = row
+            self.ui.pageStack.setCurrentWidget(page)
+
+    def _navigate_to(self, page_name: str) -> bool:
+        """Navigate to a visible primary page and return whether it was available."""
+        if page_name not in self.PAGE_NAMES or page_name == "Advanced Toolbox":
+            return False
+        self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index(page_name))
+        return True
+
+    def _current_primary_page_name(self) -> str | None:
+        """Return the selected persistent navigation destination."""
+        row = self.ui.navigationList.currentRow()
+        if 0 <= row < len(self.PAGE_NAMES):
+            name = self.PAGE_NAMES[row]
+            return None if name == "Advanced Toolbox" else name
+        return None
 
     def _refresh_summary_from_home(self) -> None:
         """Refresh Home summaries without changing workflow state."""
@@ -472,7 +517,7 @@ class MissionControlDock(QDockWidget):
                     last_output_folder=context.output_root,
                     last_planner_settings=session.last_planner_settings,
                     last_selected_products=session.last_selected_products,
-                    last_page=self.PAGE_NAMES[self.ui.navigationList.currentRow()] if self.ui.navigationList.currentRow() >= 0 else session.last_page,
+                    last_page=self._current_primary_page_name() or session.last_page,
                     window_geometry=session.window_geometry,
                     floating=session.floating,
                     docked=session.docked,
@@ -546,7 +591,7 @@ class MissionControlDock(QDockWidget):
 
     def _save_workspace_session(self) -> None:
         """Persist global Mission Control session metadata."""
-        current_page = self.PAGE_NAMES[self.ui.navigationList.currentRow()] if self.ui.navigationList.currentRow() >= 0 else None
+        current_page = self._current_primary_page_name()
         dataset_text = self.dataset_page.dataset_path_edit.text().strip()
         output_text = self.dataset_page.output_folder_edit.text().strip() or self.batch_page.output_folder_edit.text().strip()
         workspace_path = self.workspace.workspace_dir if self.workspace is not None else self.workspace_session.last_opened_workspace
@@ -605,7 +650,7 @@ class MissionControlDock(QDockWidget):
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
-        self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Workspace"))
+        self._navigate_to("Batch")
         self._notify("Workspace opened.", "success")
 
     def _open_workspace_path(self, workspace_path: object) -> None:
@@ -634,7 +679,7 @@ class MissionControlDock(QDockWidget):
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
-        self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index("Workspace"))
+        self._navigate_to("Batch")
         self._notify("Workspace opened.", "success")
 
     def _remove_recent_workspace(self, workspace_path: object) -> None:
@@ -781,7 +826,7 @@ class MissionControlDock(QDockWidget):
     def _refresh_guided_workflow(self) -> None:
         """Update subtle workflow orientation and next-step cards."""
         flags = self._workflow_flags()
-        for page_name, page in zip(self.PAGE_NAMES, self.pages):
+        for page_name, page in zip(self.INTERNAL_PAGE_NAMES, self.pages):
             if page_name in guided_workflow_pages() and page_name != "Home":
                 page.set_workflow_indicator(guided_workflow_indicator(page_name, **flags))
                 message, button, _target, enabled = guided_next_step(page_name, **flags)
@@ -817,7 +862,9 @@ class MissionControlDock(QDockWidget):
         """Move to the recommended workflow page without forcing work to run."""
         _message, _button, target, enabled = guided_next_step(page_name, **self._workflow_flags())
         if enabled and target in self.PAGE_NAMES:
-            self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index(target))
+            self._navigate_to(target)
+        elif enabled:
+            self._navigate_to("Batch")
 
     def _continue_guided_workflow(self) -> None:
         """Continue from Home to the next incomplete workflow step."""

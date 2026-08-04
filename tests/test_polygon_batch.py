@@ -127,12 +127,12 @@ class PolygonBatchUiStaticTests(unittest.TestCase):
     def test_batch_contains_mode_selector_and_polygon_controls(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
         batch_source = source[source.index("class BatchPage"):]
-        self.assertIn("Standard File Batch", batch_source)
-        self.assertIn("Polygon Area Processing", batch_source)
+        self.assertIn("LiDAR Folder Selection", batch_source)
+        self.assertIn("Polygon Selection", batch_source)
         self.assertIn("Refresh Polygon Layers", batch_source)
         self.assertIn("Refresh Catalog Status", batch_source)
         self.assertIn("Build Catalog", batch_source)
-        self.assertIn("Run Polygon Batch", batch_source)
+        self.assertIn("Process Selection", batch_source)
         self.assertIn("_build_polygon_batch_request", batch_source)
 
 

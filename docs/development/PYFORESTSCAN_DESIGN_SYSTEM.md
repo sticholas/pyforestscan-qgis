@@ -246,3 +246,7 @@ Use the standard small `i` information control for contextual help. It must have
 ## InfoBadge
 
 The standard information control is a compact blue circular  with lowercase , hover state, focus state, tooltip, click detail, and accessible name. It uses Qt styling rather than external fonts or bitmap dependencies and must remain legible in compact dock layouts.
+
+## Phase 28A productized workflow
+
+Mission Control opens on **Batch** and shows the primary sidebar **Batch, Results, Scientific Advisor, Environment, Settings, Advanced Toolbox**. Home, Workspace, Dataset, Planning, and Processing remain internal compatibility pages. Normal processing uses **LiDAR Folder Selection** or **Polygon Selection**, then products, output folder, **Prerun Check**, and **Process**. Repository and spatial specialist controls are collapsed under Advanced sections.

@@ -25,7 +25,7 @@ class ContextualHelpStaticTests(unittest.TestCase):
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
         batch = source[source.index("class BatchPage"):]
         self.assertIn("Automatic Setup (Recommended)", batch)
-        self.assertIn("Prepare Repository", batch)
+        self.assertIn("Build Index", batch)
         self.assertIn("Use Built-in Spatial Access", batch)
         self.assertNotIn('addItem("existing_spatial_index"', batch)
         self.assertNotIn('addItem("native_hierarchical_source"', batch)

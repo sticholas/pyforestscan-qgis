@@ -162,7 +162,7 @@ class AdaptiveLidarIndexingTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
         batch = source[source.index("class BatchPage"):]
         self.assertIn("Preview Setup Method", batch)
-        self.assertIn("Prepare Repository", batch)
+        self.assertIn("Build Index", batch)
         self.assertIn("Scan File Headers", batch)
         self.assertIn("Use an Existing Footprint Index", batch)
         self.assertIn("Preview Setup Method checks the repository lightly", batch)

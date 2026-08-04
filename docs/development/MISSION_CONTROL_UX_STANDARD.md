@@ -6,7 +6,7 @@ This standard applies to every future Mission Control page, dialog, panel, and w
 
 ## Design Philosophy
 
-- Guide the user through one clear single-dataset path: Home, Workspace if needed, Dataset, Planning, Processing, Results.
+- Guide the user through one visible processing path in Batch: choose mode, data, products, output, Prerun Check, Process.
 - Show the essential decision first.
 - Collapse, hide, or move technical detail to Advanced, Technical Details, or Troubleshooting.
 - Use professional GIS terminology and consistent page structure.
@@ -15,9 +15,9 @@ This standard applies to every future Mission Control page, dialog, panel, and w
 
 ## Workflow Model
 
-Primary single-dataset workflow pages are Home, Workspace when needed, Dataset, Planning, Processing, and Results. Batch is optional and must not be part of the default Continue path. Scientific Advisor is supporting guidance and must not be forced before Processing. Environment and Settings are readiness/support pages. They remain available from navigation, but the primary UI should make the next workflow step obvious without forcing a wizard.
+The visible product workflow starts in Batch and continues to Results. Scientific Advisor is optional guidance; Environment and Settings are readiness/support pages; Advanced Toolbox is the expert surface. Home, Workspace, Dataset, Planning, and Processing remain internal compatibility pages and must not reappear in primary navigation without a separate product decision.
 
-Primary workflow pages may show a subtle step indicator using completed, current, and upcoming markers. Batch may show its own controls when users explicitly choose Batch, including Standard File Batch and Polygon Area Processing modes, but it should be omitted from the default single-dataset indicator. Readiness markers are small text-adjacent markers and never replace status words.
+Batch offers LiDAR Folder Selection and Polygon Selection. Normal use follows data, products, output, Prerun Check, and Process. Readiness markers are small text-adjacent markers and never replace status words.
 
 ## Interaction Lifecycle
 
@@ -56,8 +56,8 @@ If the user has not reached a workflow step, the page should show the one next a
 | Dataset | Analyze Dataset |
 | Planning | Continue to Processing |
 | Processing | Run Processing |
-| Batch | Run Batch |
-| Results | Open Output Folder |
+| Batch | Process Folder / Process Selection |
+| Results | Load into QGIS / Open Output Folder |
 | Scientific Advisor | Review Recommendations |
 | Environment | Refresh Environment |
 | Settings | Verify Backend |
@@ -71,8 +71,8 @@ If the user has not reached a workflow step, the page should show the one next a
 | Dataset | Selected dataset, Analyze Dataset action, dataset summary after analysis | Metadata and report paths |
 | Planning | Selected products, shared settings, estimated outputs, Continue to Processing | Advanced product settings and parameter explanations |
 | Processing | Current job, progress, execution backend, output folder, Run Processing, Next Step to Results after completion | Backend logs, technical output, job JSON |
-| Batch | Batch mode, Discover Files or LiDAR Folder, Preflight, Run Batch, Review Results | Advanced options, footprint estimate, polygon technical details, parallel diagnostics |
-| Results | Generated outputs, Open Output Folder, Load Outputs into QGIS, or compact guidance back to Processing | Technical logs and processing metadata |
+| Batch | Processing mode, data, products, output folder, Prerun Check, Process | Repository tools, spatial tools, processing profile, footprint, diagnostics |
+| Results | Generated products, Load into QGIS, Open Output Folder, processing summary | Logs and diagnostics |
 | Scientific Advisor | Executive summary, populated recommendations/products/actionable warnings | Empty recommendation/warning cards, product explanations, scientific notes |
 | Environment | Overall status, PBM status, execution backend, Refresh, Backend Settings | QGIS fallback, dependency details, technical checks/logs |
 | Settings | Backend, Workspace, General | Manifest registry, module registry, logs, developer-only information |
@@ -105,3 +105,7 @@ Use clear labels before adding help. Add InfoBadge controls only for scientific 
 ## Phase 27N Polygon Guidance
 
 Polygon Area Processing uses the guided sequence Data, Area, Outputs, Settings, Review, Results. Advanced settings stay collapsed, and no-intersection states offer spatial preview and extent actions.
+
+## Phase 28A productized workflow
+
+Mission Control opens on **Batch** and shows the primary sidebar **Batch, Results, Scientific Advisor, Environment, Settings, Advanced Toolbox**. Home, Workspace, Dataset, Planning, and Processing remain internal compatibility pages. Normal processing uses **LiDAR Folder Selection** or **Polygon Selection**, then products, output folder, **Prerun Check**, and **Process**. Repository and spatial specialist controls are collapsed under Advanced sections.

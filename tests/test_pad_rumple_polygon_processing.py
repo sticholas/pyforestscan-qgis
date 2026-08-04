@@ -159,8 +159,8 @@ class PolygonFolderPlanningTests(unittest.TestCase):
         batch_source = source[source.index("class BatchPage"):]
 
         self.assertNotIn("Process Folder by Polygon", dataset_source)
-        self.assertIn("Polygon Area Processing", batch_source)
-        self.assertIn("Run Polygon Batch", batch_source)
+        self.assertIn("Polygon Selection", batch_source)
+        self.assertIn("Process Selection", batch_source)
         self.assertIn("run_polygon_batch_preflight", batch_source)
 
 
