@@ -115,3 +115,7 @@ Mission Control opens on **Batch** and shows the primary sidebar **Batch, Result
 The first Phase 28A build reordered the Products section by removing its owner widget and then calling `parentWidget()` through the old `QVBoxLayout` wrapper. Qt had deleted the underlying C++ layout, so Mission Control failed during `BatchPage` construction. Major Batch sections now have explicit, durable `QGroupBox` attributes and are inserted at creation time. Layout objects are used only to arrange children; they are never moved or queried to rediscover a section after removal.
 
 QGIS 3.44.9 / Python 3.12 offscreen runtime construction and two plugin init/unload cycles pass. Interactive ZIP installation and visual QGIS validation remain pending; the regression checklist records the exact steps and must not be marked passed until run in the GUI.
+
+## Reactive retained pages
+
+Retained pages render typed session/read-model state. Input changes invalidate derived plans immediately; page navigation must not be used as a refresh mechanism.

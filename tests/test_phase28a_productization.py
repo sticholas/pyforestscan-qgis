@@ -45,7 +45,8 @@ class Phase28AProductizationTests(unittest.TestCase):
         self.assertIn('"Processing Summary and Diagnostics", checked=False', self.pages)
 
     def test_backend_and_processing_modules_are_untouched_by_phase_test_scope(self):
-        self.assertIn('method = getattr(self.iface, "openProcessingToolbox", None)', self.mission)
+        self.assertIn("AdvancedToolboxPage", self.mission)
+        self.assertIn("advanced_toolbox_page.open_toolbox()", self.mission)
 
 
 if __name__ == "__main__":

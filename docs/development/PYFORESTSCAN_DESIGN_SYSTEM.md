@@ -250,3 +250,7 @@ The standard information control is a compact blue circular  with lowercase , ho
 ## Phase 28A productized workflow
 
 Mission Control opens on **Batch** and shows the primary sidebar **Batch, Results, Scientific Advisor, Environment, Settings, Advanced Toolbox**. Home, Workspace, Dataset, Planning, and Processing remain internal compatibility pages. Normal processing uses **LiDAR Folder Selection** or **Polygon Selection**, then products, output folder, **Prerun Check**, and **Process**. Repository and spatial specialist controls are collapsed under Advanced sections.
+
+## Stale and action feedback
+
+Hide obsolete derived content immediately and show one compact updating message. Every visible action must change a view/state, open QGIS UI, show progress, or return an actionable result.

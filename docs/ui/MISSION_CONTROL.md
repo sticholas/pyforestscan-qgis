@@ -226,3 +226,7 @@ Catalog health now separates embedded CRS from effective CRS. A bounded LAS/LAZ 
 ## Phase 28A productized workflow
 
 Mission Control opens on **Batch** and shows the primary sidebar **Batch, Results, Scientific Advisor, Environment, Settings, Advanced Toolbox**. Home, Workspace, Dataset, Planning, and Processing remain internal compatibility pages. Normal processing uses **LiDAR Folder Selection** or **Polygon Selection**, then products, output folder, **Prerun Check**, and **Process**. Repository and spatial specialist controls are collapsed under Advanced sections.
+
+## Retained-page synchronization
+
+Batch selections update Results context and Scientific Advisor automatically. Advanced Toolbox opens or focuses QGIS Processing and also shows provider registration, algorithm count, groups, and refresh feedback.

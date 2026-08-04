@@ -151,3 +151,5 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 - Routed native EPT preflight around generic catalog rediscovery so polygon shape cannot change repository kind.
 - Added CRS-safe envelope comparisons, rejected-source diagnostics, execution-plan signatures, guided Polygon review, processing profiles, and spatial-preview actions.
 - Removed operational use of implausible EPT root point estimates from guided preflight output.
+
+- Phase 28B adds shared retained-interface state, automatic stale-safe Scientific Advisor refresh, and a service-backed Advanced Toolbox page with provider status and duplicate-safe refresh.

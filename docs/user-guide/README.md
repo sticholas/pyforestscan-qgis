@@ -30,3 +30,7 @@ See [Contextual Help](contextual-help.md) for how Mission Control information ba
 ## Phase 27N Polygon Guidance
 
 See [Process LiDAR Folder by Polygon](polygon-folder-processing.md) for the guided Polygon workflow and no-coverage recovery actions.
+
+## Current Mission Control behavior
+
+Polygon, product, resolution, repository, and output changes refresh optional Scientific Advisor guidance automatically. Use Advanced Toolbox to open QGIS Processing and inspect PyForestScan provider status.

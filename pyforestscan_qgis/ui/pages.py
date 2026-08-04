@@ -46,6 +46,8 @@ from qgis.PyQt.QtWidgets import (
 from ..core.adapter import PyForestScanAdapter
 from ..core.backend import BackendService
 from ..core.qgis_compat import build_qgis_compatibility_report, format_qgis_compatibility_report
+from ..core.qgis_processing_toolbox import QgisProcessingToolboxService
+from .session_state import MissionControlSessionState, ScientificAdvisorSummary, build_scientific_advisor_summary
 from ..core.adaptive_lidar_indexing import (
     LidarIndexStrategy,
     choose_index_strategy,
@@ -1116,6 +1118,40 @@ class ScientificAdvisorPage(MissionPage):
         self.advisor_layout.addWidget(frame)
         return layout
 
+    def refresh_from_session(self, state: MissionControlSessionState) -> None:
+        """Invalidate old guidance immediately and debounce a lightweight rebuild."""
+        self._pending_session_state = state
+        self.executive_summary_label.setText("Guidance is updating...")
+        for card in (self.overview_card, self.recommendations_card, self.warnings_card,
+                     self.products_card, self.parameters_card, self.qgis_tools_card, self.next_steps_card):
+            card.setVisible(False)
+        if not hasattr(self, "_session_refresh_timer"):
+            self._session_refresh_timer = QTimer(self)
+            self._session_refresh_timer.setSingleShot(True)
+            self._session_refresh_timer.timeout.connect(self._render_pending_session)
+        self._session_refresh_timer.start(150)
+
+    def _render_pending_session(self) -> None:
+        summary = build_scientific_advisor_summary(self._pending_session_state)
+        self.set_session_summary(summary)
+
+    def set_session_summary(self, summary: ScientificAdvisorSummary) -> None:
+        """Render only guidance derived from the current source signature."""
+        self.current_session_summary = summary
+        self.executive_summary_label.setText(summary.executive_summary)
+        self.session_context_label.setText(f"Current state: {summary.source_signature[:12]}")
+        for widget, values in ((self.recommendation_list, summary.key_recommendations),
+                               (self.warning_list, summary.warnings),
+                               (self.product_list, summary.recommended_products),
+                               (self.parameter_list, summary.parameter_recommendations)):
+            widget.clear()
+            for value in values:
+                _add_advisor_item(widget, str(value))
+        self.recommendations_card.setVisible(bool(summary.key_recommendations))
+        self.warnings_card.setVisible(bool(summary.warnings))
+        self.products_card.setVisible(bool(summary.recommended_products))
+        self.parameters_card.setVisible(bool(summary.parameter_recommendations))
+
     def set_run_context(self, context: RunContext | None) -> None:
         """Store active run context for output-folder actions."""
         self.run_context = context
@@ -1897,11 +1933,58 @@ class _BackendInstallWorker(QObject):
         self.completed.emit(result)
 
 
+class AdvancedToolboxPage(MissionPage):
+    """Compact status and controls for the native QGIS Processing Toolbox."""
+
+    def __init__(self, iface: object | None = None, parent: QWidget | None = None) -> None:
+        super().__init__("Advanced Toolbox", parent)
+        self.service = QgisProcessingToolboxService(iface)
+        section, layout = self.create_section("Advanced Toolbox")
+        layout.addWidget(_body_label("Expert PyForestScan algorithms are available through QGIS Processing."))
+        self.status_label = _body_label("Checking provider status...")
+        self.groups_label = _details_label("")
+        layout.addWidget(self.status_label)
+        layout.addWidget(self.groups_label)
+        row = QHBoxLayout()
+        self.open_button = QPushButton("Open Processing Toolbox")
+        self.refresh_button = QPushButton("Refresh Tools")
+        self.open_button.clicked.connect(self.open_toolbox)
+        self.refresh_button.clicked.connect(self.refresh_tools)
+        _apply_button_role(self.open_button, "primary")
+        _apply_button_role(self.refresh_button, "secondary")
+        row.addWidget(self.open_button); row.addWidget(self.refresh_button); row.addStretch(1)
+        layout.addLayout(row)
+        self.feedback_label = _details_label("")
+        layout.addWidget(self.feedback_label)
+        self.refresh_from_session(None)
+
+    def refresh_from_session(self, _state: object = None) -> None:
+        status = self.service.provider_status()
+        availability = "Available" if status.available else "Not available"
+        self.status_label.setText(f"PyForestScan Processing Provider: {availability}\nAlgorithms: {status.algorithm_count}")
+        self.groups_label.setText("Groups: " + (", ".join(status.groups) if status.groups else "Input / I/O, Preprocessing / Filters, Terrain, Metrics, Diagnostics"))
+
+    def open_toolbox(self) -> object:
+        result = self.service.open_toolbox()
+        self.feedback_label.setText(result.user_message)
+        self.refresh_from_session()
+        return result
+
+    def refresh_tools(self) -> object:
+        from ..processing_provider import PyForestScanProvider
+
+        status = self.service.refresh_provider(PyForestScanProvider)
+        self.feedback_label.setText(status.message)
+        self.refresh_from_session()
+        return status
+
+
 class BatchPage(MissionPage):
     """Folder-to-products batch workflow with standard and polygon-area modes."""
 
     jobUpdated = pyqtSignal(object)
     batchCompleted = pyqtSignal(object)
+    sessionStateChanged = pyqtSignal(object)
 
     def __init__(self, adapter: PyForestScanAdapter, iface: object | None = None, parent: QWidget | None = None) -> None:
         """Create the Batch page."""
@@ -2469,6 +2552,59 @@ class BatchPage(MissionPage):
         self.batch_results.setMinimumHeight(COMPACT_LIST_HEIGHT)
         process_layout.addWidget(self.batch_results)
         self._update_batch_mode_visibility()
+        self._wire_session_state_inputs()
+        QTimer.singleShot(0, self._publish_session_state)
+
+    def _wire_session_state_inputs(self) -> None:
+        """Publish authoritative snapshots when retained Batch inputs change."""
+        for combo in (self.batch_mode_combo, self.polygon_source_combo, self.polygon_layer_combo,
+                      self.polygon_layer_mode_combo, self.polygon_vector_layer_combo):
+            combo.currentIndexChanged.connect(self._on_session_input_changed)
+        for edit in (self.input_folder_edit, self.polygon_lidar_folder_edit,
+                     self.polygon_vector_file_edit, self.polygon_wkt_edit,
+                     self.polygon_crs_edit, self.polygon_processing_crs_edit,
+                     self.output_folder_edit):
+            edit.textChanged.connect(self._on_session_input_changed)
+        self.polygon_dissolve_check.toggled.connect(self._on_session_input_changed)
+        self.resolution_spin.valueChanged.connect(self._on_session_input_changed)
+        for check in self.product_checks.values():
+            check.toggled.connect(self._on_session_input_changed)
+
+    def _on_session_input_changed(self, *_args: object) -> None:
+        self.preflight_report = None
+        if hasattr(self, "preflight_text"):
+            self.preflight_text.setPlainText("Prerun Check needs refresh for the current inputs.")
+        self._publish_session_state()
+
+    def _publish_session_state(self, *, plan_status: str = "needs refresh") -> None:
+        mode = self._current_batch_mode()
+        repository = (self.polygon_lidar_folder_edit.text().strip() if mode == "polygon"
+                      else self.input_folder_edit.text().strip())
+        source = ""
+        feature_count = 0
+        geometry_signature = ""
+        area = None
+        crs = ""
+        if mode == "polygon":
+            source = str(self.polygon_source_combo.currentData() or "")
+            try:
+                polygon = self._normalized_polygon_selection()
+                feature_count = int(polygon.feature_count)
+                geometry_signature = __import__("hashlib").sha256(polygon.geometry_wkt.encode()).hexdigest()
+                area = float(polygon.area)
+                crs = polygon.processing_crs or polygon.source_crs
+            except Exception:
+                pass
+        products = tuple(PRODUCT_LABELS[p] for p, check in self.product_checks.items() if check.isChecked())
+        state = MissionControlSessionState(
+            current_mode=mode, repository_path=repository,
+            repository_kind=("EPT dataset" if repository.lower().endswith("ept.json") else "LiDAR repository"),
+            repository_status=("selected" if repository else "not configured"),
+            selected_polygon_source=source, selected_polygon_feature_count=feature_count,
+            polygon_geometry_signature=geometry_signature, polygon_area=area, polygon_crs=crs,
+            selected_products=products, output_resolution=self.resolution_spin.value(),
+            output_folder=self.output_folder_edit.text().strip(), plan_status=plan_status)
+        self.sessionStateChanged.emit(state)
 
     def _current_batch_mode(self) -> str:
         return str(self.batch_mode_combo.currentData() or "standard")
@@ -3219,6 +3355,7 @@ class BatchPage(MissionPage):
                 self.acknowledge_warnings_check.setChecked(False)
             self._update_run_button_enabled()
             self._refresh_footprint_label()
+            self._publish_session_state(plan_status="ready")
             return
         try:
             request = self._build_batch_request()
@@ -3238,6 +3375,7 @@ class BatchPage(MissionPage):
         if not report.has_warnings:
             self.acknowledge_warnings_check.setChecked(False)
         self._update_run_button_enabled()
+        self._publish_session_state(plan_status="ready")
 
     def run_batch(self) -> None:
         """Run selected datasets through preflight-approved batch execution."""

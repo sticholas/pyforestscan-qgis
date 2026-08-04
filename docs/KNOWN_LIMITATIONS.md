@@ -81,3 +81,6 @@ Phase 27R documents that ordinary folder processing now treats direct header met
 ## Phase 27S EPT CRS Notes
 
 EPT CRS detection now handles WKT/WKT2, PROJJSON, and authority plus horizontal code. Live end-to-end QGIS validation against the real 130 ha EPT polygon remains a manual QA item; automated tests cover the reported EPSG:6635 extent overlap and CRS failure messaging without user-specific paths.
+
+- Processing Toolbox provider-tree expansion varies across QGIS versions. Mission Control opens/focuses the toolbox and provides a searchable fallback page, but may not expand the PyForestScan tree automatically.
+- Phase 28B interactive validation remains pending until the matrix in `docs/testing/PHASE_28B_LIVE_QGIS_VALIDATION.md` is completed in QGIS 3.44.9.

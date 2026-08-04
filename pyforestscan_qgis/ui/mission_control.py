@@ -18,6 +18,7 @@ from ..core.jobs import JobRecord, JobStatus
 from ..core.workspace import RunContext, WorkspaceHistoryRun, WorkspaceManager, WorkspaceSession, WorkspaceStatus, summarize_recent_workspaces
 from ..resources import plugin_root
 from .pages import (
+    AdvancedToolboxPage,
     BatchPage,
     DatasetPage,
     EnvironmentPage,
@@ -32,6 +33,8 @@ from .pages import (
 from .advisor import completed_products_from_job
 from .raster_styling import apply_generated_raster_renderer, is_raster_result, layer_display_name
 from .state import MissionControlState, ProjectSummary, build_project_summary
+from .session_state import MissionControlSessionState
+from .session_events import SessionStateEvents
 from .ux_summary import environment_is_ready, guided_next_step, guided_workflow_indicator, guided_workflow_status_lines, guided_workflow_pages, readiness_marker_label
 
 FORM_CLASS, _ = uic.loadUiType(str(plugin_root() / "ui" / "forms" / "mission_control.ui"))
@@ -51,6 +54,7 @@ class MissionControlDock(QDockWidget):
         "Scientific Advisor",
         "Environment",
         "Settings",
+        "Advanced Toolbox",
     )
     PAGE_NAMES = (
         "Batch",
@@ -75,6 +79,8 @@ class MissionControlDock(QDockWidget):
         self.job_history: tuple[JobRecord, ...] = ()
         self.batch_status = "Not started"
         self.loaded_result_paths: set[Path] = set()
+        self.session_state = MissionControlSessionState()
+        self.session_events = SessionStateEvents(self)
         self.root_widget = QWidget(self)
         self.ui = FORM_CLASS()
         self.ui.setupUi(self.root_widget)
@@ -111,6 +117,7 @@ class MissionControlDock(QDockWidget):
         self.batch_page = BatchPage(self.adapter, iface=self.iface)
         self.results_page = ResultsPage(iface=self.iface)
         self.settings_page = SettingsPage()
+        self.advanced_toolbox_page = AdvancedToolboxPage(iface=self.iface)
         self.settings_page.set_workspace_session(self.workspace_session)
         self.pages = (
             self.home_page,
@@ -123,6 +130,7 @@ class MissionControlDock(QDockWidget):
             self.advisor_page,
             self.environment_page,
             self.settings_page,
+            self.advanced_toolbox_page,
         )
         self.page_by_name = dict(zip(self.INTERNAL_PAGE_NAMES, self.pages))
         self._last_content_navigation_row = 0
@@ -204,6 +212,7 @@ class MissionControlDock(QDockWidget):
         self.processing_page.jobUpdated.connect(self._set_job_status)
         self.batch_page.jobUpdated.connect(self._set_job_status)
         self.batch_page.batchCompleted.connect(self._set_batch_status)
+        self.batch_page.sessionStateChanged.connect(self._set_session_state)
         self.results_page.outputsLoaded.connect(self._set_outputs_loaded_status)
         self.results_page.currentRunCleared.connect(self._clear_current_run_state)
         self.settings_page.defaultOutputFolderChanged.connect(self._set_default_output_folder)
@@ -273,12 +282,10 @@ class MissionControlDock(QDockWidget):
             return
         name = self.PAGE_NAMES[row]
         if name == "Advanced Toolbox":
-            method = getattr(self.iface, "openProcessingToolbox", None)
-            if callable(method):
-                method()
-            self.ui.navigationList.blockSignals(True)
-            self.ui.navigationList.setCurrentRow(self._last_content_navigation_row)
-            self.ui.navigationList.blockSignals(False)
+            self._last_content_navigation_row = row
+            self.ui.pageStack.setCurrentWidget(self.advanced_toolbox_page)
+            result = self.advanced_toolbox_page.open_toolbox()
+            self._notify(result.user_message, "success" if result.success else "warning")
             return
         page = self.page_by_name.get(name)
         if page is not None:
@@ -287,7 +294,7 @@ class MissionControlDock(QDockWidget):
 
     def _navigate_to(self, page_name: str) -> bool:
         """Navigate to a visible primary page and return whether it was available."""
-        if page_name not in self.PAGE_NAMES or page_name == "Advanced Toolbox":
+        if page_name not in self.PAGE_NAMES:
             return False
         self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index(page_name))
         return True
@@ -297,7 +304,7 @@ class MissionControlDock(QDockWidget):
         row = self.ui.navigationList.currentRow()
         if 0 <= row < len(self.PAGE_NAMES):
             name = self.PAGE_NAMES[row]
-            return None if name == "Advanced Toolbox" else name
+            return name
         return None
 
     def _refresh_summary_from_home(self) -> None:
@@ -333,8 +340,28 @@ class MissionControlDock(QDockWidget):
         except Exception:  # noqa: BLE001 - notifications must never break workflow actions.
             return
 
+    def _set_session_state(self, state: MissionControlSessionState) -> None:
+        """Propagate retained workflow state without hidden-page intermediaries."""
+        self.session_state = state.with_updates(
+            backend_status=self.state.backend_status,
+            environment_status=self.state.environment_status,
+            generated_outputs=tuple(str(path) for item in self._project_summary().generated_products for path in item.generated_paths),
+            loaded_outputs=tuple(str(path) for path in self.loaded_result_paths),
+        )
+        self.session_events.repositoryChanged.emit(self.session_state)
+        self.session_events.polygonSelectionChanged.emit(self.session_state)
+        self.session_events.polygonGeometryChanged.emit(self.session_state)
+        self.session_events.productsChanged.emit(self.session_state)
+        self.session_events.outputFolderChanged.emit(self.session_state)
+        self.session_events.executionPlanChanged.emit(self.session_state)
+        self.advisor_page.refresh_from_session(self.session_state)
+        if self._current_primary_page_name() == "Advanced Toolbox":
+            self.advanced_toolbox_page.refresh_from_session(self.session_state)
+
     def _set_environment_status(self, status: str) -> None:
         self.state = self.state.with_environment(status).with_activity("Environment verified", status)
+        self.session_state = self.session_state.with_updates(environment_status=status)
+        self.session_events.environmentStatusChanged.emit(self.session_state)
         self._record_workspace_event("environment_refreshed", f"Environment verified: {status}")
         if self.ui.navigationList.currentRow() != self.PAGE_NAMES.index("Settings"):
             self.settings_page.refresh_backend_summary()
@@ -476,6 +503,8 @@ class MissionControlDock(QDockWidget):
         """Record Load Outputs feedback and show a lightweight notification."""
         level = "success" if loaded_count else ("warning" if candidate_count else "info")
         self.loaded_result_paths.update(self.results_page.loaded_output_paths())
+        self.session_state = self.session_state.with_updates(loaded_outputs=tuple(str(path) for path in self.loaded_result_paths))
+        self.session_events.outputsLoaded.emit(self.session_state)
         self.state = self.state.with_activity("Outputs loaded" if loaded_count else "Load outputs", message)
         self._refresh_home()
         self.results_page._set_load_message(message)
@@ -487,6 +516,9 @@ class MissionControlDock(QDockWidget):
         self.state = self.state.without_active_run().with_activity("Results cleared", "Current run cleared")
         self.job_history = ()
         self.loaded_result_paths = set()
+        self.session_state = MissionControlSessionState()
+        self.session_events.sessionReset.emit(self.session_state)
+        self.advisor_page.refresh_from_session(self.session_state)
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
@@ -494,6 +526,8 @@ class MissionControlDock(QDockWidget):
 
     def _set_backend_page_status(self, status: str, message: str) -> None:
         """Keep Environment and Home synchronized after Backend page actions."""
+        self.session_state = self.session_state.with_updates(backend_status=status)
+        self.session_events.backendStatusChanged.emit(self.session_state)
         self.state = self.state.with_backend(status)
         self.environment_page.refresh()
         self._refresh_home()

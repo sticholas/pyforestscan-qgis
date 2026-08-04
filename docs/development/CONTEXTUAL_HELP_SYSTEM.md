@@ -45,3 +45,7 @@ The registry includes advanced Batch and polygon finalization topics. Place badg
 ## Phase 27N Workflow Help
 
 Guided Polygon workflow copy should use LiDAR data, Data coverage, Selected processing area, Spatial subset, Processing capacity, and Final polygon clipping in primary UI. Technical names remain in expanded diagnostics.
+
+## Retained interface help
+
+Advanced Toolbox failures use inline actionable guidance. Scientific Advisor remains optional and explains only the current signed session state.
