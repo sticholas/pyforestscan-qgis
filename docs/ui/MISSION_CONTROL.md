@@ -234,3 +234,6 @@ Batch selections update Results context and Scientific Advisor automatically. Ad
 ## Compact retained interface
 
 Batch follows Processing Mode -> LiDAR Data/Processing Area -> Products -> Output Folder -> Prerun Check -> Process. Results hides output actions until products exist. Advisor, Environment, Settings, and Advanced Toolbox keep technical details collapsed by default.
+
+## Processing reliability
+Mission Control displays current LiDAR and area selection rather than a historical dataset. Results load only outputs registered for the current attempt. Session reset preserves files, PBM, catalogs, preferences, and previous-run history.

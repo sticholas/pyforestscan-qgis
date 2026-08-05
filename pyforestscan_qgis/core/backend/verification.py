@@ -83,7 +83,7 @@ class CommandCheck:
 def verify_backend(
     paths: BackendPaths,
     registry: BackendRegistry | None = None,
-    timeout_seconds: int = 10,
+    timeout_seconds: int = 45,
     require_config: bool = True,
     log_path: Path | None = None,
     log_stage: str = "VERIFY",
@@ -515,3 +515,22 @@ def _verification_failure_summary(checks: list[BackendCheckResult]) -> str:
 
 def _format_command(command: tuple[str, ...]) -> str:
     return " ".join(command) if command else ""
+
+
+@dataclass(frozen=True)
+class TieredVerificationResult:
+    tier: str
+    status: str
+    checks: tuple[CommandCheck, ...]
+    summary: str
+
+def verify_backend_tier(paths: BackendPaths, tier: str = "fast", product: str = "", timeout_seconds: int | None = None) -> TieredVerificationResult:
+    """Run fast, product-specific, or full imports without treating timeout as missing."""
+    modules = {"fast": ("pyforestscan", "pdal"), "product": ("pyforestscan", "pdal", "pyforestscan.calculate"), "full": ("pyforestscan", "pdal", "pyforestscan.calculate", "pyforestscan.filters", "pyforestscan.handlers", "pyforestscan.process", "pyforestscan.visualize")}
+    selected = modules["product"] if tier == "product" and product == "chm" else modules.get(tier, modules["fast"])
+    limit = timeout_seconds or (60 if tier == "fast" else 180)
+    checks = tuple(_run_python_import(paths.python_executable, module, limit, paths) for module in selected)
+    if any("timed out" in check.error.lower() for check in checks): status, summary = "check_timed_out", "Backend verification took longer than expected."
+    elif any(not check.passed for check in checks): status, summary = "needs_repair", "A required backend import failed."
+    else: status, summary = "ready", f"{tier.title()} backend verification passed."
+    return TieredVerificationResult(tier, status, checks, summary)

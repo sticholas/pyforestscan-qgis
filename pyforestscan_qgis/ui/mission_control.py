@@ -166,7 +166,7 @@ class MissionControlDock(QDockWidget):
             self.dataset_page.set_default_output_folder(session.last_output_folder)
             self.batch_page.set_default_output_folder(session.last_output_folder)
             self.settings_page.default_output_folder.setText(str(session.last_output_folder))
-        if session.last_selected_dataset is not None and session.remember_last_dataset:
+        if False and session.last_selected_dataset is not None and session.remember_last_dataset:  # Legacy dataset state is never restored across projects.
             self.dataset_page.dataset_path_edit.setText(str(session.last_selected_dataset))
             self.state = self.state.with_dataset(str(session.last_selected_dataset))
         if session.last_opened_workspace is not None and session.remember_last_workspace:
@@ -906,11 +906,13 @@ class MissionControlDock(QDockWidget):
         self._go_to_guided_next_step("Home")
 
     def _update_status_bar(self) -> None:
-        self.ui.environmentStatusLabel.setText(f"{readiness_marker_label(self.state.environment_status)} Environment: {self.state.environment_status}")
-        self.ui.datasetStatusLabel.setText(f"Dataset: {Path(self.state.latest_dataset).name if self.state.latest_dataset else 'None'}")
-        self.ui.planningStatusLabel.setText(f"Planning: {self.state.planning_status}")
-        ready = "Ready" if environment_is_ready(self.state.environment_status) else "Needs attention"
-        self.ui.readyStatusLabel.setText(f"{readiness_marker_label(self.state.environment_status)} {ready}")
+        self.ui.environmentStatusLabel.setText(f"{readiness_marker_label(self.state.environment_status)} Backend: {self.state.environment_status}")
+        repo = self.session_state.repository_kind.upper() if self.session_state.repository_path else "Not selected"
+        self.ui.datasetStatusLabel.setText(f"LiDAR: {repo}")
+        area = f"{self.session_state.polygon_area / 10000:.3g} ha" if self.session_state.polygon_area is not None else "Not selected"
+        self.ui.planningStatusLabel.setText(f"Area: {area}")
+        status = self.session_state.processing_status.title() if self.session_state.processing_status != "idle" else ("Ready" if environment_is_ready(self.state.environment_status) and self.session_state.repository_path else "Needs setup")
+        self.ui.readyStatusLabel.setText(f"Status: {status}")
 
     def _open_documentation(self) -> None:
         docs = plugin_root().parent / "docs" / "USER_GUIDE.md"

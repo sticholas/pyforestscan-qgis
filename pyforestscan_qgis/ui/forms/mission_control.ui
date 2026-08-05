@@ -40,9 +40,9 @@
    <item>
     <widget class="QFrame" name="statusFrame">
      <layout class="QHBoxLayout" name="statusLayout">
-      <item><widget class="QLabel" name="environmentStatusLabel"><property name="text"><string>Environment: Unknown</string></property></widget></item>
-      <item><widget class="QLabel" name="datasetStatusLabel"><property name="text"><string>Dataset: None</string></property></widget></item>
-      <item><widget class="QLabel" name="planningStatusLabel"><property name="text"><string>Planning: Not started</string></property></widget></item>
+      <item><widget class="QLabel" name="environmentStatusLabel"><property name="text"><string>Backend: Unknown</string></property></widget></item>
+      <item><widget class="QLabel" name="datasetStatusLabel"><property name="text"><string>LiDAR: Not selected</string></property></widget></item>
+      <item><widget class="QLabel" name="planningStatusLabel"><property name="text"><string>Area: Not selected</string></property></widget></item>
       <item><widget class="QLabel" name="readyStatusLabel"><property name="text"><string>Ready</string></property></widget></item>
      </layout>
     </widget>

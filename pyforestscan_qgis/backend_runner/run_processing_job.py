@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 import traceback as traceback_module
 import json
+import os
+import threading
+import time
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -48,6 +51,9 @@ PRODUCT_REQUESTS = {
 def run_spec(spec: BackendJobSpec) -> BackendJobResult:
     """Run one backend job spec and return a structured result."""
     started = _utc_now()
+    stop = threading.Event()
+    heartbeat = threading.Thread(target=_heartbeat_loop, args=(spec, stop, "Validating Inputs"), daemon=True)
+    heartbeat.start()
     try:
         adapter = PyForestScanAdapter(execution_mode="qgis_python")
         if spec.product == "dataset_inspection":
@@ -57,10 +63,13 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
         else:
             request = _request_from_spec(spec)
             validation = validate_processing_request(spec, request)
+            _write_heartbeat(spec, "Reading LiDAR", "Backend adapter is processing the selected source.")
             _request_class, method_name = PRODUCT_REQUESTS[spec.product]
             result = getattr(adapter, method_name)(request)
             metrics = _json_ready(asdict(result))
             outputs = {"primary": Path(metrics.get("output_path", spec.output_paths.get("primary", "")))}
+        _write_heartbeat(spec, "Finalizing Output", "Product calculation completed.")
+        stop.set()
         return BackendJobResult(
             job_id=spec.job_id,
             product=spec.product,
@@ -91,6 +100,7 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
                 )
             },
         )
+        stop.set()
         return BackendJobResult(
             job_id=spec.job_id,
             product=spec.product,
@@ -102,6 +112,19 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
             traceback=traceback_module.format_exc(),
         )
 
+
+def _write_heartbeat(spec: BackendJobSpec, stage: str, activity: str) -> None:
+    path = spec.run_folder / "progress" / "heartbeat.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"job_id": spec.job_id, "attempt_id": str(spec.product_parameters.get("attempt_id", "attempt-1")), "timestamp": _utc_now(), "process_id": os.getpid(), "current_stage": stage, "current_product": spec.product, "latest_activity": activity, "elapsed_seconds": 0.0}
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+def _heartbeat_loop(spec: BackendJobSpec, stop: threading.Event, stage: str) -> None:
+    started = time.monotonic()
+    while not stop.wait(15):
+        _write_heartbeat(spec, stage, f"Backend process remains responsive ({time.monotonic()-started:.0f}s elapsed).")
 
 def _run_dataset_inspection(adapter: PyForestScanAdapter, spec: BackendJobSpec):
     params = dict(spec.product_parameters)

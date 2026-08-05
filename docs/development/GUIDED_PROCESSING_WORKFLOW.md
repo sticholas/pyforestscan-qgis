@@ -43,3 +43,6 @@ Phase 27R adds the stabilized ordinary-folder contract: direct header metadata i
 ## Phase 27S Guided CRS Behavior
 
 Guided Polygon Area Processing hides CRS mechanics when automatic resolution succeeds. Users see simple spatial-alignment text, such as that the polygon and LiDAR data use compatible coordinate systems or that the polygon will be transformed automatically. A CRS selector is reserved for genuine unresolved or incomplete EPT metadata.
+
+## Long jobs and retries
+Active jobs may exceed one hour while heartbeats remain current. Retry creates a new attempt; the interface does not call restart-from-zero a resume.

@@ -1,3 +1,4 @@
+- Phase 28D replaces the universal one-hour PBM timeout with heartbeat-aware policy models, scopes outputs to job attempts, and introduces project-scoped processing state.
 # Changelog
 All notable changes to this project will be documented in this file.
 

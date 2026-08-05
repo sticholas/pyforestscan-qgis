@@ -29,3 +29,6 @@ Session rendering is automatic and lightweight. Environment and provider inspect
 ## Phase 28C rendering contract
 
 The Phase 28B state flow is unchanged. Phase 28C uses it to hide irrelevant mode sections, stale Prerun state, empty Results controls, and result lists until their state is meaningful.
+
+## Phase 28D state correction
+Processing selections are project scoped. Repository and polygon changes invalidate the active plan and current-run outputs immediately; global legacy dataset/planning state is no longer restored.

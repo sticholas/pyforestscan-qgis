@@ -38,3 +38,6 @@ Phase 27R adds the stabilized ordinary-folder contract: direct header metadata i
 ## Phase 27S CRS Manifest Fields
 
 Polygon execution plans and manifests record original polygon CRS, transformed polygon CRS, repository CRS, EPT query CRS, clipping polygon CRS, processing CRS, output CRS, CRS resolution source, and transformation status separately. Incomplete CRS strings are rejected before plan signatures are produced.
+
+## Phase 28D reliability
+Large polygon requests are classified from raster dimensions. Automatic execution has no fixed one-hour wall limit; scientifically equivalent tiling remains subject to a product-specific review.

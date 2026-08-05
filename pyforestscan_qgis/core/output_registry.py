@@ -43,6 +43,11 @@ class GeneratedOutput:
     qgis_layer_id: str = ""
     load_error: str = ""
     group_name: str = "PyForestScan"
+    project_identity: str = ""
+    plan_signature: str = ""
+    repository_path_hash: str = ""
+    polygon_geometry_hash: str = ""
+    final_output: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         payload = dict(self.__dict__)
@@ -67,6 +72,11 @@ def generated_output_for_path(
     masked: bool = False,
     mask_geometry_id: str = "",
     group_name: str = "PyForestScan",
+    attempt_id: str = "attempt-1",
+    project_identity: str = "",
+    plan_signature: str = "",
+    repository_path_hash: str = "",
+    polygon_geometry_hash: str = "",
 ) -> GeneratedOutput:
     output_path = Path(path)
     canonical = _canonical_path(output_path)
@@ -76,7 +86,7 @@ def generated_output_for_path(
     return GeneratedOutput(
         output_id=hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16],
         job_id=job_id,
-        attempt_id="attempt-1",
+        attempt_id=attempt_id,
         product_key=inferred,
         product_name=_product_name(inferred),
         output_kind=kind,
@@ -91,6 +101,10 @@ def generated_output_for_path(
         display_role=_display_role(inferred, kind),
         recommended_renderer=_renderer(inferred, kind),
         group_name=group_name,
+        project_identity=project_identity,
+        plan_signature=plan_signature,
+        repository_path_hash=repository_path_hash,
+        polygon_geometry_hash=polygon_geometry_hash,
     )
 
 
@@ -161,3 +175,20 @@ def _renderer(key: str, kind: str) -> str:
     if key == "pad":
         return "pad_rgb_5_3_2"
     return "grayscale"
+
+
+def outputs_for_current_attempt(outputs: Iterable[GeneratedOutput], *, job_id: str, attempt_id: str, project_identity: str = "", plan_signature: str = "", polygon_geometry_hash: str = "") -> tuple[GeneratedOutput, ...]:
+    """Return only valid final records emitted for the active attempt."""
+    selected=[]
+    for item in outputs:
+        if item.job_id != job_id or item.attempt_id != attempt_id or not item.final_output or not item.valid or not item.complete:
+            continue
+        if project_identity and item.project_identity != project_identity: continue
+        if plan_signature and item.plan_signature != plan_signature: continue
+        if polygon_geometry_hash and item.polygon_geometry_hash != polygon_geometry_hash: continue
+        selected.append(item)
+    return tuple(selected)
+
+def automatic_load_paths(outputs: Iterable[GeneratedOutput], **identity) -> tuple[Path, ...]:
+    """Never scan folders; load only current-attempt registry records."""
+    return tuple(item.path for item in outputs_for_current_attempt(outputs, **identity))

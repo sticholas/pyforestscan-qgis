@@ -45,3 +45,6 @@ python3 scripts/inspect_ept_spatial_reference.py /path/to/ept.json
 ```
 
 The output includes the raw SRS object, resolved CRS, parser source, root bounds, point count, and parser errors without reading the full EPT dataset.
+
+## Long-running PBM jobs
+Automatic mode does not stop a responsive job merely because one hour elapsed. Check the current stage, elapsed time, and last heartbeat. A verification timeout means **Check Timed Out**, not a missing package; retry the fast check or run detailed verification before repairing.

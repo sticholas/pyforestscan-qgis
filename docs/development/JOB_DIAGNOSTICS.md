@@ -29,3 +29,6 @@ Progress events carry a sequence number and timestamp model in `ProgressEvent`. 
 ## Phase 27M Output Diagnostics
 
 Polygon manifests now include shared Batch options, polygon finalization options, applicability explanations, requested/effective concurrency, mask records, and generated output registry paths. Mask records distinguish backend rasterio and QGIS/GDAL service contracts.
+
+## Liveness evidence
+PBM jobs now record an atomic heartbeat with job/attempt identity, PID, stage, activity, and timestamp. Timeout diagnostics should preserve the last heartbeat, command, elapsed time, output growth, and process cleanup actions.

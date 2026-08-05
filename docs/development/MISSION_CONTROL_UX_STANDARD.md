@@ -123,3 +123,6 @@ Retained pages render typed session/read-model state. Input changes invalidate d
 ## Compact retained workflow
 
 Normal Batch order is Processing Mode, LiDAR Data or Processing Area, Products, Output Folder, Prerun Check, Process. Derived reports are summarized normally and expanded only under Technical Report. Empty controls release layout space.
+
+## Runtime status
+The footer vocabulary is `Backend`, `LiDAR`, `Area`, and `Status`. Current-run failures show their last known stage and reason; previous runs are not merged into current outputs.
