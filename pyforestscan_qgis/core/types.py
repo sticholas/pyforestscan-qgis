@@ -156,6 +156,11 @@ class ChmRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    work_unit_id: str = ""
+    attempt_id: str = ""
+    completed_count: int = 0
+    total_count: int = 1
+    inspect_hag_suitability: bool = False
 
 
 @dataclass(frozen=True)

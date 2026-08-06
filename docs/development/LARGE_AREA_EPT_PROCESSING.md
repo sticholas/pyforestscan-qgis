@@ -1,5 +1,7 @@
 # Large-area EPT processing
 
+EPT CHM currently runs in safe mode at concurrency 1. Three adjacent identical deterministic HAG failures pause the queue; a native worker crash stops it immediately. Higher concurrency remains developer-guarded pending live stability validation.
+
 EPT planning keeps `ept.json` as one indexed source. Large polygon envelopes become aligned logical windows; each supplies a bounded EPT request, writes a CHM core, checkpoints it, and releases backend process memory.
 
 The 7,061.6 ha regression envelope (`10,990 m x 6,668 m` at `1 m`) plans a `10,990 x 6,668` grid with 73,281,320 cells and 77 nominal 1 km work units. Network concurrency is at most two. No physical point-cloud tiles or EPT node jobs are created.

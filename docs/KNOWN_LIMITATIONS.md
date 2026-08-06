@@ -1,5 +1,7 @@
 # Known Limitations
 
+EPT CHM is temporarily limited to one active worker. Live Windows confirmation of native DLL isolation, QGIS close/reopen recovery, and safe-mode pilot processing remains required; alternate HAG behavior is not enabled without measured evidence.
+
 This document records current limitations for the internal release candidate. It is user-facing and should stay honest: limitations are not failures, but they must be visible before scientific interpretation or wider deployment.
 
 ## Scientific Processing

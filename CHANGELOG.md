@@ -6,6 +6,7 @@ first public release, changes are tracked under `Unreleased`.
 
 ## Unreleased
 
+- Phase 28E-Stabilization limits EPT CHM to one safe-mode worker, classifies collinear/empty HAG inputs as deterministic and nonretryable, pauses after three adjacent identical failures, stops immediately after a native worker crash, preserves pending/completed work with crash-safe scheduler transitions, isolates PBM native paths from QGIS, adds parent-owned crash diagnostics and a native-runtime probe, corrects work-unit progress wording, and adds a 120-transition soak fixture. Live Windows/QGIS validation remains a release blocker.
 - Phase 28D replaces the universal one-hour PBM timeout with heartbeat-aware policy models, scopes outputs to attempts, and introduces project-scoped processing state.
 
 ## 0.1.0-beta.3 - 2026-08-06

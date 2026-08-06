@@ -85,6 +85,7 @@ def sizing_policy(*,repository_kind,product,resolution,available_memory_bytes,cp
     requested={'conservative':1,'recommended':2,'performance':4,'custom':max(1,cpu_count)}.get(profile,2)
     concurrency=max(1,min(requested,cpu_count,max(1,int(available_memory_bytes/max(per_unit,1)))))
     if network: concurrency=min(concurrency,2)
+    if repository_kind=='ept' and product=='chm' and os.environ.get('PYFORESTSCAN_DEV_EPT_PARALLEL')!='1':concurrency=1
     buffer=50.0 if product=='chm' else 0.0
     return WorkUnitSizingPolicy(width,width,buffer,25_000_000,per_unit,concurrency,'Adaptive size reflects storage, memory, product, and profile.','medium' if point_density is None else 'high')
 
@@ -100,7 +101,9 @@ class SourceAwareWorkPlanner:
         else: units=self._native(grid,paths,sizing)
         cells=grid.rows*grid.columns; workload='Small' if cells<5_000_000 else 'Moderate' if cells<25_000_000 else 'Large' if cells<100_000_000 else 'Very Large'
         memory='Low' if cells*4<256*1024**2 else 'Moderate' if cells*4<1024**3 else 'High'
-        return SourceAwareWorkPlan(repository_kind,product,grid,tuple(units),sizing.maximum_concurrent_units,workload,memory,policy.merge_rule,'transient failures: 2; deterministic input/HAG failures: 0','verify and persist every completed core tile',(f"Global {resolution:g}-unit grid.",f"{sizing.buffer_distance:g}-unit CHM read buffer.","Exact polygon mask is applied after mosaic."),location)
+        assumptions=[f"Global {resolution:g}-unit grid.",f"{sizing.buffer_distance:g}-unit CHM read buffer.","Exact polygon mask is applied after mosaic."]
+        if repository_kind=='ept' and product=='chm' and sizing.maximum_concurrent_units==1:assumptions.extend(("Safe processing mode is active for this EPT job.","Parallel EPT HAG workers are temporarily limited while native-worker stability is being validated."))
+        return SourceAwareWorkPlan(repository_kind,product,grid,tuple(units),sizing.maximum_concurrent_units,workload,memory,policy.merge_rule,'transient failures: 2; deterministic input/HAG failures: 0','verify and persist every completed core tile',tuple(assumptions),location)
     def _windows(self,grid,sources,kind,sizing):
         cols=max(1,round(sizing.target_width/grid.resolution));rows=max(1,round(sizing.target_height/grid.resolution));out=[];n=0
         for r0 in range(0,grid.rows,rows):

@@ -14,6 +14,7 @@ from pyforestscan_qgis.backend_runner.job_spec import BackendJobSpec, build_job_
 
 from .logging import backend_log_path, write_backend_log_entry
 from .models import BackendStatus, BackendVerificationResult
+from .native_worker import classify_worker_exit, write_native_crash_bundle
 from .paths import BackendPaths
 from ..processing_monitor import ProcessingTimeoutPolicy, evaluate_liveness, heartbeat_path
 from .process_env import build_clean_subprocess_env, clean_env_summary, conda_environment_data_env, conda_environment_path_entries, hidden_subprocess_kwargs, summarize_subprocess_output
@@ -23,6 +24,14 @@ CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 class ProcessingMonitorError(RuntimeError):
     def __init__(self, status: str, reason: str):
         super().__init__(reason); self.status=status; self.reason=reason
+
+class NativeBackendCrash(RuntimeError):
+    code = "NATIVE_BACKEND_CRASH"
+    retryable = False
+    def __init__(self,message,details=None):super().__init__(message);self.details=details or {}
+
+class BackendJobFailure(RuntimeError):
+    def __init__(self,message,code="EXECUTION_FAILED",retryable=False):super().__init__(message);self.code=code;self.retryable=retryable
 
 
 GUI_EXECUTABLE_MARKERS = (
@@ -136,6 +145,12 @@ class BackendExecutionService:
             write_backend_log_entry(self.log_path, "execute", f"PBM backend job failed to start: {exc}", level="ERROR", stage="START")
             raise RuntimeError(f"PBM backend job failed to start: {exc}") from exc
 
+        exit_info = classify_worker_exit(completed.returncode, spec.result_path.exists(), completed.stderr or "")
+        if exit_info.native_crash:
+            heartbeat = self._read_heartbeat(spec)
+            write_native_crash_bundle(spec.run_folder, exit_info=exit_info, command=command, executable=self.paths.python_executable, pid=getattr(completed,"pid",None), stdout=completed.stdout or "", stderr=completed.stderr or "", heartbeat=heartbeat)
+            write_backend_log_entry(self.log_path,"execute",exit_info.technical_message,level="ERROR",stage="NATIVE_CRASH",details={"returncode":completed.returncode,"exception_status":exit_info.exception_status,"result_exists":spec.result_path.exists()})
+            raise NativeBackendCrash(exit_info.user_message,exit_info.to_dict())
         if not spec.result_path.exists():
             message = summarize_subprocess_output(completed.stderr, completed.stdout) or "PBM backend runner did not write a result file."
             write_backend_log_entry(self.log_path, "execute", message, level="ERROR", stage="RESULT", details={"returncode": completed.returncode})
@@ -154,6 +169,8 @@ class BackendExecutionService:
             stdout=completed.stdout or result.stdout,
             stderr=completed.stderr or result.stderr,
             traceback=result.traceback,
+            error_code=result.error_code,
+            retryable=result.retryable,
         )
         level = "INFO" if result.success and completed.returncode == 0 else "ERROR"
         write_backend_log_entry(
@@ -165,7 +182,7 @@ class BackendExecutionService:
             details={"returncode": completed.returncode, "result": str(spec.result_path), "backend_python": str(self.paths.python_executable)},
         )
         if completed.returncode != 0 or not result.success:
-            raise RuntimeError("; ".join(result.errors) or summarize_subprocess_output(completed.stderr, completed.stdout) or "PBM backend job failed.")
+            raise BackendJobFailure("; ".join(result.errors) or summarize_subprocess_output(completed.stderr, completed.stdout) or "PBM backend job failed.",result.error_code or "EXECUTION_FAILED",bool(result.retryable))
         return result
 
 
@@ -184,7 +201,16 @@ class BackendExecutionService:
                     self._terminate_process_tree(process)
                     raise ProcessingMonitorError(decision.status, decision.reason)
             stdout_file.seek(0); stderr_file.seek(0)
-            return subprocess.CompletedProcess(command, process.returncode, stdout_file.read(), stderr_file.read())
+            completed=subprocess.CompletedProcess(command,process.returncode,stdout_file.read(),stderr_file.read());completed.pid=process.pid
+            return completed
+
+    def _read_heartbeat(self,spec):
+        path=heartbeat_path(spec.run_folder)
+        try:
+            import json
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError,ValueError):
+            return {}
 
     def _terminate_process_tree(self, process: subprocess.Popen[str]) -> None:
         """Terminate only the managed backend process tree."""

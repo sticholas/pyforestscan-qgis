@@ -45,7 +45,7 @@ class HagTests(unittest.TestCase):
   existing=assess_hag_suitability((0,1,2),(0,0,0),(),dimensions=('HeightAboveGround',));self.assertEqual(HagStrategyPlanner().select(existing).method,'existing_normalized_height')
   dtm=assess_hag_suitability((0,1,2),(0,0,0),(),dtm_available=True);self.assertEqual(HagStrategyPlanner().select(dtm,'dtm.tif').method,'provided_dtm')
  def test_all_points_collinear_error_preserved(self):
-  error=classify_hag_exception(RuntimeError('All points collinear'),'wu-7');self.assertEqual(error['code'],'HAG_COLLINEAR');self.assertIn('All points collinear',error['original_exception']);self.assertFalse(error['retry_identical'])
+  error=classify_hag_exception(RuntimeError('All points collinear'),'wu-7');self.assertEqual(error['code'],'HAG_COLLINEAR_INPUT');self.assertIn('All points collinear',error['original_exception']);self.assertFalse(error['retry_identical'])
 
 class SchedulerTests(unittest.TestCase):
  def _units(self):

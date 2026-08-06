@@ -29,6 +29,11 @@ class JobErrorCode(str, Enum):
     PRODUCT_CALCULATION_FAILED = "PRODUCT_CALCULATION_FAILED"
     OUTPUT_WRITE_FAILED = "OUTPUT_WRITE_FAILED"
     OUTPUT_MASK_FAILED = "OUTPUT_MASK_FAILED"
+    HAG_COLLINEAR_INPUT = "HAG_COLLINEAR_INPUT"
+    EMPTY_SPATIAL_READ = "EMPTY_SPATIAL_READ"
+    HAG_INSUFFICIENT_GROUND = "HAG_INSUFFICIENT_GROUND"
+    HAG_INVALID_GEOMETRY = "HAG_INVALID_GEOMETRY"
+    NATIVE_BACKEND_CRASH = "NATIVE_BACKEND_CRASH"
     JOB_CANCELLED = "JOB_CANCELLED"
     UNKNOWN_BACKEND_FAILURE = "UNKNOWN_BACKEND_FAILURE"
 
@@ -108,7 +113,14 @@ def write_environment_diagnostics(path: Path) -> Path:
 
 def classify_exception(exc: BaseException, *, stage: str = "Processing") -> StructuredJobError:
     text = str(exc)
+    lowered = text.lower()
     traceback_text = traceback_module.format_exc()
+    if "all points collinear" in lowered or "all_points_collinear" in lowered or "ground_points_collinear" in lowered or ("ground" in lowered and "collinear" in lowered):
+        return StructuredJobError(code=JobErrorCode.HAG_COLLINEAR_INPUT.value,user_message="Ground-normalization points cannot form a two-dimensional surface in this area.",technical_message=text,stage="Height Normalization",exception_type=type(exc).__name__,traceback=traceback_text,likely_causes=("The bounded ground-point subset is rank-deficient or spatially degenerate.",),suggested_actions=("Inspect Ground Classification.","View Work Unit Statistics."),retryable=False)
+    if "empty point" in lowered or "empty_point_array" in lowered or "no point data" in lowered or "no points were returned" in lowered:
+        return StructuredJobError(code=JobErrorCode.EMPTY_SPATIAL_READ.value,user_message="No usable LiDAR points were returned for this processing area.",technical_message=text,stage="Reading LiDAR",exception_type=type(exc).__name__,traceback=traceback_text,likely_causes=("The bounded request does not overlap populated EPT data.",),suggested_actions=("Review the affected work-unit extent.","Verify source coverage."),retryable=False)
+    if "ground" in lowered and ("too few" in lowered or "insufficient" in lowered):
+        return StructuredJobError(code=JobErrorCode.HAG_INSUFFICIENT_GROUND.value,user_message="There are not enough usable ground points for height normalization.",technical_message=text,stage="Height Normalization",exception_type=type(exc).__name__,traceback=traceback_text,suggested_actions=("Inspect Ground Classification.","View Work Unit Statistics."),retryable=False)
     if "No opening '[' in range" in text:
         return StructuredJobError(
             code=JobErrorCode.EPT_READER_REJECTED_BOUNDS.value,

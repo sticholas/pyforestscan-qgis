@@ -789,6 +789,7 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         request = _logical_product_request(ProductType.CHM, source.path, buffered_path, report)
         read = unit.read_extent
         request = replace(request, bounds=EptBounds.from_value(((read.xmin, read.xmax), (read.ymin, read.ymax)), crs=report.query_geometry.catalog_crs).to_json())
+        request = replace(request, work_unit_id=unit.work_unit_id, attempt_id=f"attempt-{attempt}", completed_count=max(0, unit.execution_order-1), total_count=len(plan.work_units), inspect_hag_suitability=True)
         result = _run_logical_product(adapter, ProductType.CHM, request)
         _extract_core_raster(Path(result.output_path), core_path, unit.core_extent)
         return WorkUnitResult(unit.work_unit_id, "Complete", core_path, attempt_count=attempt, metrics={"core_extent": unit.core_extent.__dict__, "read_extent": unit.read_extent.__dict__, "hag_method": "automatic_per_work_unit"})
@@ -796,19 +797,21 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
     def progress(event):
         if item_callback is None:
             return
-        message = f"{event.completed} of {event.total} areas complete; {event.active} active; {event.failed} failed; elapsed {event.elapsed_seconds:.0f}s"
+        message = event.message
+        if event.stop_reason:message += f" {event.stop_reason}"
         _emit_polygon_stage(item_callback, source, context, event.stage, message)
 
     scheduler = PolygonProductWorkScheduler(plan.work_units, execute_unit, checkpoint, concurrency=plan.concurrency_limit, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress)
     results = scheduler.run()
-    failed = tuple(item for item in results if item.status != "Complete")
+    failed = tuple(item for item in results if item.status == "Failed")
+    pending = tuple(item for item in results if item.status == "Pending")
     final_unmasked = context.run_folder / "mosaics" / "chm.tif"
     outputs = []
     mask_results = ()
-    if failed:
+    if failed or pending:
         status = "failed"
-        first = failed[0]
-        message = f"{len(failed)} of {len(results)} CHM work units failed. First failure {first.work_unit_id}: {first.message}"
+        first = failed[0] if failed else pending[0]
+        message = scheduler.stop_reason or f"{len(failed)} CHM work units failed and {len(pending)} remain pending. First affected unit {first.work_unit_id}: {first.message}"
     else:
         _mosaic_core_rasters(tuple(item.output_path for item in results if item.output_path), final_unmasked, plan)
         final_path = context.outputs_dir / "chm.tif"

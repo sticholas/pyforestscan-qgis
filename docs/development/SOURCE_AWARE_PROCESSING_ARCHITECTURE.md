@@ -1,5 +1,7 @@
 # Source-aware processing architecture
 
+Phase 28E-Stabilization adds one-worker EPT CHM safe mode, inspect-first HAG suitability, deterministic failure circuit breaking, and crash-safe work-unit transitions. See [Crash-Safe Work Scheduler](CRASH_SAFE_WORK_SCHEDULER.md).
+
 ```mermaid
 flowchart LR
   A[Repository identity] --> B[Native source selection]

@@ -1,5 +1,7 @@
 # Long-running job management
 
+Source-aware safe mode bounds active workers and in-memory process output. Deterministic circuit breakers preserve completed checkpoints and leave unstarted work pending for review or restart reconciliation.
+
 Automatic processing uses a startup limit and heartbeat/no-progress monitoring, with no universal wall-time limit. A custom maximum remains an advanced policy. Heartbeats are written atomically to `progress/heartbeat.json` and identify the job, attempt, PID, product, stage, activity, and timestamp. Quiet scientific computation is not considered stalled while heartbeats remain current.
 
 The retained 7,061.6 ha EPT CHM run produced request-validation and PDAL-pipeline diagnostics at 2026-08-05 19:24:57 UTC, then no progress events, result, raster, stdout, or stderr. Its last confirmed stage was Reading LiDAR. Because the old runner emitted no heartbeat, whether it was computing, blocked on network I/O, or stalled is indeterminate.

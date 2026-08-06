@@ -1,5 +1,7 @@
 # Job Diagnostics
 
+Native exit status is evaluated independently from stderr. Parent-owned bundles record command, PID, heartbeat, exit status, and bounded output tails, while scientific input failures use specific nonretryable codes.
+
 Phase 27L adds diagnostic-first backend processing for polygon EPT jobs.
 
 Every PBM job workspace may contain a `diagnostics/` folder with:

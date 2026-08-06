@@ -19,6 +19,7 @@ from .api_contract import print_api_contract
 from .request_validation import RequestValidationError, validate_processing_request
 from pyforestscan_qgis.core.adapter import PyForestScanAdapter
 from pyforestscan_qgis.core.job_diagnostics import classify_exception, create_diagnostics_dir, support_summary, write_failure_bundle, write_json
+from pyforestscan_qgis.core.hag_strategy import assess_hag_suitability
 from pyforestscan_qgis.core.config import InspectionOptions
 from pyforestscan_qgis.core.ept_subset import EptSubsetRequest
 from pyforestscan_qgis.core.polygon_transport import materialize_polygon_input
@@ -33,6 +34,7 @@ from pyforestscan_qgis.core.types import (
     RumpleRequest,
     VoxelStatRequest,
 )
+from pyforestscan_qgis.core.backend.native_runtime import print_native_runtime
 
 PRODUCT_REQUESTS = {
     "chm": (ChmRequest, "create_chm"),
@@ -68,6 +70,10 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
             validation = validate_processing_request(spec, request)
             heartbeat_state.update(stage="Reading LiDAR", activity="Backend adapter is processing the selected bounded source.")
             _write_heartbeat(spec, heartbeat_state, heartbeat_started)
+            if spec.product == "chm" and bool(spec.product_parameters.get("inspect_hag_suitability")):
+                heartbeat_state.update(stage="Inspecting Ground Support", activity="Checking bounded points before Delaunay height normalization.")
+                _write_heartbeat(spec, heartbeat_state, heartbeat_started)
+                _inspect_bounded_hag_input(spec)
             _request_class, method_name = PRODUCT_REQUESTS[spec.product]
             result = getattr(adapter, method_name)(request)
             metrics = _json_ready(asdict(result))
@@ -115,6 +121,8 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
             started_at=started,
             finished_at=_utc_now(),
             traceback=traceback_module.format_exc(),
+            error_code=structured_error.code,
+            retryable=structured_error.retryable,
         )
 
 
@@ -138,6 +146,20 @@ def _run_dataset_inspection(adapter: PyForestScanAdapter, spec: BackendJobSpec):
         max_points_for_classification_summary=params.get("max_points_for_classification_summary"),
     )
     return adapter.inspect_dataset(spec.input_lidar_path, options=options)
+
+def _inspect_bounded_hag_input(spec: BackendJobSpec):
+    """Read one bounded EPT window without HAG and reject unsafe geometry."""
+    import pdal
+    bounds=str(spec.product_parameters.get("pdal_bounds_expression") or "")
+    if not bounds:raise RuntimeError("HAG invalid work-unit geometry: bounded EPT expression is missing.")
+    pipeline=pdal.Pipeline(json.dumps({"pipeline":[{"type":"readers.ept","filename":str(spec.input_lidar_path),"bounds":bounds}]}));pipeline.execute();arrays=tuple(pipeline.arrays or ())
+    if not arrays:
+        report=assess_hag_suitability((),(),work_unit_id=str(spec.product_parameters.get("work_unit_id","")))
+    else:
+        array=arrays[0] if len(arrays)==1 else __import__('numpy').concatenate(arrays);names=set(array.dtype.names or ());report=assess_hag_suitability(array['X'] if 'X' in names else (),array['Y'] if 'Y' in names else (),array['Classification'] if 'Classification' in names else (),dimensions=names,z=array['Z'] if 'Z' in names else (),work_unit_id=str(spec.product_parameters.get("work_unit_id","")))
+    write_json(create_diagnostics_dir(spec.run_folder)/"hag_suitability.json",report.to_dict())
+    if not report.suitable:raise RuntimeError(f"{report.reason_code}: {report.user_message} ({report.technical_message})")
+    return report
 
 
 def _request_from_spec(spec: BackendJobSpec) -> Any:
@@ -188,7 +210,7 @@ def _json_ready(value: Any) -> Any:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", nargs="?", choices=("inspect_api_contract",), help="Run a PBM-side diagnostic command and exit.")
+    parser.add_argument("command", nargs="?", choices=("inspect_api_contract","inspect_native_runtime"), help="Run a PBM-side diagnostic command and exit.")
     parser.add_argument("--spec", type=Path, help="Path to a PBM backend job spec JSON file.")
     return parser.parse_args()
 
@@ -198,6 +220,8 @@ def main() -> int:
     if args.command == "inspect_api_contract":
         print_api_contract()
         return 0
+    if args.command == "inspect_native_runtime":
+        return print_native_runtime()
     if args.spec is None:
         raise SystemExit("--spec is required unless a diagnostic command is supplied.")
     spec = BackendJobSpec.read(args.spec)

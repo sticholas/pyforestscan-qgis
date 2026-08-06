@@ -1,5 +1,7 @@
 # Troubleshooting Processing Jobs
 
+A ground-normalization pause preserves completed outputs and means the selected areas cannot support the current HAG method. A native-worker stop requires technical review and PBM runtime diagnostics; it is not equivalent to a missing dependency or generic Environment Check failure.
+
 Use **Validate Processing Request** before a long polygon EPT run when something looks suspicious. The check verifies the PBM backend contract, EPT metadata, requested bounds, polygon file, CRS, output folder, and product settings before a full product is generated.
 
 For EPT jobs, valid bounds must use square-bracket coordinate ranges when converted for PDAL:

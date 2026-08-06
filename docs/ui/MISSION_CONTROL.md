@@ -1,5 +1,7 @@
 # Mission Control
 
+Safe EPT progress uses work-unit language such as `2 complete, 3 failed, 5 of 120 attempted, 115 not started`. Scientific pauses and native crashes are distinct states; normal mode does not expose raw Windows exception codes.
+
 Mission Control is the floating-by-default, dockable graphical operating environment for PyForestScan
 QGIS. It opens as a large application-style window by default and keeps a
 bounded navigation sidebar so the main page stack can use the full available

@@ -23,6 +23,19 @@ REMOVED_PIP_ENV_KEYS = {
     "PIP_REQUIRE_VIRTUALENV",
 }
 
+REMOVED_NATIVE_ENV_KEYS = {
+    "QGIS_PREFIX_PATH",
+    "QT_PLUGIN_PATH",
+    "QT_QPA_PLATFORM_PLUGIN_PATH",
+    "GRASS_PREFIX",
+    "GRASS_PYTHON",
+    "OSGEO4W_ROOT",
+    "GDAL_DRIVER_PATH",
+    "GDAL_DATA",
+    "PROJ_LIB",
+    "PROJ_DATA",
+}
+
 ESSENTIAL_ENV_KEYS = {
     "PATH",
     "Path",
@@ -72,7 +85,7 @@ def build_clean_subprocess_env(
 
     for key, value in source.items():
         canonical = key.upper()
-        if canonical in REMOVED_PYTHON_ENV_KEYS or canonical in REMOVED_PIP_ENV_KEYS:
+        if canonical in REMOVED_PYTHON_ENV_KEYS or canonical in REMOVED_PIP_ENV_KEYS or canonical in REMOVED_NATIVE_ENV_KEYS:
             continue
         if key in ESSENTIAL_ENV_KEYS or canonical in essential_upper:
             clean[key] = str(value)
@@ -80,6 +93,10 @@ def build_clean_subprocess_env(
     path_key = _path_key(clean)
     path_value = clean.get(path_key, source.get(path_key, source.get("PATH", source.get("Path", ""))))
     clean[path_key] = _clean_path(path_value, prepend_paths)
+
+    for certificate_key in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+        if certificate_key in clean and _is_qgis_native_path(clean[certificate_key]):
+            clean.pop(certificate_key, None)
 
     clean["PYTHONNOUSERSITE"] = "1"
     clean["PIP_NO_INPUT"] = "1"
@@ -161,7 +178,7 @@ def _path_key(env: Mapping[str, str]) -> str:
 def _clean_path(path_value: str, prepend_paths: Sequence[Path | str]) -> str:
     entries: list[str] = []
     for entry in _split_path_entries(path_value):
-        if not entry or _is_qgis_python_profile_path(entry):
+        if not entry or _is_qgis_native_path(entry):
             continue
         entries.append(entry)
     prefix = [str(path) for path in prepend_paths if str(path)]
@@ -178,12 +195,31 @@ def _split_path_entries(path_value: str) -> list[str]:
 
 
 def _is_qgis_python_profile_path(path_entry: str) -> bool:
+    """Compatibility alias for older isolation tests."""
+    return _is_qgis_native_path(path_entry)
+
+
+def _is_qgis_native_path(path_entry: str) -> bool:
     normalized = path_entry.lower().replace("\\", "/")
-    if "qgis" in normalized and any(marker in normalized for marker in ("/profiles/", "/python/", "/dependencies/")):
+    if any(marker in normalized for marker in ("/qgis", "qgis3", "qgis-ltr", "osgeo4w", "/grass", "/qt5", "/qt6")):
         return True
-    if "osgeo4w" in normalized and "/python" in normalized:
+    if any(marker in normalized for marker in ("/profiles/", "/python/dependencies/")) and "qgis" in normalized:
         return True
     return False
+
+
+def native_environment_diagnostics(env: Mapping[str, str]) -> dict[str, object]:
+    """Describe the native-runtime policy without exposing unrelated variables."""
+    path_value = next((value for key, value in env.items() if key.upper() == "PATH"), "")
+    entries = tuple(_split_path_entries(path_value))
+    qgis_entries = tuple(entry for entry in entries if _is_qgis_native_path(entry))
+    return {
+        "path_entries": entries,
+        "qgis_paths_detected": qgis_entries,
+        "gdal_data": env.get("GDAL_DATA", ""),
+        "proj_data": env.get("PROJ_DATA", env.get("PROJ_LIB", "")),
+        "isolated": not qgis_entries,
+    }
 
 
 def _gdal_data_candidates(environment_path: Path, platform_value: str) -> tuple[Path, ...]:

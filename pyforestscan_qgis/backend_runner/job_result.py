@@ -24,6 +24,8 @@ class BackendJobResult:
     stdout: str = ""
     stderr: str = ""
     traceback: str | None = None
+    error_code: str = ""
+    retryable: bool | None = None
 
     @property
     def success(self) -> bool:
@@ -44,6 +46,8 @@ class BackendJobResult:
             "product_metrics": _json_ready(self.product_metrics),
             "stdout": self.stdout,
             "stderr": self.stderr,
+            "error_code": self.error_code,
+            "retryable": self.retryable,
         }
         if include_traceback and self.traceback:
             payload["traceback"] = self.traceback
@@ -65,6 +69,8 @@ class BackendJobResult:
             stdout=str(data.get("stdout", "")),
             stderr=str(data.get("stderr", "")),
             traceback=data.get("traceback"),
+            error_code=str(data.get("error_code", "")),
+            retryable=data.get("retryable"),
         )
 
     def write(self, path: Path) -> Path:
