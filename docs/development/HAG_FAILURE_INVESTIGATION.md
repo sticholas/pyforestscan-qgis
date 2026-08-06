@@ -17,3 +17,7 @@ The earlier workers did not record point/classification distributions, so an alt
 ## Unproven
 
 OOM is not established. A common cause for the QGIS and PDAL crashes is not established. Ground classification quality, duplicate XY behavior, and loaded DLL provenance require controlled live probing.
+
+## Phase 28F correction
+
+Validated existing HeightAboveGround now controls execution with hag=False. Source-aware CHM no longer exact-crops points before rasterization. The real failing windows still require live rerun.

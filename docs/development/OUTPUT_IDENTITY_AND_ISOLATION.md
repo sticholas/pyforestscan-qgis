@@ -5,3 +5,7 @@ Every run has a job ID and every retry has a fresh attempt ID, plus project/sess
 Outputs require an identity sidecar (and raster tags where supported) before reuse. Existing files are reusable only when identity and plan metadata match. A failed attempt with zero registered outputs loads nothing; older layers may remain in QGIS but are not presented as current-run results.
 ## Work-unit outputs
 Buffered and core tiles are attempt-scoped intermediates. Only the verified, complete, exactly masked final mosaic may be registered or loaded.
+
+## Scientific identity
+
+Core identity includes HAG method and grid signatures. Existing-HAG and Delaunay outputs cannot be mixed silently.

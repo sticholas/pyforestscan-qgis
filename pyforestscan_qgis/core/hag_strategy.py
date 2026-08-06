@@ -1,5 +1,7 @@
 """Scientific suitability checks and explicit HAG strategy selection."""
 from __future__ import annotations
+import hashlib
+import json
 import math
 from collections import Counter
 from dataclasses import asdict, dataclass
@@ -29,7 +31,26 @@ HagSuitabilityReport=HagWindowSuitability
 class HagStrategy:
     method:str; reason:str; assumptions:tuple[str,...]=(); ground_classes:tuple[int,...]=(2,); dtm_path:str=""; warnings:tuple[str,...]=(); method_version:str="2"
 
-def assess_hag_suitability(x,y,classifications=(),dimensions=(),area=None,dtm_available=False,*,z=(),work_unit_id=""):
+def hag_method_signature(method,source_dimension=""):
+    basis={"method":method,"dimension":source_dimension if method=="existing_normalized_height" else "","implementation_version":"3"}
+    return hashlib.sha256(json.dumps(basis,sort_keys=True).encode()).hexdigest()
+
+@dataclass(frozen=True)
+class HagExecutionDecision:
+    """Authoritative immutable HAG planning and execution contract."""
+    selected_method:str;source_dimension:str;suitability_status:str;suitability_evidence:dict;method_signature:str;fallback_allowed:bool=False;fallback_method:str="unsupported";scientific_reason:str="";validation_timestamp:str="";implementation_version:str="3"
+    @classmethod
+    def from_report(cls,report,source_dimension="HeightAboveGround"):
+        from datetime import datetime,timezone
+        method=report.recommended_method if report.suitable else "unsupported"
+        dimension=source_dimension if method=="existing_normalized_height" else ""
+        evidence=report.to_dict()
+        signature=hag_method_signature(method,dimension)
+        return cls(method,dimension,report.status,evidence,signature,False,"unsupported",report.technical_message,datetime.now(timezone.utc).isoformat())
+    def assert_executed(self,method):
+        if method!=self.selected_method:raise RuntimeError(f"HAG_METHOD_MISMATCH: planned {self.selected_method}, execution requested {method}.")
+
+def assess_hag_suitability(x,y,classifications=(),dimensions=(),area=None,dtm_available=False,*,z=(),hag_values=(),work_unit_id=""):
     total=min(len(x),len(y)); finite=[]; nonfinite=0
     for a,b in zip(x,y):
         try: point=(float(a),float(b))
@@ -44,8 +65,10 @@ def assess_hag_suitability(x,y,classifications=(),dimensions=(),area=None,dtm_av
         try: is_ground=int(value)==2
         except (TypeError,ValueError): is_ground=False
         if is_ground: ground.append(point)
-    unique_ground=set(ground); gxr,gyr=_ranges(ground); grank=_rank(unique_ground); existing=any(str(d).lower() in {"heightaboveground","normalizedz","height"} for d in dimensions); coverage=len(ground)/area if area and area>0 else None
-    if existing: reason=HagReasonCode.VALID_EXISTING_HAG; suitable=True; method="existing_normalized_height"
+    unique_ground=set(ground); gxr,gyr=_ranges(ground); grank=_rank(unique_ground); existing=any(str(d).lower()=="heightaboveground" for d in dimensions); coverage=len(ground)/area if area and area>0 else None
+    finite_hag=[float(v) for v in hag_values if _finite(v)];existing_valid=bool(existing and finite_hag and any(abs(v)>1e-9 for v in finite_hag) and max(finite_hag)-min(finite_hag)>1e-9)
+    if existing_valid: reason=HagReasonCode.VALID_EXISTING_HAG; suitable=True; method="existing_normalized_height"
+    elif existing: reason=HagReasonCode.UNKNOWN; suitable=False; method="unavailable"
     elif total==0: reason=HagReasonCode.EMPTY_POINT_ARRAY; suitable=False; method="unavailable"
     elif total<3: reason=HagReasonCode.TOO_FEW_POINTS; suitable=False; method="unavailable"
     elif nonfinite and len(finite)<3: reason=HagReasonCode.NONFINITE_COORDINATES; suitable=False; method="unavailable"
@@ -76,7 +99,7 @@ def _finite(value):
 
 class HagStrategyPlanner:
     def select(self,report,provided_dtm=""):
-        if report.existing_hag_available:return HagStrategy("existing_normalized_height","Existing normalized-height dimension is available.",ground_classes=())
+        if report.suitable and report.recommended_method=="existing_normalized_height":return HagStrategy("existing_normalized_height","Existing normalized-height dimension is validated.",ground_classes=())
         if provided_dtm and report.dtm_available:return HagStrategy("provided_dtm","A compatible supplied DTM is available.",ground_classes=(),dtm_path=provided_dtm)
         if report.suitable and report.ground_xy_rank==2 and report.ground_points>=3:return HagStrategy("classified_ground_delaunay","Ground XY geometry passed bounded Delaunay suitability checks.",assumptions=("Ground class 2 represents terrain.",))
         return HagStrategy("unavailable","Ground normalization could not construct a surface for part of the selected area.",warnings=report.reasons)

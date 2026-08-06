@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import pickle
 import re
 import time
 from dataclasses import dataclass, replace
@@ -32,6 +34,7 @@ from .output_registry import generated_output_for_path, write_output_registry
 from .polygon_lidar_processing import selected_path_invariant
 from .source_aware_processing import NativeSource, SourceAwareWorkPlanner, SpatialExtent
 from .work_unit_scheduler import CheckpointStore, PolygonProductWorkScheduler, WorkUnitResult
+from .hag_strategy import hag_method_signature
 from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, HagNormalizationRequest, PadRequest, PaiRequest, PointDensityRequest, ProductType, RumpleRequest, VoxelStatRequest
 
 POLYGON_MANIFEST_NAME = "polygon_batch_manifest.json"
@@ -775,8 +778,36 @@ def _execute_logical_spatial_batch(report: PolygonBatchPreflightReport, adapter:
 
 
 
+def _submit_and_observe_source_aware_chm(report,adapter,batch_folder,context,source,plan,*,item_callback=None):
+    job_dir=context.run_folder/"coordinator";job_dir.mkdir(parents=True,exist_ok=True)
+    job_id=report.plan_signature or getattr(report.execution_plan,"plan_signature","") or context.run_folder.name;attempt_id=f"attempt-{int(time.time())}"
+    payload={"job_id":job_id,"attempt_id":attempt_id,"job_dir":str(job_dir),"report":report,"batch_folder":str(batch_folder),"context":context,"source":source,"plan":plan}
+    payload_path=job_dir/"polygon_job_payload.pkl";temporary=payload_path.with_suffix(".partial")
+    with temporary.open("wb") as stream:pickle.dump(payload,stream);stream.flush();os.fsync(stream.fileno())
+    os.replace(temporary,payload_path)
+    service=adapter._backend_service()
+    pid,_command=service.submit_polygon_coordinator(payload_path,job_dir)
+    from .atomic_state import atomic_write_json
+    atomic_write_json(job_dir/"submission.json",{"job_id":job_id,"attempt_id":attempt_id,"coordinator_pid":pid,"payload":str(payload_path),"submitted_at":datetime.now(timezone.utc).isoformat()})
+    terminal=job_dir/"terminal_result.json";last_stage=""
+    while not terminal.exists():
+        progress=job_dir/"progress_snapshot.json"
+        if progress.exists() and item_callback is not None:
+            try:
+                data=json.loads(progress.read_text(encoding="utf-8"));stage=str(data.get("current_stage") or "Processing")
+                if stage!=last_stage:
+                    _emit_polygon_stage(item_callback,source,context,stage,str(data.get("current_activity") or "Background processing continues."));last_stage=stage
+            except (OSError,ValueError):pass
+        time.sleep(1)
+    state=json.loads(terminal.read_text(encoding="utf-8"))
+    if state.get("state")!="complete":raise RuntimeError(state.get("error") or "Durable polygon coordinator failed.")
+    result_path=Path(state["result_path"])
+    with result_path.open("rb") as stream:return pickle.load(stream)
+
 def _execute_source_aware_chm(report, adapter, batch_folder, context, source, plan, *, item_callback=None):
-    """Execute bounded CHM work units, checkpoint cores, mosaic, and mask final output."""
+    """Execute bounded CHM through a durable PBM coordinator when available."""
+    if os.environ.get("PYFORESTSCAN_POLYGON_COORDINATOR")!="1" and adapter.selected_execution_backend()=="pbm_backend":
+        return _submit_and_observe_source_aware_chm(report,adapter,batch_folder,context,source,plan,item_callback=item_callback)
     started_at = datetime.now(timezone.utc).isoformat()
     signature = report.plan_signature or getattr(report.execution_plan, "plan_signature", "") or "source-aware-chm"
     checkpoint = CheckpointStore(context.run_folder / "work_units", signature)
@@ -789,10 +820,10 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         request = _logical_product_request(ProductType.CHM, source.path, buffered_path, report)
         read = unit.read_extent
         request = replace(request, bounds=EptBounds.from_value(((read.xmin, read.xmax), (read.ymin, read.ymax)), crs=report.query_geometry.catalog_crs).to_json())
-        request = replace(request, work_unit_id=unit.work_unit_id, attempt_id=f"attempt-{attempt}", completed_count=max(0, unit.execution_order-1), total_count=len(plan.work_units), inspect_hag_suitability=True)
+        request = replace(request,crop_polygon=None,crop_polygon_path=None,polygon_execution_input=None,work_unit_id=unit.work_unit_id,attempt_id=f"attempt-{attempt}",completed_count=max(0,unit.execution_order-1),total_count=len(plan.work_units),inspect_hag_suitability=True,hag_method="existing_normalized_height",hag_source_dimension="HeightAboveGround",hag_method_signature=hag_method_signature("existing_normalized_height","HeightAboveGround"))
         result = _run_logical_product(adapter, ProductType.CHM, request)
         _extract_core_raster(Path(result.output_path), core_path, unit.core_extent)
-        return WorkUnitResult(unit.work_unit_id, "Complete", core_path, attempt_count=attempt, metrics={"core_extent": unit.core_extent.__dict__, "read_extent": unit.read_extent.__dict__, "hag_method": "automatic_per_work_unit"})
+        return WorkUnitResult(unit.work_unit_id, "Complete", core_path, attempt_count=attempt, metrics={"core_extent":unit.core_extent.__dict__,"read_extent":unit.read_extent.__dict__,"hag_method":request.hag_method,"hag_source_dimension":request.hag_source_dimension,"hag_method_signature":request.hag_method_signature,"point_crop_policy":"buffered_rectangle_then_final_mask"})
 
     def progress(event):
         if item_callback is None:

@@ -19,7 +19,8 @@ from .api_contract import print_api_contract
 from .request_validation import RequestValidationError, validate_processing_request
 from pyforestscan_qgis.core.adapter import PyForestScanAdapter
 from pyforestscan_qgis.core.job_diagnostics import classify_exception, create_diagnostics_dir, support_summary, write_failure_bundle, write_json
-from pyforestscan_qgis.core.hag_strategy import assess_hag_suitability
+from pyforestscan_qgis.core.hag_strategy import HagExecutionDecision, assess_hag_suitability
+from pyforestscan_qgis.core.atomic_state import atomic_write_json
 from pyforestscan_qgis.core.config import InspectionOptions
 from pyforestscan_qgis.core.ept_subset import EptSubsetRequest
 from pyforestscan_qgis.core.polygon_transport import materialize_polygon_input
@@ -73,7 +74,12 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
             if spec.product == "chm" and bool(spec.product_parameters.get("inspect_hag_suitability")):
                 heartbeat_state.update(stage="Inspecting Ground Support", activity="Checking bounded points before Delaunay height normalization.")
                 _write_heartbeat(spec, heartbeat_state, heartbeat_started)
-                _inspect_bounded_hag_input(spec)
+                report = _inspect_bounded_hag_input(spec)
+                decision = HagExecutionDecision.from_report(report)
+                planned = str(spec.product_parameters.get("hag_method") or decision.selected_method)
+                decision.assert_executed(planned)
+                request = __import__("dataclasses").replace(request,hag_method=decision.selected_method,hag_source_dimension=decision.source_dimension,hag_method_signature=decision.method_signature,crop_polygon=None,crop_polygon_path=None,polygon_execution_input=None)
+                write_json(create_diagnostics_dir(spec.run_folder)/"hag_execution_decision.json",asdict(decision))
             _request_class, method_name = PRODUCT_REQUESTS[spec.product]
             result = getattr(adapter, method_name)(request)
             metrics = _json_ready(asdict(result))
@@ -130,9 +136,7 @@ def _write_heartbeat(spec: BackendJobSpec, state: dict[str, Any], started: float
     path = spec.run_folder / "progress" / "heartbeat.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"job_id": spec.job_id, "attempt_id": str(spec.product_parameters.get("attempt_id", "attempt-1")), "timestamp": _utc_now(), "process_id": os.getpid(), "current_stage": state["stage"], "current_product": spec.product, "latest_activity": state["activity"], "elapsed_seconds": round(time.monotonic() - started, 3), "current_work_unit_id": state.get("current_work_unit_id", ""), "latest_completed_unit": state.get("latest_completed_unit", ""), "completed_count": state.get("completed_count", 0), "total_count": state.get("total_count", 1), "retry_count": state.get("retry_count", 0), "points_processed": state.get("points_processed"), "bytes_processed": state.get("bytes_processed"), "process_alive": True}
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    temporary.replace(path)
+    atomic_write_json(path,payload)
 
 def _heartbeat_loop(spec: BackendJobSpec, stop: threading.Event, state: dict[str, Any], started: float) -> None:
     while not stop.wait(15):
@@ -156,7 +160,7 @@ def _inspect_bounded_hag_input(spec: BackendJobSpec):
     if not arrays:
         report=assess_hag_suitability((),(),work_unit_id=str(spec.product_parameters.get("work_unit_id","")))
     else:
-        array=arrays[0] if len(arrays)==1 else __import__('numpy').concatenate(arrays);names=set(array.dtype.names or ());report=assess_hag_suitability(array['X'] if 'X' in names else (),array['Y'] if 'Y' in names else (),array['Classification'] if 'Classification' in names else (),dimensions=names,z=array['Z'] if 'Z' in names else (),work_unit_id=str(spec.product_parameters.get("work_unit_id","")))
+        array=arrays[0] if len(arrays)==1 else __import__('numpy').concatenate(arrays);names=set(array.dtype.names or ());report=assess_hag_suitability(array['X'] if 'X' in names else (),array['Y'] if 'Y' in names else (),array['Classification'] if 'Classification' in names else (),dimensions=names,z=array['Z'] if 'Z' in names else (),hag_values=array['HeightAboveGround'] if 'HeightAboveGround' in names else (),work_unit_id=str(spec.product_parameters.get("work_unit_id","")))
     write_json(create_diagnostics_dir(spec.run_folder)/"hag_suitability.json",report.to_dict())
     if not report.suitable:raise RuntimeError(f"{report.reason_code}: {report.user_message} ({report.technical_message})")
     return report

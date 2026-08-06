@@ -1,6 +1,6 @@
 """Source-aware bounded work planning for polygon LiDAR products."""
 from __future__ import annotations
-import math, os
+import hashlib, json, math, os
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -32,6 +32,10 @@ class AlignedRasterGrid:
         cols=math.ceil(extent.width/resolution);rows=math.ceil(extent.height/resolution)
         aligned=SpatialExtent(extent.xmin,extent.ymin,extent.xmin+cols*resolution,extent.ymin+rows*resolution)
         return cls(crs,resolution,extent.xmin,extent.ymin,aligned,rows,cols,nodata)
+    @property
+    def grid_signature(self):
+        payload={"crs":self.crs,"resolution":self.resolution,"origin_x":self.origin_x,"origin_y":self.origin_y,"extent":asdict(self.total_extent),"rows":self.rows,"columns":self.columns,"nodata":self.nodata,"data_type":self.data_type}
+        return hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest()
     def cell_extent(self,row0,row1,col0,col1):
         return SpatialExtent(self.origin_x+col0*self.resolution,self.origin_y+row0*self.resolution,self.origin_x+col1*self.resolution,self.origin_y+row1*self.resolution)
 
@@ -100,7 +104,8 @@ class SourceAwareWorkPlanner:
         elif repository_kind=='copc': units=self._copc(grid,paths,sizing)
         else: units=self._native(grid,paths,sizing)
         cells=grid.rows*grid.columns; workload='Small' if cells<5_000_000 else 'Moderate' if cells<25_000_000 else 'Large' if cells<100_000_000 else 'Very Large'
-        memory='Low' if cells*4<256*1024**2 else 'Moderate' if cells*4<1024**3 else 'High'
+        peak=max((unit.estimated_memory for unit in units),default=cells*4)
+        memory='Low' if peak<256*1024**2 else 'Moderate' if peak<1024**3 else 'High' if peak<3*1024**3 else 'Very High'
         assumptions=[f"Global {resolution:g}-unit grid.",f"{sizing.buffer_distance:g}-unit CHM read buffer.","Exact polygon mask is applied after mosaic."]
         if repository_kind=='ept' and product=='chm' and sizing.maximum_concurrent_units==1:assumptions.extend(("Safe processing mode is active for this EPT job.","Parallel EPT HAG workers are temporarily limited while native-worker stability is being validated."))
         return SourceAwareWorkPlan(repository_kind,product,grid,tuple(units),sizing.maximum_concurrent_units,workload,memory,policy.merge_rule,'transient failures: 2; deterministic input/HAG failures: 0','verify and persist every completed core tile',tuple(assumptions),location)
@@ -109,7 +114,11 @@ class SourceAwareWorkPlanner:
         for r0 in range(0,grid.rows,rows):
             for c0 in range(0,grid.columns,cols):
                 core=grid.cell_extent(r0,min(grid.rows,r0+rows),c0,min(grid.columns,c0+cols));n+=1
-                out.append(WorkUnit(f"wu-{n:04d}",kind,tuple(x.path for x in sources),core,core.buffered(sizing.buffer_distance),r0,min(grid.rows,r0+rows),c0,min(grid.columns,c0+cols),n,int(core.width*core.height/grid.resolution**2*16)))
+                read=core.buffered(sizing.buffer_distance)
+                density=20.0 if kind is WorkUnitType.EPT_WINDOW else 8.0
+                from .resource_estimation import estimate_work_unit_resources
+                estimate=estimate_work_unit_resources(int(read.width*read.height*density),hag_method="existing_normalized_height",raster_cells=int(read.width*read.height/grid.resolution**2),core_width=sizing.target_width)
+                out.append(WorkUnit(f"wu-{n:04d}",kind,tuple(x.path for x in sources),core,read,r0,min(grid.rows,r0+rows),c0,min(grid.columns,c0+cols),n,estimate.estimated_memory))
         return out
     def _copc(self,grid,sources,sizing):
         if len(sources)==1 and (sources[0].size_bytes>2*1024**3 or grid.rows*grid.columns>5_000_000): return self._windows(grid,sources,WorkUnitType.COPC_WINDOW,sizing)

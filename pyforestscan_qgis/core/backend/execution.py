@@ -104,6 +104,20 @@ class BackendExecutionService:
         """Read a backend job result JSON file."""
         return BackendJobResult.read(result_path)
 
+    def submit_polygon_coordinator(self, payload_path: Path, job_dir: Path):
+        """Launch a detached PBM coordinator and return its process identity."""
+        availability=self.can_execute_processing()
+        if not availability.ready:raise RuntimeError(availability.message)
+        command=[str(self.paths.python_executable),"-m","pyforestscan_qgis.backend_runner.polygon_job_coordinator","--payload",str(payload_path)]
+        env=build_clean_subprocess_env(prepend_paths=conda_environment_path_entries(self.paths.environment_path,self.paths.platform.value),extra_env=conda_environment_data_env(self.paths.environment_path,self.paths.platform.value))
+        kwargs=dict(cwd=str(self.plugin_parent),env=env,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        if self.paths.platform.value=="windows":
+            hidden=hidden_subprocess_kwargs();flags=int(hidden.pop("creationflags",0));flags|=getattr(subprocess,"DETACHED_PROCESS",0)|getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0);kwargs.update(hidden);kwargs["creationflags"]=flags
+        else:kwargs["start_new_session"]=True
+        process=subprocess.Popen(command,**kwargs)
+        write_backend_log_entry(self.log_path,"execute","Submitted durable polygon coordinator.",stage="COORDINATOR",details={"pid":process.pid,"payload":str(payload_path),"job_dir":str(job_dir)})
+        return process.pid,command
+
     def run_product(self, product: str, request: Any) -> BackendJobResult:
         """Run a product request through the managed backend."""
         spec = build_job_spec_from_request(product, request)

@@ -1,0 +1,40 @@
+"""Own one source-aware polygon CHM job outside QGIS."""
+from __future__ import annotations
+import argparse,os,pickle,time,traceback
+from pathlib import Path
+from pyforestscan_qgis.backend_runner.job_coordinator import DurableJobCoordinator,ProcessingProgressSnapshot,utc_now
+from pyforestscan_qgis.core.atomic_state import atomic_write_json
+from pyforestscan_qgis.core.adapter import PyForestScanAdapter
+
+def _atomic_pickle(path,value):
+    import uuid
+    temporary=path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    with temporary.open("wb") as stream:
+        pickle.dump(value,stream);stream.flush();os.fsync(stream.fileno())
+    os.replace(temporary,path)
+
+def run_payload(payload_path):
+    with Path(payload_path).open("rb") as stream:payload=pickle.load(stream)
+    job_dir=Path(payload["job_dir"]);job_id=payload["job_id"];attempt_id=payload["attempt_id"];coordinator=DurableJobCoordinator(job_dir);coordinator.recover();coordinator.write_identity(job_id,attempt_id,os.sys.argv);started=time.monotonic()
+    def progress(item):
+        stage=getattr(item,"status","Processing");message=getattr(item,"message","")
+        coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,"running",len(payload["plan"].work_units),current_stage=str(stage),current_activity=str(message),elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now()))
+    try:
+        os.environ["PYFORESTSCAN_POLYGON_COORDINATOR"]="1"
+        from pyforestscan_qgis.core.polygon_batch import _execute_source_aware_chm
+        adapter=PyForestScanAdapter(execution_mode="qgis_python")
+        result=_execute_source_aware_chm(payload["report"],adapter,Path(payload["batch_folder"]),payload["context"],payload["source"],payload["plan"],item_callback=progress)
+        failed=any(getattr(item,"status","").lower()!="completed" for item in result.items)
+        result_path=job_dir/"coordinator_result.pkl";_atomic_pickle(result_path,result)
+        state="scientific_blocker" if failed else "complete"
+        atomic_write_json(job_dir/"terminal_result.json",{"job_id":job_id,"attempt_id":attempt_id,"state":state,"result_path":str(result_path),"error":"One or more required work areas failed." if failed else "","finished_at":utc_now()})
+        coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,state,len(payload["plan"].work_units),completed=len(payload["plan"].work_units) if not failed else 0,current_stage="Scientific Blocker" if failed else "Complete",finalization_state="blocked" if failed else "complete",elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now()))
+        return 1 if failed else 0
+    except Exception as exc:
+        atomic_write_json(job_dir/"terminal_result.json",{"job_id":job_id,"attempt_id":attempt_id,"state":"failed","error":str(exc),"traceback":traceback.format_exc(),"finished_at":utc_now()})
+        coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,"scientific_blocker",len(payload["plan"].work_units),current_stage="Scientific Blocker",current_activity=str(exc),finalization_state="blocked",elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now()))
+        return 1
+
+def main():
+    parser=argparse.ArgumentParser();parser.add_argument("--payload",type=Path,required=True);args=parser.parse_args();return run_payload(args.payload)
+if __name__=="__main__":raise SystemExit(main())

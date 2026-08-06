@@ -295,7 +295,10 @@ class PyForestScanAdapter:
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **_read_lidar_spatial_kwargs(request, hag=True))
+            planned_method = getattr(request, "hag_method", "classified_ground_delaunay")
+            if planned_method not in {"existing_normalized_height", "classified_ground_delaunay"}:
+                raise ProcessingError(f"Unsupported planned HAG method for CHM: {planned_method}")
+            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **_read_lidar_spatial_kwargs(request, hag=planned_method != "existing_normalized_height"))
             if point_cloud is None:
                 raise ProcessingError("PyForestScan returned no point data for CHM generation.")
             self._progress.update(35, "Point cloud loaded")
@@ -304,7 +307,8 @@ class PyForestScanAdapter:
             required = {"X", "Y", "HeightAboveGround"}
             missing = sorted(required.difference(names))
             if missing:
-                raise ProcessingError(f"CHM input is missing required dimensions: {', '.join(missing)}")
+                suffix = " for the planned existing-HAG method" if planned_method == "existing_normalized_height" else ""
+                raise ProcessingError(f"CHM input is missing required dimensions{suffix}: {', '.join(missing)}")
             chm, extent = pyforestscan.calculate_chm(
                 point_array,
                 _xy_resolution(request.grid_resolution, request.y_resolution),

@@ -91,3 +91,7 @@ EPT CRS detection now handles WKT/WKT2, PROJJSON, and authority plus horizontal 
 
 - Large-product tiling is not enabled until product-specific scientific equivalence is validated; automatic mode monitors liveness but cannot provide exact progress for quiet third-party calls.
 - Source-aware partitioning is enabled only for CHM. Live numerical equivalence, network performance, and interactive pause/cancel validation remain pending.
+
+## Phase 28F live validation
+
+Real formerly collinear EPT, medium job, QGIS restart, equivalence, and full 120-unit tests remain pending. Scalable tiling remains CHM-only.

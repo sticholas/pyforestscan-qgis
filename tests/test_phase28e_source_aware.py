@@ -42,7 +42,7 @@ class HagTests(unittest.TestCase):
  def test_collinear_detected_early(self):
   report=assess_hag_suitability((0,1,2,3),(0,0,0,0),(2,2,2,2));self.assertEqual(report.xy_rank,1);self.assertIn('XY coordinates rank-deficient',report.reasons);self.assertEqual(HagStrategyPlanner().select(report).method,'unavailable')
  def test_existing_hag_and_dtm_routes(self):
-  existing=assess_hag_suitability((0,1,2),(0,0,0),(),dimensions=('HeightAboveGround',));self.assertEqual(HagStrategyPlanner().select(existing).method,'existing_normalized_height')
+  existing=assess_hag_suitability((0,1,2),(0,0,0),(),dimensions=('HeightAboveGround',),hag_values=(0,1,2));self.assertEqual(HagStrategyPlanner().select(existing).method,'existing_normalized_height')
   dtm=assess_hag_suitability((0,1,2),(0,0,0),(),dtm_available=True);self.assertEqual(HagStrategyPlanner().select(dtm,'dtm.tif').method,'provided_dtm')
  def test_all_points_collinear_error_preserved(self):
   error=classify_hag_exception(RuntimeError('All points collinear'),'wu-7');self.assertEqual(error['code'],'HAG_COLLINEAR_INPUT');self.assertIn('All points collinear',error['original_exception']);self.assertFalse(error['retry_identical'])

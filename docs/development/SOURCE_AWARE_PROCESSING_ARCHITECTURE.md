@@ -18,3 +18,7 @@ flowchart LR
 Partitions are execution constructs. Existing LAS/LAZ files remain native sources and adjacent small files may be grouped. Large files may receive bounded subrequests. EPT remains one logical `ept.json`; work units are independent bounds requests and never hierarchy-node jobs. COPC uses footprints across files and bounded reads within unusually large files.
 
 CHM is the only partition-enabled product in beta. It uses one grid, buffered reads, retained cores, deterministic first-valid core mosaicing, and final exact masking. Other products retain existing execution until their merge mathematics are reviewed.
+
+## Phase 28F contracts
+
+EPT remains one logical source. CHM uses bounded buffered rectangles, aligned cores, mosaic, then one exact mask. Memory estimates include point and native overhead.

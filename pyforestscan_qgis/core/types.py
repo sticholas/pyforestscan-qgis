@@ -161,6 +161,9 @@ class ChmRequest:
     completed_count: int = 0
     total_count: int = 1
     inspect_hag_suitability: bool = False
+    hag_method: str = "classified_ground_delaunay"
+    hag_source_dimension: str = "HeightAboveGround"
+    hag_method_signature: str = ""
 
 
 @dataclass(frozen=True)

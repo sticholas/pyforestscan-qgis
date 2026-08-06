@@ -6,6 +6,7 @@ from dataclasses import asdict,dataclass,field,replace
 from datetime import datetime,timezone
 from pathlib import Path
 from .source_aware_processing import WorkUnit
+from .atomic_state import atomic_write_json,remove_invalid_temporaries
 
 DETERMINISTIC_CODES={"HAG_COLLINEAR_INPUT","EMPTY_SPATIAL_READ","HAG_INSUFFICIENT_GROUND","HAG_INVALID_GEOMETRY"}
 NATIVE_CRASH_CODE="NATIVE_BACKEND_CRASH"
@@ -37,6 +38,11 @@ class WorkFailureCircuitBreaker:
         adjacent=_adjacent_tail(matching)
         if adjacent>=self.pause_threshold:return CircuitBreakerDecision(False,True,"Processing paused after repeated ground-normalization failures in neighboring areas.",signature)
         return CircuitBreakerDecision()
+    def rebuild(self,results):
+        decision=CircuitBreakerDecision()
+        for result in sorted(results,key=lambda item:_unit_index(item.work_unit_id)):
+            if result.status=="Failed":decision=self.record(result)
+        return decision
 
 class CheckpointStore:
     def __init__(self,folder,job_signature):self.folder=Path(folder);self.signature=job_signature;self.folder.mkdir(parents=True,exist_ok=True)
@@ -58,11 +64,18 @@ class CheckpointStore:
         out=Path(d["output_path"]) if d.get("output_path") else None
         if d.get("job_signature")!=self.signature or d.get("status")!="Complete" or out is None or not out.is_file() or _checksum(out)!=d.get("checksum"):return None
         return WorkUnitResult(unit_id,"Complete",out,int(d.get("attempt_count",1)),float(d.get("runtime_seconds",0)),checksum=d["checksum"],metrics=d.get("metrics",{}))
-    def reconcile(self,unit_id,*,pid_alive=lambda _pid:False):
+    def reconcile(self,unit_id,*,pid_alive=lambda _pid:False,result_path=None):
+        remove_invalid_temporaries(self.path(unit_id).parent)
         data=self.load(unit_id)
         if not data or data.get("job_signature")!=self.signature:return None
         status=data.get("status")
         if status=="Starting" and not data.get("pid"):self.save_state(unit_id,"Interrupted",data,error_code="INTERRUPTED_BEFORE_LAUNCH",message="Processing stopped before the worker launched.");return "Interrupted"
+        if status=="Running" and result_path and Path(result_path).is_file():
+            try:
+                raw=json.loads(Path(result_path).read_text(encoding="utf-8"));success=raw.get("status")=="success"
+                result=WorkUnitResult(unit_id,"Complete" if success else "Failed",error_code=str(raw.get("error_code") or "EXECUTION_FAILED"),message="; ".join(raw.get("errors",())) or "Recovered completed PBM worker result.")
+                self.save(result,reconciled_from=str(result_path));return result.status
+            except (OSError,ValueError,TypeError):pass
         if status=="Running" and not pid_alive(data.get("pid")):self.save_state(unit_id,"Interrupted",data,error_code="INTERRUPTED_WORKER",message="The recorded worker is no longer running and wrote no terminal result.");return "Interrupted"
         return status
 
@@ -118,8 +131,7 @@ class PolygonProductWorkScheduler:
         stage="Needs Technical Review" if self.stop_reason else ("Paused" if self._pause.is_set() else ("Finalizing" if terminal else "Processing Work Units"))
         self.callback(SchedulerProgress(stage,completed,len(self.units),failed,len(active),retries,elapsed,tuple(v[0].work_unit_id for v in active.values()),next(reversed(results),"") if results else "",eta,attempted,max(0,len(self.units)-completed-failed-len(active)),bool(self._pause.is_set()),self.stop_reason))
 
-def _atomic_json(path,data):
-    tmp=path.with_suffix(".tmp");tmp.write_text(json.dumps(data,indent=2,sort_keys=True)+"\n",encoding="utf-8");tmp.replace(path)
+def _atomic_json(path,data):atomic_write_json(path,data)
 def _checksum(path):
     h=hashlib.sha256()
     with Path(path).open("rb") as stream:

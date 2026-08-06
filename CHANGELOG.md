@@ -167,3 +167,9 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 - Phase 28B adds shared retained-interface state, automatic stale-safe Scientific Advisor refresh, and a service-backed Advanced Toolbox page with provider status and duplicate-safe refresh.
 
 - Phase 28C compacts retained Mission Control pages, moves specialist controls behind progressive disclosure, adds concise Prerun/Results states, supports a 620 px dock minimum, and validates QGIS 3.44.9 offscreen layouts at 100% and 150% scaling.
+
+## Phase 28F - Large-area processing stabilization
+
+- Enforced existing-HAG execution and rectangular buffered reads.
+- Added conservative memory estimates, pilot selection, durable coordinator contracts, atomic state, late-result adoption, and breaker reconstruction.
+- Real EPT and full-job live validation remain pending.
