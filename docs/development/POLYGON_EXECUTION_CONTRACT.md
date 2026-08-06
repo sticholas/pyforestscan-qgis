@@ -63,3 +63,5 @@ Polygon raster jobs are not complete until product generation, exact polygon mas
 ## Phase 27S Alignment Invariants
 
 Before Run, EPT polygon processing requires a valid repository CRS, valid polygon CRS, validated transformation state, finite EPT bounds, root-extent overlap, exact polygon geometry in the EPT/clipping CRS, one logical `ept.json` source, and a current plan signature. It must not silently fall back to untransformed coordinates.
+## Work-unit contract
+Every CHM unit records core/read extents, global grid, sources, signature, attempts, method, checksum, and status. Only a complete masked final mosaic enters the registry.

@@ -83,3 +83,5 @@ The automated suite verifies the selected-path contract, durable polygon handoff
 ## Phase 27S EPT Alignment
 
 Native EPT source selection now resolves the EPT CRS before comparing extents. Malformed CRS metadata produces a CRS-specific blocker, not a false no-coverage result. When CRS values match semantically, preflight takes a fast path; when they differ and a QGIS or PBM transformer is available, the exact polygon geometry is transformed before the broad EPT envelope is derived.
+## Large-area stabilization
+Phase 28E replaces monolithic large CHM execution with source-aware units, aligned grids, checkpointed cores, and exact final masking.

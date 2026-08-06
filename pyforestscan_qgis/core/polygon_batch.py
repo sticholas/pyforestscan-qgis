@@ -30,6 +30,8 @@ from .polygon_transport import polygon_execution_input_from_selection, unique_po
 from .raster_mask import RasterMaskOptions, RasterMaskResult, apply_polygon_mask_to_outputs, is_maskable_raster
 from .output_registry import generated_output_for_path, write_output_registry
 from .polygon_lidar_processing import selected_path_invariant
+from .source_aware_processing import NativeSource, SourceAwareWorkPlanner, SpatialExtent
+from .work_unit_scheduler import CheckpointStore, PolygonProductWorkScheduler, WorkUnitResult
 from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, HagNormalizationRequest, PadRequest, PaiRequest, PointDensityRequest, ProductType, RumpleRequest, VoxelStatRequest
 
 POLYGON_MANIFEST_NAME = "polygon_batch_manifest.json"
@@ -537,6 +539,7 @@ def write_polygon_batch_manifest(
         "option_applicability": [item.to_dict() for item in _option_applicability(report)],
         "concurrency": requested_effective_concurrency(_shared_options(report), source_types=_source_types(report), product_count=len(report.request.products)),
         "execution_plan": None if report.execution_plan is None else report.execution_plan.to_dict(),
+        "source_aware_chm_plan": _source_aware_chm_plan_dict(report),
         "plan_signature": report.plan_signature,
         "repository_identity": None if report.repository is None else report.repository.to_dict(),
         "source_selection": None if report.source_selection is None else report.source_selection.to_dict(),
@@ -610,6 +613,33 @@ def write_polygon_batch_manifest(
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return path
 
+
+
+def build_source_aware_chm_plan(report: PolygonBatchPreflightReport):
+    """Build the bounded CHM plan used by prerun, manifests, and the future executor."""
+    if ProductType.CHM not in report.request.products or not report.selected_sources:
+        return None
+    bounds = report.query_geometry.envelope
+    envelope = SpatialExtent(bounds.xmin, bounds.ymin, bounds.xmax, bounds.ymax)
+    native = []
+    for source in report.selected_sources:
+        source_bounds = envelope if source.bounds is None or getattr(report.repository, "repository_kind", "") == "ept" else SpatialExtent(source.bounds.xmin, source.bounds.ymin, source.bounds.xmax, source.bounds.ymax)
+        native.append(NativeSource(Path(source.path), source_bounds, source.size_bytes, source.point_count, source.source_type))
+    return SourceAwareWorkPlanner().plan(
+        repository_kind=getattr(report.repository, "repository_kind", "folder"),
+        sources=tuple(native),
+        polygon_envelope=envelope,
+        processing_crs=report.query_geometry.catalog_crs or report.request.polygon.processing_crs,
+        product="chm",
+        resolution=report.request.settings.grid_resolution,
+        available_memory_bytes=8 * 1024**3,
+        cpu_count=max(1, _shared_options(report).worker_count),
+        profile="recommended",
+    )
+
+def _source_aware_chm_plan_dict(report: PolygonBatchPreflightReport):
+    plan = build_source_aware_chm_plan(report)
+    return None if plan is None else plan.to_dict()
 
 def selected_source_paths(report: PolygonBatchPreflightReport) -> tuple[Path, ...]:
     """Return intersecting source paths for tests and UI summaries."""
@@ -701,6 +731,9 @@ def _execute_logical_spatial_batch(report: PolygonBatchPreflightReport, adapter:
         (job_folder / child).mkdir(parents=True, exist_ok=True)
     outputs: list[Path] = []
     stages = _polygon_progress_stages(report.request.products)
+    scalable_plan = build_source_aware_chm_plan(report)
+    if report.request.products == (ProductType.CHM,) and scalable_plan is not None and len(scalable_plan.work_units) > 1:
+        return _execute_source_aware_chm(report, adapter, batch_folder, context, source, scalable_plan, item_callback=item_callback)
     try:
         _emit_polygon_stage(item_callback, source, context, "Preparing Inputs", "Preparing durable polygon job workspace.")
         write_polygon_batch_manifest(report, [{"source": str(source.path), "clipped": "native", "points": str(source.point_count or "unknown"), "bounds_used": str(report.query_geometry.ept_bounds), "job_folder": str(job_folder)}], batch_folder=batch_folder)
@@ -740,6 +773,91 @@ def _execute_logical_spatial_batch(report: PolygonBatchPreflightReport, adapter:
         item_callback(item)
     return write_batch_summaries(result)
 
+
+
+def _execute_source_aware_chm(report, adapter, batch_folder, context, source, plan, *, item_callback=None):
+    """Execute bounded CHM work units, checkpoint cores, mosaic, and mask final output."""
+    started_at = datetime.now(timezone.utc).isoformat()
+    signature = report.plan_signature or getattr(report.execution_plan, "plan_signature", "") or "source-aware-chm"
+    checkpoint = CheckpointStore(context.run_folder / "work_units", signature)
+
+    def execute_unit(unit, attempt):
+        unit_folder = context.run_folder / "work_units" / unit.work_unit_id
+        buffered_path = unit_folder / "outputs" / "chm_buffered.tif"
+        core_path = unit_folder / "outputs" / "chm_core.tif"
+        buffered_path.parent.mkdir(parents=True, exist_ok=True)
+        request = _logical_product_request(ProductType.CHM, source.path, buffered_path, report)
+        read = unit.read_extent
+        request = replace(request, bounds=EptBounds.from_value(((read.xmin, read.xmax), (read.ymin, read.ymax)), crs=report.query_geometry.catalog_crs).to_json())
+        result = _run_logical_product(adapter, ProductType.CHM, request)
+        _extract_core_raster(Path(result.output_path), core_path, unit.core_extent)
+        return WorkUnitResult(unit.work_unit_id, "Complete", core_path, attempt_count=attempt, metrics={"core_extent": unit.core_extent.__dict__, "read_extent": unit.read_extent.__dict__, "hag_method": "automatic_per_work_unit"})
+
+    def progress(event):
+        if item_callback is None:
+            return
+        message = f"{event.completed} of {event.total} areas complete; {event.active} active; {event.failed} failed; elapsed {event.elapsed_seconds:.0f}s"
+        _emit_polygon_stage(item_callback, source, context, event.stage, message)
+
+    scheduler = PolygonProductWorkScheduler(plan.work_units, execute_unit, checkpoint, concurrency=plan.concurrency_limit, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress)
+    results = scheduler.run()
+    failed = tuple(item for item in results if item.status != "Complete")
+    final_unmasked = context.run_folder / "mosaics" / "chm.tif"
+    outputs = []
+    mask_results = ()
+    if failed:
+        status = "failed"
+        first = failed[0]
+        message = f"{len(failed)} of {len(results)} CHM work units failed. First failure {first.work_unit_id}: {first.message}"
+    else:
+        _mosaic_core_rasters(tuple(item.output_path for item in results if item.output_path), final_unmasked, plan)
+        final_path = context.outputs_dir / "chm.tif"
+        final_path.parent.mkdir(parents=True, exist_ok=True)
+        final_unmasked.replace(final_path)
+        outputs = [final_path]
+        mask_results = _mask_paths(outputs, report)
+        failures = [item for item in mask_results if item.status == "failed"]
+        status = "failed" if failures else "completed"
+        message = "; ".join(item.message for item in failures) if failures else f"Source-aware CHM completed from {len(results)} verified work units."
+    item = BatchItemResult(Path(source.path), context, status, message, tuple(outputs), _requested_extent_summary(report))
+    result = BatchResult("polygon-source-aware-chm", report.request.title, started_at, datetime.now(timezone.utc).isoformat(), batch_folder, (item,), batch_folder / "batch_summary.json", batch_folder / "batch_summary.csv", batch_folder / "batch_summary.html", load_outputs_after_completion=_shared_options(report).load_outputs_after_completion)
+    result = _register_polygon_outputs(result, report, mask_results)
+    write_polygon_batch_manifest(report, [{"source": str(source.path), "strategy": "bounded_work_units", "work_units": str(len(plan.work_units)), "job_folder": str(context.run_folder)}], batch_folder=batch_folder, mask_records=[_mask_record(x) for x in mask_results])
+    if item_callback is not None: item_callback(item)
+    return write_batch_summaries(result)
+
+def _extract_core_raster(source_path: Path, output_path: Path, extent: SpatialExtent) -> None:
+    try:
+        from osgeo import gdal
+    except ImportError as exc:
+        raise RuntimeError("GDAL is required to extract aligned CHM core tiles.") from exc
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output_path.with_suffix(".partial.tif")
+    dataset = gdal.Translate(str(temporary), str(source_path), projWin=(extent.xmin, extent.ymax, extent.xmax, extent.ymin), creationOptions=("TILED=YES", "COMPRESS=DEFLATE"))
+    if dataset is None: raise RuntimeError(f"Raster core extraction failed: {source_path}")
+    dataset = None
+    temporary.replace(output_path)
+
+def _mosaic_core_rasters(paths, output_path: Path, plan) -> None:
+    if len(paths) != len(plan.work_units) or any(path is None or not Path(path).is_file() for path in paths):
+        raise RuntimeError("CHM mosaic requires every verified core work-unit raster.")
+    try:
+        from osgeo import gdal
+    except ImportError as exc:
+        raise RuntimeError("GDAL is required to create the aligned CHM mosaic.") from exc
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    vrt = output_path.with_suffix(".vrt"); temporary = output_path.with_suffix(".partial.tif")
+    built = gdal.BuildVRT(str(vrt), [str(path) for path in paths], resolution="user", xRes=plan.grid.resolution, yRes=plan.grid.resolution, outputBounds=(plan.grid.total_extent.xmin, plan.grid.total_extent.ymin, plan.grid.total_extent.xmax, plan.grid.total_extent.ymax), srcNodata=plan.grid.nodata, VRTNodata=plan.grid.nodata)
+    if built is None: raise RuntimeError("CHM VRT mosaic construction failed.")
+    built = None
+    translated = gdal.Translate(str(temporary), str(vrt), creationOptions=("TILED=YES", "COMPRESS=DEFLATE"))
+    if translated is None: raise RuntimeError("CHM transactional mosaic write failed.")
+    translated = None; vrt.unlink(missing_ok=True); temporary.replace(output_path)
+
+def _transient_work_unit_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    if "all points collinear" in text or "invalid" in text or "crs" in text: return False
+    return any(token in text for token in ("network", "connection", "temporarily", "timeout", "reset by peer"))
 
 def _logical_product_request(product: ProductType, input_path: Path, output_path: Path, report: PolygonBatchPreflightReport):
     kwargs = {
@@ -826,6 +944,8 @@ def _logical_product_output_path(folder: Path, product: ProductType) -> Path:
 
 
 def _friendly_polygon_execution_error(message: str) -> str:
+    if "all points collinear" in message.lower():
+        return "Ground normalization could not construct a surface for part of the selected area. Technical cause: All points collinear. View scientific details before retrying with an approved alternative."
     if "pyforestscan.handlers" in message or "Required dependency is not importable" in message:
         return "Polygon processing could not start because the managed backend is missing PyForestScan or is not being used correctly. Open Environment, check the Backend, or view technical details."
     return message

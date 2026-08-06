@@ -52,3 +52,5 @@ EPT repository identity is resolved before polygon preflight and no longer depen
 EPT CRS parsing now uses the shared resolver documented in [EPT CRS Resolution](EPT_CRS_RESOLUTION.md). `authority=EPSG` plus `horizontal=6635` resolves to `EPSG:6635`; bare authority strings such as `EPSG` are rejected and never serialized into comparison CRS, EPT bounds, or execution manifests.
 
 Saved EPT state with incomplete CRS metadata is treated as stale. When `ept.json` contains a usable WKT, PROJJSON, or authority plus horizontal code, the next repository resolution recomputes the source CRS without a full EPT catalog rebuild.
+## Bounded processing
+EPT nodes are never Batch inputs. Large CHM requests issue aligned bounded reads against one logical `ept.json` and checkpoint core rasters.

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Mapping
+import math
 
 class TimeoutMode(str, Enum):
     AUTOMATIC = "automatic"
@@ -29,7 +30,8 @@ class ProcessingTimeoutPolicy:
         return cls()
 
     def wall_time_for(self, product: str, repository_kind: str = "") -> float | None:
-        return self.product_overrides.get(product, self.repository_overrides.get(repository_kind, self.maximum_wall_time))
+        value = self.product_overrides.get(product, self.repository_overrides.get(repository_kind, self.maximum_wall_time))
+        return normalized_wall_time(value)
 
 @dataclass(frozen=True)
 class JobHeartbeat:
@@ -41,6 +43,14 @@ class JobHeartbeat:
     current_product: str
     latest_activity: str
     elapsed_seconds: float
+    current_work_unit_id: str = ""
+    latest_completed_unit: str = ""
+    completed_count: int = 0
+    total_count: int = 1
+    retry_count: int = 0
+    points_processed: int | None = None
+    bytes_processed: int | None = None
+    process_alive: bool = True
 
     @classmethod
     def read(cls, path: Path) -> "JobHeartbeat":
@@ -88,3 +98,14 @@ def evaluate_liveness(policy: ProcessingTimeoutPolicy, *, elapsed: float, heartb
     if progress_age is not None and progress_age > policy.no_progress_timeout and heartbeat_age is None:
         return LivenessDecision("stalled", f"No progress for {progress_age:.0f} seconds and heartbeat is unavailable.")
     return LivenessDecision("running", "Job is running and responsive.")
+
+
+def normalized_wall_time(value) -> float | None:
+    """Normalize legacy/config wall times; malformed and nonpositive values mean unlimited."""
+    if value is None or isinstance(value,bool): return None
+    try: number=float(value)
+    except (TypeError,ValueError): return None
+    return number if math.isfinite(number) and number>0 else None
+
+def has_wall_time_limit(policy: ProcessingTimeoutPolicy) -> bool:
+    return normalized_wall_time(policy.maximum_wall_time) is not None or any(normalized_wall_time(x) is not None for x in (*policy.product_overrides.values(),*policy.repository_overrides.values()))

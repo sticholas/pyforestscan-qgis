@@ -41,3 +41,5 @@ Polygon execution plans and manifests record original polygon CRS, transformed p
 
 ## Phase 28D reliability
 Large polygon requests are classified from raster dimensions. Automatic execution has no fixed one-hour wall limit; scientifically equivalent tiling remains subject to a product-specific review.
+## Source-aware CHM
+Large EPT/COPC CHM plans use bounded logical windows. Native LAS/LAZ boundaries are reused and adjacent small sources may be grouped. Other products retain existing paths pending merge review.

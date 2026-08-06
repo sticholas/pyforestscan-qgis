@@ -237,3 +237,5 @@ Batch follows Processing Mode -> LiDAR Data/Processing Area -> Products -> Outpu
 
 ## Processing reliability
 Mission Control displays current LiDAR and area selection rather than a historical dataset. Results load only outputs registered for the current attempt. Session reset preserves files, PBM, catalogs, preferences, and previous-run history.
+## Large-job progress
+CHM progress reports stage, completed/total areas, active/failed units, elapsed time, and ETA only after stable throughput.

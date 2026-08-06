@@ -1,4 +1,3 @@
-- Phase 28D replaces the universal one-hour PBM timeout with heartbeat-aware policy models, scopes outputs to job attempts, and introduces project-scoped processing state.
 # Changelog
 All notable changes to this project will be documented in this file.
 
@@ -6,6 +5,17 @@ This project follows semantic versioning once plugin releases begin. Until the
 first public release, changes are tracked under `Unreleased`.
 
 ## Unreleased
+
+- Phase 28D replaces the universal one-hour PBM timeout with heartbeat-aware policy models, scopes outputs to attempts, and introduces project-scoped processing state.
+
+## 0.1.0-beta.3 - 2026-08-06
+
+- Phase 28E adds source-aware bounded CHM planning/execution, aligned core tiles, adaptive network-aware concurrency, verified checkpoints, genuine resume, transient retry, transactional mosaicing, and exact final polygon masking.
+- Unlimited wall-time values no longer produce `None seconds` or replace scientific errors.
+- HAG suitability and strategy models classify `All points collinear` deterministically without identical retry.
+- Heartbeats now record elapsed time, stage/work unit, counts, retries, and liveness.
+- Other product merge policies remain unvalidated and retain existing execution paths; live equivalence remains pending.
+
 
 - Phase 28A hotfix repairs Batch startup by constructing product and workflow sections as explicit Qt widgets in final order, eliminating layout-wrapper reparenting that could access a deleted QVBoxLayout.
 - Phase 28A productizes Mission Control around Batch, Results, optional scientific guidance, readiness, settings, and Advanced Toolbox; legacy guided pages remain internal, specialist repository/spatial controls are collapsed, and processing behavior is unchanged.

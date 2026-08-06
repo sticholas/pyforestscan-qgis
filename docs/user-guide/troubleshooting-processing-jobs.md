@@ -48,3 +48,5 @@ The output includes the raw SRS object, resolved CRS, parser source, root bounds
 
 ## Long-running PBM jobs
 Automatic mode does not stop a responsive job merely because one hour elapsed. Check the current stage, elapsed time, and last heartbeat. A verification timeout means **Check Timed Out**, not a missing package; retry the fast check or run detailed verification before repairing.
+## Collinear ground geometry
+Affected units report that ground normalization could not construct a surface. Scientific details retain `All points collinear`; identical Delaunay retries are disabled.

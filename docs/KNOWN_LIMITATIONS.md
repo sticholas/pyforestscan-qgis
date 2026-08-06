@@ -88,3 +88,4 @@ EPT CRS detection now handles WKT/WKT2, PROJJSON, and authority plus horizontal 
 - Phase 28C passed QGIS 3.44.9 offscreen construction at 620/980/1400 pixel widths and 100%/150% scale factors. Interactive light/dark theme, keyboard, map-action, and end-to-end workflow validation remains pending and is not claimed as passed.
 
 - Large-product tiling is not enabled until product-specific scientific equivalence is validated; automatic mode monitors liveness but cannot provide exact progress for quiet third-party calls.
+- Source-aware partitioning is enabled only for CHM. Live numerical equivalence, network performance, and interactive pause/cancel validation remain pending.

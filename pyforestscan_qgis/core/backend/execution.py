@@ -20,6 +20,11 @@ from .process_env import build_clean_subprocess_env, clean_env_summary, conda_en
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
+class ProcessingMonitorError(RuntimeError):
+    def __init__(self, status: str, reason: str):
+        super().__init__(reason); self.status=status; self.reason=reason
+
+
 GUI_EXECUTABLE_MARKERS = (
     "qgis-ltr-bin",
     "qgis-bin",
@@ -120,9 +125,13 @@ class BackendExecutionService:
                 completed = self._run_monitored(command, spec, kwargs)
             else:
                 completed = self.runner(command, check=False, capture_output=True, text=True, timeout=self.timeout_seconds, **kwargs)
+        except ProcessingMonitorError as exc:
+            stage = "WALL_TIME" if exc.status == "timed_out" else "STALLED"
+            write_backend_log_entry(self.log_path, "execute", exc.reason, level="ERROR", stage=stage)
+            raise RuntimeError(exc.reason) from exc
         except subprocess.TimeoutExpired as exc:
-            write_backend_log_entry(self.log_path, "execute", f"PBM backend job timed out: {exc}", level="ERROR", stage="TIMEOUT")
-            raise RuntimeError(f"PBM backend job exceeded its configured custom wall time ({self.timeout_seconds} seconds).") from exc
+            write_backend_log_entry(self.log_path, "execute", f"PBM backend command timed out: {exc}", level="ERROR", stage="TIMEOUT")
+            raise RuntimeError("PBM backend command exceeded an explicit command timeout.") from exc
         except Exception as exc:  # noqa: BLE001 - convert subprocess errors at service boundary.
             write_backend_log_entry(self.log_path, "execute", f"PBM backend job failed to start: {exc}", level="ERROR", stage="START")
             raise RuntimeError(f"PBM backend job failed to start: {exc}") from exc
@@ -173,7 +182,7 @@ class BackendExecutionService:
                 decision = evaluate_liveness(self.timeout_policy, elapsed=elapsed, heartbeat_age=age, progress_age=None, started=True, product=spec.product)
                 if decision.status in {"stalled", "timed_out"}:
                     self._terminate_process_tree(process)
-                    raise subprocess.TimeoutExpired(command, elapsed, stderr=decision.reason)
+                    raise ProcessingMonitorError(decision.status, decision.reason)
             stdout_file.seek(0); stderr_file.seek(0)
             return subprocess.CompletedProcess(command, process.returncode, stdout_file.read(), stderr_file.read())
 

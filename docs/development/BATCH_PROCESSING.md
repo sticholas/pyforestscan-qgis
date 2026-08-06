@@ -202,3 +202,5 @@ Polygon Area Processing now builds a `PolygonExecutionPlan` during preflight and
 ## Phase 27O Notes
 
 Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.
+## Internal CHM scheduling
+The outer polygon Batch item remains one logical job. Bounded work-unit concurrency is internal and does not enable External Worker mode.

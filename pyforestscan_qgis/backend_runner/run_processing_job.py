@@ -52,8 +52,11 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
     """Run one backend job spec and return a structured result."""
     started = _utc_now()
     stop = threading.Event()
-    heartbeat = threading.Thread(target=_heartbeat_loop, args=(spec, stop, "Validating Inputs"), daemon=True)
+    heartbeat_state = {"stage": "Validating Inputs", "activity": "Validating backend request.", "current_work_unit_id": str(spec.product_parameters.get("work_unit_id", "")), "completed_count": int(spec.product_parameters.get("completed_count", 0)), "total_count": int(spec.product_parameters.get("total_count", 1)), "retry_count": int(spec.product_parameters.get("retry_count", 0))}
+    heartbeat_started = time.monotonic()
+    heartbeat = threading.Thread(target=_heartbeat_loop, args=(spec, stop, heartbeat_state, heartbeat_started), daemon=True)
     heartbeat.start()
+    _write_heartbeat(spec, heartbeat_state, heartbeat_started)
     try:
         adapter = PyForestScanAdapter(execution_mode="qgis_python")
         if spec.product == "dataset_inspection":
@@ -63,12 +66,14 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
         else:
             request = _request_from_spec(spec)
             validation = validate_processing_request(spec, request)
-            _write_heartbeat(spec, "Reading LiDAR", "Backend adapter is processing the selected source.")
+            heartbeat_state.update(stage="Reading LiDAR", activity="Backend adapter is processing the selected bounded source.")
+            _write_heartbeat(spec, heartbeat_state, heartbeat_started)
             _request_class, method_name = PRODUCT_REQUESTS[spec.product]
             result = getattr(adapter, method_name)(request)
             metrics = _json_ready(asdict(result))
             outputs = {"primary": Path(metrics.get("output_path", spec.output_paths.get("primary", "")))}
-        _write_heartbeat(spec, "Finalizing Output", "Product calculation completed.")
+        heartbeat_state.update(stage="Finalizing Output", activity="Product calculation completed.", completed_count=heartbeat_state["total_count"])
+        _write_heartbeat(spec, heartbeat_state, heartbeat_started)
         stop.set()
         return BackendJobResult(
             job_id=spec.job_id,
@@ -113,18 +118,17 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
         )
 
 
-def _write_heartbeat(spec: BackendJobSpec, stage: str, activity: str) -> None:
+def _write_heartbeat(spec: BackendJobSpec, state: dict[str, Any], started: float) -> None:
     path = spec.run_folder / "progress" / "heartbeat.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"job_id": spec.job_id, "attempt_id": str(spec.product_parameters.get("attempt_id", "attempt-1")), "timestamp": _utc_now(), "process_id": os.getpid(), "current_stage": stage, "current_product": spec.product, "latest_activity": activity, "elapsed_seconds": 0.0}
+    payload = {"job_id": spec.job_id, "attempt_id": str(spec.product_parameters.get("attempt_id", "attempt-1")), "timestamp": _utc_now(), "process_id": os.getpid(), "current_stage": state["stage"], "current_product": spec.product, "latest_activity": state["activity"], "elapsed_seconds": round(time.monotonic() - started, 3), "current_work_unit_id": state.get("current_work_unit_id", ""), "latest_completed_unit": state.get("latest_completed_unit", ""), "completed_count": state.get("completed_count", 0), "total_count": state.get("total_count", 1), "retry_count": state.get("retry_count", 0), "points_processed": state.get("points_processed"), "bytes_processed": state.get("bytes_processed"), "process_alive": True}
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     temporary.replace(path)
 
-def _heartbeat_loop(spec: BackendJobSpec, stop: threading.Event, stage: str) -> None:
-    started = time.monotonic()
+def _heartbeat_loop(spec: BackendJobSpec, stop: threading.Event, state: dict[str, Any], started: float) -> None:
     while not stop.wait(15):
-        _write_heartbeat(spec, stage, f"Backend process remains responsive ({time.monotonic()-started:.0f}s elapsed).")
+        _write_heartbeat(spec, state, started)
 
 def _run_dataset_inspection(adapter: PyForestScanAdapter, spec: BackendJobSpec):
     params = dict(spec.product_parameters)

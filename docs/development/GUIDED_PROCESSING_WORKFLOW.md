@@ -46,3 +46,5 @@ Guided Polygon Area Processing hides CRS mechanics when automatic resolution suc
 
 ## Long jobs and retries
 Active jobs may exceed one hour while heartbeats remain current. Retry creates a new attempt; the interface does not call restart-from-zero a resume.
+## Large CHM behavior
+Guided mode chooses bounded source-aware work automatically and shows completed/total counts. Scheduling controls remain under Advanced.
