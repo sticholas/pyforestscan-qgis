@@ -22,3 +22,8 @@ CHM is the only partition-enabled product in beta. It uses one grid, buffered re
 ## Phase 28F contracts
 
 EPT remains one logical source. CHM uses bounded buffered rectangles, aligned cores, mosaic, then one exact mask. Memory estimates include point and native overhead.
+
+
+## Phase 28G Exact Polygon Completion
+
+Exact-polygon planning now separates envelope candidates, required cores, and geometry-excluded cores. See [Exact Polygon Work-Unit Filtering](EXACT_POLYGON_WORK_UNIT_FILTERING.md).

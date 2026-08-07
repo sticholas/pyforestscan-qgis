@@ -10,7 +10,23 @@ def utc_now():return datetime.now(timezone.utc).isoformat()
 
 @dataclass(frozen=True)
 class ProcessingProgressSnapshot:
-    job_id:str;attempt_id:str;state:str;total_work_units:int;completed:int=0;failed:int=0;pending:int=0;running:int=0;attempted:int=0;current_work_unit_id:str="";current_stage:str="Preparing Job";current_activity:str="";elapsed_seconds:float=0.;last_heartbeat:str="";pilot_state:str="pending";circuit_breaker_state:str="closed";finalization_state:str="pending"
+    job_id:str;attempt_id:str;state:str;total_work_units:int;completed:int=0;failed:int=0;pending:int=0;running:int=0;attempted:int=0;current_work_unit_id:str="";current_stage:str="Preparing Job";current_activity:str="";elapsed_seconds:float=0.;last_heartbeat:str="";pilot_state:str="pending";circuit_breaker_state:str="closed";finalization_state:str="pending";source_count:int=1;candidate_work_units:int=0;required_work_units:int=0;skipped_outside_polygon:int=0;complete_nodata:int=0;stop_reason:str=""
+
+def aggregate_work_unit_statuses(folder,candidate_work_units,required_work_units):
+    counts={"completed":0,"complete_nodata":0,"failed":0,"pending":0,"running":0,"attempted":0,"skipped_outside_polygon":0}
+    for path in Path(folder).glob("wu-*/status.json"):
+        try:data=json.loads(path.read_text(encoding="utf-8"))
+        except (OSError,ValueError):continue
+        status=data.get("status","")
+        if status=="Complete":counts["completed"]+=1
+        elif status=="CompleteNoData":counts["complete_nodata"]+=1
+        elif status=="SkippedOutsidePolygon":counts["skipped_outside_polygon"]+=1
+        elif status=="Failed":counts["failed"]+=1
+        elif status in {"Starting","Running"}:counts["running"]+=1
+        elif status=="Pending":counts["pending"]+=1
+    counts["attempted"]=counts["completed"]+counts["complete_nodata"]+counts["failed"]+counts["running"]
+    counts["candidate_work_units"]=candidate_work_units;counts["required_work_units"]=required_work_units;counts["source_count"]=1
+    return counts
 
 class DurableJobCoordinator:
     def __init__(self,job_dir):

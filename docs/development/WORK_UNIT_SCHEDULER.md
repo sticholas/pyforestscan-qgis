@@ -9,3 +9,8 @@ Pause stops new submissions while active units reach checkpoints. Cancel prevent
 ## Durable terminal ordering
 
 Terminal unit state is persisted before circuit-breaker progress or another launch. Breaker history can be reconstructed.
+
+
+## Phase 28G Exact Polygon Completion
+
+Successful terminal states now include `CompleteNoData` and `SkippedOutsidePolygon`; neither reaches the circuit breaker. Durable status files remain authoritative for resume and progress.

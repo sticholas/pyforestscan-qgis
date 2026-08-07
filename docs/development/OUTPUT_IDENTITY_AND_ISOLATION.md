@@ -9,3 +9,8 @@ Buffered and core tiles are attempt-scoped intermediates. Only the verified, com
 ## Scientific identity
 
 Core identity includes HAG method and grid signatures. Existing-HAG and Delaunay outputs cannot be mixed silently.
+
+
+## Phase 28G Exact Polygon Completion
+
+Sparse core files are internal checkpoints. Results and QGIS loading continue to expose only the verified final current-job raster.

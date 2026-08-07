@@ -304,6 +304,9 @@ class PyForestScanAdapter:
             self._progress.update(35, "Point cloud loaded")
             point_array = _merge_point_cloud_arrays(point_cloud)
             names = getattr(point_array.dtype, "names", ()) or ()
+            if planned_method == "existing_normalized_height":
+                from .chm_work_unit_execution import validate_existing_hag_array
+                validate_existing_hag_array(point_array, request)
             required = {"X", "Y", "HeightAboveGround"}
             missing = sorted(required.difference(names))
             if missing:

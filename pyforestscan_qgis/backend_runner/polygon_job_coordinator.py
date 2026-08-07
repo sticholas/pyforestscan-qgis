@@ -2,7 +2,7 @@
 from __future__ import annotations
 import argparse,os,pickle,time,traceback
 from pathlib import Path
-from pyforestscan_qgis.backend_runner.job_coordinator import DurableJobCoordinator,ProcessingProgressSnapshot,utc_now
+from pyforestscan_qgis.backend_runner.job_coordinator import DurableJobCoordinator,ProcessingProgressSnapshot,aggregate_work_unit_statuses,utc_now
 from pyforestscan_qgis.core.atomic_state import atomic_write_json
 from pyforestscan_qgis.core.adapter import PyForestScanAdapter
 
@@ -17,8 +17,8 @@ def run_payload(payload_path):
     with Path(payload_path).open("rb") as stream:payload=pickle.load(stream)
     job_dir=Path(payload["job_dir"]);job_id=payload["job_id"];attempt_id=payload["attempt_id"];coordinator=DurableJobCoordinator(job_dir);coordinator.recover();coordinator.write_identity(job_id,attempt_id,os.sys.argv);started=time.monotonic()
     def progress(item):
-        stage=getattr(item,"status","Processing");message=getattr(item,"message","")
-        coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,"running",len(payload["plan"].work_units),current_stage=str(stage),current_activity=str(message),elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now()))
+        stage=getattr(item,"status","Processing");message=getattr(item,"message","");plan=payload["plan"];counts=aggregate_work_unit_statuses(payload["context"].run_folder/"work_units",plan.candidate_count,plan.required_count)
+        coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,"running",plan.candidate_count,completed=counts["completed"]+counts["complete_nodata"],failed=counts["failed"],pending=counts["pending"],running=counts["running"],attempted=counts["attempted"],current_stage=str(stage),current_activity=str(message),elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now(),candidate_work_units=plan.candidate_count,required_work_units=plan.required_count,skipped_outside_polygon=counts["skipped_outside_polygon"],complete_nodata=counts["complete_nodata"]))
     try:
         os.environ["PYFORESTSCAN_POLYGON_COORDINATOR"]="1"
         from pyforestscan_qgis.core.polygon_batch import _execute_source_aware_chm
@@ -28,7 +28,8 @@ def run_payload(payload_path):
         result_path=job_dir/"coordinator_result.pkl";_atomic_pickle(result_path,result)
         state="scientific_blocker" if failed else "complete"
         atomic_write_json(job_dir/"terminal_result.json",{"job_id":job_id,"attempt_id":attempt_id,"state":state,"result_path":str(result_path),"error":"One or more required work areas failed." if failed else "","finished_at":utc_now()})
-        coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,state,len(payload["plan"].work_units),completed=len(payload["plan"].work_units) if not failed else 0,current_stage="Scientific Blocker" if failed else "Complete",finalization_state="blocked" if failed else "complete",elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now()))
+        plan=payload["plan"];counts=aggregate_work_unit_statuses(payload["context"].run_folder/"work_units",plan.candidate_count,plan.required_count)
+        coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,state,plan.candidate_count,completed=counts["completed"]+counts["complete_nodata"],failed=counts["failed"],pending=counts["pending"],running=counts["running"],attempted=counts["attempted"],current_stage="Scientific Blocker" if failed else "Complete",current_activity="Completed work was preserved." if failed else "",circuit_breaker_state="open" if failed else "closed",finalization_state="blocked" if failed else "complete",elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now(),candidate_work_units=plan.candidate_count,required_work_units=plan.required_count,skipped_outside_polygon=counts["skipped_outside_polygon"],complete_nodata=counts["complete_nodata"],stop_reason="One or more required work areas failed." if failed else ""))
         return 1 if failed else 0
     except Exception as exc:
         atomic_write_json(job_dir/"terminal_result.json",{"job_id":job_id,"attempt_id":attempt_id,"state":"failed","error":str(exc),"traceback":traceback.format_exc(),"finished_at":utc_now()})

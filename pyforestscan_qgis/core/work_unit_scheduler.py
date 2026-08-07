@@ -4,11 +4,16 @@ import hashlib,json,threading,time
 from concurrent.futures import FIRST_COMPLETED,ThreadPoolExecutor,wait
 from dataclasses import asdict,dataclass,field,replace
 from datetime import datetime,timezone
+from enum import Enum
 from pathlib import Path
 from .source_aware_processing import WorkUnit
 from .atomic_state import atomic_write_json,remove_invalid_temporaries
 
-DETERMINISTIC_CODES={"HAG_COLLINEAR_INPUT","EMPTY_SPATIAL_READ","HAG_INSUFFICIENT_GROUND","HAG_INVALID_GEOMETRY"}
+class WorkUnitStatus(str,Enum):
+    PENDING="Pending";STARTING="Starting";RUNNING="Running";COMPLETE="Complete";COMPLETE_NODATA="CompleteNoData";SKIPPED_OUTSIDE_POLYGON="SkippedOutsidePolygon";FAILED="Failed";CANCELLED="Cancelled";INTERRUPTED="Interrupted"
+
+DETERMINISTIC_CODES={"HAG_COLLINEAR_INPUT","HAG_INSUFFICIENT_GROUND","HAG_INVALID_GEOMETRY","HAG_METHOD_MISMATCH","FAILED_EMPTY_READ"}
+SUCCESS_STATUSES={WorkUnitStatus.COMPLETE.value,WorkUnitStatus.COMPLETE_NODATA.value,WorkUnitStatus.SKIPPED_OUTSIDE_POLYGON.value}
 NATIVE_CRASH_CODE="NATIVE_BACKEND_CRASH"
 
 @dataclass(frozen=True)
@@ -34,9 +39,13 @@ class WorkFailureCircuitBreaker:
         if code==NATIVE_CRASH_CODE and sum(item[0]==code for item in self._history)>=self.native_crash_threshold:return CircuitBreakerDecision(True,False,"Processing stopped because a native LiDAR worker crashed.",signature)
         if code not in DETERMINISTIC_CODES:return CircuitBreakerDecision()
         matching=[item for item in self._history if item[:2]==(code,signature)]
-        if len(matching)>=self.stop_threshold:return CircuitBreakerDecision(True,False,"Processing stopped after repeated identical ground-normalization failures.",signature)
+        category="empty-read" if code=="FAILED_EMPTY_READ" else "height-normalization"
+        stop_message="Processing stopped because LiDAR points were expected in repeated required areas but could not be read." if category=="empty-read" else "Processing stopped after repeated identical height-normalization failures."
+        if len(matching)>=self.stop_threshold:return CircuitBreakerDecision(True,False,stop_message,signature)
         adjacent=_adjacent_tail(matching)
-        if adjacent>=self.pause_threshold:return CircuitBreakerDecision(False,True,"Processing paused after repeated ground-normalization failures in neighboring areas.",signature)
+        if adjacent>=self.pause_threshold:
+            message="Processing paused because adjacent required areas unexpectedly returned no LiDAR points." if code=="FAILED_EMPTY_READ" else "Processing paused after repeated height-normalization failures in neighboring areas."
+            return CircuitBreakerDecision(False,True,message,signature)
         return CircuitBreakerDecision()
     def rebuild(self,results):
         decision=CircuitBreakerDecision()
@@ -62,7 +71,9 @@ class CheckpointStore:
         d=self.load(unit_id)
         if not d:return None
         out=Path(d["output_path"]) if d.get("output_path") else None
-        if d.get("job_signature")!=self.signature or d.get("status")!="Complete" or out is None or not out.is_file() or _checksum(out)!=d.get("checksum"):return None
+        if d.get("job_signature")!=self.signature or d.get("status") not in SUCCESS_STATUSES:return None
+        if d.get("status") in {"CompleteNoData","SkippedOutsidePolygon"}:return WorkUnitResult(unit_id,d["status"],attempt_count=int(d.get("attempt_count",1)),metrics=d.get("metrics",{}))
+        if out is None or not out.is_file() or _checksum(out)!=d.get("checksum"):return None
         return WorkUnitResult(unit_id,"Complete",out,int(d.get("attempt_count",1)),float(d.get("runtime_seconds",0)),checksum=d["checksum"],metrics=d.get("metrics",{}))
     def reconcile(self,unit_id,*,pid_alive=lambda _pid:False,result_path=None):
         remove_invalid_temporaries(self.path(unit_id).parent)
@@ -127,7 +138,7 @@ class PolygonProductWorkScheduler:
         return result
     def _emit(self,started,results,active,retries,pending,terminal=False):
         if not self.callback:return
-        completed=sum(x.status=="Complete" for x in results.values());failed=sum(x.status=="Failed" for x in results.values());elapsed=time.monotonic()-started;attempted=completed+failed+len(active);rate=completed/elapsed if elapsed else 0;eta=pending/rate if completed>=2 and rate>0 else None
+        completed=sum(x.status in SUCCESS_STATUSES for x in results.values());failed=sum(x.status=="Failed" for x in results.values());elapsed=time.monotonic()-started;attempted=completed+failed+len(active);rate=completed/elapsed if elapsed else 0;eta=pending/rate if completed>=2 and rate>0 else None
         stage="Needs Technical Review" if self.stop_reason else ("Paused" if self._pause.is_set() else ("Finalizing" if terminal else "Processing Work Units"))
         self.callback(SchedulerProgress(stage,completed,len(self.units),failed,len(active),retries,elapsed,tuple(v[0].work_unit_id for v in active.values()),next(reversed(results),"") if results else "",eta,attempted,max(0,len(self.units)-completed-failed-len(active)),bool(self._pause.is_set()),self.stop_reason))
 
@@ -142,7 +153,7 @@ def _exception_code(exc):
     if explicit:return str(getattr(explicit,"value",explicit))
     text=str(exc).lower()
     if "collinear" in text:return "HAG_COLLINEAR_INPUT"
-    if "empty point" in text or "no point" in text:return "EMPTY_SPATIAL_READ"
+    if "empty point" in text or "no point" in text:return "FAILED_EMPTY_READ"
     if "native" in text and "crash" in text:return NATIVE_CRASH_CODE
     return "EXECUTION_FAILED"
 def _error_signature(result):

@@ -388,6 +388,7 @@ def polygon_preflight_text(report: PolygonBatchPreflightReport) -> str:
     repository_type = "EPT dataset" if repository_kind == "ept" or (_is_logical_spatial_report(report) and report.selected_sources[0].source_type == "ept") else "LiDAR repository"
     estimate_text = _readable_point_estimate(report.estimated_point_count, None if query is None else query.point_estimate_confidence)
     workload = _workload_label(report.estimated_point_count, report.estimated_source_bytes)
+    work_plan = build_source_aware_chm_plan(report)
     timing = getattr(query, "timing_seconds", {}) if query is not None else {}
     lines = [
         "Polygon Preflight",
@@ -402,6 +403,7 @@ def polygon_preflight_text(report: PolygonBatchPreflightReport) -> str:
         f"Plan status: Current",
         f"Estimated workload: {workload}",
         f"Estimated points: {estimate_text}",
+        *( [] if work_plan is None else [f"Processing grid: {work_plan.candidate_count} candidate areas",f"Inside polygon: {work_plan.required_count} required areas",f"Outside polygon: {work_plan.skipped_count} skipped areas"] ),
         f"Output: {report.request.output_folder}",
         f"Warnings: {len(report.warnings)}",
         "",
@@ -638,6 +640,7 @@ def build_source_aware_chm_plan(report: PolygonBatchPreflightReport):
         available_memory_bytes=8 * 1024**3,
         cpu_count=max(1, _shared_options(report).worker_count),
         profile="recommended",
+        polygon_wkt=report.query_geometry.exact_polygon_wkt,
     )
 
 def _source_aware_chm_plan_dict(report: PolygonBatchPreflightReport):
@@ -810,7 +813,14 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         return _submit_and_observe_source_aware_chm(report,adapter,batch_folder,context,source,plan,item_callback=item_callback)
     started_at = datetime.now(timezone.utc).isoformat()
     signature = report.plan_signature or getattr(report.execution_plan, "plan_signature", "") or "source-aware-chm"
+    from .job_recovery import reconcile_polygon_job
+    recovery=reconcile_polygon_job(context.run_folder / "work_units",plan,signature,expected_hag_method_signature=hag_method_signature("existing_normalized_height","HeightAboveGround"))
+    if recovery.recovered_complete and item_callback is not None:
+        _emit_polygon_stage(item_callback,source,context,"Recovering completed work",recovery.message)
+        _emit_polygon_stage(item_callback,source,context,"Processing remaining areas","Continuing all required unfinished processing areas automatically.")
     checkpoint = CheckpointStore(context.run_folder / "work_units", signature)
+    for skipped in plan.skipped_work_units:
+        checkpoint.save_state(skipped.work_unit_id,"SkippedOutsidePolygon",{"reason_code":"OUTSIDE_EXACT_POLYGON","polygon_intersection_area":skipped.polygon_intersection_area,"polygon_coverage_percent":skipped.polygon_coverage_percent,"buffered_polygon_intersects":skipped.buffered_polygon_intersects,"source_coverage_expectation":skipped.source_coverage_expectation,"output_required":False,"work_unit":{"core_extent":skipped.core_extent.__dict__,"read_extent":skipped.read_extent.__dict__}})
 
     def execute_unit(unit, attempt):
         unit_folder = context.run_folder / "work_units" / unit.work_unit_id
@@ -820,10 +830,25 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         request = _logical_product_request(ProductType.CHM, source.path, buffered_path, report)
         read = unit.read_extent
         request = replace(request, bounds=EptBounds.from_value(((read.xmin, read.xmax), (read.ymin, read.ymax)), crs=report.query_geometry.catalog_crs).to_json())
-        request = replace(request,crop_polygon=None,crop_polygon_path=None,polygon_execution_input=None,work_unit_id=unit.work_unit_id,attempt_id=f"attempt-{attempt}",completed_count=max(0,unit.execution_order-1),total_count=len(plan.work_units),inspect_hag_suitability=True,hag_method="existing_normalized_height",hag_source_dimension="HeightAboveGround",hag_method_signature=hag_method_signature("existing_normalized_height","HeightAboveGround"))
-        result = _run_logical_product(adapter, ProductType.CHM, request)
+        request = replace(request,crop_polygon=None,crop_polygon_path=None,polygon_execution_input=None,work_unit_id=unit.work_unit_id,attempt_id=f"attempt-{attempt}",completed_count=max(0,unit.execution_order-1),total_count=len(plan.work_units),inspect_hag_suitability=True,hag_method="existing_normalized_height",hag_source_dimension="HeightAboveGround",hag_method_signature=hag_method_signature("existing_normalized_height","HeightAboveGround"),diagnostics_path=unit_folder/"diagnostics",polygon_intersection_area=unit.polygon_intersection_area,polygon_coverage_percent=unit.polygon_coverage_percent)
+        from dataclasses import asdict
+        from .chm_work_unit_execution import write_work_unit_diagnostic
+        write_work_unit_diagnostic(request.diagnostics_path,"request.json",asdict(request))
+        write_work_unit_diagnostic(request.diagnostics_path,"geometry.json",{"work_unit_id":unit.work_unit_id,"core_extent":unit.core_extent.__dict__,"read_extent":unit.read_extent.__dict__,"polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature})
+        try:
+            result = _run_logical_product(adapter, ProductType.CHM, request)
+        except Exception as exc:
+            if "empty point" not in str(exc).lower() and "no point" not in str(exc).lower():raise
+            from .empty_spatial_read import classify_empty_spatial_read
+            decision=classify_empty_spatial_read(core_intersection_area=unit.polygon_intersection_area,source_coverage_expected=True,read_completed=True)
+            write_work_unit_diagnostic(request.diagnostics_path,"empty_read_classification.json",decision.__dict__)
+            if decision.status=="CompleteNoData":
+                write_work_unit_diagnostic(request.diagnostics_path,"result.json",{"status":"CompleteNoData","reason_code":decision.reason_code,"message":decision.message})
+                return WorkUnitResult(unit.work_unit_id,"CompleteNoData",attempt_count=attempt,message=decision.message,metrics={"reason_code":decision.reason_code,"polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"output_required":False,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature})
+            error=RuntimeError(decision.message);error.code="FAILED_EMPTY_READ";raise error
         _extract_core_raster(Path(result.output_path), core_path, unit.core_extent)
-        return WorkUnitResult(unit.work_unit_id, "Complete", core_path, attempt_count=attempt, metrics={"core_extent":unit.core_extent.__dict__,"read_extent":unit.read_extent.__dict__,"hag_method":request.hag_method,"hag_source_dimension":request.hag_source_dimension,"hag_method_signature":request.hag_method_signature,"point_crop_policy":"buffered_rectangle_then_final_mask"})
+        write_work_unit_diagnostic(request.diagnostics_path,"result.json",{"status":"Complete","buffered_output":str(result.output_path),"core_output":str(core_path),"executed_method":request.hag_method})
+        return WorkUnitResult(unit.work_unit_id, "Complete", core_path, attempt_count=attempt, metrics={"core_extent":unit.core_extent.__dict__,"read_extent":unit.read_extent.__dict__,"hag_method":request.hag_method,"hag_source_dimension":request.hag_source_dimension,"hag_method_signature":request.hag_method_signature,"point_crop_policy":"buffered_rectangle_then_final_mask","polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature})
 
     def progress(event):
         if item_callback is None:
@@ -844,7 +869,9 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         first = failed[0] if failed else pending[0]
         message = scheduler.stop_reason or f"{len(failed)} CHM work units failed and {len(pending)} remain pending. First affected unit {first.work_unit_id}: {first.message}"
     else:
-        _mosaic_core_rasters(tuple(item.output_path for item in results if item.output_path), final_unmasked, plan)
+        raster_paths=tuple(item.output_path for item in results if item.status=="Complete" and item.output_path)
+        if raster_paths:_mosaic_core_rasters(raster_paths, final_unmasked, plan)
+        else:_create_empty_aligned_raster(final_unmasked,plan)
         final_path = context.outputs_dir / "chm.tif"
         final_path.parent.mkdir(parents=True, exist_ok=True)
         final_unmasked.replace(final_path)
@@ -852,7 +879,8 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         mask_results = _mask_paths(outputs, report)
         failures = [item for item in mask_results if item.status == "failed"]
         status = "failed" if failures else "completed"
-        message = "; ".join(item.message for item in failures) if failures else f"Source-aware CHM completed from {len(results)} verified work units."
+        nodata_count=sum(item.status=="CompleteNoData" for item in results)
+        message = "; ".join(item.message for item in failures) if failures else ("Processing completed. Areas without LiDAR returns are represented as NoData." if nodata_count else f"Source-aware CHM completed from {len(results)} verified required work units.")
     item = BatchItemResult(Path(source.path), context, status, message, tuple(outputs), _requested_extent_summary(report))
     result = BatchResult("polygon-source-aware-chm", report.request.title, started_at, datetime.now(timezone.utc).isoformat(), batch_folder, (item,), batch_folder / "batch_summary.json", batch_folder / "batch_summary.csv", batch_folder / "batch_summary.html", load_outputs_after_completion=_shared_options(report).load_outputs_after_completion)
     result = _register_polygon_outputs(result, report, mask_results)
@@ -873,8 +901,8 @@ def _extract_core_raster(source_path: Path, output_path: Path, extent: SpatialEx
     temporary.replace(output_path)
 
 def _mosaic_core_rasters(paths, output_path: Path, plan) -> None:
-    if len(paths) != len(plan.work_units) or any(path is None or not Path(path).is_file() for path in paths):
-        raise RuntimeError("CHM mosaic requires every verified core work-unit raster.")
+    if not paths or any(path is None or not Path(path).is_file() for path in paths):
+        raise RuntimeError("CHM mosaic requires at least one verified required-core raster.")
     try:
         from osgeo import gdal
     except ImportError as exc:
@@ -887,6 +915,18 @@ def _mosaic_core_rasters(paths, output_path: Path, plan) -> None:
     translated = gdal.Translate(str(temporary), str(vrt), creationOptions=("TILED=YES", "COMPRESS=DEFLATE"))
     if translated is None: raise RuntimeError("CHM transactional mosaic write failed.")
     translated = None; vrt.unlink(missing_ok=True); temporary.replace(output_path)
+
+def _create_empty_aligned_raster(output_path: Path,plan) -> None:
+    try:
+        from osgeo import gdal,osr
+    except ImportError as exc:
+        raise RuntimeError("GDAL is required to create an aligned NoData CHM raster.") from exc
+    output_path.parent.mkdir(parents=True,exist_ok=True);temporary=output_path.with_suffix(".partial.tif")
+    dataset=gdal.GetDriverByName("GTiff").Create(str(temporary),plan.grid.columns,plan.grid.rows,1,gdal.GDT_Float32,options=("TILED=YES","COMPRESS=DEFLATE"))
+    if dataset is None:raise RuntimeError("Aligned NoData CHM creation failed.")
+    dataset.SetGeoTransform((plan.grid.origin_x,plan.grid.resolution,0.0,plan.grid.total_extent.ymax,0.0,-plan.grid.resolution))
+    reference=osr.SpatialReference();reference.SetFromUserInput(plan.grid.crs);dataset.SetProjection(reference.ExportToWkt())
+    band=dataset.GetRasterBand(1);band.SetNoDataValue(plan.grid.nodata);band.Fill(plan.grid.nodata);band.FlushCache();dataset=None;temporary.replace(output_path)
 
 def _transient_work_unit_error(exc: Exception) -> bool:
     text = str(exc).lower()

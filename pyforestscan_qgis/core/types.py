@@ -164,6 +164,9 @@ class ChmRequest:
     hag_method: str = "classified_ground_delaunay"
     hag_source_dimension: str = "HeightAboveGround"
     hag_method_signature: str = ""
+    diagnostics_path: Path | None = None
+    polygon_intersection_area: float = 0.0
+    polygon_coverage_percent: float = 0.0
 
 
 @dataclass(frozen=True)

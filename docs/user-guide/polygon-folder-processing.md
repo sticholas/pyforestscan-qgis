@@ -149,3 +149,8 @@ For EPT repositories, Mission Control reads coordinate-system metadata from `ept
 Only when EPT metadata is incomplete does Mission Control ask for a LiDAR coordinate system. It does not ask users to calculate coordinates manually.
 ## Large CHM requests
 Prerun reports area, output grid, bounded units, source strategy, concurrency, exact clipping, and automatic HAG. EPT root totals are not polygon-subset estimates.
+
+
+## Phase 28G Exact Polygon Completion
+
+Irregular polygon jobs now skip grid cores with zero exact-polygon area. Legitimately empty required areas remain NoData and do not make the run a scientific failure.

@@ -217,8 +217,6 @@ def _parse_polygon_coordinates(body: str) -> list[list[list[float]]]:
 
 def _split_rings(body: str) -> list[str]:
     text = body.strip()
-    if text.startswith("(") and text.endswith(")"):
-        text = text[1:-1]
     rings: list[str] = []
     depth = 0
     start = 0

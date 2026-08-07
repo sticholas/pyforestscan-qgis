@@ -95,3 +95,8 @@ EPT CRS detection now handles WKT/WKT2, PROJJSON, and authority plus horizontal 
 ## Phase 28F live validation
 
 Real formerly collinear EPT, medium job, QGIS restart, equivalence, and full 120-unit tests remain pending. Scalable tiling remains CHM-only.
+
+
+## Phase 28G Exact Polygon Completion
+
+Phase 28G exact filtering and recovery are covered by QGIS-free regression tests, but the reported 120-area job still requires the documented live QGIS completion sequence before release promotion.

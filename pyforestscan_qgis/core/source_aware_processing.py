@@ -58,11 +58,21 @@ PRODUCT_POLICIES={
 
 @dataclass(frozen=True)
 class WorkUnit:
-    work_unit_id: str; unit_type: WorkUnitType; source_paths: tuple[Path,...]; core_extent: SpatialExtent; read_extent: SpatialExtent; row_start: int; row_end: int; column_start: int; column_end: int; execution_order: int; estimated_memory: int; status: str="Pending"
+    work_unit_id: str; unit_type: WorkUnitType; source_paths: tuple[Path,...]; core_extent: SpatialExtent; read_extent: SpatialExtent; row_start: int; row_end: int; column_start: int; column_end: int; execution_order: int; estimated_memory: int; status: str="Pending"; polygon_intersection_area:float=0.0;polygon_coverage_percent:float=0.0;required_for_output:bool=True;planning_reason:str="core intersects polygon";buffered_polygon_intersects:bool=False;source_coverage_expectation:str="unknown"
 
 @dataclass(frozen=True)
 class SourceAwareWorkPlan:
-    repository_kind: str; product: str; grid: AlignedRasterGrid; work_units: tuple[WorkUnit,...]; concurrency_limit: int; workload_category: str; memory_category: str; merge_strategy: str; retry_policy: str; checkpoint_policy: str; scientific_assumptions: tuple[str,...]; source_location: str; physical_retiling: bool=False
+    repository_kind: str; product: str; grid: AlignedRasterGrid; work_units: tuple[WorkUnit,...]; concurrency_limit: int; workload_category: str; memory_category: str; merge_strategy: str; retry_policy: str; checkpoint_policy: str; scientific_assumptions: tuple[str,...]; source_location: str; physical_retiling: bool=False;candidate_work_units:tuple[WorkUnit,...]=();skipped_work_units:tuple[WorkUnit,...]=();exact_polygon_signature:str="";buffer_policy:str="";hag_method_signature:str=""
+    @property
+    def candidate_count(self):return len(self.candidate_work_units or self.work_units)
+    @property
+    def required_count(self):return len(self.work_units)
+    @property
+    def skipped_count(self):return len(self.skipped_work_units)
+    @property
+    def plan_signature(self):
+        payload={"grid_signature":self.grid.grid_signature,"repository_kind":self.repository_kind,"product":self.product,"exact_polygon_signature":self.exact_polygon_signature,"buffer_policy":self.buffer_policy,"hag_method_signature":self.hag_method_signature,"required_ids":[unit.work_unit_id for unit in self.work_units],"skipped_ids":[unit.work_unit_id for unit in self.skipped_work_units],"source_identity":sorted({str(path) for unit in self.candidate_work_units for path in unit.source_paths})}
+        return hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest()
     def to_dict(self):
         def conv(v):
             if isinstance(v,Path): return str(v)
@@ -94,7 +104,7 @@ def sizing_policy(*,repository_kind,product,resolution,available_memory_bytes,cp
     return WorkUnitSizingPolicy(width,width,buffer,25_000_000,per_unit,concurrency,'Adaptive size reflects storage, memory, product, and profile.','medium' if point_density is None else 'high')
 
 class SourceAwareWorkPlanner:
-    def plan(self,*,repository_kind,sources,polygon_envelope,processing_crs,product,resolution,available_memory_bytes=8*1024**3,cpu_count=2,profile='recommended'):
+    def plan(self,*,repository_kind,sources,polygon_envelope,processing_crs,product,resolution,available_memory_bytes=8*1024**3,cpu_count=2,profile='recommended',polygon_wkt=None):
         policy=PRODUCT_POLICIES.get(product)
         if policy is None or not policy.partitionable: raise ValueError(f"{product} does not have a validated partition policy.")
         grid=AlignedRasterGrid.from_extent(polygon_envelope,resolution,processing_crs)
@@ -103,12 +113,23 @@ class SourceAwareWorkPlanner:
         if repository_kind=='ept': units=self._windows(grid,paths,WorkUnitType.EPT_WINDOW,sizing)
         elif repository_kind=='copc': units=self._copc(grid,paths,sizing)
         else: units=self._native(grid,paths,sizing)
+        candidates=tuple(units);skipped=()
+        if polygon_wkt:
+            from dataclasses import replace
+            from .work_unit_geometry import measure_core_polygon_intersection
+            measured=[]
+            for unit in candidates:
+                intersection=measure_core_polygon_intersection(unit.core_extent,polygon_wkt);buffered=measure_core_polygon_intersection(unit.read_extent,polygon_wkt)
+                measured.append(replace(unit,polygon_intersection_area=intersection.intersection_area,polygon_coverage_percent=intersection.coverage_percent,required_for_output=intersection.intersects,status="Pending" if intersection.intersects else "SkippedOutsidePolygon",planning_reason="positive core/polygon area" if intersection.intersects else "zero exact core/polygon area",buffered_polygon_intersects=buffered.intersects,source_coverage_expectation="expected"))
+            candidates=tuple(measured);units=[unit for unit in candidates if unit.required_for_output];skipped=tuple(unit for unit in candidates if not unit.required_for_output)
         cells=grid.rows*grid.columns; workload='Small' if cells<5_000_000 else 'Moderate' if cells<25_000_000 else 'Large' if cells<100_000_000 else 'Very Large'
         peak=max((unit.estimated_memory for unit in units),default=cells*4)
         memory='Low' if peak<256*1024**2 else 'Moderate' if peak<1024**3 else 'High' if peak<3*1024**3 else 'Very High'
         assumptions=[f"Global {resolution:g}-unit grid.",f"{sizing.buffer_distance:g}-unit CHM read buffer.","Exact polygon mask is applied after mosaic."]
         if repository_kind=='ept' and product=='chm' and sizing.maximum_concurrent_units==1:assumptions.extend(("Safe processing mode is active for this EPT job.","Parallel EPT HAG workers are temporarily limited while native-worker stability is being validated."))
-        return SourceAwareWorkPlan(repository_kind,product,grid,tuple(units),sizing.maximum_concurrent_units,workload,memory,policy.merge_rule,'transient failures: 2; deterministic input/HAG failures: 0','verify and persist every completed core tile',tuple(assumptions),location)
+        polygon_signature=hashlib.sha256((polygon_wkt or "").strip().encode()).hexdigest() if polygon_wkt else ""
+        hag_signature=hashlib.sha256(b"existing_normalized_height:HeightAboveGround").hexdigest()
+        return SourceAwareWorkPlan(repository_kind,product,grid,tuple(units),sizing.maximum_concurrent_units,workload,memory,policy.merge_rule,'transient failures: 2; deterministic input/HAG failures: 0','verify and persist every completed core tile',tuple(assumptions),location,False,candidates,skipped,polygon_signature,f"buffer={sizing.buffer_distance:g}",hag_signature)
     def _windows(self,grid,sources,kind,sizing):
         cols=max(1,round(sizing.target_width/grid.resolution));rows=max(1,round(sizing.target_height/grid.resolution));out=[];n=0
         for r0 in range(0,grid.rows,rows):

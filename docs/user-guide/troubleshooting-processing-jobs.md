@@ -52,3 +52,8 @@ The output includes the raw SRS object, resolved CRS, parser source, root bounds
 Automatic mode does not stop a responsive job merely because one hour elapsed. Check the current stage, elapsed time, and last heartbeat. A verification timeout means **Check Timed Out**, not a missing package; retry the fast check or run detailed verification before repairing.
 ## Collinear ground geometry
 Affected units report that ground normalization could not construct a surface. Scientific details retain `All points collinear`; identical Delaunay retries are disabled.
+
+
+## Phase 28G Exact Polygon Completion
+
+An unexpected empty read now reports that LiDAR points were expected but could not be read. It is no longer described as a ground-normalization failure.

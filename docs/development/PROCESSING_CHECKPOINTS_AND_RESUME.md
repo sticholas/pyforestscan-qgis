@@ -9,3 +9,8 @@ Completed units survive transient failure and restart. Resume skips valid units;
 ## One logical job
 
 Reuse is automatic and signature-based. Users are not asked for a starting unit.
+
+
+## Phase 28G Exact Polygon Completion
+
+Compatible completed core rasters are preserved across required-set reconciliation. Skipped candidates use compact planning status records and no worker directories beyond that record.

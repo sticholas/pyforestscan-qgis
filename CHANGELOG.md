@@ -173,3 +173,8 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 - Enforced existing-HAG execution and rectangular buffered reads.
 - Added conservative memory estimates, pilot selection, durable coordinator contracts, atomic state, late-result adoption, and breaker reconstruction.
 - Real EPT and full-job live validation remain pending.
+
+
+## Phase 28G Exact Polygon Completion
+
+- Phase 28G filters polygon CHM work by exact core intersection, adds explicit valid-NoData semantics, sparse aligned mosaicing, geometry-driven checkpoint recovery, shared HAG diagnostics, and durable progress aggregation.
