@@ -100,3 +100,8 @@ Real formerly collinear EPT, medium job, QGIS restart, equivalence, and full 120
 ## Phase 28G Exact Polygon Completion
 
 Phase 28G exact filtering and recovery are covered by QGIS-free regression tests, but the reported 120-area job still requires the documented live QGIS completion sequence before release promotion.
+
+
+## Phase 28H Adaptive Scale and Compact Workspace
+
+Phase 28H adaptive scale and current-job isolation are covered by QGIS-free tests. Live PBM pilot calibration, real small/medium/very-large timings, two-coordinator stale-output behavior, and 420-800 px visual checks remain pending.

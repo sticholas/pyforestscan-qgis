@@ -424,3 +424,8 @@ On Windows internal beta builds, Mission Control labels the button **Install Bac
 Preview Install Plan shows where the user-local backend will be installed, which manifest packages are included, which platform was detected, transaction stages, warnings, verification steps, rollback/repair notes, and offline-install placeholders. Repair shows guidance and logs; update/remove execution remains planned.
 
 PBM will not modify QGIS Python, QGIS install folders, system Python, global user site-packages, or user environment variables. QGIS 3.x is the supported target. QGIS 4.x compatibility checks are defensive and must be tested when QGIS 4.x is available. Environment Check now separates QGIS / Plugin Runtime, PBM Managed Backend, Execution Readiness, QGIS Python fallback environment, and Recommended Next Step. Dataset Explorer local LAS/LAZ/COPC inspection plus CHM, Canopy Cover, PAD, PAI, FHD, Rumple, DTM, Point Density, and Voxel Statistic are routed through PBM when ready. Height Above Ground point-cloud export and Preprocess Point Cloud still require QGIS Python dependencies until routed.
+
+
+## Phase 28H Adaptive Scale and Compact Workspace
+
+For normal work, remain on **Process**: choose LiDAR data and area, select products and output, then select **Process LiDAR**. The current result and QGIS loading actions appear on the same page. Backend, guidance, preferences, and advanced tools are under **Tools & Setup**.

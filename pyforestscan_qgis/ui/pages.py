@@ -1993,13 +1993,21 @@ class BatchPage(MissionPage):
     """Folder-to-products batch workflow with standard and polygon-area modes."""
 
     jobUpdated = pyqtSignal(object)
+    jobUpdatedForJob = pyqtSignal(object, object)
     batchCompleted = pyqtSignal(object)
+    batchCompletedForJob = pyqtSignal(object, object)
+    logicalJobStarted = pyqtSignal(object)
+    loadCurrentOutputsRequested = pyqtSignal()
+    openCurrentOutputFolderRequested = pyqtSignal()
+    clearCurrentResultRequested = pyqtSignal()
     sessionStateChanged = pyqtSignal(object)
 
     def __init__(self, adapter: PyForestScanAdapter, iface: object | None = None, parent: QWidget | None = None) -> None:
         """Create the Batch page."""
-        super().__init__("Batch", parent)
+        super().__init__("Process", parent)
         self.adapter = adapter
+        self._job_token_factory = None
+        self._current_job_token = None
         self.iface = iface
         self.discovered_paths: list[Path] = []
         self.latest_result: object | None = None
@@ -2026,6 +2034,8 @@ class BatchPage(MissionPage):
         self.batch_mode_combo.setToolTip("Choose folder processing or processing limited to a polygon.")
         self.batch_mode_summary_label = _details_label("Process LiDAR files found in a selected folder.")
         mode_layout.addWidget(self.batch_mode_summary_label)
+        self.smart_status_label = _body_label("Needs attention: select LiDAR data, processing area, product, and output.")
+        mode_layout.addWidget(self.smart_status_label)
 
         self.repository_section, repository_layout = self.create_section("LiDAR Data")
         self.standard_batch_section = self.repository_section
@@ -2510,8 +2520,8 @@ class BatchPage(MissionPage):
         self.footprint_label = _details_label("Batch performance details are calculated for diagnostics.")
         self.footprint_label.setVisible(False)
 
-        self.prerun_section, prerun_layout = self.create_section("Prerun Check")
-        self.preflight_button = QPushButton("Run Prerun Check")
+        self.prerun_section, prerun_layout = self.create_section("Readiness")
+        self.preflight_button = QPushButton("Run Detailed Check")
         self.preflight_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.preflight_button.clicked.connect(self.run_preflight)
         _apply_button_role(self.preflight_button, "primary")
@@ -2590,9 +2600,49 @@ class BatchPage(MissionPage):
         self.result_filter_combo.setVisible(False)
         self.batch_results.setVisible(False)
         process_layout.addWidget(self.batch_results)
+        self.current_result_section, current_result_layout = self.create_section("Current Result")
+        self.current_result_label = _body_label("No current result. Configure the workflow and select Process LiDAR.")
+        current_result_layout.addWidget(self.current_result_label)
+        current_result_buttons = QHBoxLayout()
+        self.load_current_result_button = QPushButton("Load into QGIS")
+        self.load_current_result_button.clicked.connect(self.loadCurrentOutputsRequested.emit)
+        _apply_button_role(self.load_current_result_button,"primary")
+        self.open_current_result_button = QPushButton("Open Folder")
+        self.open_current_result_button.clicked.connect(self.openCurrentOutputFolderRequested.emit)
+        _apply_button_role(self.open_current_result_button,"secondary")
+        self.clear_current_result_button = QPushButton("New Run")
+        self.clear_current_result_button.clicked.connect(self.clearCurrentResultRequested.emit)
+        _apply_button_role(self.clear_current_result_button,"neutral")
+        for button in (self.load_current_result_button,self.open_current_result_button,self.clear_current_result_button):current_result_buttons.addWidget(button)
+        current_result_buttons.addStretch(1);current_result_layout.addLayout(current_result_buttons)
+        self.set_current_result(())
+        self.previous_runs_group,self.previous_runs_layout=_collapsible_section(self.content_layout,"Previous Runs",checked=False)
+        self.previous_runs_list=QListWidget();self.previous_runs_list.setMaximumHeight(120);self.previous_runs_layout.addWidget(self.previous_runs_list)
+        self.previous_runs_group.setVisible(False);_wire_collapsible_group(self.previous_runs_group)
         self._update_batch_mode_visibility()
         self._wire_session_state_inputs()
         QTimer.singleShot(0, self._publish_session_state)
+
+    def set_job_token_factory(self,factory) -> None:
+        self._job_token_factory=factory
+
+    def _begin_logical_job(self):
+        if self._job_token_factory is None:return None
+        try:token=self._job_token_factory()
+        except RuntimeError as exc:
+            _set_status_badge(self.status_label,"WARNING",f"Status: Needs attention - {exc}");return False
+        self._current_job_token=token;self.logicalJobStarted.emit(token);self.set_current_result(());return token
+
+    def set_previous_runs(self,records) -> None:
+        self.previous_runs_list.clear()
+        for record in records:self.previous_runs_list.addItem(f"{record.token.created_at} - {record.state} - {record.token.logical_job_id[:8]}")
+        self.previous_runs_group.setVisible(bool(records))
+
+    def set_current_result(self,paths,output_folder=None) -> None:
+        paths=tuple(Path(path) for path in paths);has_result=bool(paths)
+        self.current_result_section.setVisible(has_result)
+        self.current_result_label.setText((f"{len(paths)} current output(s) ready: "+", ".join(path.name for path in paths)) if has_result else "No current result.")
+        self.load_current_result_button.setEnabled(has_result);self.open_current_result_button.setEnabled(bool(output_folder));self.clear_current_result_button.setEnabled(has_result)
 
     def _select_recommended_products(self) -> None:
         """Apply the concise guided default without requiring Advisor."""
@@ -2621,6 +2671,7 @@ class BatchPage(MissionPage):
 
     def _on_session_input_changed(self, *_args: object) -> None:
         self.preflight_report = None
+        if hasattr(self,"run_button"):self._update_run_button_enabled()
         if hasattr(self, "preflight_text"):
             self.preflight_text.setPlainText("Prerun Check needs refresh for the current inputs.")
         if hasattr(self, "preflight_summary_label"):
@@ -3437,8 +3488,8 @@ class BatchPage(MissionPage):
     def run_batch(self) -> None:
         """Run selected datasets through preflight-approved batch execution."""
         if self.preflight_report is None:
-            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - run the Prerun Check before processing.")
-            return
+            self.run_preflight()
+            if self.preflight_report is None:return
         if self._current_batch_mode() == "polygon":
             self._run_polygon_batch()
             return
@@ -3453,6 +3504,8 @@ class BatchPage(MissionPage):
         except BatchExecutionError as exc:
             _set_status_badge(self.status_label, "FAILED", f"Status: Failed - batch could not start: {exc}")
             return
+        token=self._begin_logical_job()
+        if token is False:return
         selected = list(request.datasets)
         self.batch_items = []
         self.failed_paths = []
@@ -3509,6 +3562,8 @@ class BatchPage(MissionPage):
         if getattr(report, "warnings", ()) and not self.acknowledge_warnings_check.isChecked():
             _set_status_badge(self.status_label, "WARNING", "Status: Needs review - review and acknowledge polygon warnings before running.")
             return
+        token=self._begin_logical_job()
+        if token is False:return
         selected = list(getattr(report, "selected_sources", ()))
         self.batch_items = []
         self.failed_paths = []
@@ -3638,8 +3693,12 @@ class BatchPage(MissionPage):
         )
 
     def _update_run_button_enabled(self) -> None:
-        """Enable Run only after preflight passes or warnings are acknowledged."""
+        """Enable Process from continuous basic readiness; click performs final validation."""
         report = self.preflight_report
+        if report is None:
+            products=any(check.isChecked() for check in self.product_checks.values());output=bool(self.output_folder_edit.text().strip())
+            source=bool(self.polygon_lidar_folder_edit.text().strip()) if self._current_batch_mode()=="polygon" else bool(self.input_folder_edit.text().strip())
+            self.run_button.setEnabled(products and output and source);self.resume_button.setEnabled(False);self.resume_button.setVisible(False);return
         if self._current_batch_mode() == "polygon":
             selected = getattr(report, "selected_sources", ()) if report is not None else ()
             blockers = getattr(report, "blockers", ()) if report is not None else ()
@@ -3671,6 +3730,7 @@ class BatchPage(MissionPage):
         self.retry_failed_button.setEnabled(bool(self.failed_paths))
         self.retry_failed_button.setVisible(bool(self.failed_paths))
         self.batchCompleted.emit(result)
+        self.batchCompletedForJob.emit(result,self._current_job_token)
         self._finish_batch_run()
 
     def _on_batch_failed(self, message: str) -> None:
@@ -3795,6 +3855,7 @@ class BatchPage(MissionPage):
     def _on_batch_job_update(self, job: JobRecord) -> None:
         if self.load_outputs_check.isChecked():
             self.jobUpdated.emit(job)
+            self.jobUpdatedForJob.emit(job,self._current_job_token)
         QApplication.processEvents()
 
     def _batch_control_state(self) -> str | None:
@@ -3998,6 +4059,10 @@ class ResultsPage(MissionPage):
     def loaded_output_paths(self) -> tuple[Path, ...]:
         """Return outputs loaded through the Results page in this session."""
         return tuple(self._loaded_output_paths)
+
+    def begin_current_job(self) -> None:
+        """Clear current display without touching historical durable jobs."""
+        self.set_run_context(None);self.job_history.clear();self.jobs_section.setVisible(False)
 
     def refresh_results(self) -> None:
         """Refresh Results button states from current paths without clearing outputs."""
@@ -4220,11 +4285,23 @@ class SettingsPage(MissionPage):
 
     defaultOutputFolderChanged = pyqtSignal(object)
     backendStateChanged = pyqtSignal(str, str)
+    verifyEnvironmentRequested = pyqtSignal()
+    openToolboxRequested = pyqtSignal()
+    guidanceDetailsRequested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create the settings page."""
-        super().__init__("Settings", parent)
-        defaults = self.add_section("Defaults")
+        super().__init__("Tools & Setup", parent)
+        system = self.add_section("System")
+        self.smart_system_status_label = _body_label("Checking managed backend and processing readiness.")
+        system.addWidget(self.smart_system_status_label)
+        system_actions=QHBoxLayout()
+        self.verify_environment_button=QPushButton("Verify Environment");self.verify_environment_button.clicked.connect(self.verifyEnvironmentRequested.emit);_apply_button_role(self.verify_environment_button,"secondary")
+        self.open_toolbox_button=QPushButton("Open Processing Toolbox");self.open_toolbox_button.clicked.connect(self.openToolboxRequested.emit);_apply_button_role(self.open_toolbox_button,"secondary")
+        self.guidance_details_button=QPushButton("Guidance Details");self.guidance_details_button.clicked.connect(self.guidanceDetailsRequested.emit);_apply_button_role(self.guidance_details_button,"neutral")
+        for button in (self.verify_environment_button,self.open_toolbox_button,self.guidance_details_button):system_actions.addWidget(button)
+        system_actions.addStretch(1);system.addLayout(system_actions)
+        defaults = self.add_section("Preferences")
         form = QFormLayout()
         self.default_output_folder = QLineEdit()
         folder_row = QHBoxLayout()

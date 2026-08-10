@@ -258,3 +258,8 @@ Hide obsolete derived content immediately and show one compact updating message.
 ## Content sizing
 
 Use content-sized group boxes and maximum heights for expanded technical reports. Do not use a large minimum height for an empty list or report. At most one workflow action should use the primary role in a state. QGIS theme icons remain preferred with Qt fallbacks.
+
+
+## Phase 28H Adaptive Scale and Compact Workspace
+
+Compact dock layouts target 420, 500, 620, and 800 px. SmartStatus provides one concise headline plus context; current-result actions appear in the same Process workspace.

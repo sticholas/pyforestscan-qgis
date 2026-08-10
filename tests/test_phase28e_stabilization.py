@@ -6,7 +6,7 @@ from pyforestscan_qgis.core.backend.native_worker import classify_worker_exit,wr
 from pyforestscan_qgis.core.backend.process_env import build_clean_subprocess_env,conda_environment_data_env,native_environment_diagnostics
 from pyforestscan_qgis.core.hag_strategy import HagReasonCode,assess_hag_suitability
 from pyforestscan_qgis.core.job_diagnostics import classify_exception
-from pyforestscan_qgis.core.source_aware_processing import NativeSource,SourceAwareWorkPlanner,SpatialExtent
+from pyforestscan_qgis.core.source_aware_processing import NativeSource,SourceAwareWorkPlanner,SpatialExtent,WorkUnit,WorkUnitType
 from pyforestscan_qgis.core.work_unit_scheduler import CheckpointStore,PolygonProductWorkScheduler,WorkFailureCircuitBreaker,WorkUnitResult
 
 class HagStabilityTests(unittest.TestCase):
@@ -37,8 +37,11 @@ class NativeIsolationTests(unittest.TestCase):
 
 class SchedulerStabilityTests(unittest.TestCase):
  def units(self,count=120):
-  extent=SpatialExtent(0,0,count*1000,1000);src=NativeSource(Path('ept.json'),extent,source_type='ept')
-  return SourceAwareWorkPlanner().plan(repository_kind='ept',sources=(src,),polygon_envelope=extent,processing_crs='EPSG:1',product='chm',resolution=1).work_units
+  units=[]
+  for index in range(count):
+   core=SpatialExtent(index*1000,0,(index+1)*1000,1000)
+   units.append(WorkUnit(f'wu-{index+1:04d}',WorkUnitType.EPT_WINDOW,(Path('ept.json'),),core,core.buffered(50),0,1000,index*1000,(index+1)*1000,index+1,1))
+  return tuple(units)
  def test_safe_ept_profile_is_one_worker(self):
   with patch.dict(os.environ,{},clear=False):
    os.environ.pop('PYFORESTSCAN_DEV_EPT_PARALLEL',None);extent=SpatialExtent(0,0,3000,3000);src=NativeSource(Path('ept.json'),extent,source_type='ept');plan=SourceAwareWorkPlanner().plan(repository_kind='ept',sources=(src,),polygon_envelope=extent,processing_crs='EPSG:1',product='chm',resolution=1,cpu_count=16,available_memory_bytes=64*1024**3,profile='performance')

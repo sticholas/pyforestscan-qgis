@@ -48,3 +48,8 @@ Guided Polygon Area Processing hides CRS mechanics when automatic resolution suc
 Active jobs may exceed one hour while heartbeats remain current. Retry creates a new attempt; the interface does not call restart-from-zero a resume.
 ## Large CHM behavior
 Guided mode chooses bounded source-aware work automatically and shows completed/total counts. Scheduling controls remain under Advanced.
+
+
+## Phase 28H Adaptive Scale and Compact Workspace
+
+The guided path is no longer page-based: choose data, area, products, and output on Process, then run and load the current result without navigating elsewhere.

@@ -27,3 +27,8 @@ EPT remains one logical source. CHM uses bounded buffered rectangles, aligned co
 ## Phase 28G Exact Polygon Completion
 
 Exact-polygon planning now separates envelope candidates, required cores, and geometry-excluded cores. See [Exact Polygon Work-Unit Filtering](EXACT_POLYGON_WORK_UNIT_FILTERING.md).
+
+
+## Phase 28H Adaptive Scale and Compact Workspace
+
+Phase 28H replaces fixed EPT scale with the workload-derived [Adaptive Processing Planner](ADAPTIVE_PROCESSING_PLANNER.md). Native partitions remain authoritative, exact polygon filtering remains downstream, and small-safe requests bypass tiled finalization.

@@ -246,3 +246,8 @@ CHM progress reports stage, completed/total areas, active/failed units, elapsed 
 ## Phase 28G Exact Polygon Completion
 
 Polygon prerun summaries distinguish candidate, required, and skipped areas. Recovery and progress use durable counts; no starting work-unit selector is exposed.
+
+
+## Phase 28H Adaptive Scale and Compact Workspace
+
+Mission Control now has two visible destinations: Process and Tools & Setup. Process combines the former Batch and Results workflow; internal legacy pages preserve capability without primary navigation clutter.

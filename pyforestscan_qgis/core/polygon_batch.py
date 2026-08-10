@@ -637,8 +637,8 @@ def build_source_aware_chm_plan(report: PolygonBatchPreflightReport):
         processing_crs=report.query_geometry.catalog_crs or report.request.polygon.processing_crs,
         product="chm",
         resolution=report.request.settings.grid_resolution,
-        available_memory_bytes=8 * 1024**3,
-        cpu_count=max(1, _shared_options(report).worker_count),
+        available_memory_bytes=__import__("pyforestscan_qgis.core.adaptive_processing",fromlist=["available_memory_bytes"]).available_memory_bytes(),
+        cpu_count=max(1, os.cpu_count() or _shared_options(report).worker_count),
         profile="recommended",
         polygon_wkt=report.query_geometry.exact_polygon_wkt,
     )

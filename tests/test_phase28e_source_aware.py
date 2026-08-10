@@ -22,7 +22,7 @@ class PlannerTests(unittest.TestCase):
  def test_large_ept_uses_windows_not_nodes(self):
   src=NativeSource(Path('ept.json'),self.extent,source_type='ept')
   plan=self.planner.plan(repository_kind='ept',sources=(src,),polygon_envelope=self.extent,processing_crs='EPSG:6635',product='chm',resolution=1,available_memory_bytes=8*1024**3,cpu_count=4)
-  self.assertEqual((plan.grid.columns,plan.grid.rows),(10990,6668));self.assertEqual(len(plan.work_units),77);self.assertEqual(plan.workload_category,'Large');self.assertTrue(all(x.unit_type is WorkUnitType.EPT_WINDOW for x in plan.work_units));self.assertTrue(all(x.source_paths==(Path('ept.json'),) for x in plan.work_units));self.assertFalse(plan.physical_retiling)
+  self.assertEqual((plan.grid.columns,plan.grid.rows),(10990,6668));self.assertGreater(len(plan.work_units),1);self.assertEqual(plan.workload_category,'Large');self.assertTrue(all(x.unit_type is WorkUnitType.EPT_WINDOW for x in plan.work_units));self.assertTrue(all(x.source_paths==(Path('ept.json'),) for x in plan.work_units));self.assertFalse(plan.physical_retiling)
  def test_network_caps_concurrency(self):
   src=NativeSource(Path('//server/share/ept.json'),SpatialExtent(0,0,3000,3000),source_type='ept');plan=self.planner.plan(repository_kind='ept',sources=(src,),polygon_envelope=src.bounds,processing_crs='EPSG:1',product='chm',resolution=1,available_memory_bytes=64*1024**3,cpu_count=16,profile='performance');self.assertEqual(plan.source_location,'network');self.assertLessEqual(plan.concurrency_limit,2)
  def test_native_small_files_group_without_retiling(self):

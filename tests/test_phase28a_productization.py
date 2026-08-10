@@ -14,8 +14,9 @@ class Phase28AProductizationTests(unittest.TestCase):
         cls.pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
 
     def test_primary_sidebar_is_product_focused(self):
-        expected = '(\n        "Batch",\n        "Results",\n        "Scientific Advisor",\n        "Environment",\n        "Settings",\n        "Advanced Toolbox",\n    )'
-        self.assertIn("PAGE_NAMES = " + expected, self.mission)
+        self.assertIn('PAGE_NAMES = ("Process", "Tools & Setup")', self.mission)
+        contract = self.mission.split("PAGE_NAMES = ", 1)[1].splitlines()[0]
+        self.assertNotIn("Batch", contract)
 
     def test_legacy_pages_remain_internal(self):
         self.assertIn("INTERNAL_PAGE_NAMES", self.mission)
@@ -25,10 +26,10 @@ class Phase28AProductizationTests(unittest.TestCase):
 
     def test_batch_is_default_workspace(self):
         self.assertIn("self.ui.pageStack.setCurrentWidget(self.batch_page)", self.mission)
-        self.assertIn('self._navigate_to("Batch")', self.mission)
+        self.assertIn('self._navigate_to("Process")', self.mission)
 
     def test_simplified_product_language_exists(self):
-        for label in ("LiDAR Folder Selection", "Polygon Selection", "Prerun Check", "Process LiDAR"):
+        for label in ("LiDAR Folder Selection", "Polygon Selection", "Run Detailed Check", "Process LiDAR"):
             self.assertIn(label, self.pages)
 
     def test_repository_and_spatial_tools_are_collapsed(self):

@@ -4,8 +4,8 @@
  <widget class="QWidget" name="MissionControlRoot">
   <property name="minimumSize">
    <size>
-    <width>1150</width>
-    <height>760</height>
+    <width>420</width>
+    <height>520</height>
    </size>
   </property>
   <layout class="QVBoxLayout" name="rootLayout">

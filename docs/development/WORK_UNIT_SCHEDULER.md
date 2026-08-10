@@ -14,3 +14,8 @@ Terminal unit state is persisted before circuit-breaker progress or another laun
 ## Phase 28G Exact Polygon Completion
 
 Successful terminal states now include `CompleteNoData` and `SkippedOutsidePolygon`; neither reaches the circuit breaker. Durable status files remain authoritative for resume and progress.
+
+
+## Phase 28H Adaptive Scale and Compact Workspace
+
+Adaptive planning may provide one fast-path unit or hundreds of bounded units. Scheduler concurrency remains memory/CPU bounded and EPT remains serial by default; unit count is never a target.

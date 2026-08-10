@@ -178,3 +178,8 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 ## Phase 28G Exact Polygon Completion
 
 - Phase 28G filters polygon CHM work by exact core intersection, adds explicit valid-NoData semantics, sparse aligned mosaicing, geometry-driven checkpoint recovery, shared HAG diagnostics, and durable progress aggregation.
+
+
+## Phase 28H Adaptive Scale and Compact Workspace
+
+- Phase 28H derives CHM work scale from workload and hardware, restores a one-unit small-request path, adds advisory performance history and pilot calibration contracts, isolates current jobs with strict tokens, and consolidates Mission Control into Process plus Tools & Setup.

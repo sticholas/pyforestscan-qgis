@@ -12,6 +12,7 @@ from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import QDockWidget, QFileDialog, QSizePolicy, QWidget
 
 from ..core.adapter import PyForestScanAdapter
+from ..core.active_job import ActiveProcessingJobController,CurrentJobToken
 from ..core.dataset_report import report_to_dict as dataset_report_to_dict
 from ..core.knowledge import KnowledgeEngine
 from ..core.jobs import JobRecord, JobStatus
@@ -34,6 +35,7 @@ from .advisor import completed_products_from_job
 from .raster_styling import apply_generated_raster_renderer, is_raster_result, layer_display_name
 from .state import MissionControlState, ProjectSummary, build_project_summary
 from .session_state import MissionControlSessionState
+from .smart_status import build_smart_status
 from .session_events import SessionStateEvents
 from .ux_summary import environment_is_ready, guided_next_step, guided_workflow_indicator, guided_workflow_status_lines, guided_workflow_pages, readiness_marker_label
 
@@ -56,14 +58,7 @@ class MissionControlDock(QDockWidget):
         "Settings",
         "Advanced Toolbox",
     )
-    PAGE_NAMES = (
-        "Batch",
-        "Results",
-        "Scientific Advisor",
-        "Environment",
-        "Settings",
-        "Advanced Toolbox",
-    )
+    PAGE_NAMES = ("Process", "Tools & Setup")
 
     def __init__(self, iface: Any, parent: QWidget | None = None) -> None:
         """Create the Mission Control dock and wire page navigation."""
@@ -80,6 +75,8 @@ class MissionControlDock(QDockWidget):
         self.batch_status = "Not started"
         self.loaded_result_paths: set[Path] = set()
         self.session_state = MissionControlSessionState()
+        self.active_job_controller = ActiveProcessingJobController()
+        self._mission_session_id = __import__("uuid").uuid4().hex
         self.session_events = SessionStateEvents(self)
         self.root_widget = QWidget(self)
         self.ui = FORM_CLASS()
@@ -88,10 +85,11 @@ class MissionControlDock(QDockWidget):
         self.setObjectName("PyForestScanMissionControlDock")
         self.setAllowedAreas(Qt.AllDockWidgetAreas)
         self.setFeatures(self.features() | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetMovable)
-        self.setMinimumSize(620, 520)
-        self.root_widget.setMinimumSize(620, 520)
+        self.setMinimumSize(420, 480)
+        self.root_widget.setMinimumSize(420, 480)
         self.root_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.ui.navigationList.setFixedWidth(190)
+        self.ui.navigationList.setFixedWidth(112)
+        self.ui.statusFrame.setVisible(False)
         self.ui.pageStack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.ui.bodyLayout.setStretch(0, 0)
         self.ui.bodyLayout.setStretch(1, 1)
@@ -133,6 +131,8 @@ class MissionControlDock(QDockWidget):
             self.advanced_toolbox_page,
         )
         self.page_by_name = dict(zip(self.INTERNAL_PAGE_NAMES, self.pages))
+        self.page_by_name.update({"Process":self.batch_page,"Tools & Setup":self.settings_page})
+        self.batch_page.set_job_token_factory(self._begin_current_job)
         self._last_content_navigation_row = 0
 
         self._configure_style()
@@ -144,7 +144,7 @@ class MissionControlDock(QDockWidget):
 
     def show_home(self) -> None:
         """Show the primary Mission Control workspace."""
-        self._navigate_to("Batch")
+        self._navigate_to("Process")
 
     def closeEvent(self, event: object) -> None:  # noqa: N802 - Qt API name.
         """Save the Mission Control workspace session when the window closes."""
@@ -180,7 +180,7 @@ class MissionControlDock(QDockWidget):
                 self.restoreGeometry(QByteArray.fromBase64(session.window_geometry.encode("ascii")))
             except Exception:  # noqa: BLE001 - geometry restore is best effort.
                 pass
-        if session.last_page in self.PAGE_NAMES and session.last_page != "Advanced Toolbox":
+        if session.last_page:
             self._navigate_to(session.last_page)
 
     def _populate_navigation(self) -> None:
@@ -198,7 +198,7 @@ class MissionControlDock(QDockWidget):
         self.home_page.checkEnvironmentRequested.connect(self._open_environment_and_refresh)
         self.home_page.refreshSummaryRequested.connect(self._refresh_summary_from_home)
         self.home_page.continueLastRequested.connect(self._continue_last_workspace)
-        self.environment_page.backendSettingsRequested.connect(lambda: self._navigate_to("Settings"))
+        self.environment_page.backendSettingsRequested.connect(lambda: self._navigate_to("Tools & Setup"))
         self.workspace_page.continueLastRequested.connect(self._continue_last_workspace)
         self.workspace_page.startNewRequested.connect(self._start_new_workspace)
         self.workspace_page.workspaceSelected.connect(self._open_workspace_path)
@@ -210,14 +210,20 @@ class MissionControlDock(QDockWidget):
         self.dataset_page.datasetExplored.connect(self._set_dataset_report)
         self.planning_page.planningChanged.connect(self._set_planning_status)
         self.processing_page.jobUpdated.connect(self._set_job_status)
-        self.batch_page.jobUpdated.connect(self._set_job_status)
-        self.batch_page.batchCompleted.connect(self._set_batch_status)
+        self.batch_page.jobUpdatedForJob.connect(self._set_job_status_for_job)
+        self.batch_page.batchCompletedForJob.connect(self._set_batch_status_for_job)
+        self.batch_page.loadCurrentOutputsRequested.connect(self.results_page.load_outputs_to_qgis)
+        self.batch_page.openCurrentOutputFolderRequested.connect(self.results_page.open_output_folder)
+        self.batch_page.clearCurrentResultRequested.connect(self._clear_current_run_state)
         self.batch_page.sessionStateChanged.connect(self._set_session_state)
         self.results_page.outputsLoaded.connect(self._set_outputs_loaded_status)
         self.results_page.currentRunCleared.connect(self._clear_current_run_state)
-        self.results_page.goToBatchRequested.connect(lambda: self._navigate_to("Batch"))
+        self.results_page.goToBatchRequested.connect(lambda: self._navigate_to("Process"))
         self.settings_page.defaultOutputFolderChanged.connect(self._set_default_output_folder)
         self.settings_page.backendStateChanged.connect(self._set_backend_page_status)
+        self.settings_page.verifyEnvironmentRequested.connect(self.environment_page.refresh)
+        self.settings_page.openToolboxRequested.connect(self._open_advanced_toolbox)
+        self.settings_page.guidanceDetailsRequested.connect(self._show_guidance_details)
         self.workspace_page.nextStepRequested.connect(lambda: self._go_to_guided_next_step("Workspace"))
         self.dataset_page.nextStepRequested.connect(lambda: self._go_to_guided_next_step("Dataset"))
         self.planning_page.nextStepRequested.connect(lambda: self._go_to_guided_next_step("Planning"))
@@ -272,6 +278,15 @@ class MissionControlDock(QDockWidget):
         )
 
 
+    def _open_advanced_toolbox(self) -> None:
+        result=self.advanced_toolbox_page.open_toolbox()
+        self._notify(result.user_message,"success" if result.success else "warning")
+
+    def _show_guidance_details(self) -> None:
+        summary=self.advisor_page.current_summary() if hasattr(self.advisor_page,"current_summary") else None
+        message=getattr(summary,"executive_summary","") or "Scientific guidance updates automatically from the current data and processing area."
+        self._notify(message,"info")
+
     def _open_environment_and_refresh(self) -> None:
         """Open Environment and immediately refresh readiness."""
         self._navigate_to("Environment")
@@ -282,12 +297,6 @@ class MissionControlDock(QDockWidget):
         if row < 0 or row >= len(self.PAGE_NAMES):
             return
         name = self.PAGE_NAMES[row]
-        if name == "Advanced Toolbox":
-            self._last_content_navigation_row = row
-            self.ui.pageStack.setCurrentWidget(self.advanced_toolbox_page)
-            result = self.advanced_toolbox_page.open_toolbox()
-            self._notify(result.user_message, "success" if result.success else "warning")
-            return
         page = self.page_by_name.get(name)
         if page is not None:
             self._last_content_navigation_row = row
@@ -295,8 +304,9 @@ class MissionControlDock(QDockWidget):
 
     def _navigate_to(self, page_name: str) -> bool:
         """Navigate to a visible primary page and return whether it was available."""
-        if page_name not in self.PAGE_NAMES:
-            return False
+        aliases={"Batch":"Process","Results":"Process","Home":"Process","Workspace":"Process","Dataset":"Process","Planning":"Process","Processing":"Process","Settings":"Tools & Setup","Environment":"Tools & Setup","Scientific Advisor":"Tools & Setup","Advanced Toolbox":"Tools & Setup"}
+        page_name=aliases.get(page_name,page_name)
+        if page_name not in self.PAGE_NAMES:return False
         self.ui.navigationList.setCurrentRow(self.PAGE_NAMES.index(page_name))
         return True
 
@@ -364,8 +374,7 @@ class MissionControlDock(QDockWidget):
         self.session_state = self.session_state.with_updates(environment_status=status)
         self.session_events.environmentStatusChanged.emit(self.session_state)
         self._record_workspace_event("environment_refreshed", f"Environment verified: {status}")
-        if self.ui.navigationList.currentRow() != self.PAGE_NAMES.index("Settings"):
-            self.settings_page.refresh_backend_summary()
+        if self._current_primary_page_name() != "Tools & Setup":self.settings_page.refresh_backend_summary()
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
@@ -439,6 +448,31 @@ class MissionControlDock(QDockWidget):
         self._refresh_home()
         self._update_status_bar()
 
+    def _project_identity(self) -> str:
+        try:
+            from qgis.core import QgsProject
+            project=QgsProject.instance();path=project.fileName() if hasattr(project,"fileName") else ""
+            return str(path or id(project))
+        except Exception:return "qgis-project"
+
+    def _begin_current_job(self):
+        token=CurrentJobToken.create(self._project_identity(),self._mission_session_id,self.session_state.plan_signature,self.session_state.repository_path,self.session_state.polygon_geometry_signature)
+        self.active_job_controller.begin(token)
+        self.results_page.begin_current_job();self.batch_page.set_current_result(());self.batch_page.set_previous_runs(self.active_job_controller.history)
+        self.job_history=();self.loaded_result_paths=set()
+        return token
+
+    def _set_job_status_for_job(self,job,token) -> None:
+        if self.active_job_controller.accepts(token):self._set_job_status(job)
+
+    def _set_batch_status_for_job(self,result,token) -> None:
+        outputs=tuple(Path(output) for item in getattr(result,"items",()) if getattr(item,"status","")=="completed" for output in getattr(item,"outputs",()) if Path(output).exists())
+        state="complete" if getattr(result,"failure_count",0)==0 else "failed"
+        if not self.active_job_controller.update(token,state,outputs):return
+        self._set_batch_status(result)
+        output_folder=Path(outputs[0]).parent if outputs else None
+        self.batch_page.set_current_result(outputs if state=="complete" else (),output_folder if state=="complete" else None)
+
     def _set_job_status(self, job: JobRecord) -> None:
         existing = tuple(item for item in self.job_history if item.job_id != job.job_id)
         self.job_history = (job,) + existing
@@ -493,7 +527,7 @@ class MissionControlDock(QDockWidget):
             self.results_page.set_report_paths(output_paths)
         if isinstance(registry_path, Path):
             self.results_page.set_report_paths((registry_path,))
-        if getattr(result, "load_outputs_after_completion", False):
+        if getattr(result, "load_outputs_after_completion", False) and failure_count == 0:
             self.results_page.load_outputs_to_qgis()
         self._save_workspace_session()
         self._refresh_home()
@@ -515,6 +549,7 @@ class MissionControlDock(QDockWidget):
     def _clear_current_run_state(self) -> None:
         """Clear active run state after the Results page is reset."""
         self.state = self.state.without_active_run().with_activity("Results cleared", "Current run cleared")
+        self.active_job_controller.clear_current();self.batch_page.set_current_result(());self.batch_page.set_previous_runs(self.active_job_controller.history)
         self.job_history = ()
         self.loaded_result_paths = set()
         self.session_state = MissionControlSessionState()
@@ -685,7 +720,7 @@ class MissionControlDock(QDockWidget):
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
-        self._navigate_to("Batch")
+        self._navigate_to("Process")
         self._notify("Workspace opened.", "success")
 
     def _open_workspace_path(self, workspace_path: object) -> None:
@@ -714,7 +749,7 @@ class MissionControlDock(QDockWidget):
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
-        self._navigate_to("Batch")
+        self._navigate_to("Process")
         self._notify("Workspace opened.", "success")
 
     def _remove_recent_workspace(self, workspace_path: object) -> None:
@@ -835,7 +870,8 @@ class MissionControlDock(QDockWidget):
         self.home_page.set_activities(tuple((item.label, item.detail) for item in self.state.activities))
         self.results_page.set_run_context(self.state.active_run)
         self.advisor_page.set_run_context(self.state.active_run)
-        self.results_page.set_report_paths(self.state.latest_report_paths)
+        current_outputs=() if self.active_job_controller.current is None else tuple(Path(path) for path in self.active_job_controller.current.final_output_paths)
+        self.results_page.set_report_paths(current_outputs)
         self.results_page.set_jobs(self.job_history)
         self.processing_page.set_project_summary(summary)
         self.results_page.set_project_summary(summary)
@@ -899,13 +935,17 @@ class MissionControlDock(QDockWidget):
         if enabled and target in self.PAGE_NAMES:
             self._navigate_to(target)
         elif enabled:
-            self._navigate_to("Batch")
+            self._navigate_to("Process")
 
     def _continue_guided_workflow(self) -> None:
         """Continue from Home to the next incomplete workflow step."""
         self._go_to_guided_next_step("Home")
 
     def _update_status_bar(self) -> None:
+        smart=build_smart_status(backend_ready=environment_is_ready(self.state.environment_status),repository_kind=self.session_state.repository_kind,polygon_area=self.session_state.polygon_area,products=self.session_state.selected_products,output_folder=self.session_state.output_folder,processing_state=self.session_state.processing_status,has_outputs=bool(self.active_job_controller.current and self.active_job_controller.current.state=="complete"),error=self.session_state.last_error)
+        detail=" | ".join(item for item in smart.details if item)
+        self.batch_page.smart_status_label.setText(smart.headline+(f" - {detail}" if detail else ""))
+        self.settings_page.smart_system_status_label.setText(smart.headline+(f"\n{detail}" if detail else ""))
         self.ui.environmentStatusLabel.setText(f"{readiness_marker_label(self.state.environment_status)} Backend: {self.state.environment_status}")
         repo = self.session_state.repository_kind.upper() if self.session_state.repository_path else "Not selected"
         self.ui.datasetStatusLabel.setText(f"LiDAR: {repo}")

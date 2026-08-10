@@ -8,3 +8,8 @@ Automated tests validate durable state and observer absence. Production polygon 
 ## Phase 28G Exact Polygon Completion
 
 Coordinator progress is rebuilt from durable per-unit status files, including candidate, required, skipped, CompleteNoData, failed, pending, running, and attempted counts.
+
+
+## Phase 28H Adaptive Scale and Compact Workspace
+
+Foreground observation now carries a current-job token. Historical coordinator callbacks remain durable but cannot mutate the active Mission Control result or trigger automatic loading.

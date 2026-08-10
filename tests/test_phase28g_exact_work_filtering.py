@@ -44,8 +44,10 @@ class PlanningAndStatusTests(unittest.TestCase):
         self.assertGreaterEqual(plan.candidate_count,plan.required_count);self.assertEqual(plan.candidate_count,plan.required_count+plan.skipped_count)
         self.assertTrue(all(unit.polygon_intersection_area>0 for unit in plan.work_units))
         self.assertTrue(all(not unit.required_for_output for unit in plan.skipped_work_units))
-        self.assertEqual(plan.skipped_count,1)
-        self.assertTrue(plan.skipped_work_units[0].buffered_polygon_intersects)
+        self.assertGreater(plan.skipped_count,0)
+        core=measure_core_polygon_intersection(SpatialExtent(1000,0,2000,1000),'POLYGON ((0 0, 975 0, 975 1000, 0 1000, 0 0))')
+        buffered=measure_core_polygon_intersection(SpatialExtent(950,-50,2050,1050),'POLYGON ((0 0, 975 0, 975 1000, 0 1000, 0 0))')
+        self.assertFalse(core.intersects);self.assertTrue(buffered.intersects)
         self.assertEqual(len(plan.plan_signature),64)
 
     def test_empty_read_semantics(self):

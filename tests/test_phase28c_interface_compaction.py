@@ -7,9 +7,8 @@ PAGES = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 MISSION = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text(encoding="utf-8")
 
 class Phase28CInterfaceCompactionTests(unittest.TestCase):
-    def test_retained_sidebar_and_batch_default_are_preserved(self):
-        expected = '(\n        "Batch",\n        "Results",\n        "Scientific Advisor",\n        "Environment",\n        "Settings",\n        "Advanced Toolbox",\n    )'
-        self.assertIn("PAGE_NAMES = " + expected, MISSION)
+    def test_two_workspace_sidebar_and_process_default_are_preserved(self):
+        self.assertIn('PAGE_NAMES = ("Process", "Tools & Setup")', MISSION)
         self.assertIn("self.ui.pageStack.setCurrentWidget(self.batch_page)", MISSION)
 
     def test_hidden_pages_remain_absent_from_primary_sidebar(self):
@@ -24,7 +23,7 @@ class Phase28CInterfaceCompactionTests(unittest.TestCase):
         self.assertIn("Process LiDAR files found in a selected folder.", PAGES)
 
     def test_normal_batch_flow_uses_compact_section_names(self):
-        for title in ("Processing Mode", "LiDAR Data", "Processing Area", "Products", "Output Folder", "Prerun Check", "Process"):
+        for title in ("Processing Mode", "LiDAR Data", "Processing Area", "Products", "Output Folder", "Readiness", "Process", "Current Result"):
             self.assertIn(f'create_section("{title}"', PAGES)
         self.assertNotIn('_collapsible_section(self.content_layout, "Batch Footprint Estimate"', PAGES)
 

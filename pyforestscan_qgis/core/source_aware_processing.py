@@ -45,7 +45,7 @@ class NativeSource:
 
 @dataclass(frozen=True)
 class WorkUnitSizingPolicy:
-    target_width: float; target_height: float; buffer_distance: float; maximum_estimated_points: int; maximum_expected_memory: int; maximum_concurrent_units: int; rationale: str; confidence: str
+    target_width: float; target_height: float; buffer_distance: float; maximum_estimated_points: int; maximum_expected_memory: int; maximum_concurrent_units: int; rationale: str; confidence: str; strategy:str="adaptive";estimated_point_range:tuple[int,int]=(0,0);expected_memory_range:tuple[int,int]=(0,0);pilot_required:bool=False
 
 @dataclass(frozen=True)
 class ProductPartitionPolicy:
@@ -62,7 +62,7 @@ class WorkUnit:
 
 @dataclass(frozen=True)
 class SourceAwareWorkPlan:
-    repository_kind: str; product: str; grid: AlignedRasterGrid; work_units: tuple[WorkUnit,...]; concurrency_limit: int; workload_category: str; memory_category: str; merge_strategy: str; retry_policy: str; checkpoint_policy: str; scientific_assumptions: tuple[str,...]; source_location: str; physical_retiling: bool=False;candidate_work_units:tuple[WorkUnit,...]=();skipped_work_units:tuple[WorkUnit,...]=();exact_polygon_signature:str="";buffer_policy:str="";hag_method_signature:str=""
+    repository_kind: str; product: str; grid: AlignedRasterGrid; work_units: tuple[WorkUnit,...]; concurrency_limit: int; workload_category: str; memory_category: str; merge_strategy: str; retry_policy: str; checkpoint_policy: str; scientific_assumptions: tuple[str,...]; source_location: str; physical_retiling: bool=False;candidate_work_units:tuple[WorkUnit,...]=();skipped_work_units:tuple[WorkUnit,...]=();exact_polygon_signature:str="";buffer_policy:str="";hag_method_signature:str="";adaptive_strategy:str="adaptive";target_work_unit_width:float=0.0;target_work_unit_height:float=0.0;estimated_point_range:tuple[int,int]=(0,0);expected_memory_range:tuple[int,int]=(0,0);pilot_required:bool=False;native_partitions_reused:int=0;logical_subdivisions_added:int=0
     @property
     def candidate_count(self):return len(self.candidate_work_units or self.work_units)
     @property
@@ -90,18 +90,16 @@ def source_location(path: Path|str) -> str:
     if os.name=='nt' and len(text)>1 and text[1]==':': return 'mapped_or_local_drive'
     return 'local'
 
-def sizing_policy(*,repository_kind,product,resolution,available_memory_bytes,cpu_count,network=False,point_density=None,profile='recommended'):
-    width=1000.0
-    if network or profile=='conservative': width=750.0
-    if point_density and point_density>30: width=min(width,500.0)
-    if profile=='performance' and not network and available_memory_bytes>=16*1024**3: width=1500.0
-    per_unit=min(int(available_memory_bytes*.25),2*1024**3)
-    requested={'conservative':1,'recommended':2,'performance':4,'custom':max(1,cpu_count)}.get(profile,2)
-    concurrency=max(1,min(requested,cpu_count,max(1,int(available_memory_bytes/max(per_unit,1)))))
-    if network: concurrency=min(concurrency,2)
-    if repository_kind=='ept' and product=='chm' and os.environ.get('PYFORESTSCAN_DEV_EPT_PARALLEL')!='1':concurrency=1
-    buffer=50.0 if product=='chm' else 0.0
-    return WorkUnitSizingPolicy(width,width,buffer,25_000_000,per_unit,concurrency,'Adaptive size reflects storage, memory, product, and profile.','medium' if point_density is None else 'high')
+def sizing_policy(*,repository_kind,product,resolution,available_memory_bytes,cpu_count,network=False,point_density=None,profile='recommended',extent=None,polygon_area=None,native_partition_count=0,hag_method='existing_normalized_height'):
+    from .adaptive_processing import AdaptivePlannerInputs,derive_adaptive_plan
+    width=getattr(extent,'width',1000.0);height=getattr(extent,'height',1000.0);area=max(0.0,width*height)
+    adaptive=derive_adaptive_plan(AdaptivePlannerInputs(width,height,polygon_area if polygon_area is not None else area,resolution,repository_kind,point_density,available_memory_bytes,cpu_count,network,product,hag_method,native_partition_count))
+    concurrency=adaptive.concurrency
+    if profile=='conservative':concurrency=1
+    elif profile=='performance' and not network and (repository_kind!='ept' or os.environ.get('PYFORESTSCAN_DEV_EPT_PARALLEL')=='1'):concurrency=min(max(1,cpu_count),4,max(1,concurrency+1))
+    rationale=' '.join(adaptive.rationale)
+    return WorkUnitSizingPolicy(adaptive.target_width,adaptive.target_height,adaptive.buffer_distance,adaptive.estimated_points_per_unit[1],adaptive.expected_memory_per_unit[1],concurrency,rationale,adaptive.confidence,adaptive.strategy,adaptive.estimated_points_per_unit,adaptive.expected_memory_per_unit,adaptive.pilot_required)
+
 
 class SourceAwareWorkPlanner:
     def plan(self,*,repository_kind,sources,polygon_envelope,processing_crs,product,resolution,available_memory_bytes=8*1024**3,cpu_count=2,profile='recommended',polygon_wkt=None):
@@ -109,7 +107,11 @@ class SourceAwareWorkPlanner:
         if policy is None or not policy.partitionable: raise ValueError(f"{product} does not have a validated partition policy.")
         grid=AlignedRasterGrid.from_extent(polygon_envelope,resolution,processing_crs)
         paths=tuple(sources); location=source_location(paths[0].path) if paths else 'local'; network=location in {'network','remote_url'}
-        sizing=sizing_policy(repository_kind=repository_kind,product=product,resolution=resolution,available_memory_bytes=available_memory_bytes,cpu_count=cpu_count,network=network,profile=profile)
+        exact_area=None
+        if polygon_wkt:
+            from .work_unit_geometry import measure_core_polygon_intersection
+            exact_area=measure_core_polygon_intersection(grid.total_extent,polygon_wkt).intersection_area
+        sizing=sizing_policy(repository_kind=repository_kind,product=product,resolution=resolution,available_memory_bytes=available_memory_bytes,cpu_count=cpu_count,network=network,profile=profile,extent=grid.total_extent,polygon_area=exact_area,native_partition_count=len(paths),point_density=next((source.point_count/source.bounds.width/source.bounds.height for source in paths if source.point_count and source.bounds.width and source.bounds.height),None))
         if repository_kind=='ept': units=self._windows(grid,paths,WorkUnitType.EPT_WINDOW,sizing)
         elif repository_kind=='copc': units=self._copc(grid,paths,sizing)
         else: units=self._native(grid,paths,sizing)
@@ -125,11 +127,13 @@ class SourceAwareWorkPlanner:
         cells=grid.rows*grid.columns; workload='Small' if cells<5_000_000 else 'Moderate' if cells<25_000_000 else 'Large' if cells<100_000_000 else 'Very Large'
         peak=max((unit.estimated_memory for unit in units),default=cells*4)
         memory='Low' if peak<256*1024**2 else 'Moderate' if peak<1024**3 else 'High' if peak<3*1024**3 else 'Very High'
-        assumptions=[f"Global {resolution:g}-unit grid.",f"{sizing.buffer_distance:g}-unit CHM read buffer.","Exact polygon mask is applied after mosaic."]
+        assumptions=[f"Global {resolution:g}-unit grid.",f"{sizing.buffer_distance:g}-unit CHM read buffer.",f"Adaptive strategy: {sizing.strategy}.",sizing.rationale,"Exact polygon mask is applied after mosaic."]
         if repository_kind=='ept' and product=='chm' and sizing.maximum_concurrent_units==1:assumptions.extend(("Safe processing mode is active for this EPT job.","Parallel EPT HAG workers are temporarily limited while native-worker stability is being validated."))
         polygon_signature=hashlib.sha256((polygon_wkt or "").strip().encode()).hexdigest() if polygon_wkt else ""
         hag_signature=hashlib.sha256(b"existing_normalized_height:HeightAboveGround").hexdigest()
-        return SourceAwareWorkPlan(repository_kind,product,grid,tuple(units),sizing.maximum_concurrent_units,workload,memory,policy.merge_rule,'transient failures: 2; deterministic input/HAG failures: 0','verify and persist every completed core tile',tuple(assumptions),location,False,candidates,skipped,polygon_signature,f"buffer={sizing.buffer_distance:g}",hag_signature)
+        native_reused=len(paths) if repository_kind in {'folder','las','laz'} else 0
+        subdivisions=max(0,len(units)-native_reused)
+        return SourceAwareWorkPlan(repository_kind,product,grid,tuple(units),sizing.maximum_concurrent_units,workload,memory,policy.merge_rule,'transient failures: 2; deterministic input/HAG failures: 0','verify and persist every completed core tile',tuple(assumptions),location,False,candidates,skipped,polygon_signature,f"buffer={sizing.buffer_distance:g}",hag_signature,sizing.strategy,sizing.target_width,sizing.target_height,sizing.estimated_point_range,sizing.expected_memory_range,sizing.pilot_required,native_reused,subdivisions)
     def _windows(self,grid,sources,kind,sizing):
         cols=max(1,round(sizing.target_width/grid.resolution));rows=max(1,round(sizing.target_height/grid.resolution));out=[];n=0
         for r0 in range(0,grid.rows,rows):

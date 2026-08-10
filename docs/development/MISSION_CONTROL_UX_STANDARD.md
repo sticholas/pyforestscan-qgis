@@ -126,3 +126,8 @@ Normal Batch order is Processing Mode, LiDAR Data or Processing Area, Products, 
 
 ## Runtime status
 The footer vocabulary is `Backend`, `LiDAR`, `Area`, and `Status`. Current-run failures show their last known stage and reason; previous runs are not merged into current outputs.
+
+
+## Phase 28H Adaptive Scale and Compact Workspace
+
+Visible navigation is limited to Process and Tools & Setup. Process owns setup, progress, and current results; engineering detail stays collapsed and the redundant footer is hidden.
