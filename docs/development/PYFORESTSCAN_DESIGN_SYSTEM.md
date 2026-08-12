@@ -1,5 +1,8 @@
 # PyForestScan Design System
 
+Phase 29A establishes adaptive visibility as an implementation contract: empty collections collapse to one-line states, populated lists use bounded internal scrolling, form rows disappear when their controlling mode is inactive, and responsive status strips reduce detail before they wrap or clip.
+
+
 The PyForestScan Design System is the permanent visual and interaction language for the QGIS plugin. It applies to Mission Control, PBM backend management, dialogs, notifications, Processing descriptions, release screenshots, and future modules.
 
 This document is a design and information-architecture contract. It does not change algorithms, PyForestScan scientific behavior, PBM installation behavior, or the Advanced Processing Toolbox contract.

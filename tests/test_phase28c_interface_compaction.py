@@ -28,11 +28,11 @@ class Phase28CInterfaceCompactionTests(unittest.TestCase):
         self.assertNotIn('_collapsible_section(self.content_layout, "Batch Footprint Estimate"', PAGES)
 
     def test_specialist_controls_are_collapsed(self):
-        for title in ("Repository Tools", "Map and Spatial Tools", "Advanced Product Settings", "Advanced Batch Options", "Technical Report"):
+        for title in ("Repository Tools", "Map and Spatial Tools", "Advanced Product Settings", "Advanced Batch Options", "Additional Tools"):
             self.assertIn(f'"{title}", checked=False', PAGES)
 
     def test_key_summary_widgets_are_content_bounded(self):
-        self.assertIn("self.preflight_text.setMaximumHeight(140)", PAGES)
+        self.assertIn("_size_text_edit_to_content(self.preflight_text)", PAGES)
         self.assertIn("self.previous_reports.setMaximumHeight(120)", PAGES)
         self.assertIn("self.fallback_checks_list.setMaximumHeight(140)", PAGES)
         self.assertIn("self.checks_list.setMaximumHeight(180)", PAGES)

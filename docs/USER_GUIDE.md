@@ -1,3 +1,6 @@
+## Phase 29A adaptive layout
+
+Mission Control adapts its visible controls to the current task. Repository maintenance, product-specific parameters, parallel worker settings, previous results, and backend troubleshooting appear only when relevant; the bottom strip continuously summarizes the current session.
 
 ## Mission Control
 

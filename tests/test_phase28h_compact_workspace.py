@@ -13,8 +13,9 @@ class CompactWorkspaceTests(unittest.TestCase):
   self.assertIn('create_section("Current Result")',self.pages);self.assertIn('QPushButton("Load into QGIS")',self.pages);self.assertIn('QPushButton("New Run")',self.pages)
  def test_tools_synthesizes_system_and_advanced_access(self):
   self.assertIn('super().__init__("Tools & Setup"',self.pages);self.assertIn('QPushButton("Verify Environment")',self.pages);self.assertIn('QPushButton("Open Processing Toolbox")',self.pages)
- def test_compact_width_and_footer_removed(self):
-  self.assertIn('<width>420</width>',self.form);self.assertIn('self.ui.statusFrame.setVisible(False)',self.mission)
+ def test_compact_width_and_live_status_strip(self):
+  self.assertIn('<width>420</width>',self.form);self.assertIn('self.ui.statusFrame.setVisible(True)',self.mission)
+  self.assertIn('compact = self.width() < 620',self.mission)
  def test_smart_status_states(self):
   ready=build_smart_status(backend_ready=True,repository_kind='ept',polygon_area=652000,products=('CHM',),output_folder='out');self.assertEqual(ready.headline,'Ready to process');self.assertIn('65.2 ha polygon',ready.details)
   running=build_smart_status(processing_state='running',completed=18,total=34);self.assertIn('18 of 34',running.details[0])

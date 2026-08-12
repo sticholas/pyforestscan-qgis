@@ -131,14 +131,15 @@ SPACING_SM = DESIGN_SPACING["sm"]
 SPACING_MD = DESIGN_SPACING["md"]
 SPACING_LG = DESIGN_SPACING["lg"]
 SPACING_XL = DESIGN_SPACING["xl"]
-PAGE_MARGINS = (SPACING_LG, SPACING_SM, SPACING_LG, SPACING_LG)
-SECTION_MARGINS = (SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
-SECTION_SPACING = SPACING_MD
+PAGE_MARGINS = (SPACING_MD, SPACING_XS, SPACING_MD, SPACING_MD)
+SECTION_MARGINS = (SPACING_SM, SPACING_SM, SPACING_SM, SPACING_SM)
+SECTION_SPACING = SPACING_SM
 ACTION_ROW_SPACING = SPACING_SM
-PRIMARY_BUTTON_HEIGHT = 40
-SECONDARY_BUTTON_HEIGHT = 34
-COMPACT_LIST_HEIGHT = 96
-TECHNICAL_DETAIL_HEIGHT = 84
+PRIMARY_BUTTON_HEIGHT = 36
+SECONDARY_BUTTON_HEIGHT = 30
+COMPACT_LIST_HEIGHT = 76
+TECHNICAL_DETAIL_HEIGHT = 72
+COMPACT_VISIBLE_ROWS = 6
 
 
 class MissionPage(QWidget):
@@ -2065,7 +2066,9 @@ class BatchPage(MissionPage):
         discover_row.addStretch(1)
         repository_layout.addLayout(discover_row)
         self.file_list = QListWidget()
-        self.file_list.setMinimumHeight(COMPACT_LIST_HEIGHT)
+        self.file_list.setVisible(False)
+        self.file_empty_label = _details_label("No files discovered. Choose a folder to begin.")
+        repository_layout.addWidget(self.file_empty_label)
         repository_layout.addWidget(self.file_list)
 
         self.polygon_section, polygon_layout = self.create_section("Processing Area")
@@ -2366,7 +2369,7 @@ class BatchPage(MissionPage):
         product_actions.addWidget(self.clear_products_button)
         product_actions.addStretch(1)
         products_layout.addLayout(product_actions)
-        settings_group, settings_layout = _collapsible_section(products_layout, "Advanced Product Settings", checked=False)
+        self.advanced_product_settings_group, settings_layout = _collapsible_section(products_layout, "Advanced Product Settings", checked=False)
         settings_form = QFormLayout()
         settings_form.setVerticalSpacing(SECTION_SPACING)
         self.resolution_spin = QDoubleSpinBox()
@@ -2388,8 +2391,9 @@ class BatchPage(MissionPage):
         settings_form.addRow("Height bin size", self.height_bin_spin)
         settings_form.addRow("Canopy cover threshold", self.canopy_threshold_spin)
         settings_form.addRow("CHM interpolation", self.chm_interpolation_combo)
+        self.product_settings_form = settings_form
         settings_layout.addLayout(settings_form)
-        _wire_collapsible_group(settings_group)
+        _wire_collapsible_group(self.advanced_product_settings_group)
         self.advanced_batch_section, advanced_batch = _collapsible_section(self.content_layout, "Advanced Batch Options", checked=False)
         advanced_form = QFormLayout()
         advanced_form.setVerticalSpacing(SECTION_SPACING)
@@ -2404,8 +2408,8 @@ class BatchPage(MissionPage):
         advanced_form.addRow("Processing profile", profile_row)
         self.execution_mode_combo = QComboBox()
         self.execution_mode_combo.addItem("Sequential", SEQUENTIAL_MODE)
-        self.execution_mode_combo.addItem("Parallel safe mode", PARALLEL_SAFE_MODE)
-        self.execution_mode_combo.currentIndexChanged.connect(lambda _index: self._refresh_footprint_label())
+        self.execution_mode_combo.addItem("Parallel", PARALLEL_SAFE_MODE)
+        self.execution_mode_combo.currentIndexChanged.connect(self._on_execution_mode_changed)
         self.max_workers_spin = QSpinBox()
         self.max_workers_spin.setMinimum(1)
         self.max_workers_spin.setMaximum(6)
@@ -2419,6 +2423,8 @@ class BatchPage(MissionPage):
         max_workers_row.addWidget(info_badge("batch.concurrent_jobs", parent=self), 0)
         advanced_form.addRow("Execution mode", execution_mode_row)
         advanced_form.addRow("Max workers", max_workers_row)
+        self.advanced_batch_form = advanced_form
+        self.max_workers_row = max_workers_row
         advanced_batch.addLayout(advanced_form)
         mode_help = _details_label(
             "Sequential is safest. Parallel Safe is available with confirmation and guardrails. "
@@ -2532,14 +2538,14 @@ class BatchPage(MissionPage):
         prerun_layout.addWidget(self.acknowledge_warnings_check)
         self.preflight_summary_label = _body_label("Needs attention: choose data, products, and an output folder.")
         prerun_layout.addWidget(self.preflight_summary_label)
-        technical_report_group, technical_report = _collapsible_section(prerun_layout, "Technical Report", checked=False)
         self.preflight_text = QTextEdit()
+        self.preflight_text.setObjectName("compactTechnicalReport")
         self.preflight_text.setReadOnly(True)
-        self.preflight_text.setMaximumHeight(140)
-        self.preflight_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.preflight_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.preflight_text.setPlainText("Run the Prerun Check when your data, products, and output folder are ready.")
-        technical_report.addWidget(self.preflight_text)
-        _wire_collapsible_group(technical_report_group)
+        self.preflight_text.textChanged.connect(lambda: _size_text_edit_to_content(self.preflight_text))
+        prerun_layout.addWidget(self.preflight_text)
+        _size_text_edit_to_content(self.preflight_text)
 
         self.process_section, process_layout = self.create_section("Process")
         self.run_button = QPushButton(primary_action_label("batch"))
@@ -2621,6 +2627,7 @@ class BatchPage(MissionPage):
         self.previous_runs_group.setVisible(False);_wire_collapsible_group(self.previous_runs_group)
         self._update_batch_mode_visibility()
         self._wire_session_state_inputs()
+        self._update_adaptive_visibility()
         QTimer.singleShot(0, self._publish_session_state)
 
     def set_job_token_factory(self,factory) -> None:
@@ -2668,9 +2675,12 @@ class BatchPage(MissionPage):
         self.resolution_spin.valueChanged.connect(self._on_session_input_changed)
         for check in self.product_checks.values():
             check.toggled.connect(self._on_session_input_changed)
+            check.toggled.connect(self._update_adaptive_visibility)
+        self.polygon_lidar_folder_edit.textChanged.connect(self._update_adaptive_visibility)
 
     def _on_session_input_changed(self, *_args: object) -> None:
         self.preflight_report = None
+        self._update_adaptive_visibility()
         if hasattr(self,"run_button"):self._update_run_button_enabled()
         if hasattr(self, "preflight_text"):
             self.preflight_text.setPlainText("Prerun Check needs refresh for the current inputs.")
@@ -2734,8 +2744,31 @@ class BatchPage(MissionPage):
         self.retry_failed_button.setText("Retry Failed" if polygon else "Retry Failed Files")
         self.summary_label.setText("Review Polygon Batch outputs after execution." if polygon else "4. Review Results after the batch completes.")
         self._update_polygon_source_visibility()
+        self._update_adaptive_visibility()
         self.refresh_catalog_status()
         self._update_run_button_enabled()
+
+    def _on_execution_mode_changed(self, *_args: object) -> None:
+        self._update_adaptive_visibility()
+        self._refresh_footprint_label()
+
+    def _update_adaptive_visibility(self, *_args: object) -> None:
+        selected = {product for product, check in self.product_checks.items() if check.isChecked()}
+        self.advanced_product_settings_group.setVisible(bool(selected))
+        if hasattr(self, 'product_settings_form'):
+            raster_products = set(ProductType)
+            binned_products = {ProductType.PAD, ProductType.PAI, ProductType.FHD}
+            _set_form_field_visible(self.product_settings_form, self.resolution_spin, bool(selected & raster_products))
+            _set_form_field_visible(self.product_settings_form, self.height_bin_spin, bool(selected & binned_products))
+            _set_form_field_visible(self.product_settings_form, self.canopy_threshold_spin, ProductType.CANOPY_COVER in selected)
+            _set_form_field_visible(self.product_settings_form, self.chm_interpolation_combo, ProductType.CHM in selected)
+        parallel = self.execution_mode_combo.currentData() == PARALLEL_SAFE_MODE
+        if hasattr(self, 'advanced_batch_form'):
+            _set_form_field_visible(self.advanced_batch_form, self.max_workers_spin, parallel)
+            _set_layout_visible(self.max_workers_row, parallel)
+        self.confirm_parallel_check.setVisible(parallel)
+        repository_selected = bool(self.polygon_lidar_folder_edit.text().strip())
+        self.advanced_repository_section.setVisible(self._current_batch_mode() == 'polygon' and repository_selected)
 
     def _apply_processing_profile(self) -> None:
         if not hasattr(self, "processing_profile_combo"):
@@ -3432,6 +3465,9 @@ class BatchPage(MissionPage):
             row.setCheckState(Qt.Checked if item.selected else Qt.Unchecked)
             row.setSizeHint(QSize(0, 72))
             self.file_list.addItem(row)
+        self.file_list.setVisible(bool(datasets))
+        self.file_empty_label.setVisible(not datasets)
+        _size_list_to_content(self.file_list, row_height=72)
         _set_status_badge(self.status_label, "READY", f"Status: Ready - discovered {len(datasets)} supported dataset(s).")
         self._refresh_footprint_label()
 
@@ -3892,6 +3928,9 @@ class BatchPage(MissionPage):
             row.setCheckState(Qt.Checked)
             row.setSizeHint(QSize(0, 72))
             self.file_list.addItem(row)
+        self.file_list.setVisible(bool(self.discovered_paths))
+        self.file_empty_label.setVisible(not self.discovered_paths)
+        _size_list_to_content(self.file_list, row_height=72)
         self.failed_paths = []
         self.retry_failed_button.setEnabled(False)
         self.retry_failed_button.setVisible(False)
@@ -3933,6 +3972,7 @@ class BatchPage(MissionPage):
         self.result_filter_label.setVisible(bool(self.batch_items))
         self.result_filter_combo.setVisible(bool(self.batch_items))
         self.batch_results.setVisible(has_results)
+        _size_list_to_content(self.batch_results, row_height=94)
 
     def _set_batch_summary(self, result: object) -> None:
         """Display the completed batch summary."""
@@ -4299,11 +4339,19 @@ class SettingsPage(MissionPage):
         self.verify_environment_button=QPushButton("Verify Environment");self.verify_environment_button.clicked.connect(self.verifyEnvironmentRequested.emit);_apply_button_role(self.verify_environment_button,"secondary")
         self.open_toolbox_button=QPushButton("Open Processing Toolbox");self.open_toolbox_button.clicked.connect(self.openToolboxRequested.emit);_apply_button_role(self.open_toolbox_button,"secondary")
         self.guidance_details_button=QPushButton("Guidance Details");self.guidance_details_button.clicked.connect(self.guidanceDetailsRequested.emit);_apply_button_role(self.guidance_details_button,"neutral")
-        for button in (self.verify_environment_button,self.open_toolbox_button,self.guidance_details_button):system_actions.addWidget(button)
+        system_actions.addWidget(self.verify_environment_button)
         system_actions.addStretch(1);system.addLayout(system_actions)
+        additional_tools_group, additional_tools = _collapsible_section(self.content_layout, "Additional Tools", checked=False)
+        additional_row = QHBoxLayout()
+        additional_row.addWidget(self.open_toolbox_button)
+        additional_row.addWidget(self.guidance_details_button)
+        additional_row.addStretch(1)
+        additional_tools.addLayout(additional_row)
+        _wire_collapsible_group(additional_tools_group)
         defaults = self.add_section("Preferences")
         form = QFormLayout()
         self.default_output_folder = QLineEdit()
+        self.default_output_folder.editingFinished.connect(self.emit_default_output_folder)
         folder_row = QHBoxLayout()
         folder_row.addWidget(self.default_output_folder)
         browse = QPushButton("Browse")
@@ -4311,9 +4359,8 @@ class SettingsPage(MissionPage):
         folder_row.addWidget(browse)
         form.addRow("Default output folder", folder_row)
         defaults.addLayout(form)
-        apply_button = QPushButton("Use This Folder")
-        apply_button.clicked.connect(self.emit_default_output_folder)
-        defaults.addWidget(apply_button)
+        self.default_output_preview_label = _details_label("The selected folder is used for new outputs. Changes apply when editing finishes.")
+        defaults.addWidget(self.default_output_preview_label)
 
         workspace_group, workspace = _collapsible_section(self.content_layout, "Advanced Settings", checked=False)
         workspace_form = QFormLayout()
@@ -4365,9 +4412,6 @@ class SettingsPage(MissionPage):
         for label in (
             self.backend_status_label,
             self.backend_dependency_label,
-            self.zip_install_ready_label,
-            self.backend_auto_install_ready_label,
-            self.manual_dependency_setup_label,
             self.qgis_compatibility_label,
             self.backend_install_readiness_label,
         ):
@@ -4375,6 +4419,9 @@ class SettingsPage(MissionPage):
 
         backend_detail_group, backend_detail_layout = _collapsible_section(self.content_layout, "Advanced / Troubleshooting: backend details", checked=False)
         for label in (
+            self.zip_install_ready_label,
+            self.backend_auto_install_ready_label,
+            self.manual_dependency_setup_label,
             self.backend_location_label,
             self.backend_environment_label,
             self.backend_installed_version_label,
@@ -4460,7 +4507,7 @@ class SettingsPage(MissionPage):
         ):
             self.backend_secondary_buttons.addWidget(button)
         self.backend_secondary_buttons.addStretch(1)
-        backend.addLayout(self.backend_secondary_buttons)
+        backend_detail_layout.addLayout(self.backend_secondary_buttons)
 
         self.backend_details = QTextEdit()
         self.backend_details.setReadOnly(True)
@@ -4478,7 +4525,7 @@ class SettingsPage(MissionPage):
         self.backend_technical_log_group.toggled.connect(self.backend_technical_log.setVisible)
         technical_layout.addWidget(self.backend_technical_log)
         self.backend_technical_log_group.setLayout(technical_layout)
-        backend.addWidget(self.backend_technical_log_group)
+        backend_detail_layout.addWidget(self.backend_technical_log_group)
         self.refresh_backend_summary()
 
     def set_workspace_session(self, session: WorkspaceSession) -> None:
@@ -5097,6 +5144,31 @@ def _set_layout_visible(layout: object, visible: bool) -> None:
             widget.setVisible(visible)
         if child_layout is not None:
             _set_layout_visible(child_layout, visible)
+
+def _set_form_field_visible(form: QFormLayout, field: QWidget, visible: bool) -> None:
+    """Toggle a form field and label without relying on newer Qt row APIs."""
+    label = form.labelForField(field)
+    if label is not None:
+        label.setVisible(visible)
+    field.setVisible(visible)
+
+
+def _size_list_to_content(widget: QListWidget, *, row_height: int = 30, visible_rows: int = COMPACT_VISIBLE_ROWS) -> None:
+    """Keep empty lists tiny and cap populated lists with internal scrolling."""
+    count = widget.count()
+    height = 34 if count == 0 else min(count, visible_rows) * row_height + 6
+    widget.setMinimumHeight(height)
+    widget.setMaximumHeight(height)
+    widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+
+def _size_text_edit_to_content(widget: QTextEdit, *, visible_lines: int = 6) -> None:
+    """Resize concise reports to content and cap detailed reports."""
+    lines = max(1, widget.toPlainText().count('\n') + 1)
+    height = min(lines, visible_lines) * 19 + 14
+    widget.setMinimumHeight(height)
+    widget.setMaximumHeight(height)
+
 
 def _readable_list() -> QListWidget:
     """Return a list widget tuned for wrapped Advisor recommendation summaries."""

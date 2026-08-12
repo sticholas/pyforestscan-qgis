@@ -1,4 +1,11 @@
 # Changelog
+
+## Phase 29A - Productization UI audit and layout refinement
+
+- Added adaptive, content-sized Process sections and a responsive live session status strip.
+- Hid repository, product, concurrency, result, and backend controls until they are relevant.
+- Reduced normal Tools & Setup density while preserving scientific, PBM, and Processing Toolbox behavior.
+
 All notable changes to this project will be documented in this file.
 
 This project follows semantic versioning once plugin releases begin. Until the

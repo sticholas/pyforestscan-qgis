@@ -89,7 +89,8 @@ class MissionControlDock(QDockWidget):
         self.root_widget.setMinimumSize(420, 480)
         self.root_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.ui.navigationList.setFixedWidth(112)
-        self.ui.statusFrame.setVisible(False)
+        self.ui.navigationList.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.ui.statusFrame.setVisible(True)
         self.ui.pageStack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.ui.bodyLayout.setStretch(0, 0)
         self.ui.bodyLayout.setStretch(1, 1)
@@ -145,6 +146,12 @@ class MissionControlDock(QDockWidget):
     def show_home(self) -> None:
         """Show the primary Mission Control workspace."""
         self._navigate_to("Process")
+
+    def resizeEvent(self, event: object) -> None:  # noqa: N802 - Qt API name.
+        """Keep the live status strip readable at narrow dock widths."""
+        super().resizeEvent(event)
+        if hasattr(self, 'session_state') and hasattr(self, 'ui'):
+            self._update_status_bar()
 
     def closeEvent(self, event: object) -> None:  # noqa: N802 - Qt API name.
         """Save the Mission Control workspace session when the window closes."""
@@ -262,9 +269,9 @@ class MissionControlDock(QDockWidget):
             QListWidget { border: 1px solid #dfe6e9; background: #ffffff; border-radius: 4px; }
             QListWidget::item { padding: 8px; border-bottom: 1px solid #eef2f3; }
             QListWidget::item:selected { background: #dde8ec; color: #1f2d35; }
-            QGroupBox { font-weight: 600; margin-top: 12px; border: 1px solid #dfe6e9; border-radius: 6px; padding: 12px; background: #ffffff; }
+            QGroupBox { font-weight: 600; margin-top: 8px; border: 1px solid #dfe6e9; border-radius: 6px; padding: 8px; background: #ffffff; }
             QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #32424a; }
-            QPushButton { background: #ffffff; border: 1px solid #cfd9dd; border-radius: 4px; padding: 8px 12px; }
+            QPushButton { background: #ffffff; border: 1px solid #cfd9dd; border-radius: 4px; padding: 6px 10px; }
             QPushButton[buttonRole="primary"] { background: #2f6f7d; border-color: #275e6a; color: #ffffff; font-weight: 600; }
             QPushButton[buttonRole="secondary"] { background: #ffffff; border-color: #b9c9cf; color: #263840; }
             QPushButton[buttonRole="neutral"] { background: #f8fafb; border-color: #cfd9dd; color: #30414a; }
@@ -953,6 +960,9 @@ class MissionControlDock(QDockWidget):
         self.ui.planningStatusLabel.setText(f"Area: {area}")
         status = self.session_state.processing_status.title() if self.session_state.processing_status != "idle" else ("Ready" if environment_is_ready(self.state.environment_status) and self.session_state.repository_path else "Needs setup")
         self.ui.readyStatusLabel.setText(f"Status: {status}")
+        compact = self.width() < 620
+        self.ui.datasetStatusLabel.setVisible(not compact)
+        self.ui.planningStatusLabel.setVisible(not compact)
 
     def _open_documentation(self) -> None:
         docs = plugin_root().parent / "docs" / "USER_GUIDE.md"

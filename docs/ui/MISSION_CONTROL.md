@@ -1,5 +1,8 @@
 # Mission Control
 
+Phase 29A makes the two retained workspaces content-driven: empty file and report surfaces stay compact, populated lists cap at six visible rows, product and concurrency controls follow current selections, backend maintenance stays under troubleshooting, and the live footer reports only current-session state. See the [Phase 29A Productization UI Audit](../development/PHASE_29A_PRODUCTIZATION_UI_AUDIT.md).
+
+
 Safe EPT progress uses work-unit language such as `2 complete, 3 failed, 5 of 120 attempted, 115 not started`. Scientific pauses and native crashes are distinct states; normal mode does not expose raw Windows exception codes.
 
 Mission Control is the floating-by-default, dockable graphical operating environment for PyForestScan
