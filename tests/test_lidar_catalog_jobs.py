@@ -122,7 +122,8 @@ class LidarCatalogResponsiveTests(unittest.TestCase):
     def test_static_ui_has_explicit_actions_and_no_selection_scan_hook(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
         batch = source[source.index("class BatchPage"):]
-        self.assertIn("Use Path", batch)
+        self.assertIn("editingFinished.connect(self.use_polygon_repository_path)", batch)
+        self.assertIn("Prepare Repository", batch)
         self.assertIn("Quick Probe", batch)
         self.assertIn("Pause After Current Chunk", batch)
         self.assertIn("Resume Catalog Build", batch)

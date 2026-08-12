@@ -603,6 +603,7 @@ class MissionControlDock(QDockWidget):
                     remember_last_output_folder=self.settings_page.remember_output_folder_check.isChecked(),
                     maximum_recent_items=self.settings_page.maximum_recent_items_spin.value(),
                     auto_save_enabled=self.settings_page.auto_save_workspace_check.isChecked(),
+                    open_mission_control_on_startup=self.settings_page.open_on_startup_check.isChecked(),
                 )
             )
             if self.workspace_manager.auto_save:
@@ -692,6 +693,7 @@ class MissionControlDock(QDockWidget):
             remember_last_output_folder=self.settings_page.remember_output_folder_check.isChecked(),
             maximum_recent_items=self.settings_page.maximum_recent_items_spin.value(),
             auto_save_enabled=self.settings_page.auto_save_workspace_check.isChecked(),
+            open_mission_control_on_startup=self.settings_page.open_on_startup_check.isChecked(),
         )
         self.workspace_session = session
         try:

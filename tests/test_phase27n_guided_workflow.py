@@ -26,7 +26,7 @@ class Phase27NGuidedWorkflowTests(unittest.TestCase):
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
         self.assertIn("guided_step_indicator", source)
         self.assertIn("Processing profile", source)
-        self.assertIn("Preview Spatial Selection", source)
+        self.assertIn("Show Selected Files on Map", source)
         self.assertIn("Zoom to Repository Extent", source)
         self.assertIn("Polygon Processing Review", source)
         self.assertIn("Technical Report", source)

@@ -1,5 +1,8 @@
 # Mission Control
 
+Phase 29B reduces normal decisions: repository paths refresh automatically, one Prepare Repository action owns normal setup, spatial actions refresh their required plan on demand, Automatic is the default profile, and detailed execution controls appear only under Custom. Mission Control no longer opens at QGIS startup unless enabled in Advanced Settings. See the [Phase 29B Workflow Simplification Audit](../development/PHASE_29B_WORKFLOW_SIMPLIFICATION_AUDIT.md).
+
+
 Phase 29A makes the two retained workspaces content-driven: empty file and report surfaces stay compact, populated lists cap at six visible rows, product and concurrency controls follow current selections, backend maintenance stays under troubleshooting, and the live footer reports only current-session state. See the [Phase 29A Productization UI Audit](../development/PHASE_29A_PRODUCTIZATION_UI_AUDIT.md).
 
 

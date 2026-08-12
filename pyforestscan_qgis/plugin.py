@@ -11,6 +11,7 @@ from .core.qgis_compat import open_or_raise_mission_control, register_processing
 from .processing_provider import PyForestScanProvider
 from .resources import plugin_icon
 from .ui.mission_control import MissionControlDock
+from .core.workspace import WorkspaceManager
 
 
 class PyForestScanPlugin:
@@ -39,7 +40,12 @@ class PyForestScanPlugin:
             else:
                 report_message(result.message, level="WARNING")
         self._create_mission_control_action()
-        self._show_mission_control()
+        try:
+            auto_open = WorkspaceManager().load_global_session().open_mission_control_on_startup
+        except Exception:  # noqa: BLE001 - startup preference must never block plugin loading.
+            auto_open = False
+        if auto_open:
+            self._show_mission_control()
 
     def unload(self) -> None:
         """Remove Processing provider, actions, and Mission Control dock."""
@@ -57,6 +63,9 @@ class PyForestScanPlugin:
                 remove_toolbar_icon(self.mission_control_action)
             self.mission_control_action = None
         if self.mission_control is not None:
+            save_session = getattr(self.mission_control, "_save_workspace_session", None)
+            if callable(save_session):
+                save_session()
             remove_dock = getattr(self.iface, "removeDockWidget", None)
             if callable(remove_dock):
                 remove_dock(self.mission_control)

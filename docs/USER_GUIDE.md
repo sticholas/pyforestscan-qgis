@@ -1,3 +1,7 @@
+## Phase 29B smart workflow
+
+Mission Control stays closed when QGIS starts unless **Advanced Settings > Open Mission Control when QGIS starts** is enabled. Automatic is the normal processing profile; repository setup and spatial readiness are refreshed as needed, while specialist execution controls remain under Custom.
+
 ## Phase 29A adaptive layout
 
 Mission Control adapts its visible controls to the current task. Repository maintenance, product-specific parameters, parallel worker settings, previous results, and backend troubleshooting appear only when relevant; the bottom strip continuously summarizes the current session.

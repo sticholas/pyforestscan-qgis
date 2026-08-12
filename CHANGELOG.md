@@ -1,5 +1,12 @@
 # Changelog
 
+## Phase 29B - Workflow simplification and smart automation
+
+- Made Mission Control startup opt-in, consolidated repository and spatial actions, and expanded authoritative plan invalidation.
+- Presented Recommended as Automatic, reserved execution topology for Custom, and treated parallel workers as an adaptive upper limit.
+- Added on-demand spatial readiness and concise completion summaries without changing processing behavior.
+
+
 ## Phase 29A - Productization UI audit and layout refinement
 
 - Added adaptive, content-sized Process sections and a responsive live session status strip.

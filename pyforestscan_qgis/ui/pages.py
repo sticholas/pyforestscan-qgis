@@ -2083,15 +2083,7 @@ class BatchPage(MissionPage):
         polygon_folder_row = QHBoxLayout()
         polygon_folder_browse = QPushButton("Browse Repository")
         polygon_folder_browse.clicked.connect(self.browse_polygon_lidar_folder)
-        self.use_polygon_path_button = QPushButton("Use Path")
-        self.use_polygon_path_button.clicked.connect(self.use_polygon_repository_path)
-        _apply_button_role(self.use_polygon_path_button, "neutral")
-        self.quick_probe_button = QPushButton("Inspect Data Folder")
-        self.quick_probe_button.clicked.connect(self.inspect_polygon_repository)
-        _apply_button_role(self.quick_probe_button, "secondary")
-        self.polygon_refresh_folder_button = QPushButton("Refresh Catalog Status")
-        self.polygon_refresh_folder_button.clicked.connect(self.refresh_polygon_lidar_folder)
-        _apply_button_role(self.polygon_refresh_folder_button, "neutral")
+        self.polygon_lidar_folder_edit.editingFinished.connect(self.use_polygon_repository_path)
         polygon_folder_row.addWidget(self.polygon_lidar_folder_edit, 1)
         polygon_folder_row.addWidget(polygon_folder_browse, 0)
         self.polygon_source_combo = QComboBox()
@@ -2148,26 +2140,19 @@ class BatchPage(MissionPage):
         self.detect_index_strategy_button = QPushButton("Preview Setup Method")
         self.detect_index_strategy_button.clicked.connect(self.detect_polygon_index_strategy)
         _apply_button_role(self.detect_index_strategy_button, "secondary")
-        self.build_relevant_index_button = QPushButton("Build Index")
+        self.build_relevant_index_button = QPushButton("Prepare Repository")
         self.build_relevant_index_button.clicked.connect(self.build_relevant_polygon_index)
         _apply_button_role(self.build_relevant_index_button, "primary")
         self.update_catalog_button = QPushButton("Update Index")
         self.update_catalog_button.clicked.connect(self.update_polygon_catalog)
         _apply_button_role(self.update_catalog_button, "secondary")
         strategy_actions.addWidget(self.build_relevant_index_button)
-        strategy_actions.addWidget(self.update_catalog_button)
         strategy_actions.addStretch(1)
         polygon_layout.addLayout(strategy_actions)
         self.advanced_repository_section, advanced_repository = _collapsible_section(polygon_layout, "Repository Tools", checked=False)
         advanced_repository.addWidget(_details_label("Automatic setup is recommended. Expand only to diagnose, repair, resume, or override repository preparation."))
         advanced_repository.addLayout(strategy_form)
         advanced_repository.addWidget(self.detect_index_strategy_button)
-        advanced_path_actions = QHBoxLayout()
-        advanced_path_actions.addWidget(self.use_polygon_path_button)
-        advanced_path_actions.addWidget(self.quick_probe_button)
-        advanced_path_actions.addWidget(self.polygon_refresh_folder_button)
-        advanced_path_actions.addStretch(1)
-        advanced_repository.addLayout(advanced_path_actions)
         self.polygon_index_plan_text = QTextEdit()
         self.polygon_index_plan_text.setReadOnly(True)
         self.polygon_index_plan_text.setMinimumHeight(72)
@@ -2217,6 +2202,7 @@ class BatchPage(MissionPage):
         self.open_catalog_folder_button.clicked.connect(self.open_polygon_catalog_folder)
         _apply_button_role(self.open_catalog_folder_button, "neutral")
         catalog_actions.addWidget(self.inspect_repository_button)
+        catalog_actions.addWidget(self.update_catalog_button)
         catalog_actions.addWidget(self.build_catalog_button)
         catalog_actions.addWidget(self.resume_catalog_button)
         catalog_actions.addWidget(self.pause_catalog_button)
@@ -2294,9 +2280,6 @@ class BatchPage(MissionPage):
         _wire_collapsible_group(self.polygon_wkt_group)
         polygon_actions = QHBoxLayout()
         polygon_actions.setSpacing(ACTION_ROW_SPACING)
-        self.rerun_polygon_preflight_button = QPushButton("Re-run Prerun Check")
-        self.rerun_polygon_preflight_button.clicked.connect(self.run_preflight)
-        _apply_button_role(self.rerun_polygon_preflight_button, "secondary")
         self.reset_polygon_batch_button = QPushButton("Reset Polygon Batch")
         self.reset_polygon_batch_button.clicked.connect(self.reset_polygon_batch)
         _apply_button_role(self.reset_polygon_batch_button, "danger")
@@ -2312,15 +2295,10 @@ class BatchPage(MissionPage):
         self.zoom_repository_button = QPushButton("Zoom to Repository Extent")
         self.zoom_repository_button.clicked.connect(lambda: self._show_spatial_action("Zoom to Repository Extent"))
         _apply_button_role(self.zoom_repository_button, "neutral")
-        self.zoom_combined_button = QPushButton("Zoom to Combined Extent")
-        self.zoom_combined_button.clicked.connect(lambda: self._show_spatial_action("Zoom to Combined Extent"))
-        _apply_button_role(self.zoom_combined_button, "neutral")
-        polygon_actions.addWidget(self.rerun_polygon_preflight_button)
         polygon_actions.addWidget(self.preview_spatial_selection_button)
         polygon_actions.addWidget(self.preview_spatial_alignment_button)
         polygon_actions.addWidget(self.zoom_polygon_button)
         polygon_actions.addWidget(self.zoom_repository_button)
-        polygon_actions.addWidget(self.zoom_combined_button)
         polygon_actions.addWidget(self.reset_polygon_batch_button)
         polygon_actions.addStretch(1)
         self.advanced_spatial_section, advanced_spatial = _collapsible_section(polygon_layout, "Map and Spatial Tools", checked=False)
@@ -2399,7 +2377,7 @@ class BatchPage(MissionPage):
         advanced_form.setVerticalSpacing(SECTION_SPACING)
         self.processing_profile_combo = QComboBox()
         for profile in PROCESSING_PROFILES:
-            self.processing_profile_combo.addItem(profile.label, profile.key)
+            self.processing_profile_combo.addItem("Automatic (Recommended)" if profile.key == "recommended" else profile.label, profile.key)
         self.processing_profile_combo.setCurrentIndex(1)
         self.processing_profile_combo.currentIndexChanged.connect(lambda _index: self._apply_processing_profile())
         profile_row = QHBoxLayout()
@@ -2673,6 +2651,16 @@ class BatchPage(MissionPage):
             edit.textChanged.connect(self._on_session_input_changed)
         self.polygon_dissolve_check.toggled.connect(self._on_session_input_changed)
         self.resolution_spin.valueChanged.connect(self._on_session_input_changed)
+        for control in (self.height_bin_spin, self.canopy_threshold_spin, self.max_workers_spin):
+            control.valueChanged.connect(self._on_session_input_changed)
+        for combo in (self.processing_profile_combo, self.execution_mode_combo, self.chm_interpolation_combo,
+                      self.polygon_index_strategy_combo, self.polygon_selection_mode_combo, self.mask_engine_combo):
+            combo.currentIndexChanged.connect(self._on_session_input_changed)
+        for option in (self.stop_on_error_check, self.load_outputs_check, self.confirm_parallel_check,
+                       self.skip_completed_check, self.retry_failed_only_check, self.overwrite_existing_check,
+                       self.exact_raster_mask_check, self.crop_to_polygon_extent_check,
+                       self.all_touched_mask_check, self.retain_unmasked_intermediate_check):
+            option.toggled.connect(self._on_session_input_changed)
         for check in self.product_checks.values():
             check.toggled.connect(self._on_session_input_changed)
             check.toggled.connect(self._update_adaptive_visibility)
@@ -2762,10 +2750,12 @@ class BatchPage(MissionPage):
             _set_form_field_visible(self.product_settings_form, self.height_bin_spin, bool(selected & binned_products))
             _set_form_field_visible(self.product_settings_form, self.canopy_threshold_spin, ProductType.CANOPY_COVER in selected)
             _set_form_field_visible(self.product_settings_form, self.chm_interpolation_combo, ProductType.CHM in selected)
-        parallel = self.execution_mode_combo.currentData() == PARALLEL_SAFE_MODE
+        custom = self.processing_profile_combo.currentData() == "custom"
+        parallel = custom and self.execution_mode_combo.currentData() == PARALLEL_SAFE_MODE
         if hasattr(self, 'advanced_batch_form'):
-            _set_form_field_visible(self.advanced_batch_form, self.max_workers_spin, parallel)
+            _set_form_field_visible(self.advanced_batch_form, self.execution_mode_combo, custom)
             _set_layout_visible(self.max_workers_row, parallel)
+            _set_form_field_visible(self.advanced_batch_form, self.max_workers_spin, parallel)
         self.confirm_parallel_check.setVisible(parallel)
         repository_selected = bool(self.polygon_lidar_folder_edit.text().strip())
         self.advanced_repository_section.setVisible(self._current_batch_mode() == 'polygon' and repository_selected)
@@ -2777,6 +2767,8 @@ class BatchPage(MissionPage):
         if profile.key != "custom":
             self.max_workers_spin.setValue(min(self.max_workers_spin.maximum(), max(self.max_workers_spin.minimum(), profile.recommended_workers)))
             self.execution_mode_combo.setCurrentIndex(0 if profile.recommended_workers <= 1 else 1)
+        self.max_workers_spin.setToolTip("Upper limit; adaptive planning may use fewer workers for memory, storage, or source safety.")
+        self._update_adaptive_visibility()
         self._refresh_footprint_label()
 
     def _polygon_guided_review_text(self, report: object) -> str:
@@ -2795,10 +2787,18 @@ class BatchPage(MissionPage):
         lines.extend(("", "Technical Report:", polygon_preflight_text(report)))
         return "\n".join(lines)
 
-    def preview_polygon_spatial_selection(self) -> None:
+    def _current_spatial_report(self):
+        """Return current spatial state, refreshing readiness on demand."""
         report = self.preflight_report
         if report is None or getattr(report, "source_selection", None) is None:
-            self.preflight_text.setPlainText("Preview Spatial Selection needs a current preflight plan. Click Run the Prerun Check first.")
+            self.run_preflight()
+            report = self.preflight_report
+        return report if report is not None and getattr(report, "source_selection", None) is not None else None
+
+    def preview_polygon_spatial_selection(self) -> None:
+        report = self._current_spatial_report()
+        if report is None:
+            self.preflight_text.setPlainText("Map preview needs valid LiDAR data and polygon inputs. Review Readiness for the next action.")
             return
         selection = report.source_selection
         coverage_result = add_selected_lidar_to_qgis(report, self.iface)
@@ -2820,9 +2820,9 @@ class BatchPage(MissionPage):
         self.preflight_text.setPlainText("\n".join(lines))
 
     def preview_polygon_spatial_alignment(self) -> None:
-        report = self.preflight_report
-        if report is None or getattr(report, "source_selection", None) is None:
-            self.preflight_text.setPlainText("Preview Spatial Alignment needs a current preflight plan. Click Run the Prerun Check first.")
+        report = self._current_spatial_report()
+        if report is None:
+            self.preflight_text.setPlainText("Alignment preview needs valid LiDAR data and polygon inputs. Review Readiness for the next action.")
             return
         result = preview_spatial_alignment_in_qgis(report, self.iface)
         selection = report.source_selection
@@ -2840,9 +2840,9 @@ class BatchPage(MissionPage):
         self.preflight_text.setPlainText("\n".join(lines))
 
     def _show_spatial_action(self, action: str) -> None:
-        report = self.preflight_report
-        if report is None or getattr(report, "source_selection", None) is None:
-            self.preflight_text.setPlainText(f"{action} needs a current preflight plan. Click Re-run Prerun Check first.")
+        report = self._current_spatial_report()
+        if report is None:
+            self.preflight_text.setPlainText(f"{action} needs valid LiDAR data and polygon inputs. Review Readiness for the next action.")
             return
         selection = report.source_selection
         lines = [action]
@@ -3982,9 +3982,16 @@ class BatchPage(MissionPage):
         skipped = getattr(result, "skipped_count", 0)
         outputs = getattr(result, "total_output_count", 0)
         storage = _format_storage(getattr(result, "total_estimated_output_bytes", 0))
+        repository = self.polygon_lidar_folder_edit.text().strip() if self._current_batch_mode() == "polygon" else self.input_folder_edit.text().strip()
+        products = ", ".join(PRODUCT_LABELS[p] for p, check in self.product_checks.items() if check.isChecked()) or "None"
+        profile = str(self.processing_profile_combo.currentText())
+        workers = requested_effective_concurrency(self._batch_settings())
+        warnings = len(getattr(self.preflight_report, "warnings", ())) if self.preflight_report is not None else 0
         self.summary_label.setText(
-            f"Summary: total {total}; completed {completed}; failed {failed}; skipped {skipped}; "
-            f"outputs {outputs}; observed output storage {storage}."
+            f"Complete - {completed} of {total} succeeded; {failed} failed; {skipped} skipped. "
+            f"Repository: {Path(repository).name if repository else 'Not recorded'}. Products: {products}. "
+            f"Adaptive profile: {profile}; workers used: up to {workers}. Outputs: {outputs} ({storage}). "
+            f"Readiness warnings: {warnings}."
         )
 
 
@@ -4372,6 +4379,8 @@ class SettingsPage(MissionPage):
         self.remember_output_folder_check.setChecked(True)
         self.auto_save_workspace_check = QCheckBox("Auto-save workspace state")
         self.auto_save_workspace_check.setChecked(True)
+        self.open_on_startup_check = QCheckBox("Open Mission Control when QGIS starts")
+        self.open_on_startup_check.setChecked(False)
         self.maximum_recent_items_spin = QSpinBox()
         self.maximum_recent_items_spin.setMinimum(1)
         self.maximum_recent_items_spin.setMaximum(50)
@@ -4380,6 +4389,7 @@ class SettingsPage(MissionPage):
         workspace_form.addRow("Dataset", self.remember_dataset_check)
         workspace_form.addRow("Output folder", self.remember_output_folder_check)
         workspace_form.addRow("Auto-save", self.auto_save_workspace_check)
+        workspace_form.addRow("Startup", self.open_on_startup_check)
         workspace_form.addRow("Recent item limit", self.maximum_recent_items_spin)
         workspace.addLayout(workspace_form)
         _wire_collapsible_group(workspace_group)
@@ -4535,6 +4545,7 @@ class SettingsPage(MissionPage):
         self.remember_output_folder_check.setChecked(session.remember_last_output_folder)
         self.auto_save_workspace_check.setChecked(session.auto_save_enabled)
         self.maximum_recent_items_spin.setValue(session.maximum_recent_items)
+        self.open_on_startup_check.setChecked(session.open_mission_control_on_startup)
 
     def workspace_session_preferences(self, session: WorkspaceSession) -> WorkspaceSession:
         """Return session with settings-page workspace preferences applied."""
@@ -4553,6 +4564,7 @@ class SettingsPage(MissionPage):
             remember_last_output_folder=self.remember_output_folder_check.isChecked(),
             maximum_recent_items=self.maximum_recent_items_spin.value(),
             auto_save_enabled=self.auto_save_workspace_check.isChecked(),
+            open_mission_control_on_startup=self.open_on_startup_check.isChecked(),
         )
 
     def browse_default_output_folder(self) -> None:
