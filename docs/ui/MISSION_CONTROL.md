@@ -244,7 +244,9 @@ Batch selections update Results context and Scientific Advisor automatically. Ad
 Batch follows Processing Mode -> LiDAR Data/Processing Area -> Products -> Output Folder -> Prerun Check -> Process. Results hides output actions until products exist. Advisor, Environment, Settings, and Advanced Toolbox keep technical details collapsed by default.
 
 ## Processing reliability
-Mission Control displays current LiDAR and area selection rather than a historical dataset. Results load only outputs registered for the current attempt. Session reset preserves files, PBM, catalogs, preferences, and previous-run history.
+Mission Control displays current LiDAR and area selection rather than a historical dataset. Every workflow-defining Process control contributes to the current input identity. Changing that identity invalidates Prerun Check, Advisor guidance, progress, and current output references. Results load only explicitly registered outputs from a completed current attempt and never discover outputs by scanning folders. Session reset preserves files, PBM, catalogs, preferences, and previous-run history.
+
+Run-defining controls are disabled while processing owns the active job. Pause, cancellation, progress, and troubleshooting controls remain available where supported.
 ## Large-job progress
 CHM progress reports stage, completed/total areas, active/failed units, elapsed time, and ETA only after stable throughput.
 

@@ -47,7 +47,7 @@ from ..core.adapter import PyForestScanAdapter
 from ..core.backend import BackendService
 from ..core.qgis_compat import build_qgis_compatibility_report, format_qgis_compatibility_report
 from ..core.qgis_processing_toolbox import QgisProcessingToolboxService
-from .session_state import MissionControlSessionState, ScientificAdvisorSummary, build_scientific_advisor_summary
+from .session_state import MissionControlSessionState, ScientificAdvisorSummary, build_scientific_advisor_summary, workflow_input_signature
 from ..core.adaptive_lidar_indexing import (
     LidarIndexStrategy,
     choose_index_strategy,
@@ -2500,6 +2500,7 @@ class BatchPage(MissionPage):
         self.resolution_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
         self.height_bin_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
         self.file_list.itemChanged.connect(lambda _item: self._refresh_footprint_label())
+        self.file_list.itemChanged.connect(self._on_session_input_changed)
 
         self.footprint_label = _details_label("Batch performance details are calculated for diagnostics.")
         self.footprint_label.setVisible(False)
@@ -2650,11 +2651,14 @@ class BatchPage(MissionPage):
                      self.output_folder_edit):
             edit.textChanged.connect(self._on_session_input_changed)
         self.polygon_dissolve_check.toggled.connect(self._on_session_input_changed)
+        self.recursive_check.toggled.connect(self._on_session_input_changed)
+        self.polygon_direct_fallback_check.toggled.connect(self._on_session_input_changed)
         self.resolution_spin.valueChanged.connect(self._on_session_input_changed)
         for control in (self.height_bin_spin, self.canopy_threshold_spin, self.max_workers_spin):
             control.valueChanged.connect(self._on_session_input_changed)
         for combo in (self.processing_profile_combo, self.execution_mode_combo, self.chm_interpolation_combo,
-                      self.polygon_index_strategy_combo, self.polygon_selection_mode_combo, self.mask_engine_combo):
+                      self.polygon_index_strategy_combo, self.polygon_selection_mode_combo, self.mask_engine_combo,
+                      self.mask_failure_policy_combo):
             combo.currentIndexChanged.connect(self._on_session_input_changed)
         for option in (self.stop_on_error_check, self.load_outputs_check, self.confirm_parallel_check,
                        self.skip_completed_check, self.retry_failed_only_check, self.overwrite_existing_check,
@@ -2700,7 +2704,29 @@ class BatchPage(MissionPage):
             geometry_text = "Valid Polygon" if geometry_signature else "Not selected"
             self.polygon_summary_label.setText(f"Area: {area_text}   Geometry: {geometry_text}   CRS: {crs or 'Unknown'}")
         products = tuple(PRODUCT_LABELS[p] for p, check in self.product_checks.items() if check.isChecked())
+        signature = workflow_input_signature({
+            "mode": mode, "repository": repository, "polygon_source": source,
+            "polygon_geometry": geometry_signature, "polygon_crs": crs,
+            "products": products, "output": self.output_folder_edit.text().strip(),
+            "resolution": self.resolution_spin.value(), "height_bin": self.height_bin_spin.value(),
+            "canopy_threshold": self.canopy_threshold_spin.value(),
+            "chm_interpolation": self.chm_interpolation_combo.currentData() or self.chm_interpolation_combo.currentText(),
+            "recursive": self.recursive_check.isChecked(), "profile": self.processing_profile_combo.currentData(),
+            "execution_mode": self.execution_mode_combo.currentData(), "max_workers": self.max_workers_spin.value(),
+            "stop_on_error": self.stop_on_error_check.isChecked(), "load_outputs": self.load_outputs_check.isChecked(),
+            "parallel_confirmed": self.confirm_parallel_check.isChecked(),
+            "skip_completed": self.skip_completed_check.isChecked(), "retry_failed": self.retry_failed_only_check.isChecked(),
+            "overwrite": self.overwrite_existing_check.isChecked(),
+            "repository_strategy": self.polygon_index_strategy_combo.currentData(),
+            "selection_mode": self.polygon_selection_mode_combo.currentData(),
+            "direct_fallback": self.polygon_direct_fallback_check.isChecked(),
+            "exact_mask": self.exact_raster_mask_check.isChecked(), "mask_engine": self.mask_engine_combo.currentData(),
+            "crop": self.crop_to_polygon_extent_check.isChecked(), "all_touched": self.all_touched_mask_check.isChecked(),
+            "retain_intermediate": self.retain_unmasked_intermediate_check.isChecked(),
+            "mask_failure_policy": self.mask_failure_policy_combo.currentData(),
+        })
         state = MissionControlSessionState(
+            input_signature=signature,
             current_mode=mode, repository_path=repository,
             repository_kind=("EPT dataset" if repository.lower().endswith("ept.json") else "LiDAR repository"),
             repository_status=("selected" if repository else "not configured"),
@@ -3542,6 +3568,7 @@ class BatchPage(MissionPage):
             return
         token=self._begin_logical_job()
         if token is False:return
+        self._set_workflow_inputs_enabled(False)
         selected = list(request.datasets)
         self.batch_items = []
         self.failed_paths = []
@@ -3600,6 +3627,7 @@ class BatchPage(MissionPage):
             return
         token=self._begin_logical_job()
         if token is False:return
+        self._set_workflow_inputs_enabled(False)
         selected = list(getattr(report, "selected_sources", ()))
         self.batch_items = []
         self.failed_paths = []
@@ -3776,6 +3804,7 @@ class BatchPage(MissionPage):
 
     def _finish_batch_run(self) -> None:
         """Restore controls after a batch worker exits."""
+        self._set_workflow_inputs_enabled(True)
         self.run_button.setEnabled(True)
         self._update_run_button_enabled()
         self.pause_button.setEnabled(False)
@@ -3786,6 +3815,15 @@ class BatchPage(MissionPage):
         self.pause_button.setText("Pause After Current File")
         self.active_workers = 0
         self.worker_status_label.setText("Active workers: 0")
+
+    def _set_workflow_inputs_enabled(self, enabled: bool) -> None:
+        """Freeze run-defining controls while one coordinator owns the job."""
+        for section in (
+            self.mode_section, self.repository_section, self.polygon_section,
+            self.products_section, self.output_section, self.advanced_batch_section,
+        ):
+            section.setEnabled(enabled)
+        self.preflight_button.setEnabled(enabled)
 
     def _clear_batch_thread(self) -> None:
         """Clear worker references after Qt has cleaned up the thread."""
@@ -4192,9 +4230,10 @@ class ResultsPage(MissionPage):
         self.jobs_section.setVisible(bool(jobs))
         for job in jobs:
             detail = f"{job.title} - {job.status.value} - {job.progress.percent:.0f}%"
-            for result in job.results:
-                self._job_result_paths.append(result.path)
-                self._job_result_types[result.path] = result.result_type
+            if job.status == JobStatus.COMPLETED:
+                for result in job.results:
+                    self._job_result_paths.append(result.path)
+                    self._job_result_types[result.path] = result.result_type
             if job.results:
                 detail = f"{detail} - {job.results[-1].path}"
             self.job_history.addItem(detail)
@@ -4235,14 +4274,12 @@ class ResultsPage(MissionPage):
         self.outputsLoaded.emit(message, loaded, len(candidates))
 
     def _candidate_output_paths(self) -> tuple[Path, ...]:
-        """Return current run, report, and job paths that may be loadable."""
+        """Return explicitly registered current-job paths that may be loadable."""
         paths: list[Path] = []
         paths.extend(self._friendly_paths)
         paths.extend(self._advanced_paths)
         paths.extend(self._job_result_paths)
-        if self._current_output_folder is not None and self._current_output_folder.exists():
-            paths.extend(path for path in self._current_output_folder.rglob("*") if path.is_file())
-        return tuple(paths)
+        return tuple(dict.fromkeys(paths))
 
     def _project_layer_sources(self) -> tuple[str, ...]:
         """Return existing QGIS layer source paths, if QGIS APIs are available."""

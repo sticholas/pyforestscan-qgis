@@ -11,6 +11,7 @@ def _now() -> str:
 
 @dataclass(frozen=True)
 class MissionControlSessionState:
+    input_signature: str = ""
     current_mode: str = "folder"
     repository_path: str = ""
     repository_kind: str = ""
@@ -49,6 +50,11 @@ class MissionControlSessionState:
                    "output": self.output_folder, "plan": self.plan_signature,
                    "backend": self.backend_status, "outputs": self.generated_outputs}
         return sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+def workflow_input_signature(payload: dict[str, Any]) -> str:
+    """Return a deterministic identity for every workflow-defining control."""
+    normalized = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return sha256(normalized.encode("utf-8")).hexdigest()
 
 @dataclass(frozen=True)
 class ScientificAdvisorSummary:

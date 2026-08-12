@@ -360,12 +360,22 @@ class MissionControlDock(QDockWidget):
 
     def _set_session_state(self, state: MissionControlSessionState) -> None:
         """Propagate retained workflow state without hidden-page intermediaries."""
+        inputs_changed = bool(
+            self.session_state.input_signature
+            and state.input_signature
+            and self.session_state.input_signature != state.input_signature
+        )
+        if inputs_changed and not self.active_job_controller.is_running:
+            self._invalidate_current_workflow_outputs()
         self.session_state = state.with_updates(
             backend_status=self.state.backend_status,
             environment_status=self.state.environment_status,
-            generated_outputs=tuple(str(path) for item in self._project_summary().generated_products for path in item.generated_paths),
-            loaded_outputs=tuple(str(path) for path in self.loaded_result_paths),
+            generated_outputs=() if inputs_changed else self.session_state.generated_outputs,
+            loaded_outputs=() if inputs_changed else tuple(str(path) for path in self.loaded_result_paths),
         )
+        if inputs_changed:
+            self._refresh_home()
+            self._update_status_bar()
         self.session_events.repositoryChanged.emit(self.session_state)
         self.session_events.polygonSelectionChanged.emit(self.session_state)
         self.session_events.polygonGeometryChanged.emit(self.session_state)
@@ -375,6 +385,17 @@ class MissionControlDock(QDockWidget):
         self.advisor_page.refresh_from_session(self.session_state)
         if self._current_primary_page_name() == "Advanced Toolbox":
             self.advanced_toolbox_page.refresh_from_session(self.session_state)
+
+    def _invalidate_current_workflow_outputs(self) -> None:
+        """Drop current-attempt UI references while preserving durable history."""
+        self.results_page.begin_current_job()
+        self.batch_page.set_current_result(())
+        self.state = self.state.without_active_run()
+        self.job_history = ()
+        self.loaded_result_paths = set()
+        if self.active_job_controller.current is not None:
+            self.active_job_controller.clear_current()
+        self.batch_page.set_previous_runs(self.active_job_controller.history)
 
     def _set_environment_status(self, status: str) -> None:
         self.state = self.state.with_environment(status).with_activity("Environment verified", status)
@@ -476,6 +497,11 @@ class MissionControlDock(QDockWidget):
         outputs=tuple(Path(output) for item in getattr(result,"items",()) if getattr(item,"status","")=="completed" for output in getattr(item,"outputs",()) if Path(output).exists())
         state="complete" if getattr(result,"failure_count",0)==0 else "failed"
         if not self.active_job_controller.update(token,state,outputs):return
+        self.session_state = self.session_state.with_updates(
+            processing_status=state,
+            generated_outputs=tuple(str(path) for path in outputs) if state == "complete" else (),
+            loaded_outputs=(),
+        )
         self._set_batch_status(result)
         output_folder=Path(outputs[0]).parent if outputs else None
         self.batch_page.set_current_result(outputs if state=="complete" else (),output_folder if state=="complete" else None)
@@ -521,7 +547,8 @@ class MissionControlDock(QDockWidget):
             if Path(output).exists()
         )
         registry_path = getattr(result, "output_registry_path", None)
-        for path in (*output_paths, registry_path, summary_html, summary_csv, summary_json):
+        registered_outputs = output_paths if failure_count == 0 else ()
+        for path in (*registered_outputs, summary_html, summary_csv, summary_json):
             if isinstance(path, Path):
                 state = state.with_report_path(path)
         self.state = state
@@ -530,9 +557,9 @@ class MissionControlDock(QDockWidget):
         for path in (summary_html, summary_csv, summary_json):
             if isinstance(path, Path):
                 self._record_workspace_recent("batch_report", path, path.name)
-        if output_paths:
-            self.results_page.set_report_paths(output_paths)
-        if isinstance(registry_path, Path):
+        if registered_outputs:
+            self.results_page.set_report_paths(registered_outputs)
+        if failure_count == 0 and isinstance(registry_path, Path):
             self.results_page.set_report_paths((registry_path,))
         if getattr(result, "load_outputs_after_completion", False) and failure_count == 0:
             self.results_page.load_outputs_to_qgis()
@@ -805,6 +832,8 @@ class MissionControlDock(QDockWidget):
 
     def _load_job_outputs(self, job: JobRecord) -> None:
         """Best-effort load of generated raster outputs into QGIS."""
+        if job.status != JobStatus.COMPLETED:
+            return
         for result in job.results:
             if not is_raster_result(result.result_type) or result.path in self.loaded_result_paths:
                 continue

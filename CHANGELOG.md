@@ -1,5 +1,11 @@
 # Changelog
 
+## Phase 29C - Product reliability and current-attempt integrity
+
+- Added a complete workflow input signature and invalidation coverage for file selection, recursive discovery, repository fallback, masking policy, profiles, concurrency, products, and output settings.
+- Prevented failed, running, partial, stale, or merely discovered-on-disk files from becoming loadable Results; only explicitly registered completed-job outputs are eligible.
+- Froze run-defining controls while one coordinator owns an active job and documented workflow, control, session, output, background-job, performance, memory, failure, equivalence, and RC evidence.
+
 ## Phase 29B - Workflow simplification and smart automation
 
 - Made Mission Control startup opt-in, consolidated repository and spatial actions, and expanded authoritative plan invalidation.
