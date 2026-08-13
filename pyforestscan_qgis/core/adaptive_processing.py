@@ -38,11 +38,12 @@ def derive_adaptive_plan(inputs:AdaptivePlannerInputs)->AdaptiveProcessingPlan:
     envelope_area=max(0.0,inputs.envelope_width*inputs.envelope_height);polygon_area=max(0.0,min(inputs.polygon_area or envelope_area,envelope_area))
     compactness=polygon_area/envelope_area if envelope_area else 1.0
     density=max(0.01,float(inputs.point_density if inputs.point_density is not None else _default_density(inputs.source_type)))
-    bytes_per_point=96.0 if inputs.hag_method=='existing_normalized_height' else 180.0
+    from .resource_estimation import estimated_point_memory_bytes
+    bytes_per_point=estimated_point_memory_bytes(hag_method=inputs.hag_method)
     if inputs.historical_memory_per_million and inputs.historical_memory_per_million>0:bytes_per_point=max(bytes_per_point,inputs.historical_memory_per_million/1_000_000.0)
     memory_budget=max(256*1024**2,min(int(inputs.available_memory_bytes*.22),3*1024**3))
-    point_limit=max(500_000,min(30_000_000,int(memory_budget/bytes_per_point)))
-    raster_cell_limit=max(1_000_000,min(36_000_000,int(memory_budget/32.0)))
+    point_limit=max(500_000,min(30_000_000,int(memory_budget/(bytes_per_point*1.6))))
+    raster_cell_limit=max(1_000_000,min(36_000_000,int(memory_budget/(32.0*1.25))))
     safe_area=min(point_limit/density,raster_cell_limit*inputs.output_resolution**2)
     safe_width=math.sqrt(max(1.0,safe_area))
     lower=250.0 if inputs.network else 300.0;upper=2200.0 if inputs.network else 4000.0

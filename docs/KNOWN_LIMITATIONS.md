@@ -2,6 +2,8 @@
 
 EPT CHM is temporarily limited to one active worker. Live Windows confirmation of native DLL isolation, QGIS close/reopen recovery, and safe-mode pilot processing remains required; alternate HAG behavior is not enabled without measured evidence.
 
+Phase 29D corrects adaptive point-memory budgeting and measures synthetic planning/read amplification. It does not claim faster real LiDAR execution: representative EPT/LAS timing, peak RSS, live pilot replanning, and numeric CHM equivalence remain pending. The permanent planning benchmark is `scripts/benchmark_adaptive_processing.py`.
+
 This document records current limitations for the internal release candidate. It is user-facing and should stay honest: limitations are not failures, but they must be visible before scientific interpretation or wider deployment.
 
 ## Scientific Processing

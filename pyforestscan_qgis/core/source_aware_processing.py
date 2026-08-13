@@ -70,6 +70,14 @@ class SourceAwareWorkPlan:
     @property
     def skipped_count(self):return len(self.skipped_work_units)
     @property
+    def core_area(self):return sum(unit.core_extent.width*unit.core_extent.height for unit in self.work_units)
+    @property
+    def buffered_read_area(self):return sum(unit.read_extent.width*unit.read_extent.height for unit in self.work_units)
+    @property
+    def read_amplification(self):return self.buffered_read_area/self.core_area if self.core_area else 1.0
+    @property
+    def estimated_peak_memory(self):return max((unit.estimated_memory for unit in self.work_units),default=0)*max(1,self.concurrency_limit)
+    @property
     def plan_signature(self):
         payload={"grid_signature":self.grid.grid_signature,"repository_kind":self.repository_kind,"product":self.product,"exact_polygon_signature":self.exact_polygon_signature,"buffer_policy":self.buffer_policy,"hag_method_signature":self.hag_method_signature,"required_ids":[unit.work_unit_id for unit in self.work_units],"skipped_ids":[unit.work_unit_id for unit in self.skipped_work_units],"source_identity":sorted({str(path) for unit in self.candidate_work_units for path in unit.source_paths})}
         return hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest()
@@ -133,7 +141,8 @@ class SourceAwareWorkPlanner:
         hag_signature=hashlib.sha256(b"existing_normalized_height:HeightAboveGround").hexdigest()
         native_reused=len(paths) if repository_kind in {'folder','las','laz'} else 0
         subdivisions=max(0,len(units)-native_reused)
-        return SourceAwareWorkPlan(repository_kind,product,grid,tuple(units),sizing.maximum_concurrent_units,workload,memory,policy.merge_rule,'transient failures: 2; deterministic input/HAG failures: 0','verify and persist every completed core tile',tuple(assumptions),location,False,candidates,skipped,polygon_signature,f"buffer={sizing.buffer_distance:g}",hag_signature,sizing.strategy,sizing.target_width,sizing.target_height,sizing.estimated_point_range,sizing.expected_memory_range,sizing.pilot_required,native_reused,subdivisions)
+        effective_concurrency=min(sizing.maximum_concurrent_units,max(1,len(units)))
+        return SourceAwareWorkPlan(repository_kind,product,grid,tuple(units),effective_concurrency,workload,memory,policy.merge_rule,'transient failures: 2; deterministic input/HAG failures: 0','verify and persist every completed core tile',tuple(assumptions),location,False,candidates,skipped,polygon_signature,f"buffer={sizing.buffer_distance:g}",hag_signature,sizing.strategy,sizing.target_width,sizing.target_height,sizing.estimated_point_range,sizing.expected_memory_range,sizing.pilot_required,native_reused,subdivisions)
     def _windows(self,grid,sources,kind,sizing):
         cols=max(1,round(sizing.target_width/grid.resolution));rows=max(1,round(sizing.target_height/grid.resolution));out=[];n=0
         for r0 in range(0,grid.rows,rows):
@@ -157,8 +166,14 @@ class SourceAwareWorkPlanner:
             typ=WorkUnitType.SINGLE_SOURCE_FILE if len(group)==1 else WorkUnitType.GROUPED_SOURCE_FILES
             out.append(WorkUnit(f"wu-{len(out)+1:04d}",typ,tuple(x.path for x in group),core,core.buffered(sizing.buffer_distance),0,grid.rows,0,grid.columns,len(out)+1,max(size*3,1)));group=[];size=0
         for src in sorted(selected,key=lambda x:(x.bounds.ymin,x.bounds.xmin)):
-            if src.size_bytes>2*1024**3:
-                flush();subgrid=AlignedRasterGrid.from_extent(src.bounds,grid.resolution,grid.crs);out.extend(self._windows(subgrid,(src,),WorkUnitType.SUBDIVIDED_LARGE_SOURCE,sizing));continue
+            overlap=SpatialExtent(max(src.bounds.xmin,grid.total_extent.xmin),max(src.bounds.ymin,grid.total_extent.ymin),min(src.bounds.xmax,grid.total_extent.xmax),min(src.bounds.ymax,grid.total_extent.ymax))
+            density=src.point_count/(src.bounds.width*src.bounds.height) if src.point_count and src.bounds.width and src.bounds.height else 8.0
+            estimated_points=int(overlap.width*overlap.height*density)
+            from .resource_estimation import estimate_work_unit_resources
+            source_estimate=estimate_work_unit_resources(estimated_points,raster_cells=int(overlap.width*overlap.height/grid.resolution**2),core_width=sizing.target_width)
+            subdivision_limit=sizing.maximum_expected_memory+256*1024**2
+            if src.size_bytes>2*1024**3 or source_estimate.estimated_memory>subdivision_limit:
+                flush();subgrid=AlignedRasterGrid.from_extent(overlap,grid.resolution,grid.crs);out.extend(self._windows(subgrid,(src,),WorkUnitType.SUBDIVIDED_LARGE_SOURCE,sizing));continue
             if group:
                 union=SpatialExtent(min(x.bounds.xmin for x in group),min(x.bounds.ymin for x in group),max(x.bounds.xmax for x in group),max(x.bounds.ymax for x in group))
                 adjacent=union.buffered(max(sizing.buffer_distance, sizing.target_width * 0.1)).intersects(src.bounds)

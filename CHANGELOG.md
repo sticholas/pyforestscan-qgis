@@ -1,5 +1,11 @@
 # Changelog
 
+## Phase 29D - Measured adaptive performance and scalability
+
+- Unified planner/executor point-memory estimates and added workload-based subdivision for large native sources with unknown or excessive size.
+- Added reproducible scale benchmarks, read-amplification and peak-memory diagnostics, explicit direct-versus-durable execution summaries, and synthetic numeric equivalence checks.
+- Confirmed one durable PBM coordinator retains imports for all work units; no speculative persistent daemon was added.
+
 ## Phase 29C - Product reliability and current-attempt integrity
 
 - Added a complete workflow input signature and invalidation coverage for file selection, recursive discovery, repository fallback, masking policy, profiles, concurrency, products, and output settings.

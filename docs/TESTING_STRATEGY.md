@@ -31,3 +31,7 @@ to the repository.
 - Dependency failure paths are tested.
 - Release candidates pass the documented compatibility matrix.
 
+## Performance Evidence
+
+Performance changes require a baseline, a reproducible measurement, and an equivalence check. `scripts/benchmark_adaptive_processing.py` covers synthetic small, medium, large, and very-large planning cases across EPT, COPC, and native-folder assumptions. Synthetic planning measurements must be labeled separately from real LiDAR/QGIS measurements. Scientific equivalence checks must compare grid identity, NoData, valid cells, maximum absolute difference, and RMSE where numeric fixtures are available.
+
