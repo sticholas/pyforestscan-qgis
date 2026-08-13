@@ -4,6 +4,13 @@ This directory contains implementation notes for contributors working on PyFores
 
 ## Current Topics
 
+- [Current Architecture Map](CURRENT_ARCHITECTURE_MAP.md)
+- [State Ownership Model](STATE_OWNERSHIP_MODEL.md)
+- [Product Execution Capabilities](PRODUCT_EXECUTION_CAPABILITIES.md)
+- [Error Taxonomy](ERROR_TAXONOMY.md)
+- [Phase 29E Technical Hardening Audit](PHASE_29E_TECHNICAL_HARDENING_AUDIT.md)
+- [Phase 29E Architecture Consolidation Audit](PHASE_29E_ARCHITECTURE_CONSOLIDATION_AUDIT.md)
+
 - [Adapter Design](ADAPTER_DESIGN.md)
 - [Advanced Processing Toolbox](ADVANCED_PROCESSING_TOOLBOX.md)
 - [Mission Control UX Standard](MISSION_CONTROL_UX_STANDARD.md)

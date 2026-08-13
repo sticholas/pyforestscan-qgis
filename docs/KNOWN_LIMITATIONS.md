@@ -1,5 +1,7 @@
 # Known Limitations
 
+Phase 29E automated hardening is complete, but clean Windows/QGIS install, cancel/crash process-tree, upgrade-from-older-beta, and real-LiDAR scientific validation remain explicitly untested live. Historical job folders are retained; the maintenance API reports stale temporary/cache candidates but has no normal-user UI.
+
 EPT CHM is temporarily limited to one active worker. Live Windows confirmation of native DLL isolation, QGIS close/reopen recovery, and safe-mode pilot processing remains required; alternate HAG behavior is not enabled without measured evidence.
 
 Phase 29D corrects adaptive point-memory budgeting and measures synthetic planning/read amplification. It does not claim faster real LiDAR execution: representative EPT/LAS timing, peak RSS, live pilot replanning, and numeric CHM equivalence remain pending. The permanent planning benchmark is `scripts/benchmark_adaptive_processing.py`.

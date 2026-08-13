@@ -1,5 +1,7 @@
 # Testing Strategy
 
+Phase 29E adds product/output contract, normalized-error, safe-retention, current-attempt filtering, and 50-cycle current/historical state soak tests. Benchmark analyzers are explicit developer commands and never run during ordinary processing. Live outcomes remain `Not tested live` until executed on the stated platform.
+
 Testing must cover both scientific workflow integrity and QGIS integration.
 
 ## Test Layers

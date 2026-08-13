@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+from .product_capabilities import product_capability
 
 REGISTRY_NAME = "generated_outputs.json"
 RASTER_SUFFIXES = {".tif", ".tiff"}
@@ -150,31 +151,18 @@ def _infer_product_key(path: Path) -> str:
 
 
 def _product_name(key: str) -> str:
-    return {
-        "chm": "Canopy Height Model",
-        "dtm": "DTM",
-        "pad": "PAD",
-        "pai": "PAI",
-        "fhd": "FHD",
-        "canopy_cover": "Canopy Cover",
-        "rumple": "Rumple",
-        "point_density": "Point Density",
-        "voxel_stat": "Voxel Statistic",
-    }.get(key, key.replace("_", " ").title())
+    capability=product_capability(key)
+    return capability.label if capability else key.replace("_", " ").title()
 
 
 def _display_role(key: str, kind: str) -> str:
-    if kind == "table":
-        return "table"
-    return "multiband_raster" if key == "pad" else "raster"
+    capability=product_capability(key)
+    return capability.display_role if capability else ("table" if kind == "table" else "raster")
 
 
 def _renderer(key: str, kind: str) -> str:
-    if kind == "table":
-        return "table"
-    if key == "pad":
-        return "pad_rgb_5_3_2"
-    return "grayscale"
+    capability=product_capability(key)
+    return capability.renderer if capability else ("table" if kind == "table" else "grayscale")
 
 
 def outputs_for_current_attempt(outputs: Iterable[GeneratedOutput], *, job_id: str, attempt_id: str, project_identity: str = "", plan_signature: str = "", polygon_geometry_hash: str = "") -> tuple[GeneratedOutput, ...]:

@@ -1,5 +1,7 @@
 # Documentation Index
 
+For current engineering architecture, begin with the [Current Architecture Map](development/CURRENT_ARCHITECTURE_MAP.md). Phase reports are historical evidence, not competing specifications. Phase 29E validation records include the [lifecycle soak](testing/PHASE_29E_LIFECYCLE_SOAK_VALIDATION.md) and [clean-machine matrix](testing/PHASE_29E_CLEAN_MACHINE_MATRIX.md).
+
 This documentation is organized for users, scientists, developers, maintainers, and release reviewers.
 
 ## Getting Started

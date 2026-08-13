@@ -8,6 +8,7 @@ from enum import Enum
 from pathlib import Path
 from .source_aware_processing import WorkUnit
 from .atomic_state import atomic_write_json,remove_invalid_temporaries
+from .error_taxonomy import error_definition
 
 class WorkUnitStatus(str,Enum):
     PENDING="Pending";STARTING="Starting";RUNNING="Running";COMPLETE="Complete";COMPLETE_NODATA="CompleteNoData";SKIPPED_OUTSIDE_POLYGON="SkippedOutsidePolygon";FAILED="Failed";CANCELLED="Cancelled";INTERRUPTED="Interrupted"
@@ -19,6 +20,8 @@ NATIVE_CRASH_CODE="NATIVE_BACKEND_CRASH"
 @dataclass(frozen=True)
 class WorkUnitResult:
     work_unit_id:str;status:str;output_path:Path|None=None;attempt_count:int=1;runtime_seconds:float=0;error_code:str="";message:str="";checksum:str="";metrics:dict=field(default_factory=dict)
+    @property
+    def error(self):return error_definition(self.error_code) if self.error_code else None
 
 @dataclass(frozen=True)
 class SchedulerProgress:

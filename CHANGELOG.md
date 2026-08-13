@@ -1,5 +1,12 @@
 # Changelog
 
+## Phase 29E - Technical hardening and release readiness
+
+- Added authoritative architecture, state ownership, product/output capability, error taxonomy, retention, and clean-machine QA contracts.
+- Consolidated Results metadata behind product capabilities while preserving existing scientific algorithms and registry schemas.
+- Added non-destructive job-storage maintenance classification and a 50-cycle current/historical isolation soak.
+- Audited package, subprocess, upgrade, telemetry, repository hygiene, and current release blockers without redesigning Mission Control.
+
 ## Phase 29D - Measured adaptive performance and scalability
 
 - Unified planner/executor point-memory estimates and added workload-based subdivision for large native sources with unknown or excessive size.
