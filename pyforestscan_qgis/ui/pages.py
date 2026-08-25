@@ -2326,7 +2326,6 @@ class BatchPage(MissionPage):
         output_row.addWidget(self.output_folder_edit, 1)
         output_row.addWidget(output_browse, 0)
         output_layout.addLayout(output_row)
-        output_layout.addWidget(_body_label("Mission Control creates one batch folder, then one organized run folder per selected dataset."))
         self.open_batch_folder_button = QPushButton("Open Batch Output Folder")
         self.open_batch_folder_button.setEnabled(False)
         self.open_batch_folder_button.setVisible(False)
@@ -2395,13 +2394,11 @@ class BatchPage(MissionPage):
         profile_row.addWidget(info_badge("batch.processing_concurrency", parent=self), 0)
         advanced_form.addRow("Processing profile", profile_row)
         self.execution_mode_combo = QComboBox()
-        self.execution_mode_combo.addItem("Sequential", SEQUENTIAL_MODE)
-        self.execution_mode_combo.addItem("Parallel", PARALLEL_SAFE_MODE)
-        self.execution_mode_combo.currentIndexChanged.connect(self._on_execution_mode_changed)
+        self.execution_mode_combo.addItem("Automatic", "automatic")
         self.max_workers_spin = QSpinBox()
         self.max_workers_spin.setMinimum(1)
         self.max_workers_spin.setMaximum(6)
-        self.max_workers_spin.setValue(2)
+        self.max_workers_spin.setValue(5)
         self.max_workers_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
         self.execution_mode_container = QWidget()
         execution_mode_row = QHBoxLayout(self.execution_mode_container)
@@ -2413,24 +2410,12 @@ class BatchPage(MissionPage):
         max_workers_row.setContentsMargins(0, 0, 0, 0)
         max_workers_row.addWidget(self.max_workers_spin, 1)
         max_workers_row.addWidget(info_badge("batch.concurrent_jobs", parent=self), 0)
-        advanced_form.addRow("Execution mode", self.execution_mode_container)
-        advanced_form.addRow("Maximum workers", self.max_workers_container)
+        advanced_form.addRow("Maximum parallel workers", self.max_workers_container)
         self.advanced_batch_form = advanced_form
         self.max_workers_row = max_workers_row
         advanced_batch.addLayout(advanced_form)
-        mode_help = _details_label(
-            "Sequential is safest. Parallel Safe is available with confirmation and guardrails. "
-            "External Worker is disabled."
-        )
-        advanced_batch.addWidget(mode_help)
+        advanced_batch.addWidget(_details_label("Scheduling is automatic; this value is only an upper limit. External Worker is disabled."))
         self.stop_on_error_check = QCheckBox("Stop batch when a file fails")
-        self.load_outputs_check = QCheckBox("Load generated outputs into QGIS")
-        self.load_outputs_check.setChecked(True)
-        self.load_outputs_check.setToolTip("Completed primary raster outputs load automatically. Clear this only for jobs where manual loading is preferred.")
-        self.confirm_parallel_check = QCheckBox("Allow parallel safe mode for this workload after reviewing warnings")
-        self.confirm_parallel_check.setChecked(True)
-        self.confirm_parallel_check.setVisible(False)
-        self.confirm_parallel_check.toggled.connect(lambda _checked: self._refresh_footprint_label())
         self.skip_completed_check = QCheckBox("Skip already-completed files on resume")
         self.skip_completed_check.setChecked(True)
         self.retry_failed_only_check = QCheckBox("Retry failed files only")
@@ -2442,14 +2427,6 @@ class BatchPage(MissionPage):
         stop_on_error_row.addWidget(self.stop_on_error_check, 1)
         stop_on_error_row.addWidget(info_badge("batch.continue_on_error", parent=self), 0)
         advanced_batch.addLayout(stop_on_error_row)
-        load_outputs_row = QHBoxLayout()
-        load_outputs_row.addWidget(self.load_outputs_check, 1)
-        load_outputs_row.addWidget(info_badge("batch.load_outputs_after_completion", parent=self), 0)
-        advanced_batch.addLayout(load_outputs_row)
-        effective_concurrency_row = QHBoxLayout()
-        effective_concurrency_row.addWidget(self.confirm_parallel_check, 1)
-        effective_concurrency_row.addWidget(info_badge("batch.effective_concurrency", parent=self), 0)
-        advanced_batch.addLayout(effective_concurrency_row)
         skip_completed_row = QHBoxLayout()
         skip_completed_row.addWidget(self.skip_completed_check, 1)
         skip_completed_row.addWidget(info_badge("batch.output_conflict_policy", parent=self), 0)
@@ -2545,10 +2522,6 @@ class BatchPage(MissionPage):
         self.preflight_button.clicked.connect(self.run_preflight)
         _apply_button_role(self.preflight_button, "primary")
         prerun_layout.addWidget(self.preflight_button)
-        self.acknowledge_warnings_check = QCheckBox("I reviewed the warnings and want to run anyway")
-        self.acknowledge_warnings_check.toggled.connect(lambda _checked: self._update_run_button_enabled())
-        self.acknowledge_warnings_check.setEnabled(False)
-        prerun_layout.addWidget(self.acknowledge_warnings_check)
         self.preflight_summary_label = _body_label("Needs attention: choose data, products, and an output folder.")
         prerun_layout.addWidget(self.preflight_summary_label)
         self.preflight_text = QTextEdit()
@@ -2698,7 +2671,7 @@ class BatchPage(MissionPage):
                       self.polygon_index_strategy_combo, self.polygon_selection_mode_combo, self.mask_engine_combo,
                       self.mask_failure_policy_combo):
             combo.currentIndexChanged.connect(self._on_session_input_changed)
-        for option in (self.stop_on_error_check, self.load_outputs_check, self.confirm_parallel_check,
+        for option in (self.stop_on_error_check,
                        self.skip_completed_check, self.retry_failed_only_check, self.overwrite_existing_check,
                        self.exact_raster_mask_check, self.crop_to_polygon_extent_check,
                        self.all_touched_mask_check, self.retain_unmasked_intermediate_check):
@@ -2751,8 +2724,8 @@ class BatchPage(MissionPage):
             "chm_interpolation": self.chm_interpolation_combo.currentData() or self.chm_interpolation_combo.currentText(),
             "recursive": self.recursive_check.isChecked(), "profile": self.processing_profile_combo.currentData(),
             "execution_mode": self.execution_mode_combo.currentData(), "max_workers": self.max_workers_spin.value(),
-            "stop_on_error": self.stop_on_error_check.isChecked(), "load_outputs": self.load_outputs_check.isChecked(),
-            "parallel_confirmed": self.confirm_parallel_check.isChecked(),
+            "stop_on_error": self.stop_on_error_check.isChecked(), "load_outputs": True,
+            "parallel_confirmed": True,
             "skip_completed": self.skip_completed_check.isChecked(), "retry_failed": self.retry_failed_only_check.isChecked(),
             "overwrite": self.overwrite_existing_check.isChecked(),
             "repository_strategy": self.polygon_index_strategy_combo.currentData(),
@@ -2788,8 +2761,6 @@ class BatchPage(MissionPage):
             "Process LiDAR files found in a selected folder."
         )
         self.preflight_report = None
-        self.acknowledge_warnings_check.setChecked(False)
-        self.acknowledge_warnings_check.setEnabled(False)
         self.preflight_text.setPlainText("Run the Prerun Check before processing the selected polygon." if polygon else "Run the Prerun Check before processing the folder.")
         self.run_button.setText("Process LiDAR")
         self.resume_button.setVisible(not polygon)
@@ -2824,7 +2795,6 @@ class BatchPage(MissionPage):
         if hasattr(self, 'advanced_batch_form'):
             _set_form_field_visible(self.advanced_batch_form, self.execution_mode_container, visibility.execution_mode)
             _set_form_field_visible(self.advanced_batch_form, self.max_workers_container, visibility.maximum_workers)
-        self.confirm_parallel_check.setVisible(visibility.parallel_confirmation)
         self.polygon_finalization_group.setVisible(visibility.polygon_finalization)
         self.advanced_repository_section.setVisible(visibility.repository_options)
         _refresh_layout_geometry(self.advanced_batch_section)
@@ -2838,8 +2808,7 @@ class BatchPage(MissionPage):
             return
         profile = profile_by_key(str(self.processing_profile_combo.currentData() or "recommended"))
         if profile.key != "custom":
-            self.max_workers_spin.setValue(min(self.max_workers_spin.maximum(), max(self.max_workers_spin.minimum(), profile.recommended_workers)))
-            self.execution_mode_combo.setCurrentIndex(0 if profile.recommended_workers <= 1 else 1)
+            self.max_workers_spin.setValue(5)
         self.max_workers_spin.setToolTip("Upper limit; adaptive planning may use fewer workers for memory, storage, or source safety.")
         self._refresh_batch_option_visibility()
         self._refresh_footprint_label()
@@ -3566,9 +3535,6 @@ class BatchPage(MissionPage):
             self.preflight_text.setPlainText(self._polygon_guided_review_text(report))
             self.preflight_summary_label.setText("Ready to process." if not report.blockers else f"{len(report.blockers)} item(s) need attention.")
             self.polygon_guided_step_label.setText(guided_step_indicator("review"))
-            self.acknowledge_warnings_check.setEnabled(report.has_warnings and not report.blockers)
-            if not report.has_warnings:
-                self.acknowledge_warnings_check.setChecked(False)
             self._update_run_button_enabled()
             self._refresh_footprint_label()
             self._publish_session_state(plan_status="ready")
@@ -3588,9 +3554,6 @@ class BatchPage(MissionPage):
         self.preflight_report = report
         self.preflight_text.setPlainText(_format_preflight_report(report))
         self.preflight_summary_label.setText("Ready to process." if not report.blockers else f"{len(report.blockers)} item(s) need attention.")
-        self.acknowledge_warnings_check.setEnabled(report.has_warnings and not report.blockers)
-        if not report.has_warnings:
-            self.acknowledge_warnings_check.setChecked(False)
         self._update_run_button_enabled()
         self._publish_session_state(plan_status="ready")
 
@@ -3605,9 +3568,6 @@ class BatchPage(MissionPage):
         report = self.preflight_report
         if report.blockers:
             _set_status_badge(self.status_label, "FAILED", "Status: Failed - Prerun Check issues must be resolved before processing.")
-            return
-        if report.warnings and not self.acknowledge_warnings_check.isChecked():
-            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - review and acknowledge Prerun Check warnings before processing.")
             return
         try:
             current_request = self._build_batch_request(report.batch_folder)
@@ -3675,9 +3635,6 @@ class BatchPage(MissionPage):
         if getattr(report, "blockers", ()):
             _set_status_badge(self.status_label, "FAILED", "Status: Failed - polygon Prerun Check issues must be resolved before processing.")
             return
-        if getattr(report, "warnings", ()) and not self.acknowledge_warnings_check.isChecked():
-            _set_status_badge(self.status_label, "WARNING", "Status: Needs review - review and acknowledge polygon warnings before running.")
-            return
         token=self._begin_logical_job()
         if token is False:return
         self._completed_job_summary=None
@@ -3736,14 +3693,14 @@ class BatchPage(MissionPage):
             chm_interpolation=self.chm_interpolation_combo.currentText(),
             canopy_cover_height_threshold=self.canopy_threshold_spin.value(),
             stop_on_error=self.stop_on_error_check.isChecked(),
-            load_outputs_into_qgis=self.load_outputs_check.isChecked(),
-            execution_mode=str(self.execution_mode_combo.currentData()),
+            load_outputs_into_qgis=True,
+            execution_mode="automatic",
             max_workers=self.max_workers_spin.value(),
-            confirm_large_parallel=self.confirm_parallel_check.isChecked(),
+            confirm_large_parallel=True,
             skip_completed=self.skip_completed_check.isChecked(),
             retry_failed_only=self.retry_failed_only_check.isChecked(),
             overwrite_existing=self.overwrite_existing_check.isChecked(),
-            preflight_acknowledged=self.acknowledge_warnings_check.isChecked(),
+            preflight_acknowledged=True,
         )
         return BatchRequest(
             input_folder=Path(self.input_folder_edit.text().strip()),
@@ -3772,14 +3729,14 @@ class BatchPage(MissionPage):
             chm_interpolation=self.chm_interpolation_combo.currentText(),
             canopy_cover_height_threshold=self.canopy_threshold_spin.value(),
             stop_on_error=self.stop_on_error_check.isChecked(),
-            load_outputs_into_qgis=self.load_outputs_check.isChecked(),
-            execution_mode=str(self.execution_mode_combo.currentData()),
+            load_outputs_into_qgis=True,
+            execution_mode="automatic",
             max_workers=self.max_workers_spin.value(),
-            confirm_large_parallel=self.confirm_parallel_check.isChecked(),
+            confirm_large_parallel=True,
             skip_completed=self.skip_completed_check.isChecked(),
             retry_failed_only=self.retry_failed_only_check.isChecked(),
             overwrite_existing=self.overwrite_existing_check.isChecked(),
-            preflight_acknowledged=self.acknowledge_warnings_check.isChecked(),
+            preflight_acknowledged=True,
         )
         catalog_path = self._polygon_catalog_path()
         repository_crs_override = None
@@ -3822,13 +3779,12 @@ class BatchPage(MissionPage):
         if self._current_batch_mode() == "polygon":
             selected = getattr(report, "selected_sources", ()) if report is not None else ()
             blockers = getattr(report, "blockers", ()) if report is not None else ()
-            warnings = getattr(report, "warnings", ()) if report is not None else ()
-            enabled = bool(report and selected and not blockers and (not warnings or self.acknowledge_warnings_check.isChecked()))
+            enabled = bool(report and selected and not blockers)
             self.run_button.setEnabled(enabled)
             self.resume_button.setEnabled(False)
             self.resume_button.setVisible(False)
             return
-        enabled = bool(report and report.files_to_process and not report.blockers and (not report.warnings or self.acknowledge_warnings_check.isChecked()))
+        enabled = bool(report and report.files_to_process and not report.blockers)
         self.run_button.setEnabled(enabled)
         resumable = bool(report and report.manifest_path.exists() and (report.files_completed or report.files_to_retry or report.files_to_skip))
         self.resume_button.setEnabled(enabled and resumable)
@@ -3994,9 +3950,9 @@ class BatchPage(MissionPage):
             settings = BatchProductSettings(
                 products=tuple(selected_products),
                 grid_resolution=self.resolution_spin.value(),
-                execution_mode=str(self.execution_mode_combo.currentData()),
+                execution_mode="automatic",
                 max_workers=self.max_workers_spin.value(),
-                load_outputs_into_qgis=self.load_outputs_check.isChecked(),
+                load_outputs_into_qgis=True,
                 stop_on_error=self.stop_on_error_check.isChecked(),
                 retry_failed_only=self.retry_failed_only_check.isChecked(),
                 overwrite_existing=self.overwrite_existing_check.isChecked(),
@@ -4009,7 +3965,7 @@ class BatchPage(MissionPage):
                 f"Shared grid resolution: {self.resolution_spin.value():g}\n"
                 f"Concurrency: requested {concurrency['requested_concurrent_jobs']}; effective {concurrency['effective_concurrent_jobs']}\n"
                 f"Exact raster mask: {'on' if self.exact_raster_mask_check.isChecked() else 'off'}; engine {self.mask_engine_combo.currentText()}\n"
-                f"Output loading: {'after completion' if self.load_outputs_check.isChecked() else 'manual from Results'}\n"
+                "Output loading: automatic after completion\n"
                 f"{concurrency['reason']}"
             )
             return
@@ -4051,9 +4007,8 @@ class BatchPage(MissionPage):
         QApplication.processEvents()
 
     def _on_batch_job_update(self, job: JobRecord) -> None:
-        if self.load_outputs_check.isChecked():
-            self.jobUpdated.emit(job)
-            self.jobUpdatedForJob.emit(job,self._current_job_token)
+        self.jobUpdated.emit(job)
+        self.jobUpdatedForJob.emit(job,self._current_job_token)
         QApplication.processEvents()
 
     def _batch_control_state(self) -> str | None:
@@ -5089,15 +5044,10 @@ def _format_preflight_report(report: BatchPreflightReport) -> str:
     """Format a batch preflight report for Mission Control."""
     lines = [
         "Ready to run: " + ("YES" if report.ready else "NO"),
-        f"Batch folder: {report.batch_folder}",
-        f"Execution mode: {report.execution_mode}; max workers: {report.max_workers}; recommended workers: {report.recommended_workers}",
-        f"Files to process: {len(report.files_to_process)}",
-        f"Files already completed: {len(report.files_completed)}",
-        f"Files to skip: {len(report.files_to_skip)}",
-        f"Files to retry: {len(report.files_to_retry)}",
+        f"Input: {len(report.files_to_process)} LiDAR source(s)",
+        f"Output: {report.batch_folder}",
         f"Estimated output storage: {_format_storage(report.estimated_output_bytes)}",
         f"Free disk space: {_format_storage(report.free_disk_bytes)}",
-        f"Manifest: {report.manifest_path}",
         "",
         "Blockers:",
     ]

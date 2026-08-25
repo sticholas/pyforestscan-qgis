@@ -8,3 +8,6 @@ CHM, canopy cover, DTM, FHD, PAI, point density, voxel statistic, and Rumple are
 # Phase 30B Update
 
 Rumple is partitionable through the durable coordinator for EPT/COPC adaptive jobs. Its primary raster, secondary scalar, and supporting CHM roles are explicit. Live large-source equivalence remains an RC validation item.
+# Phase 30D prerequisite clarification
+
+CHM and Rumple may execute from usable height-above-ground data without vegetation classes 3/4/5. Unknown CRS is informational for standalone source-coordinate science and blocking only when transformation or polygon alignment requires it.

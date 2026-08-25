@@ -70,7 +70,9 @@ def run_batch_preflight(
         probe.unlink(missing_ok=True)
     except OSError as exc:
         blockers.append(f"Output folder is not writable: {exc}")
-    batch_folder = request.batch_folder or _existing_or_new_batch_folder(request)
+    # A new immutable request always receives a new identity. Historical
+    # manifests are consulted only when the caller explicitly selects one.
+    batch_folder = request.batch_folder or create_batch_folder(request.output_folder)
     manifest_path = batch_folder / MANIFEST_NAME
     completed: tuple[Path, ...] = ()
     failed: tuple[Path, ...] = ()
@@ -164,13 +166,6 @@ def estimate_batch_output_bytes(request: BatchRequest, file_count: int | None = 
     if any(product.value == "pad" for product in request.settings.products):
         per_product_bytes += 256 * 1024 * 1024
     return count * max(1, product_count) * per_product_bytes
-
-
-def _existing_or_new_batch_folder(request: BatchRequest) -> Path:
-    manifests = sorted(request.output_folder.glob(f"pyforestscan_batch_*/{MANIFEST_NAME}"), reverse=True)
-    if manifests:
-        return manifests[0].parent
-    return create_batch_folder(request.output_folder)
 
 
 def _output_conflicts(datasets: tuple[Path, ...], batch_folder: Path, overwrite_existing: bool) -> tuple[Path, ...]:

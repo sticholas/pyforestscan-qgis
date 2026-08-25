@@ -35,10 +35,10 @@ class BatchProductSettings:
     chm_clean_edges: bool = False
     canopy_cover_height_threshold: float = 2.0
     stop_on_error: bool = False
-    load_outputs_into_qgis: bool = False
-    execution_mode: str = "sequential"
-    max_workers: int = 2
-    confirm_large_parallel: bool = False
+    load_outputs_into_qgis: bool = True
+    execution_mode: str = "automatic"
+    max_workers: int = 5
+    confirm_large_parallel: bool = True
     skip_completed: bool = True
     retry_failed_only: bool = False
     overwrite_existing: bool = False
@@ -68,6 +68,7 @@ class BatchItemResult:
     message: str
     outputs: tuple[Path, ...]
     bounds_summary: str = "Not inspected"
+    requested_products: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

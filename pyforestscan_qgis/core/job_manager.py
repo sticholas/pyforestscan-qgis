@@ -150,8 +150,14 @@ class JobManager:
                 job = self._progress(job, percent, f"Validated pipeline: {pipeline.label}.")
                 if self._is_cancelled(job):
                     return self._finalize_cancelled(job)
-            if any(not result.passed for result in pipeline_results):
-                raise JobExecutionError("One or more pipeline validation stages failed.")
+            blocked = [(result, result.validation) for result in pipeline_results if not result.validation.ready]
+            if blocked:
+                details = []
+                for result, validation in blocked:
+                    reason = validation.blockers[0] if validation.blockers else "A required pipeline stage failed."
+                    action = validation.required_actions[0] if validation.required_actions else "Review pipeline diagnostics."
+                    details.append(f"Cannot generate {result.label}. Reason: {reason} Action: {action}")
+                raise JobExecutionError(" ".join(details))
 
             finish_progress = "Processing pipeline completed." if execute_products else "Pipeline dry-run completed."
             job = self._progress(job, 100, finish_progress)

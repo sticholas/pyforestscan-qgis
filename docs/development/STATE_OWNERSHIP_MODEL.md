@@ -13,3 +13,6 @@
 | Historical | durable job folders/history | terminal and recoverable jobs | retention policy/user action |
 
 The current-job controller is authoritative. UI fields are projections. A callback is accepted only when its full token matches. Registry records must match job, attempt, project, plan, and polygon before automatic publication. Historical jobs never become current without explicit `make_current_and_continue` action.
+# Phase 30D batch identity
+
+The immutable current request owns its new batch folder, requested products, and product outputs. Diagnostic artifacts are separate. Historical manifests cannot become current state through output-root proximity.

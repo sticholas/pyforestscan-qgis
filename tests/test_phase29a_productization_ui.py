@@ -24,7 +24,8 @@ class Phase29AProductizationUiTests(unittest.TestCase):
         self.assertFalse(automatic.maximum_workers)
         self.assertTrue(custom.maximum_workers)
         self.assertFalse(custom.parallel_confirmation)
-        self.assertIn('addItem("Parallel", PARALLEL_SAFE_MODE)', PAGES)
+        self.assertNotIn('addItem("Parallel", PARALLEL_SAFE_MODE)', PAGES)
+        self.assertIn('addItem("Automatic", "automatic")', PAGES)
 
     def test_readiness_report_is_always_content_sized(self):
         self.assertIn('self.preflight_text.textChanged.connect', PAGES)

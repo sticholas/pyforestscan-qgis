@@ -22,6 +22,27 @@ class PipelineStepStatus(str, Enum):
     NOT_IMPLEMENTED = "not_implemented"
 
 
+class ProductValidationSeverity(str, Enum):
+    """Authoritative product readiness severity."""
+
+    READY = "READY"
+    NEEDS_ATTENTION = "NEEDS_ATTENTION"
+    BLOCKED = "BLOCKED"
+
+
+@dataclass(frozen=True)
+class ProductValidationResult:
+    """Product-specific readiness derived from executed pipeline stages."""
+
+    product: str
+    ready: bool
+    severity: ProductValidationSeverity
+    blockers: tuple[str, ...]
+    warnings: tuple[str, ...]
+    information: tuple[str, ...]
+    required_actions: tuple[str, ...]
+
+
 @dataclass(frozen=True)
 class PipelineStepResult:
     """Result for one pipeline step."""
@@ -61,6 +82,27 @@ class PipelineResult:
         blocking = {PipelineStepStatus.FAILED, PipelineStepStatus.NOT_IMPLEMENTED}
         return not any(step.status in blocking for step in self.steps)
 
+    @property
+    def validation(self) -> ProductValidationResult:
+        """Return one product-specific readiness result; warnings never block."""
+        blockers = tuple(step.message for step in self.steps if step.status in {PipelineStepStatus.FAILED, PipelineStepStatus.NOT_IMPLEMENTED})
+        warnings = tuple(step.message for step in self.steps if step.status == PipelineStepStatus.WARNING)
+        information = tuple(step.message for step in self.steps if step.status in {PipelineStepStatus.PASSED, PipelineStepStatus.SKIPPED})
+        severity = ProductValidationSeverity.BLOCKED if blockers else (ProductValidationSeverity.NEEDS_ATTENTION if warnings else ProductValidationSeverity.READY)
+        actions = tuple(_required_action(step) for step in self.steps if step.status in {PipelineStepStatus.FAILED, PipelineStepStatus.NOT_IMPLEMENTED})
+        return ProductValidationResult(self.product, not blockers, severity, blockers, warnings, information, actions)
+
+
+def _required_action(step: PipelineStepResult) -> str:
+    message = step.message.lower()
+    if "height" in message:
+        return "Provide ground-normalized LiDAR or enable a supported height-above-ground method."
+    if "crs" in message:
+        return "Assign or resolve the source CRS before a spatial transform or polygon alignment."
+    if "source" in message or "dataset" in message:
+        return "Select a readable LiDAR source and run Prerun Check again."
+    return f"Resolve the {step.label} requirement and run Prerun Check again."
+
 
 def pipeline_result_to_dict(result: PipelineResult) -> dict[str, Any]:
     """Convert a pipeline result to a JSON-serializable dictionary."""
@@ -69,6 +111,14 @@ def pipeline_result_to_dict(result: PipelineResult) -> dict[str, Any]:
         "product": result.product,
         "label": result.label,
         "passed": result.passed,
+        "validation": {
+            "ready": result.validation.ready,
+            "severity": result.validation.severity.value,
+            "blockers": list(result.validation.blockers),
+            "warnings": list(result.validation.warnings),
+            "information": list(result.validation.information),
+            "required_actions": list(result.validation.required_actions),
+        },
         "steps": [
             {
                 "step_id": step.step_id,

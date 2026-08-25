@@ -26,3 +26,6 @@ Source, selection, polygon, products, output, resolution, profile, execution pol
 ## Progress semantics
 
 `logical_inputs` counts sources submitted to execution. Already-completed/skipped sources are recorded separately and do not inflate processing percentage. Polygon progress uses its immutable preflight report and selected logical sources; adaptive work-unit progress remains coordinator-owned.
+# Phase 30D amendment
+
+Warnings do not invalidate readiness. New preflight requests create new batch identities; historical manifests require explicit recovery selection. Scheduler details are technical diagnostics rather than normal summary content.

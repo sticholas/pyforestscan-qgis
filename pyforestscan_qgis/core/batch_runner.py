@@ -158,8 +158,9 @@ class BatchRunner:
                 run_context=context,
                 status=status,
                 message=message,
-                outputs=tuple(result.path for result in job.results),
+                outputs=tuple(result.path for result in job.results if _is_product_output(result.result_type)),
                 bounds_summary=_bounds_summary(report.bounds),
+                requested_products=tuple(product.value for product in request.settings.products),
             )
         except Exception as exc:  # noqa: BLE001 - batch records per-file failures and continues.
             return BatchItemResult(
@@ -169,6 +170,7 @@ class BatchRunner:
                 message=str(exc),
                 outputs=(),
                 bounds_summary="Unavailable",
+                requested_products=tuple(product.value for product in request.settings.products),
             )
 
     def _control_state(self) -> str | None:
@@ -190,6 +192,7 @@ class BatchRunner:
                 message=message,
                 outputs=(),
                 bounds_summary="Not inspected",
+                requested_products=(),
             )
             skipped.append(item)
             if self.item_callback is not None:
@@ -205,6 +208,11 @@ def _bounds_summary(bounds: object) -> str:
     if None in (min_x, max_x, min_y, max_y):
         return "Unavailable"
     return f"X {float(min_x):.3f} to {float(max_x):.3f}; Y {float(min_y):.3f} to {float(max_y):.3f}"
+
+
+def _is_product_output(result_type: str) -> bool:
+    """Exclude plans, reports, and diagnostics from scientific output counts."""
+    return result_type.endswith(("_geotiff", "_csv")) and not result_type.startswith(("job_summary", "dataset_", "product_plan"))
 
 
 

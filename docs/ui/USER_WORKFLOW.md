@@ -77,3 +77,6 @@ workspace for one Mission Control run.
 
 Mission Control can create CHM, Canopy Cover, PAD, PAI, and FHD GeoTIFFs in
 `outputs/`, plus a Rumple scalar CSV summary. Rasters load with grayscale styling by default. Vector and point-cloud outputs remain future products.
+# Automatic processing defaults
+
+Select sources and products, review Prerun Check, and process. One source runs with one source worker; independent multiple-file work is parallelized within the planner's safety ceiling. Successful current-job primary rasters load automatically.

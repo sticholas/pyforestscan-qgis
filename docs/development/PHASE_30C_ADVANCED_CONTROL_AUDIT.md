@@ -21,3 +21,6 @@
 | Recovery/diagnostics | Durable job system | Action after failure | Terminal/recoverable | Retained under troubleshooting |
 
 Automatic, Conservative, and Performance profiles materially change the requested concurrency ceiling. The adaptive planner may always choose fewer workers. Advanced remains optional: normal execution uses automatic topology, primary-output loading, exact polygon masking, safe conflicts, and retained durable checkpoints.
+# Phase 30D supersession
+
+Execution mode, parallel confirmation, per-run output loading, and warning acknowledgement were removed. The optional Custom worker value is an upper ceiling only.

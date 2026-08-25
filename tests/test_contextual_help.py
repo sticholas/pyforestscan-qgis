@@ -48,9 +48,6 @@ class ContextualHelpStaticTests(unittest.TestCase):
             "batch.polygon",
             "batch.repository_setup_method",
             "batch.processing_concurrency",
-            "batch.concurrent_jobs",
-            "batch.effective_concurrency",
-            "batch.load_outputs_after_completion",
             "batch.exact_raster_mask",
             "batch.mask_implementation",
             "batch.crop_to_polygon_extent",
@@ -60,6 +57,9 @@ class ContextualHelpStaticTests(unittest.TestCase):
         ):
             self.assertIn(f'info_badge("{key}"', source)
             self.assertIn(f'"{key}": HelpTopic', topics)
+
+        for removed in ("batch.effective_concurrency", "batch.load_outputs_after_completion"):
+            self.assertNotIn(f'info_badge("{removed}"', source)
 
 
 if __name__ == "__main__":

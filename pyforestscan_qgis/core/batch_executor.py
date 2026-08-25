@@ -17,6 +17,7 @@ from .batch_results import write_batch_summaries
 from .output_registry import generated_output_for_path, write_output_registry
 from .batch_manifest import MANIFEST_NAME, create_manifest, load_manifest, update_manifest_item, write_manifest
 from .batch_runner import BatchControlCallback, BatchExecutionError, BatchJobCallback, BatchProgressCallback, BatchRunner
+from .automatic_execution import choose_automatic_execution
 from .external_worker import (
     EXTERNAL_WORKER_DISABLED_MESSAGE,
     EXTERNAL_WORKER_MODE,
@@ -32,7 +33,7 @@ from .external_worker import (
 SEQUENTIAL_MODE = "sequential"
 PARALLEL_SAFE_MODE = "parallel_safe"
 MAX_SAFE_WORKERS = 6
-DEFAULT_PARALLEL_WORKERS = 2
+DEFAULT_PARALLEL_WORKERS = 5
 LARGE_FILE_COUNT = 10
 LARGE_WORKLOAD_SCORE = 30
 
@@ -73,6 +74,10 @@ class BatchExecutor:
         """Validate worker limits and return conservative execution guardrails."""
         mode = request.settings.execution_mode
         workers = request.settings.max_workers
+        if mode == "automatic":
+            source_type = "ept" if len(request.datasets) == 1 and Path(request.datasets[0]).name.lower() == "ept.json" else "file"
+            decision = choose_automatic_execution(len(request.datasets), source_type=source_type, worker_ceiling=workers)
+            mode, workers = decision.strategy, decision.effective_workers
         if mode not in {SEQUENTIAL_MODE, PARALLEL_SAFE_MODE, EXTERNAL_WORKER_MODE}:
             raise BatchExecutionError("Batch execution mode must be Sequential, Parallel safe mode, or External worker mode.")
         max_allowed = MAX_EXTERNAL_WORKERS if mode == EXTERNAL_WORKER_MODE else MAX_SAFE_WORKERS
@@ -91,7 +96,7 @@ class BatchExecutor:
                 reason=EXTERNAL_WORKER_DISABLED_MESSAGE,
             )
         if workers > DEFAULT_PARALLEL_WORKERS:
-            warnings.append("More than 2 workers can increase memory, PDAL, and disk pressure.")
+            warnings.append("Higher concurrency can increase memory, PDAL, and disk pressure.")
         if mode == EXTERNAL_WORKER_MODE:
             warnings.append("External worker mode starts separate Python processes and needs extra RAM, CPU, and disk bandwidth.")
         if len(request.datasets) >= LARGE_FILE_COUNT:
@@ -100,16 +105,6 @@ class BatchExecutor:
             warnings.append("Large workload: many file/product combinations selected.")
         if mode == SEQUENTIAL_MODE or (workers == 1 and mode != EXTERNAL_WORKER_MODE):
             return BatchGuardrailReport(mode, SEQUENTIAL_MODE, 1, workload_score, tuple(warnings))
-        if warnings and not request.settings.confirm_large_parallel:
-            return BatchGuardrailReport(
-                requested_mode=mode,
-                effective_mode=SEQUENTIAL_MODE,
-                max_workers=workers,
-                workload_score=workload_score,
-                warnings=tuple(warnings),
-                blocked=True,
-                reason="Selected non-sequential mode requires confirmation for this workload.",
-            )
         return BatchGuardrailReport(mode, EXTERNAL_WORKER_MODE if mode == EXTERNAL_WORKER_MODE else PARALLEL_SAFE_MODE, workers, workload_score, tuple(warnings))
 
     def run(

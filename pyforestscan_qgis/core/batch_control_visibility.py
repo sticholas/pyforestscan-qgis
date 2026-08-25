@@ -16,8 +16,7 @@ class BatchControlVisibility:
 
 def batch_control_visibility(*, profile: str, execution_mode: str, polygon_mode: bool, repository_selected: bool) -> BatchControlVisibility:
     custom = profile == "custom"
-    parallel = custom and execution_mode == "parallel_safe"
-    return BatchControlVisibility(custom, parallel, False, polygon_mode, polygon_mode and repository_selected)
+    return BatchControlVisibility(False, custom, False, polygon_mode, polygon_mode and repository_selected)
 
 
 __all__ = ["BatchControlVisibility", "batch_control_visibility"]

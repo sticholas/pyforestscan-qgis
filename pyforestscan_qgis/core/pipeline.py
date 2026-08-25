@@ -121,8 +121,6 @@ def _execute_chm_step(context: PipelineContext, step: PipelineStep, adapter: Any
         return _step_result(step, PipelineStepStatus.FAILED, "CHM execution requires an adapter.")
     if not context.source_dataset:
         return _step_result(step, PipelineStepStatus.FAILED, "CHM execution requires a source dataset.")
-    if not context.crs:
-        return _step_result(step, PipelineStepStatus.FAILED, "CHM execution requires dataset CRS metadata.")
     try:
         output_path = _chm_output_path(context)
         result = adapter.create_chm(
@@ -225,8 +223,6 @@ def _execute_rumple_step(context: PipelineContext, step: PipelineStep, adapter: 
         return _step_result(step, PipelineStepStatus.FAILED, "Rumple execution requires an adapter.")
     if not context.source_dataset:
         return _step_result(step, PipelineStepStatus.FAILED, "Rumple execution requires a source dataset.")
-    if not context.crs:
-        return _step_result(step, PipelineStepStatus.FAILED, "Rumple execution requires dataset CRS metadata.")
     try:
         output_path = _rumple_output_path(context)
         result = adapter.create_rumple(

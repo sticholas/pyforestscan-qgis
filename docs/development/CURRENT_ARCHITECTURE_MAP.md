@@ -31,3 +31,9 @@ flowchart LR
 # Phase 30B Additions
 
 `processing_ui_state.py` owns processing control projection, `product_finalization.py` owns output-role semantics, `durable_errors.py` retains closed-dialog diagnostics, and `rumple_adaptive.py` plus `rumple_raster_io.py` own adaptive Rumple grid/scalar behavior.
+# Phase 30D additions
+
+- `core.pipeline_results`: product validation severity and stage observability.
+- `core.automatic_execution`: source-level automatic scheduling policy.
+- `core.batch_preflight`: fresh-job manifest isolation.
+- `core.batch_runner`: requested-product persistence and scientific-output filtering.

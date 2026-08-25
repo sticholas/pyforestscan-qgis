@@ -116,3 +116,8 @@ Phase 28H adaptive scale and current-job isolation are covered by QGIS-free test
 # Phase 30B Validation Boundary
 
 Adaptive Rumple coordinator integration is synthetically validated, but medium and large real-source equivalence and consecutive-job QGIS interaction remain to be recorded live. The original closed 130 ha error dialog could not be recovered; durable records show the science and batch completed successfully.
+# Phase 30D notes
+
+- Standalone unknown-CRS processing preserves source coordinates and does not assign a guessed CRS. Polygon alignment and reprojection still require a resolved CRS.
+- Automatic source concurrency is bounded at five by default; EPT internal work-unit scheduling is governed separately.
+- Recovery only reads an explicitly selected batch folder. Complete metadata/signature compatibility enforcement remains planned.

@@ -104,13 +104,13 @@ class AdvancedVisibilityTests(unittest.TestCase):
         self.assertTrue(any(item.maximum_workers for item in states))
         self.assertTrue(all(not item.parallel_confirmation for item in states))
 
-    def test_custom_parallel_is_only_worker_override_state(self):
+    def test_custom_profile_is_only_worker_ceiling_override_state(self):
         automatic = batch_control_visibility(profile="recommended", execution_mode="parallel_safe", polygon_mode=False, repository_selected=False)
         sequential = batch_control_visibility(profile="custom", execution_mode="sequential", polygon_mode=False, repository_selected=False)
         parallel = batch_control_visibility(profile="custom", execution_mode="parallel_safe", polygon_mode=False, repository_selected=False)
         self.assertFalse(automatic.execution_mode)
-        self.assertTrue(sequential.execution_mode)
-        self.assertFalse(sequential.maximum_workers)
+        self.assertFalse(sequential.execution_mode)
+        self.assertTrue(sequential.maximum_workers)
         self.assertTrue(parallel.maximum_workers)
 
 

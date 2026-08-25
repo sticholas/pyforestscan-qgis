@@ -28,7 +28,7 @@ class Phase29BWorkflowTests(unittest.TestCase):
   automatic=batch_control_visibility(profile='recommended',execution_mode='parallel_safe',polygon_mode=False,repository_selected=False)
   custom=batch_control_visibility(profile='custom',execution_mode='parallel_safe',polygon_mode=False,repository_selected=False)
   self.assertFalse(automatic.execution_mode)
-  self.assertTrue(custom.execution_mode)
+  self.assertFalse(custom.execution_mode)
   self.assertTrue(custom.maximum_workers)
   self.assertIn('Upper limit; adaptive planning may use fewer workers',PAGES)
  def test_processing_inputs_share_invalidation(self):

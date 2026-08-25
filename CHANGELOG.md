@@ -241,3 +241,9 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 - Added authoritative processing UI states, finally-guarded terminal unlock, stale-state reconciliation, and durable recent-error records.
 - Added explicit primary, secondary, and supporting output roles and separated QGIS visualization errors from scientific completion.
 - Recorded redacted evidence from the real 130 ha EPT Rumple run and added a numeric output validation script.
+# Phase 30D
+
+- Repaired CHM and Rumple standalone execution for HAG-enabled LAS files with unknown CRS; warnings no longer become implicit blockers.
+- Added product validation severity and actionable blocker reporting.
+- Automated source scheduling with a default ceiling of five, forced current-job output loading, and removed global warning acknowledgement.
+- Isolated new batch manifests, preserved requested products on failure, and excluded diagnostics from product output counts.

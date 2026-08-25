@@ -264,3 +264,6 @@ Mission Control now has two visible destinations: Process and Tools & Setup. Pro
 # Terminal Recovery
 
 Processing controls are restored after every terminal outcome. A hidden-by-default Refresh Status action can repair a stale UI projection without deleting outputs or cancelling work. QGIS layer-loading failure is reported separately from successful scientific processing.
+# Phase 30D Process workspace
+
+The Process workspace uses automatic scheduling and automatic current-job output loading. Normal Prerun Check shows inputs, output, storage, blockers, and warnings without scheduler internals. Advanced retains processing profile, conflict/recovery controls, and applicable polygon finalization controls; no global warning acknowledgement is shown.
