@@ -13,6 +13,7 @@ class ProcessingUiState(str, Enum):
     PAUSED = "paused"
     FINALIZING = "finalizing"
     COMPLETE = "complete"
+    COMPLETE_WITH_WARNING = "complete_with_warning"
     FAILED = "failed"
     CANCELLED = "cancelled"
     INTERRUPTED = "interrupted"
@@ -28,6 +29,7 @@ ACTIVE_PROCESSING_STATES = frozenset({
 })
 TERMINAL_PROCESSING_STATES = frozenset({
     ProcessingUiState.COMPLETE,
+    ProcessingUiState.COMPLETE_WITH_WARNING,
     ProcessingUiState.FAILED,
     ProcessingUiState.CANCELLED,
     ProcessingUiState.INTERRUPTED,
@@ -63,7 +65,7 @@ def terminal_state_from_result(*, failed: int = 0, cancelled: bool = False, inte
         return ProcessingUiState.INTERRUPTED
     if failed:
         return ProcessingUiState.FAILED
-    return ProcessingUiState.RECOVERABLE if warning else ProcessingUiState.COMPLETE
+    return ProcessingUiState.COMPLETE_WITH_WARNING if warning else ProcessingUiState.COMPLETE
 
 
 def reconcile_ui_state(ui_state: ProcessingUiState, durable_state: str | None, *, coordinator_active: bool) -> ProcessingUiState:
@@ -74,6 +76,7 @@ def reconcile_ui_state(ui_state: ProcessingUiState, durable_state: str | None, *
     return {
         "complete": ProcessingUiState.COMPLETE,
         "completed": ProcessingUiState.COMPLETE,
+        "complete_with_warning": ProcessingUiState.COMPLETE_WITH_WARNING,
         "failed": ProcessingUiState.FAILED,
         "scientific_blocker": ProcessingUiState.FAILED,
         "cancelled": ProcessingUiState.CANCELLED,

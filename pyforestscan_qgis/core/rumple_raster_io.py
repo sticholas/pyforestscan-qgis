@@ -42,14 +42,23 @@ def create_rumple_raster_from_chm(chm_path: Path | str, output_path: Path | str,
 
 
 def raster_totals(path: Path | str) -> RumpleTotals:
+    """Accumulate a raster in GDAL blocks without loading the final mosaic."""
     from osgeo import gdal
+    import numpy as np
     dataset = gdal.Open(str(path), gdal.GA_ReadOnly)
     if dataset is None:
         raise RuntimeError(f"Could not open Rumple raster: {path}")
     band = dataset.GetRasterBand(1)
-    values = band.ReadAsArray()
     transform = dataset.GetGeoTransform()
-    totals = totals_from_values(values, abs(float(transform[1])), nodata=band.GetNoDataValue() if band.GetNoDataValue() is not None else -9999.0)
+    nodata=band.GetNoDataValue() if band.GetNoDataValue() is not None else -9999.0
+    block_x,block_y=band.GetBlockSize();block_x=max(1,block_x);block_y=max(1,block_y)
+    totals=RumpleTotals()
+    for yoff in range(0,band.YSize,block_y):
+        rows=min(block_y,band.YSize-yoff)
+        for xoff in range(0,band.XSize,block_x):
+            cols=min(block_x,band.XSize-xoff)
+            values=band.ReadAsArray(xoff,yoff,cols,rows)
+            totals=totals.combine(totals_from_values(np.asarray(values),abs(float(transform[1])),nodata=nodata))
     dataset = None
     return totals
 

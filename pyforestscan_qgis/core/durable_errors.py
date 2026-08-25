@@ -18,6 +18,7 @@ class DurableErrorRecord:
     product: str = ""
     timestamp: str = ""
     recommended_action: str = "Review job diagnostics and retry when appropriate."
+    traceback_path: str = ""
 
     def to_dict(self):
         data = asdict(self)

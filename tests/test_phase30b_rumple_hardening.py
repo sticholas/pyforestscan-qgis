@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from pyforestscan_qgis.core.crs_alignment import compare_crs
+from pyforestscan_qgis.core.completed_job_summary import completed_job_summary
 from pyforestscan_qgis.core.durable_errors import DurableErrorRecord, read_recent_error, write_recent_error
 from pyforestscan_qgis.core.output_registry import generated_output_for_path
 from pyforestscan_qgis.core.processing_ui_state import ProcessingUiState, control_policy, reconcile_ui_state, terminal_state_from_result
@@ -13,6 +14,8 @@ from pyforestscan_qgis.core.rumple_adaptive import RumpleHaloRequirement, Rumple
 from pyforestscan_qgis.core.source_aware_processing import AlignedRasterGrid, SpatialExtent
 from pyforestscan_qgis.core.resource_estimation import estimate_work_unit_resources
 from pyforestscan_qgis.core.adaptive_processing import AdaptivePlannerInputs, derive_adaptive_plan
+from pyforestscan_qgis.core.polygon_batch import _load_reusable_chm, _verified_rumple_core_paths, _write_product_checkpoint
+from pyforestscan_qgis.core.work_unit_scheduler import WorkUnitResult
 
 
 EPSG_6635_WKT = 'PROJCS["NAD83(PA11) / UTM zone 5N",GEOGCS["NAD83(PA11)",DATUM["NAD83_National_Spatial_Reference_System_PA11",SPHEROID["GRS 1980",6378137,298.257222101]],PROJECTION["Transverse_Mercator"],PARAMETER["central_meridian",-153],UNIT["metre",1],AUTHORITY["EPSG","6635"]]'
@@ -31,10 +34,19 @@ class CrsEquivalenceTests(unittest.TestCase):
         self.assertFalse(result.horizontally_equivalent)
         self.assertTrue(result.transformation_required_xy)
 
+    def test_equivalent_wkt_forms_match(self):
+        self.assertTrue(compare_crs(EPSG_6635_WKT, EPSG_6635_WKT.replace("PROJCS", "PROJCRS")).horizontally_equivalent)
+
+    def test_compound_wkt_uses_horizontal_authority(self):
+        compound = f'COMPD_CS["horizontal plus height",{EPSG_6635_WKT},VERT_CS["height",VERT_DATUM["datum",2005],UNIT["metre",1],AUTHORITY["EPSG","5703"]]]'
+        result = compare_crs(compound, "EPSG:6635")
+        self.assertTrue(result.horizontally_equivalent)
+        self.assertFalse(result.transformation_required_xy)
+
 
 class ProcessingStateTests(unittest.TestCase):
     def test_every_terminal_state_unlocks_inputs(self):
-        for state in (ProcessingUiState.COMPLETE, ProcessingUiState.FAILED, ProcessingUiState.CANCELLED, ProcessingUiState.INTERRUPTED, ProcessingUiState.RECOVERABLE):
+        for state in (ProcessingUiState.COMPLETE, ProcessingUiState.COMPLETE_WITH_WARNING, ProcessingUiState.FAILED, ProcessingUiState.CANCELLED, ProcessingUiState.INTERRUPTED, ProcessingUiState.RECOVERABLE):
             with self.subTest(state=state):
                 policy = control_policy(state)
                 self.assertTrue(policy.run_inputs_enabled)
@@ -42,7 +54,7 @@ class ProcessingStateTests(unittest.TestCase):
 
     def test_terminal_matrix(self):
         self.assertEqual(ProcessingUiState.COMPLETE, terminal_state_from_result())
-        self.assertEqual(ProcessingUiState.RECOVERABLE, terminal_state_from_result(warning=True))
+        self.assertEqual(ProcessingUiState.COMPLETE_WITH_WARNING, terminal_state_from_result(warning=True))
         self.assertEqual(ProcessingUiState.FAILED, terminal_state_from_result(failed=1))
         self.assertEqual(ProcessingUiState.CANCELLED, terminal_state_from_result(cancelled=True))
         self.assertEqual(ProcessingUiState.INTERRUPTED, terminal_state_from_result(interrupted=True))
@@ -127,11 +139,60 @@ class ErrorRetentionTests(unittest.TestCase):
             self.assertEqual("job-a", loaded.job_id)
 
 
+class CompletionSummaryTests(unittest.TestCase):
+    def test_summary_uses_terminal_result_without_batch_page_widgets(self):
+        class Result:
+            batch_id = "job-a"
+            started_at = "2026-08-25T00:00:00+00:00"
+            finished_at = "2026-08-25T00:00:05+00:00"
+            items = ()
+            success_count = 0
+            failure_count = 0
+            skipped_count = 0
+            output_registry_path = None
+
+        summary = completed_job_summary(Result(), processing_profile="Balanced")
+        self.assertEqual("job-a", summary.logical_job_id)
+        self.assertEqual("Balanced", summary.processing_profile)
+        self.assertEqual("COMPLETE", summary.terminal_state)
+
+
+class ProductCheckpointTests(unittest.TestCase):
+    def test_verified_chm_can_be_reused_after_rumple_failure(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            buffered = root / "buffered.tif"
+            core = root / "core.tif"
+            buffered.write_bytes(b"buffered")
+            core.write_bytes(b"core")
+            import hashlib
+            checksum = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+            checkpoint = root / "product_checkpoint.json"
+            _write_product_checkpoint(checkpoint, {"job_signature": "plan-a", "work_unit_id": "unit-a", "products": {"chm": {"status": "Complete", "buffered_path": str(buffered), "buffered_checksum": checksum(buffered), "core_path": str(core), "core_checksum": checksum(core)}}})
+            self.assertEqual((buffered, core), _load_reusable_chm(checkpoint, "plan-a", "unit-a"))
+            self.assertIsNone(_load_reusable_chm(checkpoint, "plan-b", "unit-a"))
+
+    def test_rumple_mosaic_rejects_wrong_plan(self):
+        with tempfile.TemporaryDirectory() as folder:
+            raster = Path(folder) / "rumple.tif"
+            raster.write_bytes(b"rumple")
+            import hashlib
+            metrics = {"rumple_core": str(raster), "rumple_checksum": hashlib.sha256(raster.read_bytes()).hexdigest(), "rumple_grid_signature": "grid", "source_plan_signature": "wrong", "rumple_method": "pyforestscan_qgis_patch_surface_v1"}
+            grid = type("Grid", (), {"grid_signature": "grid"})()
+            with self.assertRaisesRegex(RuntimeError, "different execution plan"):
+                _verified_rumple_core_paths((WorkUnitResult("unit-a", "Complete", raster, metrics=metrics),), grid, "plan")
+
+
 class StaticIntegrationTests(unittest.TestCase):
     def test_completion_cleanup_is_finally_guarded(self):
         source = (Path(__file__).parents[1] / "pyforestscan_qgis" / "ui" / "pages.py").read_text(encoding="utf-8")
         self.assertIn("finally:\n            self._finish_batch_run(terminal)", source)
         self.assertIn("self._processing_watchdog", source)
+
+    def test_stale_batch_settings_helper_is_not_referenced(self):
+        source = (Path(__file__).parents[1] / "pyforestscan_qgis" / "ui" / "pages.py").read_text(encoding="utf-8")
+        self.assertNotIn("self._batch_settings()", source)
+        self.assertIn("completed_job_summary(result", source)
 
     def test_adaptive_route_accepts_rumple_without_publishing_supporting_chm(self):
         source = (Path(__file__).parents[1] / "pyforestscan_qgis" / "core" / "polygon_batch.py").read_text(encoding="utf-8")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import pickle
 import re
@@ -851,28 +852,35 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         from .chm_work_unit_execution import write_work_unit_diagnostic
         write_work_unit_diagnostic(request.diagnostics_path,"request.json",asdict(request))
         write_work_unit_diagnostic(request.diagnostics_path,"geometry.json",{"work_unit_id":unit.work_unit_id,"core_extent":unit.core_extent.__dict__,"read_extent":unit.read_extent.__dict__,"polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature})
-        try:
-            result = _run_logical_product(adapter, ProductType.CHM, request)
-        except Exception as exc:
-            if "empty point" not in str(exc).lower() and "no point" not in str(exc).lower():raise
-            from .empty_spatial_read import classify_empty_spatial_read
-            decision=classify_empty_spatial_read(core_intersection_area=unit.polygon_intersection_area,source_coverage_expected=True,read_completed=True)
-            write_work_unit_diagnostic(request.diagnostics_path,"empty_read_classification.json",decision.__dict__)
-            if decision.status=="CompleteNoData":
-                write_work_unit_diagnostic(request.diagnostics_path,"result.json",{"status":"CompleteNoData","reason_code":decision.reason_code,"message":decision.message})
-                return WorkUnitResult(unit.work_unit_id,"CompleteNoData",attempt_count=attempt,message=decision.message,metrics={"reason_code":decision.reason_code,"polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"output_required":False,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature})
-            error=RuntimeError(decision.message);error.code="FAILED_EMPTY_READ";raise error
-        _extract_core_raster(Path(result.output_path), core_path, unit.core_extent)
-        metrics={"core_extent":unit.core_extent.__dict__,"read_extent":unit.read_extent.__dict__,"chm_core":str(core_path),"hag_method":request.hag_method,"hag_source_dimension":request.hag_source_dimension,"hag_method_signature":request.hag_method_signature,"point_crop_policy":"buffered_rectangle_then_final_mask","polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature,"product_states":{"chm":"requested_complete" if ProductType.CHM in requested else "supporting_complete"}}
+        product_checkpoint=request.diagnostics_path/"product_checkpoint.json"
+        reusable=_load_reusable_chm(product_checkpoint,plan.plan_signature,unit.work_unit_id)
+        if reusable:
+            buffered_path,core_path=reusable
+        else:
+            try:
+                result = _run_logical_product(adapter, ProductType.CHM, request)
+            except Exception as exc:
+                if "empty point" not in str(exc).lower() and "no point" not in str(exc).lower():raise
+                from .empty_spatial_read import classify_empty_spatial_read
+                decision=classify_empty_spatial_read(core_intersection_area=unit.polygon_intersection_area,source_coverage_expected=True,read_completed=True)
+                write_work_unit_diagnostic(request.diagnostics_path,"empty_read_classification.json",decision.__dict__)
+                if decision.status=="CompleteNoData":
+                    write_work_unit_diagnostic(request.diagnostics_path,"result.json",{"status":"CompleteNoData","reason_code":decision.reason_code,"message":decision.message})
+                    return WorkUnitResult(unit.work_unit_id,"CompleteNoData",attempt_count=attempt,message=decision.message,metrics={"reason_code":decision.reason_code,"polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"output_required":False,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature})
+                error=RuntimeError(decision.message);error.code="FAILED_EMPTY_READ";raise error
+            buffered_path=Path(result.output_path);_extract_core_raster(buffered_path,core_path,unit.core_extent)
+            _write_product_checkpoint(product_checkpoint,{"job_signature":plan.plan_signature,"work_unit_id":unit.work_unit_id,"products":{"chm":{"role":"requested" if ProductType.CHM in requested else "supporting","status":"Complete","buffered_path":str(buffered_path),"buffered_checksum":_file_checksum(buffered_path),"core_path":str(core_path),"core_checksum":_file_checksum(core_path),"grid_signature":plan.grid.grid_signature,"hag_method_signature":request.hag_method_signature}}})
+        metrics={"core_extent":unit.core_extent.__dict__,"read_extent":unit.read_extent.__dict__,"chm_core":str(core_path),"chm_checksum":_file_checksum(core_path),"hag_method":request.hag_method,"hag_source_dimension":request.hag_source_dimension,"hag_method_signature":request.hag_method_signature,"point_crop_policy":"buffered_rectangle_then_final_mask","polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature,"product_states":{"chm":"requested_complete" if ProductType.CHM in requested else "supporting_complete"}}
         primary_path=core_path;rumple_path=None
         if rumple_requested:
             rumple_buffered=unit_folder/"outputs"/"rumple_buffered.tif";rumple_path=unit_folder/"outputs"/"rumple_core.tif"
-            create_rumple_raster_from_chm(Path(result.output_path),rumple_buffered,min_height=getattr(report.request.settings,"rumple_min_height",None))
+            create_rumple_raster_from_chm(buffered_path,rumple_buffered,min_height=getattr(report.request.settings,"rumple_min_height",None))
             extent=rumple_core_extent(unit.core_extent,rumple_grid)
             if extent is not None:
                 _extract_core_raster(rumple_buffered,rumple_path,extent);totals=raster_totals(rumple_path)
-                metrics.update({"rumple_core":str(rumple_path),"rumple_grid_signature":rumple_grid.grid_signature,"surface_area_sum":totals.surface_area_sum,"planar_area_sum":totals.planar_area_sum,"valid_patch_count":totals.valid_patch_count,"product_states":{**metrics["product_states"],"rumple":"requested_complete"}});primary_path=rumple_path
-        write_work_unit_diagnostic(request.diagnostics_path,"result.json",{"status":"Complete","buffered_output":str(result.output_path),"chm_core":str(core_path),"rumple_core":str(rumple_path) if rumple_path else "","executed_method":request.hag_method,"metrics":metrics})
+                metrics.update({"rumple_core":str(rumple_path),"rumple_checksum":_file_checksum(rumple_path),"rumple_grid_signature":rumple_grid.grid_signature,"rumple_method":"pyforestscan_qgis_patch_surface_v1","min_height":getattr(report.request.settings,"rumple_min_height",None),"surface_area_sum":totals.surface_area_sum,"planar_area_sum":totals.planar_area_sum,"valid_patch_count":totals.valid_patch_count,"product_states":{**metrics["product_states"],"rumple":"requested_complete"}});primary_path=rumple_path
+                _merge_product_checkpoint(product_checkpoint,"rumple",{"role":"requested","status":"Complete","core_path":str(rumple_path),"core_checksum":metrics["rumple_checksum"],"grid_signature":rumple_grid.grid_signature,"method":metrics["rumple_method"],"min_height":metrics["min_height"],"resolution":rumple_grid.resolution,"surface_area_sum":totals.surface_area_sum,"planar_area_sum":totals.planar_area_sum,"valid_patch_count":totals.valid_patch_count})
+        write_work_unit_diagnostic(request.diagnostics_path,"result.json",{"status":"Complete","buffered_output":str(buffered_path),"chm_core":str(core_path),"rumple_core":str(rumple_path) if rumple_path else "","executed_method":request.hag_method,"metrics":metrics})
         return WorkUnitResult(unit.work_unit_id,"Complete",primary_path,attempt_count=attempt,metrics=metrics)
 
     def progress(event):
@@ -894,13 +902,14 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         first = failed[0] if failed else pending[0]
         message = scheduler.stop_reason or f"{len(failed)} CHM work units failed and {len(pending)} remain pending. First affected unit {first.work_unit_id}: {first.message}"
     else:
+        completion_warning = ""
         chm_paths=tuple(Path(item.metrics.get("chm_core",item.output_path)) for item in results if item.status=="Complete" and (item.metrics.get("chm_core") or item.output_path))
         if chm_paths:_mosaic_core_rasters(chm_paths, final_unmasked, plan)
         else:_create_empty_aligned_raster(final_unmasked,plan)
         if ProductType.CHM in requested:
             final_path=context.outputs_dir/"chm.tif";final_path.parent.mkdir(parents=True,exist_ok=True);final_unmasked.replace(final_path);outputs.append(final_path)
         if rumple_requested:
-            rumple_paths=tuple(Path(item.metrics["rumple_core"]) for item in results if item.status=="Complete" and item.metrics.get("rumple_core"))
+            rumple_paths=_verified_rumple_core_paths(results,rumple_grid,plan.plan_signature)
             rumple_plan=replace(plan,grid=AlignedRasterGrid(rumple_grid.crs,rumple_grid.resolution,rumple_grid.extent.xmin,rumple_grid.extent.ymin,rumple_grid.extent,rumple_grid.rows,rumple_grid.columns,rumple_grid.nodata),product="rumple")
             rumple_unmasked=context.run_folder/"mosaics"/"rumple.tif"
             if rumple_paths:_mosaic_core_rasters(rumple_paths,rumple_unmasked,rumple_plan)
@@ -914,10 +923,10 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
             try:
                 outputs.append(write_rumple_summary(context.outputs_dir/"rumple_summary.csv",final_totals,valid_primary=context.outputs_dir/"rumple.tif"))
             except OSError as exc:
-                message=f"Processing completed with warning: the Rumple raster is valid, but its secondary scalar summary could not be written: {exc}"
+                completion_warning=f"Processing completed with warning: the Rumple raster is valid, but its secondary scalar summary could not be written: {exc}"
                 write_recent_error(context.run_folder,DurableErrorRecord("RUMPLE_SUMMARY_WRITE_FAILED","OUTPUT","Rumple completed with a warning.",str(exc),"secondary_output",job_id=signature,product="rumple",recommended_action="Use the Rumple raster; retry summary registration from diagnostics if needed."))
         nodata_count=sum(item.status=="CompleteNoData" for item in results)
-        message = "; ".join(item.message for item in failures) if failures else ("Processing completed. Areas without LiDAR returns are represented as NoData." if nodata_count else f"Source-aware CHM completed from {len(results)} verified required work units.")
+        message = "; ".join(item.message for item in failures) if failures else (completion_warning or ("Processing completed. Areas without LiDAR returns are represented as NoData." if nodata_count else f"Source-aware CHM completed from {len(results)} verified required work units."))
     item = BatchItemResult(Path(source.path), context, status, message, tuple(outputs), _requested_extent_summary(report))
     result = BatchResult("polygon-source-aware-chm", report.request.title, started_at, datetime.now(timezone.utc).isoformat(), batch_folder, (item,), batch_folder / "batch_summary.json", batch_folder / "batch_summary.csv", batch_folder / "batch_summary.html", load_outputs_after_completion=_shared_options(report).load_outputs_after_completion)
     result = _register_polygon_outputs_recoverably(result, report, mask_results, context.run_folder)
@@ -936,6 +945,73 @@ def _extract_core_raster(source_path: Path, output_path: Path, extent: SpatialEx
     if dataset is None: raise RuntimeError(f"Raster core extraction failed: {source_path}")
     dataset = None
     temporary.replace(output_path)
+
+
+def _file_checksum(path: Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _write_product_checkpoint(path: Path, payload: dict) -> None:
+    from .atomic_state import atomic_write_json
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(path, payload)
+
+
+def _merge_product_checkpoint(path: Path, product: str, payload: dict) -> None:
+    try:
+        current = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        current = {}
+    products = dict(current.get("products") or {})
+    products[product] = payload
+    current["products"] = products
+    _write_product_checkpoint(path, current)
+
+
+def _load_reusable_chm(path: Path, expected_signature: str, work_unit_id: str):
+    """Return verified CHM products from an interrupted Rumple attempt."""
+    try:
+        checkpoint = json.loads(path.read_text(encoding="utf-8"))
+        chm = checkpoint["products"]["chm"]
+        buffered = Path(chm["buffered_path"])
+        core = Path(chm["core_path"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if checkpoint.get("job_signature") != expected_signature or checkpoint.get("work_unit_id") != work_unit_id:
+        return None
+    if chm.get("status") != "Complete" or not buffered.is_file() or not core.is_file():
+        return None
+    if chm.get("buffered_checksum") != _file_checksum(buffered) or chm.get("core_checksum") != _file_checksum(core):
+        return None
+    return buffered, core
+
+
+def _verified_rumple_core_paths(results, rumple_grid, expected_signature: str) -> tuple[Path, ...]:
+    """Select only complete Rumple cores that match the current product plan."""
+    verified = []
+    for result in results:
+        if result.status != "Complete":
+            continue
+        metrics = result.metrics or {}
+        raw_path = metrics.get("rumple_core")
+        path = Path(raw_path) if raw_path else None
+        if not path or not path.is_file():
+            raise RuntimeError(f"Completed work unit {result.work_unit_id} has no Rumple core raster.")
+        if metrics.get("source_plan_signature") != expected_signature:
+            raise RuntimeError(f"Rumple work unit {result.work_unit_id} belongs to a different execution plan.")
+        if metrics.get("rumple_grid_signature") != rumple_grid.grid_signature:
+            raise RuntimeError(f"Rumple work unit {result.work_unit_id} uses an incompatible raster grid.")
+        if metrics.get("rumple_method") != "pyforestscan_qgis_patch_surface_v1":
+            raise RuntimeError(f"Rumple work unit {result.work_unit_id} uses an unsupported method.")
+        if metrics.get("rumple_checksum") != _file_checksum(path):
+            raise RuntimeError(f"Rumple work unit {result.work_unit_id} failed checksum verification.")
+        verified.append(path)
+    return tuple(verified)
 
 def _mosaic_core_rasters(paths, output_path: Path, plan) -> None:
     if not paths or any(path is None or not Path(path).is_file() for path in paths):

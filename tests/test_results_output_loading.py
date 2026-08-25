@@ -27,6 +27,12 @@ class ResultsOutputLoadingTests(unittest.TestCase):
         self.assertEqual([item.path.name for item in outputs], ["chm.tif", "pad.tiff", "rumple_summary.csv"])
         self.assertEqual([item.layer_kind for item in outputs], ["raster", "raster", "table"])
 
+    def test_automatic_primary_loading_excludes_secondary_tables(self) -> None:
+        paths = (Path("rumple.tif"), Path("rumple_summary.csv"), Path("chm.tif"))
+        outputs = collect_loadable_outputs(paths, primary_only=True)
+
+        self.assertEqual([item.path.name for item in outputs], ["rumple.tif", "chm.tif"])
+
     def test_duplicate_output_paths_are_skipped(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

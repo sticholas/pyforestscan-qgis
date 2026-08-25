@@ -105,6 +105,7 @@ from ..core.product_plan import (
 from ..core.types import ProductType
 from ..core.processing_ui_state import ProcessingUiState, control_policy, reconcile_ui_state, terminal_state_from_result
 from ..core.durable_errors import DurableErrorRecord, read_recent_error, write_recent_error
+from ..core.completed_job_summary import CompletedJobSummary, completed_job_summary, format_completed_job_summary
 from ..core.workspace import (
     RecentWorkspaceSummary,
     RunContext,
@@ -2029,6 +2030,8 @@ class BatchPage(MissionPage):
         self.processing_ui_state = ProcessingUiState.IDLE
         self._last_durable_state = ""
         self._recent_error_path: Path | None = None
+        self._completed_job_summary: CompletedJobSummary | None = None
+        self._active_processing_profile = "Automatic (Recommended)"
 
         self.mode_section, mode_layout = self.create_section("Processing Mode")
         self.batch_mode_combo = QComboBox()
@@ -3593,6 +3596,8 @@ class BatchPage(MissionPage):
             return
         token=self._begin_logical_job()
         if token is False:return
+        self._completed_job_summary=None
+        self._active_processing_profile=str(self.processing_profile_combo.currentText())
         self._transition_processing_ui_state(ProcessingUiState.STARTING)
         selected = list(request.datasets)
         self.batch_items = []
@@ -3653,6 +3658,8 @@ class BatchPage(MissionPage):
             return
         token=self._begin_logical_job()
         if token is False:return
+        self._completed_job_summary=None
+        self._active_processing_profile=str(self.processing_profile_combo.currentText())
         self._transition_processing_ui_state(ProcessingUiState.STARTING)
         selected = list(getattr(report, "selected_sources", ()))
         self.batch_items = []
@@ -3811,6 +3818,9 @@ class BatchPage(MissionPage):
         self._last_durable_state = "failed" if getattr(result, "failure_count", 0) else "complete"
         terminal = terminal_state_from_result(failed=int(getattr(result, "failure_count", 0)))
         try:
+            self._completed_job_summary=completed_job_summary(result,self.preflight_report,processing_profile=self._active_processing_profile)
+            self.batch_items=list(getattr(result,"items",()))
+            self._refresh_batch_results()
             self.progress_bar.setValue(100 if getattr(result, "items", ()) else 0)
             completion_badge = "READY" if terminal is ProcessingUiState.COMPLETE else "WARNING"
             _set_status_badge(self.status_label, completion_badge, f"Status: {status_display_word(completion_badge)} - batch complete. Completed {getattr(result, 'success_count', 0)}; failed {getattr(result, 'failure_count', 0)}. Summary: {getattr(result, 'summary_html', '')}")
@@ -3822,9 +3832,14 @@ class BatchPage(MissionPage):
             self.batchCompleted.emit(result)
             self.batchCompletedForJob.emit(result,self._current_job_token)
         except Exception as exc:  # noqa: BLE001 - convenience finalization cannot retain the running lock.
-            terminal = ProcessingUiState.RECOVERABLE
-            self._last_durable_state = "recoverable"
-            self._retain_recent_error(f"Post-job finalization failed after processing completed: {exc}", code="POST_JOB_FINALIZATION_FAILED", category="OUTPUT")
+            terminal = ProcessingUiState.COMPLETE_WITH_WARNING
+            self._last_durable_state = "complete_with_warning"
+            self._retain_recent_error(
+                f"Post-job finalization failed after processing completed: {exc}",
+                code="POST_JOB_FINALIZATION_FAILED",
+                category="OUTPUT",
+                recommended_action="Outputs are preserved. Refresh processing status or open diagnostics; do not rerun successful science.",
+            )
             _set_status_badge(self.status_label, "WARNING", "Status: Complete with warning - outputs were created, but Mission Control could not finish a convenience action. Open Recent Error for details.")
         finally:
             self._finish_batch_run(terminal)
@@ -3869,16 +3884,23 @@ class BatchPage(MissionPage):
 
     def refresh_processing_status(self) -> None:
         """Re-read durable state and repair only the UI projection."""
+        if self.latest_result is not None:
+            try:
+                self._completed_job_summary=completed_job_summary(self.latest_result,self.preflight_report,processing_profile=self._active_processing_profile)
+                self.batch_items=list(getattr(self.latest_result,"items",()))
+                self._refresh_batch_results();self._set_batch_summary(self.latest_result)
+            except Exception as exc:  # noqa: BLE001 - recovery remains non-destructive.
+                self._retain_recent_error(f"Current-job projection could not be rebuilt: {exc}",code="PROJECTION_RECOVERY_FAILED",category="RECOVERY")
         self._reconcile_processing_ui()
 
-    def _retain_recent_error(self, message: str, *, code: str = "EXECUTION_FAILED", category: str = "PROCESS") -> None:
+    def _retain_recent_error(self, message: str, *, code: str = "EXECUTION_FAILED", category: str = "PROCESS", recommended_action: str = "Review job diagnostics and retry when appropriate.") -> None:
         folder = getattr(self.latest_result, "batch_folder", None)
         if folder is None and self.preflight_report is not None:
             folder = getattr(self.preflight_report, "batch_folder", None)
         if folder is None:
             return
         try:
-            self._recent_error_path=write_recent_error(folder, DurableErrorRecord(code, category, "Processing needs attention.", str(message), "batch_terminal", job_id=str(getattr(self._current_job_token, "logical_job_id", ""))))
+            self._recent_error_path=write_recent_error(folder, DurableErrorRecord(code, category, "Processing needs attention.", str(message), "batch_terminal", job_id=str(getattr(self._current_job_token, "logical_job_id", "")), recommended_action=recommended_action))
             self.recent_error_label.setText(f"{code}: {message}")
             self.recent_error_group.setVisible(True)
         except OSError:
@@ -4063,7 +4085,7 @@ class BatchPage(MissionPage):
         """Refresh the visible batch result list using the selected filter."""
         selected_filter = self.result_filter_combo.currentText().lower() if hasattr(self, "result_filter_combo") else "all"
         self.batch_results.clear()
-        products = ", ".join(PRODUCT_LABELS[product] for product, check in self.product_checks.items() if check.isChecked()) or "none"
+        products = (", ".join(self._completed_job_summary.requested_products) if self._completed_job_summary is not None else ", ".join(PRODUCT_LABELS[product] for product, check in self.product_checks.items() if check.isChecked())) or "none"
         for item in self.batch_items:
             status = getattr(item, "status")
             if selected_filter != "all" and status != selected_filter:
@@ -4090,23 +4112,9 @@ class BatchPage(MissionPage):
 
     def _set_batch_summary(self, result: object) -> None:
         """Display the completed batch summary."""
-        total = len(getattr(result, "items", ()))
-        completed = getattr(result, "success_count", 0)
-        failed = getattr(result, "failure_count", 0)
-        skipped = getattr(result, "skipped_count", 0)
-        outputs = getattr(result, "total_output_count", 0)
-        storage = _format_storage(getattr(result, "total_estimated_output_bytes", 0))
-        repository = self.polygon_lidar_folder_edit.text().strip() if self._current_batch_mode() == "polygon" else self.input_folder_edit.text().strip()
-        products = ", ".join(PRODUCT_LABELS[p] for p, check in self.product_checks.items() if check.isChecked()) or "None"
-        profile = str(self.processing_profile_combo.currentText())
-        workers = requested_effective_concurrency(self._batch_settings())
-        warnings = len(getattr(self.preflight_report, "warnings", ())) if self.preflight_report is not None else 0
-        self.summary_label.setText(
-            f"Complete - {completed} of {total} succeeded; {failed} failed; {skipped} skipped. "
-            f"Repository: {Path(repository).name if repository else 'Not recorded'}. Products: {products}. "
-            f"Adaptive profile: {profile}; workers used: up to {workers}. Outputs: {outputs} ({storage}). "
-            f"Readiness warnings: {warnings}."
-        )
+        summary=self._completed_job_summary or completed_job_summary(result,self.preflight_report,processing_profile=self._active_processing_profile)
+        self._completed_job_summary=summary
+        self.summary_label.setText(format_completed_job_summary(summary))
 
 
 class ResultsPage(MissionPage):
@@ -4316,15 +4324,15 @@ class ResultsPage(MissionPage):
         self.load_outputs_button.setEnabled(bool(self._candidate_output_paths()))
         self._sync_compact_visibility(bool(self._candidate_output_paths()))
 
-    def load_outputs_to_qgis(self) -> None:
+    def load_outputs_to_qgis(self, primary_only: bool = False) -> None:
         """Load current run GeoTIFF and CSV outputs into QGIS without duplicates."""
         self.load_outputs_button.setEnabled(False)
         self._set_load_message("Loading outputs into QGIS...")
         QApplication.processEvents()
         paths = [path for path in self._candidate_output_paths() if path.exists() and path.is_file()]
-        all_candidates = collect_loadable_outputs(paths, self._job_result_types)
+        all_candidates = collect_loadable_outputs(paths, self._job_result_types, primary_only=primary_only)
         existing_sources = tuple(self._loaded_output_paths) + self._project_layer_sources()
-        candidates = collect_loadable_outputs(paths, self._job_result_types, existing_sources)
+        candidates = collect_loadable_outputs(paths, self._job_result_types, existing_sources, primary_only=primary_only)
         already_loaded = max(0, len(all_candidates) - len(candidates))
         if not candidates:
             message = output_loading_summary(0, len(all_candidates), already_loaded_count=already_loaded)

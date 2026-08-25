@@ -50,6 +50,7 @@ def collect_loadable_outputs(
     paths: Iterable[Path],
     result_types: dict[Path, str] | None = None,
     existing_sources: Iterable[Path | str] = (),
+    primary_only: bool = False,
 ) -> tuple[LoadableOutput, ...]:
     """Return unique, not-yet-loaded raster/table outputs in stable order."""
     result_types = result_types or {}
@@ -61,7 +62,7 @@ def collect_loadable_outputs(
         path = Path(raw_path)
         if path.name == REGISTRY_NAME and path.exists():
             try:
-                expanded_paths.extend(output.path for output in read_output_registry(path) if output.complete and output.valid)
+                expanded_paths.extend(output.path for output in read_output_registry(path) if output.complete and output.valid and (not primary_only or getattr(output,"output_role","primary")=="primary"))
             except Exception:
                 pass
         else:
@@ -71,6 +72,8 @@ def collect_loadable_outputs(
         if key in seen or key in existing:
             continue
         suffix = path.suffix.lower()
+        if primary_only and suffix in TABLE_SUFFIXES:
+            continue
         if suffix in RASTER_SUFFIXES:
             outputs.append(LoadableOutput(path, infer_output_result_type(path, result_types.get(path)), "raster"))
             seen.add(key)

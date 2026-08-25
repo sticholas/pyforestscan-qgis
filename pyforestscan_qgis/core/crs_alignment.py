@@ -186,7 +186,9 @@ def _authority_hint(text: str) -> str:
     direct = re.search(r"(?i)\b(EPSG)\s*:\s*(\d+)\b", text)
     if direct:
         return f"EPSG:{direct.group(2)}"
-    matches = re.findall(r'(?i)AUTHORITY\s*\[\s*["\']EPSG["\']\s*,\s*["\']?(\d+)', text)
+    is_compound = "COMPOUND" in text.upper() or "COMPD_CS" in text.upper()
+    horizontal_text = re.split(r'(?i)\b(?:VERT(?:ICAL)?CRS|VERT_CS)\s*\[', text, maxsplit=1)[0] if is_compound else text
+    matches = re.findall(r'(?i)(?:AUTHORITY|ID)\s*\[\s*["\']EPSG["\']\s*,\s*["\']?(\d+)', horizontal_text)
     return f"EPSG:{matches[-1]}" if matches else ""
 
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## Phase 30B - Production Rumple finalization and recovery
+
+- Removed the stale `BatchPage._batch_settings()` completion dependency and now build terminal summaries from immutable execution plans, durable results, checkpoints, and output registries.
+- Added `COMPLETE_WITH_WARNING` presentation semantics, guaranteed terminal UI cleanup, terminal review reconstruction, and primary-only automatic output loading.
+- Added verified CHM product checkpoints for Rumple retry, strict core plan/grid/method/checksum validation, blockwise final-raster scalar aggregation, and semantic horizontal CRS comparison.
+
 ## Phase 30A - Spatial Rumple Index raster
 
 - Added a patch-centered Rumple GeoTIFF whose valid-cell mean reproduces upstream PyForestScan scalar Rumple.

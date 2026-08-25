@@ -562,7 +562,7 @@ class MissionControlDock(QDockWidget):
         if failure_count == 0 and isinstance(registry_path, Path):
             self.results_page.set_report_paths((registry_path,))
         if getattr(result, "load_outputs_after_completion", False) and failure_count == 0:
-            self.results_page.load_outputs_to_qgis()
+            self.results_page.load_outputs_to_qgis(primary_only=True)
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
