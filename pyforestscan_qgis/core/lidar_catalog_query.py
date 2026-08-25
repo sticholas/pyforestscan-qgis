@@ -29,7 +29,8 @@ def derive_polygon_query_geometry(
     source_crs = (polygon.processing_crs or polygon.source_crs).strip()
     warnings: list[str] = []
     wkt = polygon.geometry_wkt
-    if target_crs and source_crs and target_crs != source_crs:
+    from .crs_alignment import crs_equivalent
+    if target_crs and source_crs and not crs_equivalent(source_crs, target_crs):
         if transformer is not None:
             wkt = transform_wkt_coordinates(wkt, transformer)
         else:

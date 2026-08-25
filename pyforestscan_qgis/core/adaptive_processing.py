@@ -43,7 +43,8 @@ def derive_adaptive_plan(inputs:AdaptivePlannerInputs)->AdaptiveProcessingPlan:
     if inputs.historical_memory_per_million and inputs.historical_memory_per_million>0:bytes_per_point=max(bytes_per_point,inputs.historical_memory_per_million/1_000_000.0)
     memory_budget=max(256*1024**2,min(int(inputs.available_memory_bytes*.22),3*1024**3))
     point_limit=max(500_000,min(30_000_000,int(memory_budget/(bytes_per_point*1.6))))
-    raster_cell_limit=max(1_000_000,min(36_000_000,int(memory_budget/(32.0*1.25))))
+    raster_working_bytes=48.0 if inputs.product=='rumple' else 32.0
+    raster_cell_limit=max(1_000_000,min(36_000_000,int(memory_budget/(raster_working_bytes*1.25))))
     safe_area=min(point_limit/density,raster_cell_limit*inputs.output_resolution**2)
     safe_width=math.sqrt(max(1.0,safe_area))
     lower=250.0 if inputs.network else 300.0;upper=2200.0 if inputs.network else 4000.0
@@ -64,8 +65,9 @@ def derive_adaptive_plan(inputs:AdaptivePlannerInputs)->AdaptiveProcessingPlan:
     if inputs.network:concurrency=min(concurrency,2)
     if inputs.source_type=='ept' and os.environ.get('PYFORESTSCAN_DEV_EPT_PARALLEL')!='1':concurrency=1
     native_reused=inputs.native_partition_count if inputs.source_type in {'las','laz','folder'} else 0
-    rationale=(f'Unit scale derives from {density:g} points/m2, {memory_budget/1024**2:.0f} MiB per-unit budget, and {inputs.output_resolution:g}-unit output cells.',f'Polygon occupies {compactness:.0%} of its envelope; no preferred work-unit count is used.',f'{"Network-aware" if inputs.network else "Local"} concurrency is bounded by memory and CPU.')
-    return AdaptiveProcessingPlan(strategy,width,height,50.0 if inputs.product=='chm' else 0.0,point_range,memory_range,concurrency,native_reused,max(0,estimated_units-native_reused),estimated_units,rationale,'high' if inputs.point_density is not None else 'medium',not fast_safe and inputs.point_density is None)
+    shared_note='Rumple memory includes simultaneous buffered CHM, patch raster, and mosaic buffers.' if inputs.product=='rumple' else 'CHM memory includes buffered raster and output buffers.'
+    rationale=(f'Unit scale derives from {density:g} points/m2, {memory_budget/1024**2:.0f} MiB per-unit budget, and {inputs.output_resolution:g}-unit output cells.',shared_note,f'Polygon occupies {compactness:.0%} of its envelope; no preferred work-unit count is used.',f'{"Network-aware" if inputs.network else "Local"} concurrency is bounded by memory and CPU.')
+    return AdaptiveProcessingPlan(strategy,width,height,50.0 if inputs.product in {'chm','rumple'} else 0.0,point_range,memory_range,concurrency,native_reused,max(0,estimated_units-native_reused),estimated_units,rationale,'high' if inputs.point_density is not None else 'medium',not fast_safe and inputs.point_density is None)
 
 def calibrate_from_pilot(plan:AdaptiveProcessingPlan,measurement:PilotMeasurement,available_memory_bytes:int,cpu_count:int,network:bool=False)->AdaptiveProcessingPlan:
     if measurement.area<=0 or measurement.point_count<=0:return replace(plan,confidence='low',rationale=plan.rationale+('Pilot contained no representative points; initial safety plan retained.',))

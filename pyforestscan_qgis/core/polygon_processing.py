@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .lidar_inventory import LidarInventory, LidarSourceRecord
 from .spatial_selection import Bounds2D, PolygonSelection
+from .crs_alignment import crs_equivalent
 
 DEFAULT_LARGE_POINT_WARNING = 25_000_000
 DEFAULT_LARGE_SOURCE_WARNING = 25
@@ -80,7 +81,7 @@ def build_polygon_processing_plan(
     known_crs = {source.crs for source in selected if source.crs}
     if len(known_crs) > 1 and processing_crs is None:
         warnings.append("Intersecting sources report multiple CRS values; choose a processing CRS before running.")
-    elif known_crs and any(source.crs and source.crs != crs for source in selected):
+    elif known_crs and any(source.crs and not crs_equivalent(source.crs, crs) for source in selected):
         warnings.append("At least one intersecting source CRS differs from the processing CRS; reprojection is required.")
     known_counts = [source.point_count for source in selected if source.point_count is not None]
     if len(selected) > large_source_threshold:

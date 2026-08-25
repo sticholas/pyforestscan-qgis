@@ -49,6 +49,8 @@ class GeneratedOutput:
     repository_path_hash: str = ""
     polygon_geometry_hash: str = ""
     final_output: bool = True
+    output_role: str = "primary"
+    required_for_success: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         payload = dict(self.__dict__)
@@ -106,6 +108,8 @@ def generated_output_for_path(
         plan_signature=plan_signature,
         repository_path_hash=repository_path_hash,
         polygon_geometry_hash=polygon_geometry_hash,
+        output_role=_output_role(inferred),
+        required_for_success=_output_role(inferred) == "primary",
     )
 
 
@@ -165,6 +169,10 @@ def _display_role(key: str, kind: str) -> str:
 def _renderer(key: str, kind: str) -> str:
     capability=product_capability(key)
     return capability.renderer if capability else ("table" if kind == "table" else "grayscale")
+
+
+def _output_role(key: str) -> str:
+    return "secondary" if key == "rumple_summary" else ("supporting" if key == "chm_supporting" else "primary")
 
 
 def outputs_for_current_attempt(outputs: Iterable[GeneratedOutput], *, job_id: str, attempt_id: str, project_identity: str = "", plan_signature: str = "", polygon_geometry_hash: str = "") -> tuple[GeneratedOutput, ...]:

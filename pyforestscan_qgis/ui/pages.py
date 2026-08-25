@@ -103,6 +103,8 @@ from ..core.product_plan import (
     write_plan_json,
 )
 from ..core.types import ProductType
+from ..core.processing_ui_state import ProcessingUiState, control_policy, reconcile_ui_state, terminal_state_from_result
+from ..core.durable_errors import DurableErrorRecord, read_recent_error, write_recent_error
 from ..core.workspace import (
     RecentWorkspaceSummary,
     RunContext,
@@ -2024,6 +2026,9 @@ class BatchPage(MissionPage):
         self.catalog_pause_requested = False
         self.preflight_report: object | None = None
         self.current_index_plan: object | None = None
+        self.processing_ui_state = ProcessingUiState.IDLE
+        self._last_durable_state = ""
+        self._recent_error_path: Path | None = None
 
         self.mode_section, mode_layout = self.create_section("Processing Mode")
         self.batch_mode_combo = QComboBox()
@@ -2495,6 +2500,22 @@ class BatchPage(MissionPage):
         polygon_finalization.addWidget(_details_label("Applies to Polygon Selection raster outputs. Final registered outputs use the masked raster when exact masking is enabled."))
         _wire_collapsible_group(polygon_finalization_group)
         _wire_collapsible_group(self.advanced_batch_section)
+        self.refresh_processing_status_button = QPushButton("Refresh Status")
+        self.refresh_processing_status_button.clicked.connect(self.refresh_processing_status)
+        self.refresh_processing_status_button.setVisible(False)
+        _apply_button_role(self.refresh_processing_status_button, "neutral")
+        advanced_batch.addWidget(self.refresh_processing_status_button)
+        self.recent_error_group, recent_error_layout = _collapsible_section(advanced_batch, "Recent Error", checked=False)
+        self.recent_error_group.setVisible(False)
+        self.recent_error_label = _details_label("No retained processing error.")
+        recent_error_layout.addWidget(self.recent_error_label)
+        recent_error_actions = QHBoxLayout()
+        self.copy_error_summary_button = QPushButton("Copy Error Summary")
+        self.copy_error_summary_button.clicked.connect(self.copy_recent_error_summary)
+        self.open_job_diagnostics_button = QPushButton("Open Job Diagnostics")
+        self.open_job_diagnostics_button.clicked.connect(self.open_recent_error_diagnostics)
+        recent_error_actions.addWidget(self.copy_error_summary_button);recent_error_actions.addWidget(self.open_job_diagnostics_button);recent_error_actions.addStretch(1)
+        recent_error_layout.addLayout(recent_error_actions);_wire_collapsible_group(self.recent_error_group)
         for check in self.product_checks.values():
             check.toggled.connect(lambda _checked: self._refresh_footprint_label())
         self.resolution_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
@@ -2608,6 +2629,10 @@ class BatchPage(MissionPage):
         self._wire_session_state_inputs()
         self._update_adaptive_visibility()
         QTimer.singleShot(0, self._publish_session_state)
+        self._processing_watchdog = QTimer(self)
+        self._processing_watchdog.setInterval(2500)
+        self._processing_watchdog.timeout.connect(self._reconcile_processing_ui)
+        self._processing_watchdog.start()
 
     def set_job_token_factory(self,factory) -> None:
         self._job_token_factory=factory
@@ -3568,7 +3593,7 @@ class BatchPage(MissionPage):
             return
         token=self._begin_logical_job()
         if token is False:return
-        self._set_workflow_inputs_enabled(False)
+        self._transition_processing_ui_state(ProcessingUiState.STARTING)
         selected = list(request.datasets)
         self.batch_items = []
         self.failed_paths = []
@@ -3614,6 +3639,7 @@ class BatchPage(MissionPage):
         self.batch_thread.finished.connect(self.batch_thread.deleteLater)
         self.batch_thread.finished.connect(self._clear_batch_thread)
         self.batch_thread.start()
+        self._transition_processing_ui_state(ProcessingUiState.RUNNING)
 
     def _run_polygon_batch(self) -> None:
         report = self.preflight_report
@@ -3627,7 +3653,7 @@ class BatchPage(MissionPage):
             return
         token=self._begin_logical_job()
         if token is False:return
-        self._set_workflow_inputs_enabled(False)
+        self._transition_processing_ui_state(ProcessingUiState.STARTING)
         selected = list(getattr(report, "selected_sources", ()))
         self.batch_items = []
         self.failed_paths = []
@@ -3661,6 +3687,7 @@ class BatchPage(MissionPage):
         self.batch_thread.finished.connect(self.batch_thread.deleteLater)
         self.batch_thread.finished.connect(self._clear_batch_thread)
         self.batch_thread.start()
+        self._transition_processing_ui_state(ProcessingUiState.RUNNING)
 
     def _build_batch_request(self, batch_folder: Path | None = None, datasets: tuple[Path, ...] | None = None) -> BatchRequest:
         """Build a typed batch request from current UI state."""
@@ -3781,40 +3808,89 @@ class BatchPage(MissionPage):
     def _on_batch_complete(self, result: object) -> None:
         """Finalize UI state after a worker-thread batch completes."""
         self.latest_result = result
-        self.progress_bar.setValue(100 if getattr(result, "items", ()) else 0)
-        completion_badge = "READY" if getattr(result, "failure_count", 0) == 0 else "WARNING"
-        _set_status_badge(
-            self.status_label,
-            completion_badge,
-            f"Status: {status_display_word(completion_badge)} - batch complete. Completed {getattr(result, 'success_count', 0)}; failed {getattr(result, 'failure_count', 0)}. Summary: {getattr(result, 'summary_html', '')}",
-        )
-        self._set_batch_summary(result)
-        self.open_batch_folder_button.setEnabled(True)
-        self.open_batch_folder_button.setVisible(True)
-        self.retry_failed_button.setEnabled(bool(self.failed_paths))
-        self.retry_failed_button.setVisible(bool(self.failed_paths))
-        self.batchCompleted.emit(result)
-        self.batchCompletedForJob.emit(result,self._current_job_token)
-        self._finish_batch_run()
+        self._last_durable_state = "failed" if getattr(result, "failure_count", 0) else "complete"
+        terminal = terminal_state_from_result(failed=int(getattr(result, "failure_count", 0)))
+        try:
+            self.progress_bar.setValue(100 if getattr(result, "items", ()) else 0)
+            completion_badge = "READY" if terminal is ProcessingUiState.COMPLETE else "WARNING"
+            _set_status_badge(self.status_label, completion_badge, f"Status: {status_display_word(completion_badge)} - batch complete. Completed {getattr(result, 'success_count', 0)}; failed {getattr(result, 'failure_count', 0)}. Summary: {getattr(result, 'summary_html', '')}")
+            self._set_batch_summary(result)
+            self.open_batch_folder_button.setEnabled(True)
+            self.open_batch_folder_button.setVisible(True)
+            self.retry_failed_button.setEnabled(bool(self.failed_paths))
+            self.retry_failed_button.setVisible(bool(self.failed_paths))
+            self.batchCompleted.emit(result)
+            self.batchCompletedForJob.emit(result,self._current_job_token)
+        except Exception as exc:  # noqa: BLE001 - convenience finalization cannot retain the running lock.
+            terminal = ProcessingUiState.RECOVERABLE
+            self._last_durable_state = "recoverable"
+            self._retain_recent_error(f"Post-job finalization failed after processing completed: {exc}", code="POST_JOB_FINALIZATION_FAILED", category="OUTPUT")
+            _set_status_badge(self.status_label, "WARNING", "Status: Complete with warning - outputs were created, but Mission Control could not finish a convenience action. Open Recent Error for details.")
+        finally:
+            self._finish_batch_run(terminal)
 
     def _on_batch_failed(self, message: str) -> None:
         """Display an executor-level batch failure."""
-        _set_status_badge(self.status_label, "FAILED", f"Status: Failed - batch could not start: {message}")
-        self._finish_batch_run()
+        self._last_durable_state = "failed"
+        try:
+            self._retain_recent_error(message)
+            _set_status_badge(self.status_label, "FAILED", f"Status: Failed - batch could not start: {message}")
+        finally:
+            self._finish_batch_run(ProcessingUiState.FAILED)
 
-    def _finish_batch_run(self) -> None:
+    def _finish_batch_run(self, terminal_state: ProcessingUiState = ProcessingUiState.FAILED) -> None:
         """Restore controls after a batch worker exits."""
-        self._set_workflow_inputs_enabled(True)
-        self.run_button.setEnabled(True)
-        self._update_run_button_enabled()
-        self.pause_button.setEnabled(False)
-        self.pause_button.setVisible(False)
-        self.cancel_button.setEnabled(False)
-        self.cancel_button.setVisible(False)
+        self._transition_processing_ui_state(terminal_state)
         self.pause_requested = False
         self.pause_button.setText("Pause After Current File")
         self.active_workers = 0
         self.worker_status_label.setText("Active workers: 0")
+
+    def _transition_processing_ui_state(self, state: ProcessingUiState) -> None:
+        """Project one authoritative processing state onto all workflow controls."""
+        self.processing_ui_state = state
+        ready = self.preflight_report is not None
+        policy = control_policy(state, ready_to_process=ready)
+        self._set_workflow_inputs_enabled(policy.run_inputs_enabled)
+        self.run_button.setEnabled(policy.process_enabled)
+        if policy.run_inputs_enabled:
+            self._update_run_button_enabled()
+        self.pause_button.setEnabled(policy.pause_enabled)
+        self.pause_button.setVisible(policy.pause_enabled)
+        self.cancel_button.setEnabled(policy.cancel_enabled)
+        self.cancel_button.setVisible(policy.cancel_enabled)
+        self.refresh_processing_status_button.setVisible(state in {ProcessingUiState.INTERRUPTED, ProcessingUiState.RECOVERABLE})
+
+    def _reconcile_processing_ui(self) -> None:
+        active = self.batch_thread is not None and self.batch_thread.isRunning()
+        repaired = reconcile_ui_state(self.processing_ui_state, self._last_durable_state, coordinator_active=active)
+        if repaired is not self.processing_ui_state:
+            self._transition_processing_ui_state(repaired)
+
+    def refresh_processing_status(self) -> None:
+        """Re-read durable state and repair only the UI projection."""
+        self._reconcile_processing_ui()
+
+    def _retain_recent_error(self, message: str, *, code: str = "EXECUTION_FAILED", category: str = "PROCESS") -> None:
+        folder = getattr(self.latest_result, "batch_folder", None)
+        if folder is None and self.preflight_report is not None:
+            folder = getattr(self.preflight_report, "batch_folder", None)
+        if folder is None:
+            return
+        try:
+            self._recent_error_path=write_recent_error(folder, DurableErrorRecord(code, category, "Processing needs attention.", str(message), "batch_terminal", job_id=str(getattr(self._current_job_token, "logical_job_id", ""))))
+            self.recent_error_label.setText(f"{code}: {message}")
+            self.recent_error_group.setVisible(True)
+        except OSError:
+            pass
+
+    def copy_recent_error_summary(self) -> None:
+        if self._recent_error_path is None:return
+        record=read_recent_error(self._recent_error_path.parents[1])
+        if record is not None:QApplication.clipboard().setText(f"{record.code} [{record.category}] {record.user_message}\n{record.technical_message}\nAction: {record.recommended_action}")
+
+    def open_recent_error_diagnostics(self) -> None:
+        if self._recent_error_path is not None:QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._recent_error_path.parent)))
 
     def _set_workflow_inputs_enabled(self, enabled: bool) -> None:
         """Freeze run-defining controls while one coordinator owns the job."""

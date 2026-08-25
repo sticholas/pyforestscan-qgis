@@ -7,3 +7,6 @@ Restart reconciliation marks `Starting` without a PID as interrupted-before-laun
 ## Atomic state
 
 State uses unique temporary names, flush and fsync, parse validation, atomic replacement, and bounded retry.
+# Phase 30B Terminal Projection
+
+Scheduler termination is independent from summary rendering and QGIS visualization. Mission Control restores controls in guaranteed terminal cleanup and reconciles stale projections from durable state.

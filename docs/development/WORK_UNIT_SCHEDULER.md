@@ -19,3 +19,6 @@ Successful terminal states now include `CompleteNoData` and `SkippedOutsidePolyg
 ## Phase 28H Adaptive Scale and Compact Workspace
 
 Adaptive planning may provide one fast-path unit or hundreds of bounded units. Scheduler concurrency remains memory/CPU bounded and EPT remains serial by default; unit count is never a target.
+# Rumple Checkpoints
+
+Rumple work-unit checkpoints include product state, global grid signature, non-overlapping core path, and fundamental surface/planar area totals. `SkippedOutsidePolygon` and `CompleteNoData` remain valid terminal units.

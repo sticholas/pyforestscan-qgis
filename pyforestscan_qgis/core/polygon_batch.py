@@ -32,7 +32,10 @@ from .polygon_transport import polygon_execution_input_from_selection, unique_po
 from .raster_mask import RasterMaskOptions, RasterMaskResult, apply_polygon_mask_to_outputs, is_maskable_raster
 from .output_registry import generated_output_for_path, write_output_registry
 from .polygon_lidar_processing import selected_path_invariant
-from .source_aware_processing import NativeSource, SourceAwareWorkPlanner, SpatialExtent
+from .source_aware_processing import AlignedRasterGrid, NativeSource, SourceAwareWorkPlanner, SpatialExtent
+from .rumple_adaptive import derive_rumple_grid, rumple_core_extent
+from .rumple_raster_io import create_rumple_raster_from_chm, raster_totals, write_rumple_summary
+from .durable_errors import DurableErrorRecord, write_recent_error
 from .work_unit_scheduler import CheckpointStore, PolygonProductWorkScheduler, WorkUnitResult
 from .hag_strategy import hag_method_signature
 from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, HagNormalizationRequest, PadRequest, PaiRequest, PointDensityRequest, ProductType, RumpleRequest, VoxelStatRequest
@@ -622,7 +625,7 @@ def write_polygon_batch_manifest(
 
 def build_source_aware_chm_plan(report: PolygonBatchPreflightReport):
     """Build the bounded CHM plan used by prerun, manifests, and the future executor."""
-    if ProductType.CHM not in report.request.products or not report.selected_sources:
+    if not ({ProductType.CHM, ProductType.RUMPLE} & set(report.request.products)) or not report.selected_sources:
         return None
     bounds = report.query_geometry.envelope
     envelope = SpatialExtent(bounds.xmin, bounds.ymin, bounds.xmax, bounds.ymax)
@@ -635,7 +638,7 @@ def build_source_aware_chm_plan(report: PolygonBatchPreflightReport):
         sources=tuple(native),
         polygon_envelope=envelope,
         processing_crs=report.query_geometry.catalog_crs or report.request.polygon.processing_crs,
-        product="chm",
+        product="rumple" if ProductType.RUMPLE in report.request.products else "chm",
         resolution=report.request.settings.grid_resolution,
         available_memory_bytes=__import__("pyforestscan_qgis.core.adaptive_processing",fromlist=["available_memory_bytes"]).available_memory_bytes(),
         cpu_count=max(1, os.cpu_count() or _shared_options(report).worker_count),
@@ -738,7 +741,8 @@ def _execute_logical_spatial_batch(report: PolygonBatchPreflightReport, adapter:
     outputs: list[Path] = []
     stages = _polygon_progress_stages(report.request.products)
     scalable_plan = build_source_aware_chm_plan(report)
-    if report.request.products == (ProductType.CHM,) and scalable_plan is not None and len(scalable_plan.work_units) > 1:
+    scalable_products = set(report.request.products)
+    if scalable_products and scalable_products <= {ProductType.CHM, ProductType.RUMPLE} and scalable_plan is not None and len(scalable_plan.work_units) > 1:
         return _execute_source_aware_chm(report, adapter, batch_folder, context, source, scalable_plan, item_callback=item_callback)
     try:
         _emit_polygon_stage(item_callback, source, context, "Preparing Inputs", "Preparing durable polygon job workspace.")
@@ -753,6 +757,15 @@ def _execute_logical_spatial_batch(report: PolygonBatchPreflightReport, adapter:
         status = "completed"
         message = "Logical EPT/COPC source processed through PBM backend and exact polygon finalization."
         failures = [item for item in mask_results if item.status == "failed"]
+        if ProductType.RUMPLE in report.request.products and not failures:
+            rumple_path=next((path for path in outputs if Path(path).stem.lower()=="rumple"),None)
+            if rumple_path is not None:
+                totals=raster_totals(rumple_path)
+                try:
+                    summary=write_rumple_summary(context.outputs_dir/"rumple_summary.csv",totals,valid_primary=rumple_path,method="planar-area-weighted exact polygon masked raster");outputs.append(summary)
+                except OSError as exc:
+                    message=f"{message} Rumple raster is valid, but the secondary scalar summary could not be written: {exc}"
+                    write_recent_error(context.run_folder,DurableErrorRecord("RUMPLE_SUMMARY_WRITE_FAILED","OUTPUT","Rumple completed with a warning.",str(exc),"secondary_output",job_id="polygon-logical",product="rumple",recommended_action="Use the Rumple raster; retry summary registration from diagnostics if needed."))
         if failures and report.request.polygon_options.mask_failure_policy == "fail_product":
             status = "failed"
             message = "; ".join(item.message for item in failures)
@@ -773,7 +786,7 @@ def _execute_logical_spatial_batch(report: PolygonBatchPreflightReport, adapter:
         batch_folder / "batch_summary.html",
         load_outputs_after_completion=_shared_options(report).load_outputs_after_completion,
     )
-    result = _register_polygon_outputs(result, report, mask_results)
+    result = _register_polygon_outputs_recoverably(result, report, mask_results, context.run_folder)
     write_polygon_batch_manifest(report, [{"source": str(source.path), "clipped": "native", "points": str(source.point_count or "unknown"), "bounds_used": str(report.query_geometry.ept_bounds), "job_folder": str(context.run_folder)}], batch_folder=batch_folder, mask_records=[_mask_record(item) for item in mask_results])
     if item_callback is not None:
         item_callback(item)
@@ -808,7 +821,7 @@ def _submit_and_observe_source_aware_chm(report,adapter,batch_folder,context,sou
     with result_path.open("rb") as stream:return pickle.load(stream)
 
 def _execute_source_aware_chm(report, adapter, batch_folder, context, source, plan, *, item_callback=None):
-    """Execute bounded CHM through a durable PBM coordinator when available."""
+    """Execute bounded shared CHM and optional Rumple through the durable coordinator."""
     if os.environ.get("PYFORESTSCAN_POLYGON_COORDINATOR")!="1" and adapter.selected_execution_backend()=="pbm_backend":
         return _submit_and_observe_source_aware_chm(report,adapter,batch_folder,context,source,plan,item_callback=item_callback)
     started_at = datetime.now(timezone.utc).isoformat()
@@ -819,6 +832,9 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         _emit_polygon_stage(item_callback,source,context,"Recovering completed work",recovery.message)
         _emit_polygon_stage(item_callback,source,context,"Processing remaining areas","Continuing all required unfinished processing areas automatically.")
     checkpoint = CheckpointStore(context.run_folder / "work_units", signature)
+    requested = set(report.request.products)
+    rumple_requested = ProductType.RUMPLE in requested
+    rumple_grid = derive_rumple_grid(plan.grid) if rumple_requested else None
     for skipped in plan.skipped_work_units:
         checkpoint.save_state(skipped.work_unit_id,"SkippedOutsidePolygon",{"reason_code":"OUTSIDE_EXACT_POLYGON","polygon_intersection_area":skipped.polygon_intersection_area,"polygon_coverage_percent":skipped.polygon_coverage_percent,"buffered_polygon_intersects":skipped.buffered_polygon_intersects,"source_coverage_expectation":skipped.source_coverage_expectation,"output_required":False,"work_unit":{"core_extent":skipped.core_extent.__dict__,"read_extent":skipped.read_extent.__dict__}})
 
@@ -847,8 +863,17 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
                 return WorkUnitResult(unit.work_unit_id,"CompleteNoData",attempt_count=attempt,message=decision.message,metrics={"reason_code":decision.reason_code,"polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"output_required":False,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature})
             error=RuntimeError(decision.message);error.code="FAILED_EMPTY_READ";raise error
         _extract_core_raster(Path(result.output_path), core_path, unit.core_extent)
-        write_work_unit_diagnostic(request.diagnostics_path,"result.json",{"status":"Complete","buffered_output":str(result.output_path),"core_output":str(core_path),"executed_method":request.hag_method})
-        return WorkUnitResult(unit.work_unit_id, "Complete", core_path, attempt_count=attempt, metrics={"core_extent":unit.core_extent.__dict__,"read_extent":unit.read_extent.__dict__,"hag_method":request.hag_method,"hag_source_dimension":request.hag_source_dimension,"hag_method_signature":request.hag_method_signature,"point_crop_policy":"buffered_rectangle_then_final_mask","polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature})
+        metrics={"core_extent":unit.core_extent.__dict__,"read_extent":unit.read_extent.__dict__,"chm_core":str(core_path),"hag_method":request.hag_method,"hag_source_dimension":request.hag_source_dimension,"hag_method_signature":request.hag_method_signature,"point_crop_policy":"buffered_rectangle_then_final_mask","polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature,"product_states":{"chm":"requested_complete" if ProductType.CHM in requested else "supporting_complete"}}
+        primary_path=core_path;rumple_path=None
+        if rumple_requested:
+            rumple_buffered=unit_folder/"outputs"/"rumple_buffered.tif";rumple_path=unit_folder/"outputs"/"rumple_core.tif"
+            create_rumple_raster_from_chm(Path(result.output_path),rumple_buffered,min_height=getattr(report.request.settings,"rumple_min_height",None))
+            extent=rumple_core_extent(unit.core_extent,rumple_grid)
+            if extent is not None:
+                _extract_core_raster(rumple_buffered,rumple_path,extent);totals=raster_totals(rumple_path)
+                metrics.update({"rumple_core":str(rumple_path),"rumple_grid_signature":rumple_grid.grid_signature,"surface_area_sum":totals.surface_area_sum,"planar_area_sum":totals.planar_area_sum,"valid_patch_count":totals.valid_patch_count,"product_states":{**metrics["product_states"],"rumple":"requested_complete"}});primary_path=rumple_path
+        write_work_unit_diagnostic(request.diagnostics_path,"result.json",{"status":"Complete","buffered_output":str(result.output_path),"chm_core":str(core_path),"rumple_core":str(rumple_path) if rumple_path else "","executed_method":request.hag_method,"metrics":metrics})
+        return WorkUnitResult(unit.work_unit_id,"Complete",primary_path,attempt_count=attempt,metrics=metrics)
 
     def progress(event):
         if item_callback is None:
@@ -869,21 +894,33 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         first = failed[0] if failed else pending[0]
         message = scheduler.stop_reason or f"{len(failed)} CHM work units failed and {len(pending)} remain pending. First affected unit {first.work_unit_id}: {first.message}"
     else:
-        raster_paths=tuple(item.output_path for item in results if item.status=="Complete" and item.output_path)
-        if raster_paths:_mosaic_core_rasters(raster_paths, final_unmasked, plan)
+        chm_paths=tuple(Path(item.metrics.get("chm_core",item.output_path)) for item in results if item.status=="Complete" and (item.metrics.get("chm_core") or item.output_path))
+        if chm_paths:_mosaic_core_rasters(chm_paths, final_unmasked, plan)
         else:_create_empty_aligned_raster(final_unmasked,plan)
-        final_path = context.outputs_dir / "chm.tif"
-        final_path.parent.mkdir(parents=True, exist_ok=True)
-        final_unmasked.replace(final_path)
-        outputs = [final_path]
+        if ProductType.CHM in requested:
+            final_path=context.outputs_dir/"chm.tif";final_path.parent.mkdir(parents=True,exist_ok=True);final_unmasked.replace(final_path);outputs.append(final_path)
+        if rumple_requested:
+            rumple_paths=tuple(Path(item.metrics["rumple_core"]) for item in results if item.status=="Complete" and item.metrics.get("rumple_core"))
+            rumple_plan=replace(plan,grid=AlignedRasterGrid(rumple_grid.crs,rumple_grid.resolution,rumple_grid.extent.xmin,rumple_grid.extent.ymin,rumple_grid.extent,rumple_grid.rows,rumple_grid.columns,rumple_grid.nodata),product="rumple")
+            rumple_unmasked=context.run_folder/"mosaics"/"rumple.tif"
+            if rumple_paths:_mosaic_core_rasters(rumple_paths,rumple_unmasked,rumple_plan)
+            else:_create_empty_aligned_raster(rumple_unmasked,rumple_plan)
+            rumple_final=context.outputs_dir/"rumple.tif";rumple_unmasked.replace(rumple_final);outputs.append(rumple_final)
         mask_results = _mask_paths(outputs, report)
         failures = [item for item in mask_results if item.status == "failed"]
         status = "failed" if failures else "completed"
+        if rumple_requested and not failures:
+            final_totals=raster_totals(context.outputs_dir/"rumple.tif")
+            try:
+                outputs.append(write_rumple_summary(context.outputs_dir/"rumple_summary.csv",final_totals,valid_primary=context.outputs_dir/"rumple.tif"))
+            except OSError as exc:
+                message=f"Processing completed with warning: the Rumple raster is valid, but its secondary scalar summary could not be written: {exc}"
+                write_recent_error(context.run_folder,DurableErrorRecord("RUMPLE_SUMMARY_WRITE_FAILED","OUTPUT","Rumple completed with a warning.",str(exc),"secondary_output",job_id=signature,product="rumple",recommended_action="Use the Rumple raster; retry summary registration from diagnostics if needed."))
         nodata_count=sum(item.status=="CompleteNoData" for item in results)
         message = "; ".join(item.message for item in failures) if failures else ("Processing completed. Areas without LiDAR returns are represented as NoData." if nodata_count else f"Source-aware CHM completed from {len(results)} verified required work units.")
     item = BatchItemResult(Path(source.path), context, status, message, tuple(outputs), _requested_extent_summary(report))
     result = BatchResult("polygon-source-aware-chm", report.request.title, started_at, datetime.now(timezone.utc).isoformat(), batch_folder, (item,), batch_folder / "batch_summary.json", batch_folder / "batch_summary.csv", batch_folder / "batch_summary.html", load_outputs_after_completion=_shared_options(report).load_outputs_after_completion)
-    result = _register_polygon_outputs(result, report, mask_results)
+    result = _register_polygon_outputs_recoverably(result, report, mask_results, context.run_folder)
     write_polygon_batch_manifest(report, [{"source": str(source.path), "strategy": "bounded_work_units", "work_units": str(len(plan.work_units)), "job_folder": str(context.run_folder)}], batch_folder=batch_folder, mask_records=[_mask_record(x) for x in mask_results])
     if item_callback is not None: item_callback(item)
     return write_batch_summaries(result)
@@ -1134,8 +1171,20 @@ def _register_polygon_outputs(result: BatchResult, report: PolygonBatchPreflight
     return replace(result, output_registry_path=registry_path)
 
 
+def _register_polygon_outputs_recoverably(result: BatchResult, report: PolygonBatchPreflightReport, mask_results: tuple[RasterMaskResult, ...], job_folder: Path) -> BatchResult:
+    """Preserve verified primary products when only final registration fails."""
+    try:
+        return _register_polygon_outputs(result, report, mask_results)
+    except Exception as exc:  # noqa: BLE001 - registry recovery must not rerun scientific work.
+        write_recent_error(job_folder,DurableErrorRecord("OUTPUT_REGISTRATION_FAILED","OUTPUT","Outputs were created but registration needs repair.",str(exc),"registration",job_id=result.batch_id,recommended_action="Open the job diagnostics and retry output registration without recomputing products."))
+        items=tuple(replace(item,message=f"{item.message} Output registration requires recovery; generated files were preserved.") if item.status=="completed" else item for item in result.items)
+        return replace(result,items=items)
+
+
 def _product_key_from_output(path: Path) -> str:
     stem = path.stem.lower()
+    if "rumple" in stem and path.suffix.lower()==".csv":
+        return "rumple_summary"
     if "canopy_cover" in stem:
         return "canopy_cover"
     if "point_density" in stem:

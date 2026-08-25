@@ -24,3 +24,6 @@ flowchart LR
  A["User request"] --> B["Current job identity"] --> C["Repository and area resolution"] --> D["Adaptive source-aware plan"] --> E["PBM coordinator"]
  E --> F["Single-request fast path or durable work units"] --> G["Shared scientific adapter"] --> H["Verified core/output"] --> I["Mosaic when required"] --> J["Exact mask"] --> K["Output registry"] --> L["Current Results"] --> M["QGIS loading"]
 ```
+# Phase 30B Additions
+
+`processing_ui_state.py` owns processing control projection, `product_finalization.py` owns output-role semantics, `durable_errors.py` retains closed-dialog diagnostics, and `rumple_adaptive.py` plus `rumple_raster_io.py` own adaptive Rumple grid/scalar behavior.

@@ -48,6 +48,22 @@ class SpatialAlignmentResult:
         }
 
 
+@dataclass(frozen=True)
+class CrsEquivalenceResult:
+    source_representation: str
+    target_representation: str
+    source_horizontal_authority: str
+    target_horizontal_authority: str
+    source_vertical_component: str
+    target_vertical_component: str
+    horizontally_equivalent: bool
+    vertically_equivalent: bool
+    transformation_required_xy: bool
+    transformation_required_z: bool
+    comparison_confidence: str
+    reason: str
+
+
 def align_polygon_to_crs(
     polygon: NormalizedPolygonSelection,
     target_crs: str | None,
@@ -61,7 +77,8 @@ def align_polygon_to_crs(
         return _failed("crs_unresolved", source_crs, target, polygon.geometry_wkt, "The polygon coordinate system could not be determined.", "Polygon CRS is missing or incomplete.", ("POLYGON_CRS_INVALID",))
     if is_incomplete_crs_identifier(target):
         return _failed("crs_malformed", source_crs, target, polygon.geometry_wkt, "The EPT coordinate-system metadata is incomplete.", f"Repository CRS is missing or incomplete: {target or 'empty'}", ("REPOSITORY_CRS_INVALID",))
-    if crs_equivalent(source_crs, target):
+    equivalence = compare_crs(source_crs, target)
+    if equivalence.horizontally_equivalent:
         selection = polygon_selection_from_wkt(polygon.geometry_wkt, target, source_label=polygon.source_description)
         return SpatialAlignmentResult(
             "ready",
@@ -72,7 +89,7 @@ def align_polygon_to_crs(
             False,
             "same_crs",
             "The polygon and LiDAR data use compatible coordinate systems.",
-            "Semantic CRS equivalence was accepted; no transformation was required.",
+            equivalence.reason,
         )
     factory = transformer_factory or default_transformer_factory
     try:
@@ -101,18 +118,76 @@ def align_polygon_to_crs(
 
 
 def crs_equivalent(left: str | None, right: str | None) -> bool:
+    """Return horizontal equivalence for spatial XY selection."""
+    return compare_crs(left, right).horizontally_equivalent
+
+
+def compare_crs(left: str | None, right: str | None) -> CrsEquivalenceResult:
+    """Compare horizontal and vertical CRS components without raw-WKT equality."""
     left_text = (left or "").strip()
     right_text = (right or "").strip()
     if not left_text or not right_text:
-        return False
+        return CrsEquivalenceResult(left_text, right_text, "", "", "", "", False, False, True, False, "low", "One or both CRS representations are missing.")
     if left_text.upper() == right_text.upper():
-        return True
+        authority = _authority_hint(left_text)
+        return CrsEquivalenceResult(left_text, right_text, authority, authority, "", "", True, True, False, False, "high", "The CRS representations are identical.")
     try:
         from pyproj import CRS  # type: ignore
 
-        return CRS.from_user_input(left_text).equals(CRS.from_user_input(right_text), ignore_axis_order=True)
+        source = CRS.from_user_input(left_text)
+        target = CRS.from_user_input(right_text)
+        source_horizontal = _horizontal_crs(source)
+        target_horizontal = _horizontal_crs(target)
+        horizontal_equal = source_horizontal.equals(target_horizontal, ignore_axis_order=True)
+        source_vertical = _vertical_description(source)
+        target_vertical = _vertical_description(target)
+        vertical_equal = source_vertical == target_vertical
+        source_authority = _crs_authority(source_horizontal)
+        target_authority = _crs_authority(target_horizontal)
+        reason = "Horizontal CRS components are semantically equivalent; no XY transformation is required."
+        if horizontal_equal and not vertical_equal and (source_vertical or target_vertical):
+            reason += " LiDAR includes different vertical CRS metadata; horizontal processing is unchanged."
+        elif not horizontal_equal:
+            reason = "Horizontal CRS components differ; an XY transformation is required."
+        return CrsEquivalenceResult(left_text, right_text, source_authority, target_authority, source_vertical, target_vertical, horizontal_equal, vertical_equal, not horizontal_equal, not vertical_equal and bool(source_vertical or target_vertical), "high", reason)
     except Exception:
-        return False
+        left_authority = _authority_hint(left_text)
+        right_authority = _authority_hint(right_text)
+        equal = bool(left_authority and left_authority == right_authority)
+        reason = "Matching horizontal authority identifiers were extracted from the CRS representations." if equal else "CRS semantic comparison was unavailable and authority identifiers did not establish equivalence."
+        return CrsEquivalenceResult(left_text, right_text, left_authority, right_authority, "", "", equal, equal, not equal, False, "medium" if equal else "low", reason)
+
+
+def _horizontal_crs(crs):
+    if getattr(crs, "is_compound", False):
+        for component in crs.sub_crs_list:
+            if not getattr(component, "is_vertical", False):
+                return component
+    return crs
+
+
+def _vertical_description(crs) -> str:
+    if getattr(crs, "is_vertical", False):
+        return _crs_authority(crs) or crs.name
+    if getattr(crs, "is_compound", False):
+        for component in crs.sub_crs_list:
+            if getattr(component, "is_vertical", False):
+                return _crs_authority(component) or component.name
+    return ""
+
+
+def _crs_authority(crs) -> str:
+    authority = crs.to_authority()
+    return f"{authority[0]}:{authority[1]}" if authority else ""
+
+
+def _authority_hint(text: str) -> str:
+    import re
+    direct = re.search(r"(?i)\b(EPSG)\s*:\s*(\d+)\b", text)
+    if direct:
+        return f"EPSG:{direct.group(2)}"
+    matches = re.findall(r'(?i)AUTHORITY\s*\[\s*["\']EPSG["\']\s*,\s*["\']?(\d+)', text)
+    return f"EPSG:{matches[-1]}" if matches else ""
 
 
 def default_transformer_factory(source_crs: str, target_crs: str) -> CoordinateTransformer:
@@ -151,4 +226,4 @@ def _failed(status: str, source_crs: str, target_crs: str, wkt: str, user: str, 
     return SpatialAlignmentResult(status, source_crs, target_crs, wkt, None, False, "", user, technical, errors=errors)
 
 
-__all__ = ["SpatialAlignmentResult", "align_polygon_to_crs", "crs_equivalent", "default_transformer_factory"]
+__all__ = ["CrsEquivalenceResult", "SpatialAlignmentResult", "align_polygon_to_crs", "compare_crs", "crs_equivalent", "default_transformer_factory"]

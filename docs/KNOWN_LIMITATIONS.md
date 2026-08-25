@@ -111,3 +111,6 @@ Phase 28G exact filtering and recovery are covered by QGIS-free regression tests
 ## Phase 28H Adaptive Scale and Compact Workspace
 
 Phase 28H adaptive scale and current-job isolation are covered by QGIS-free tests. Live PBM pilot calibration, real small/medium/very-large timings, two-coordinator stale-output behavior, and 420-800 px visual checks remain pending.
+# Phase 30B Validation Boundary
+
+Adaptive Rumple coordinator integration is synthetically validated, but medium and large real-source equivalence and consecutive-job QGIS interaction remain to be recorded live. The original closed 130 ha error dialog could not be recovered; durable records show the science and batch completed successfully.

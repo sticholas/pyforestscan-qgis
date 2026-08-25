@@ -36,3 +36,6 @@ Exact-polygon planning now separates envelope candidates, required cores, and ge
 ## Phase 28H Adaptive Scale and Compact Workspace
 
 Phase 28H replaces fixed EPT scale with the workload-derived [Adaptive Processing Planner](ADAPTIVE_PROCESSING_PLANNER.md). Native partitions remain authoritative, exact polygon filtering remains downstream, and small-safe requests bypass tiled finalization.
+# Rumple
+
+The source-aware coordinator accepts CHM-only, Rumple-only, and CHM-plus-Rumple plans. LiDAR and CHM work are shared. Rumple cores use a one-cell CHM dependency halo and one authoritative global output grid.

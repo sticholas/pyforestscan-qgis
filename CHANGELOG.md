@@ -222,3 +222,10 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 ## Phase 28H Adaptive Scale and Compact Workspace
 
 - Phase 28H derives CHM work scale from workload and hardware, restores a one-unit small-request path, adds advisory performance history and pilot calibration contracts, isolates current jobs with strict tokens, and consolidates Mission Control into Process plus Tools & Setup.
+# Phase 30B - Production Rumple and terminal recovery
+
+- Added durable adaptive Rumple execution with shared CHM work, a global half-cell grid, one-cell halo ownership, sparse core mosaic, exact mask, and final-support scalar aggregation.
+- Added semantic horizontal/vertical CRS comparison so EPSG:6635 and equivalent WKT do not produce false XY-reprojection warnings.
+- Added authoritative processing UI states, finally-guarded terminal unlock, stale-state reconciliation, and durable recent-error records.
+- Added explicit primary, secondary, and supporting output roles and separated QGIS visualization errors from scientific completion.
+- Recorded redacted evidence from the real 130 ha EPT Rumple run and added a numeric output validation script.

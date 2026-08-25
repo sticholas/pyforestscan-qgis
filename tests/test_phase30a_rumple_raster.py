@@ -47,7 +47,7 @@ class RumpleScientificTests(unittest.TestCase):
  def test_sparse_gap_does_not_fabricate_values(self):
   chm=np.ones((8,8));chm[:,3:5]=np.nan;surface=calculate_local_rumple_surface(chm,(1,1));self.assertTrue(np.isnan(surface.values[:,2:5]).all())
  def test_contract_and_registry_are_raster_primary(self):
-  cap=PRODUCT_CAPABILITIES["rumple"];self.assertEqual("raster",cap.output_kind);self.assertFalse(cap.partition_support);self.assertEqual(("chm",),cap.depends_on);self.assertEqual(1,cap.halo_cells)
+  cap=PRODUCT_CAPABILITIES["rumple"];self.assertEqual("raster",cap.output_kind);self.assertTrue(cap.partition_support);self.assertEqual(("chm",),cap.depends_on);self.assertEqual(1,cap.halo_cells)
   with tempfile.TemporaryDirectory() as folder:
    raster=Path(folder)/"rumple.tif";raster.touch();summary=Path(folder)/"rumple_summary.csv";summary.touch()
    self.assertEqual("rumple",generated_output_for_path(raster,job_id="j").product_key)

@@ -259,3 +259,6 @@ Polygon prerun summaries distinguish candidate, required, and skipped areas. Rec
 ## Phase 28H Adaptive Scale and Compact Workspace
 
 Mission Control now has two visible destinations: Process and Tools & Setup. Process combines the former Batch and Results workflow; internal legacy pages preserve capability without primary navigation clutter.
+# Terminal Recovery
+
+Processing controls are restored after every terminal outcome. A hidden-by-default Refresh Status action can repair a stale UI projection without deleting outputs or cancelling work. QGIS layer-loading failure is reported separately from successful scientific processing.

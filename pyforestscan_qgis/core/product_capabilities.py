@@ -16,7 +16,7 @@ PRODUCT_CAPABILITIES={
  "point_density":ProductExecutionCapability("point_density","Point Density",hag_requirement="not_required",**_RASTER),
  "voxel_stat":ProductExecutionCapability("voxel_stat","Voxel Statistic",hag_requirement="required",**_RASTER),
  "pad":ProductExecutionCapability("pad","PAD",("X","Y","Z"),"required",True,True,"aligned_multiband_core_tiles","exact_polygon_nodata_mask","raster","multiband_raster","pad_rgb_5_3_2",True,"regression_tested"),
- "rumple":ProductExecutionCapability("rumple","Rumple Index",("X","Y","Z"),"required",False,True,"aligned_patch_core_tiles","exact_polygon_nodata_mask","raster","raster","grayscale",True,"core_equivalence_tested","Patch-centered spatial extension; durable work-unit execution remains pending.",( "chm",),"scalar_summary","dimensionless",1),
+ "rumple":ProductExecutionCapability("rumple","Rumple Index",("X","Y","Z"),"required",True,True,"globally_aligned_nonoverlapping_patch_cores","exact_polygon_nodata_mask","raster","raster","grayscale",True,"coordinator_equivalence_tested","Patch-centered spatial extension with one-cell CHM halo; large real-source validation remains required.",( "chm",),"scalar_summary","dimensionless",1),
  "rumple_summary":ProductExecutionCapability("rumple_summary","Area Rumple Summary",("X","Y","Z"),"required",True,True,"planar_area_weighted","area_summary","table","table","table",True,"scientific_equivalence_tested","Supporting scalar compatibility output.",( "chm",),"","dimensionless",1),
 }
 

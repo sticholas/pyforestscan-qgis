@@ -1,0 +1,14 @@
+{
+  "source_type": "ept",
+  "source": "<redacted-ept-repository>/ept.json",
+  "polygon_area_hectares": 130.0,
+  "polygon_crs": "EPSG:6635",
+  "repository_horizontal_authority": "EPSG:6635",
+  "products": ["rumple"],
+  "backend": "pbm_backend",
+  "primary": "rumple.tif",
+  "secondary": "rumple_summary.csv",
+  "supporting": "chm.tif",
+  "old_terminal_projection": "running",
+  "durable_terminal_state": "complete"
+}

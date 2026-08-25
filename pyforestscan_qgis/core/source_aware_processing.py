@@ -45,7 +45,7 @@ class NativeSource:
 
 @dataclass(frozen=True)
 class WorkUnitSizingPolicy:
-    target_width: float; target_height: float; buffer_distance: float; maximum_estimated_points: int; maximum_expected_memory: int; maximum_concurrent_units: int; rationale: str; confidence: str; strategy:str="adaptive";estimated_point_range:tuple[int,int]=(0,0);expected_memory_range:tuple[int,int]=(0,0);pilot_required:bool=False
+    target_width: float; target_height: float; buffer_distance: float; maximum_estimated_points: int; maximum_expected_memory: int; maximum_concurrent_units: int; rationale: str; confidence: str; strategy:str="adaptive";estimated_point_range:tuple[int,int]=(0,0);expected_memory_range:tuple[int,int]=(0,0);pilot_required:bool=False;product:str="chm"
 
 @dataclass(frozen=True)
 class ProductPartitionPolicy:
@@ -53,7 +53,7 @@ class ProductPartitionPolicy:
 
 PRODUCT_POLICIES={
  "chm":ProductPartitionPolicy("chm",True,50.0,"discard buffered pixels; retain globally aligned core","deterministic first-valid core cells","Tiled/reference equivalence requires live measurement.",True,"provisional",True),
- "rumple":ProductPartitionPolicy("rumple",True,1.0,"retain patch-centered aligned core after one-cell CHM halo","deterministic first-valid patch cells",("Array-level equivalence is validated; coordinator execution is not enabled.",),True,"synthetic-equivalence",False),
+ "rumple":ProductPartitionPolicy("rumple",True,1.0,"retain globally aligned patch core after one-cell CHM halo","deterministic non-overlapping patch ownership",("Every Rumple patch uses a 2x2 CHM neighborhood; core ownership excludes duplicate halo patches.",),True,"synthetic-and-coordinator-equivalence",True),
  **{p:ProductPartitionPolicy(p,False,0.0,"monolithic","not reviewed",("Partition merge behavior is not validated.",),False,"not reviewed",False) for p in ("pad","pai","fhd","canopy_cover","dtm","point_density","voxel_stat")}
 }
 
@@ -107,7 +107,7 @@ def sizing_policy(*,repository_kind,product,resolution,available_memory_bytes,cp
     if profile=='conservative':concurrency=1
     elif profile=='performance' and not network and (repository_kind!='ept' or os.environ.get('PYFORESTSCAN_DEV_EPT_PARALLEL')=='1'):concurrency=min(max(1,cpu_count),4,max(1,concurrency+1))
     rationale=' '.join(adaptive.rationale)
-    return WorkUnitSizingPolicy(adaptive.target_width,adaptive.target_height,adaptive.buffer_distance,adaptive.estimated_points_per_unit[1],adaptive.expected_memory_per_unit[1],concurrency,rationale,adaptive.confidence,adaptive.strategy,adaptive.estimated_points_per_unit,adaptive.expected_memory_per_unit,adaptive.pilot_required)
+    return WorkUnitSizingPolicy(adaptive.target_width,adaptive.target_height,adaptive.buffer_distance,adaptive.estimated_points_per_unit[1],adaptive.expected_memory_per_unit[1],concurrency,rationale,adaptive.confidence,adaptive.strategy,adaptive.estimated_points_per_unit,adaptive.expected_memory_per_unit,adaptive.pilot_required,product)
 
 
 class SourceAwareWorkPlanner:
@@ -152,7 +152,7 @@ class SourceAwareWorkPlanner:
                 read=core.buffered(sizing.buffer_distance)
                 density=20.0 if kind is WorkUnitType.EPT_WINDOW else 8.0
                 from .resource_estimation import estimate_work_unit_resources
-                estimate=estimate_work_unit_resources(int(read.width*read.height*density),hag_method="existing_normalized_height",raster_cells=int(read.width*read.height/grid.resolution**2),core_width=sizing.target_width)
+                estimate=estimate_work_unit_resources(int(read.width*read.height*density),hag_method="existing_normalized_height",raster_cells=int(read.width*read.height/grid.resolution**2),core_width=sizing.target_width,product=sizing.product)
                 out.append(WorkUnit(f"wu-{n:04d}",kind,tuple(x.path for x in sources),core,read,r0,min(grid.rows,r0+rows),c0,min(grid.columns,c0+cols),n,estimate.estimated_memory))
         return out
     def _copc(self,grid,sources,sizing):
@@ -171,7 +171,7 @@ class SourceAwareWorkPlanner:
             density=src.point_count/(src.bounds.width*src.bounds.height) if src.point_count and src.bounds.width and src.bounds.height else 8.0
             estimated_points=int(overlap.width*overlap.height*density)
             from .resource_estimation import estimate_work_unit_resources
-            source_estimate=estimate_work_unit_resources(estimated_points,raster_cells=int(overlap.width*overlap.height/grid.resolution**2),core_width=sizing.target_width)
+            source_estimate=estimate_work_unit_resources(estimated_points,raster_cells=int(overlap.width*overlap.height/grid.resolution**2),core_width=sizing.target_width,product=sizing.product)
             subdivision_limit=sizing.maximum_expected_memory+256*1024**2
             if src.size_bytes>2*1024**3 or source_estimate.estimated_memory>subdivision_limit:
                 flush();subgrid=AlignedRasterGrid.from_extent(overlap,grid.resolution,grid.crs);out.extend(self._windows(subgrid,(src,),WorkUnitType.SUBDIVIDED_LARGE_SOURCE,sizing));continue
