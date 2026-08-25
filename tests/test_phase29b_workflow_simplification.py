@@ -2,6 +2,7 @@
 from pathlib import Path
 import unittest
 from pyforestscan_qgis.core.workspace import WorkspaceSession
+from pyforestscan_qgis.core.batch_control_visibility import batch_control_visibility
 
 ROOT=Path(__file__).resolve().parents[1]
 PAGES=(ROOT/'pyforestscan_qgis/ui/pages.py').read_text(encoding='utf-8')
@@ -24,7 +25,11 @@ class Phase29BWorkflowTests(unittest.TestCase):
   self.assertIn('def _current_spatial_report',PAGES)
   self.assertIn('self.run_preflight()',PAGES)
  def test_custom_owns_topology_controls(self):
-  self.assertIn('custom = self.processing_profile_combo.currentData() == "custom"',PAGES)
+  automatic=batch_control_visibility(profile='recommended',execution_mode='parallel_safe',polygon_mode=False,repository_selected=False)
+  custom=batch_control_visibility(profile='custom',execution_mode='parallel_safe',polygon_mode=False,repository_selected=False)
+  self.assertFalse(automatic.execution_mode)
+  self.assertTrue(custom.execution_mode)
+  self.assertTrue(custom.maximum_workers)
   self.assertIn('Upper limit; adaptive planning may use fewer workers',PAGES)
  def test_processing_inputs_share_invalidation(self):
   self.assertIn('self.mask_engine_combo',PAGES)

@@ -1,5 +1,11 @@
 # Changelog
 
+## Phase 30C - Processing workflow state stabilization
+
+- Replaced mutable preflight-dependent standard Batch launch with an immutable validated execution request, fixing the one-LAS CHM + Rumple `files_to_skip` crash.
+- Separated logical processing counts from skipped resume sources and prevented programmatic file-status rows from invalidating readiness.
+- Centralized Advanced-control applicability, removed visible parallel-safety certification, enabled primary-output loading by default, and made collapsible geometry preserve child visibility state.
+
 ## Phase 30B - Production Rumple finalization and recovery
 
 - Removed the stale `BatchPage._batch_settings()` completion dependency and now build terminal summaries from immutable execution plans, durable results, checkpoints, and output registries.

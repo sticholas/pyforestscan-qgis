@@ -1,6 +1,7 @@
 """QGIS-free structural contracts for Phase 29A productization UI."""
 from pathlib import Path
 import unittest
+from pyforestscan_qgis.core.batch_control_visibility import batch_control_visibility
 
 ROOT=Path(__file__).resolve().parents[1]
 PAGES=(ROOT/'pyforestscan_qgis/ui/pages.py').read_text(encoding='utf-8')
@@ -18,8 +19,11 @@ class Phase29AProductizationUiTests(unittest.TestCase):
         self.assertIn('ProductType.CHM in selected', PAGES)
 
     def test_parallel_controls_are_adaptive(self):
-        self.assertIn('self.confirm_parallel_check.setVisible(parallel)', PAGES)
-        self.assertIn('_set_layout_visible(self.max_workers_row, parallel)', PAGES)
+        automatic=batch_control_visibility(profile='recommended',execution_mode='parallel_safe',polygon_mode=False,repository_selected=False)
+        custom=batch_control_visibility(profile='custom',execution_mode='parallel_safe',polygon_mode=False,repository_selected=False)
+        self.assertFalse(automatic.maximum_workers)
+        self.assertTrue(custom.maximum_workers)
+        self.assertFalse(custom.parallel_confirmation)
         self.assertIn('addItem("Parallel", PARALLEL_SAFE_MODE)', PAGES)
 
     def test_readiness_report_is_always_content_sized(self):

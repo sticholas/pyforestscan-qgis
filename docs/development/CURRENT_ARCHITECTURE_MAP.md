@@ -1,5 +1,9 @@
 # Current Architecture Map
 
+## Phase 30C Batch launch boundary
+
+Standard Batch treats UI preflight as a replaceable readiness projection. Process performs missing validation and freezes an immutable `BatchExecutionRequest` before status widgets change. The worker receives only the approved typed request. Advanced-control visibility is derived by `batch_control_visibility`; expandable groups hide one content container without mutating child applicability.
+
 This is the current architecture index. Phase reports are historical evidence, not competing specifications.
 
 | Responsibility | Authoritative implementation | Status of adjacent paths |

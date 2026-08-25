@@ -57,6 +57,8 @@ from ..core.adaptive_lidar_indexing import (
     register_native_sources,
 )
 from ..core.batch import BatchProductSettings, BatchRequest, discover_lidar_files
+from ..core.batch_execution_contract import prepare_batch_execution
+from ..core.batch_control_visibility import batch_control_visibility
 from ..core.batch_options import BatchExecutionOptions, PolygonBatchOptions, requested_effective_concurrency
 from ..core.batch_executor import PARALLEL_SAFE_MODE, SEQUENTIAL_MODE, BatchExecutor
 from ..core.batch_preflight import BatchPreflightReport, run_batch_preflight
@@ -2386,7 +2388,7 @@ class BatchPage(MissionPage):
         self.processing_profile_combo = QComboBox()
         for profile in PROCESSING_PROFILES:
             self.processing_profile_combo.addItem("Automatic (Recommended)" if profile.key == "recommended" else profile.label, profile.key)
-        self.processing_profile_combo.setCurrentIndex(1)
+        self.processing_profile_combo.setCurrentIndex(self.processing_profile_combo.findData("recommended"))
         self.processing_profile_combo.currentIndexChanged.connect(lambda _index: self._apply_processing_profile())
         profile_row = QHBoxLayout()
         profile_row.addWidget(self.processing_profile_combo, 1)
@@ -2401,14 +2403,18 @@ class BatchPage(MissionPage):
         self.max_workers_spin.setMaximum(6)
         self.max_workers_spin.setValue(2)
         self.max_workers_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
-        execution_mode_row = QHBoxLayout()
+        self.execution_mode_container = QWidget()
+        execution_mode_row = QHBoxLayout(self.execution_mode_container)
+        execution_mode_row.setContentsMargins(0, 0, 0, 0)
         execution_mode_row.addWidget(self.execution_mode_combo, 1)
         execution_mode_row.addWidget(info_badge("batch.processing_concurrency", parent=self), 0)
-        max_workers_row = QHBoxLayout()
+        self.max_workers_container = QWidget()
+        max_workers_row = QHBoxLayout(self.max_workers_container)
+        max_workers_row.setContentsMargins(0, 0, 0, 0)
         max_workers_row.addWidget(self.max_workers_spin, 1)
         max_workers_row.addWidget(info_badge("batch.concurrent_jobs", parent=self), 0)
-        advanced_form.addRow("Execution mode", execution_mode_row)
-        advanced_form.addRow("Max workers", max_workers_row)
+        advanced_form.addRow("Execution mode", self.execution_mode_container)
+        advanced_form.addRow("Maximum workers", self.max_workers_container)
         self.advanced_batch_form = advanced_form
         self.max_workers_row = max_workers_row
         advanced_batch.addLayout(advanced_form)
@@ -2419,8 +2425,11 @@ class BatchPage(MissionPage):
         advanced_batch.addWidget(mode_help)
         self.stop_on_error_check = QCheckBox("Stop batch when a file fails")
         self.load_outputs_check = QCheckBox("Load generated outputs into QGIS")
-        self.load_outputs_check.setToolTip("Leave off for large batches; load selected results from the Results page when ready.")
+        self.load_outputs_check.setChecked(True)
+        self.load_outputs_check.setToolTip("Completed primary raster outputs load automatically. Clear this only for jobs where manual loading is preferred.")
         self.confirm_parallel_check = QCheckBox("Allow parallel safe mode for this workload after reviewing warnings")
+        self.confirm_parallel_check.setChecked(True)
+        self.confirm_parallel_check.setVisible(False)
         self.confirm_parallel_check.toggled.connect(lambda _checked: self._refresh_footprint_label())
         self.skip_completed_check = QCheckBox("Skip already-completed files on resume")
         self.skip_completed_check.setChecked(True)
@@ -2455,6 +2464,7 @@ class BatchPage(MissionPage):
         advanced_batch.addLayout(overwrite_existing_row)
 
         polygon_finalization_group, polygon_finalization = _collapsible_section(advanced_batch, "Polygon Finalization", checked=False)
+        self.polygon_finalization_group = polygon_finalization_group
         polygon_form = QFormLayout()
         polygon_form.setVerticalSpacing(SECTION_SPACING)
         self.exact_raster_mask_check = QCheckBox("Exact raster mask")
@@ -2630,7 +2640,7 @@ class BatchPage(MissionPage):
         self.previous_runs_group.setVisible(False);_wire_collapsible_group(self.previous_runs_group)
         self._update_batch_mode_visibility()
         self._wire_session_state_inputs()
-        self._update_adaptive_visibility()
+        self._refresh_batch_option_visibility()
         QTimer.singleShot(0, self._publish_session_state)
         self._processing_watchdog = QTimer(self)
         self._processing_watchdog.setInterval(2500)
@@ -2700,7 +2710,7 @@ class BatchPage(MissionPage):
 
     def _on_session_input_changed(self, *_args: object) -> None:
         self.preflight_report = None
-        self._update_adaptive_visibility()
+        self._refresh_batch_option_visibility()
         if hasattr(self,"run_button"):self._update_run_button_enabled()
         if hasattr(self, "preflight_text"):
             self.preflight_text.setPlainText("Prerun Check needs refresh for the current inputs.")
@@ -2791,10 +2801,11 @@ class BatchPage(MissionPage):
         self._update_run_button_enabled()
 
     def _on_execution_mode_changed(self, *_args: object) -> None:
-        self._update_adaptive_visibility()
+        self._refresh_batch_option_visibility()
         self._refresh_footprint_label()
 
-    def _update_adaptive_visibility(self, *_args: object) -> None:
+    def _refresh_batch_option_visibility(self, *_args: object) -> None:
+        """Project one idempotent semantic visibility model onto durable widgets."""
         selected = {product for product, check in self.product_checks.items() if check.isChecked()}
         self.advanced_product_settings_group.setVisible(bool(selected))
         if hasattr(self, 'product_settings_form'):
@@ -2804,15 +2815,23 @@ class BatchPage(MissionPage):
             _set_form_field_visible(self.product_settings_form, self.height_bin_spin, bool(selected & binned_products))
             _set_form_field_visible(self.product_settings_form, self.canopy_threshold_spin, ProductType.CANOPY_COVER in selected)
             _set_form_field_visible(self.product_settings_form, self.chm_interpolation_combo, ProductType.CHM in selected)
-        custom = self.processing_profile_combo.currentData() == "custom"
-        parallel = custom and self.execution_mode_combo.currentData() == PARALLEL_SAFE_MODE
+        visibility = batch_control_visibility(
+            profile=str(self.processing_profile_combo.currentData() or "recommended"),
+            execution_mode=str(self.execution_mode_combo.currentData() or SEQUENTIAL_MODE),
+            polygon_mode=self._current_batch_mode() == "polygon",
+            repository_selected=bool(self.polygon_lidar_folder_edit.text().strip()),
+        )
         if hasattr(self, 'advanced_batch_form'):
-            _set_form_field_visible(self.advanced_batch_form, self.execution_mode_combo, custom)
-            _set_layout_visible(self.max_workers_row, parallel)
-            _set_form_field_visible(self.advanced_batch_form, self.max_workers_spin, parallel)
-        self.confirm_parallel_check.setVisible(parallel)
-        repository_selected = bool(self.polygon_lidar_folder_edit.text().strip())
-        self.advanced_repository_section.setVisible(self._current_batch_mode() == 'polygon' and repository_selected)
+            _set_form_field_visible(self.advanced_batch_form, self.execution_mode_container, visibility.execution_mode)
+            _set_form_field_visible(self.advanced_batch_form, self.max_workers_container, visibility.maximum_workers)
+        self.confirm_parallel_check.setVisible(visibility.parallel_confirmation)
+        self.polygon_finalization_group.setVisible(visibility.polygon_finalization)
+        self.advanced_repository_section.setVisible(visibility.repository_options)
+        _refresh_layout_geometry(self.advanced_batch_section)
+
+    def _update_adaptive_visibility(self, *_args: object) -> None:
+        """Compatibility alias for callers retained during workflow consolidation."""
+        self._refresh_batch_option_visibility()
 
     def _apply_processing_profile(self) -> None:
         if not hasattr(self, "processing_profile_combo"):
@@ -2822,7 +2841,7 @@ class BatchPage(MissionPage):
             self.max_workers_spin.setValue(min(self.max_workers_spin.maximum(), max(self.max_workers_spin.minimum(), profile.recommended_workers)))
             self.execution_mode_combo.setCurrentIndex(0 if profile.recommended_workers <= 1 else 1)
         self.max_workers_spin.setToolTip("Upper limit; adaptive planning may use fewer workers for memory, storage, or source safety.")
-        self._update_adaptive_visibility()
+        self._refresh_batch_option_visibility()
         self._refresh_footprint_label()
 
     def _polygon_guided_review_text(self, report: object) -> str:
@@ -3576,21 +3595,24 @@ class BatchPage(MissionPage):
         self._publish_session_state(plan_status="ready")
 
     def run_batch(self) -> None:
-        """Run selected datasets through preflight-approved batch execution."""
+        """Validate current inputs and launch from an immutable execution snapshot."""
         if self.preflight_report is None:
             self.run_preflight()
             if self.preflight_report is None:return
         if self._current_batch_mode() == "polygon":
             self._run_polygon_batch()
             return
-        if self.preflight_report.blockers:
+        report = self.preflight_report
+        if report.blockers:
             _set_status_badge(self.status_label, "FAILED", "Status: Failed - Prerun Check issues must be resolved before processing.")
             return
-        if self.preflight_report.warnings and not self.acknowledge_warnings_check.isChecked():
+        if report.warnings and not self.acknowledge_warnings_check.isChecked():
             _set_status_badge(self.status_label, "WARNING", "Status: Needs review - review and acknowledge Prerun Check warnings before processing.")
             return
         try:
-            request = self._build_batch_request(self.preflight_report.batch_folder, self.preflight_report.files_to_process)
+            current_request = self._build_batch_request(report.batch_folder)
+            execution = prepare_batch_execution(current_request, report, profile=str(self.processing_profile_combo.currentText()))
+            request = execution.request
         except BatchExecutionError as exc:
             _set_status_badge(self.status_label, "FAILED", f"Status: Failed - batch could not start: {exc}")
             return
@@ -3617,7 +3639,7 @@ class BatchPage(MissionPage):
         self.retry_failed_button.setVisible(False)
         _set_status_badge(self.status_label, "RUNNING", f"Status: Running - {len(selected)} dataset(s).")
         self._processed_items = 0
-        self._total_items = max(1, len(selected) + len(self.preflight_report.files_to_skip))
+        self._total_items = max(1, execution.logical_inputs)
         executor = BatchExecutor(adapter_factory=PyForestScanAdapter)
         try:
             guardrail = executor.guardrails(request)
@@ -3931,10 +3953,14 @@ class BatchPage(MissionPage):
     def _mark_selected_files_queued(self) -> None:
         """Mark selected discovered files as queued before execution starts."""
         products = ", ".join(PRODUCT_LABELS[product] for product, check in self.product_checks.items() if check.isChecked()) or "none"
-        for index, path in enumerate(self.discovered_paths):
-            item = self.file_list.item(index)
-            if item is not None and item.checkState() == Qt.Checked:
-                item.setText(f"{path.name}\nStatus: queued; products: {products}\n{path}")
+        blocked = self.file_list.blockSignals(True)
+        try:
+            for index, path in enumerate(self.discovered_paths):
+                item = self.file_list.item(index)
+                if item is not None and item.checkState() == Qt.Checked:
+                    item.setText(f"{path.name}\nStatus: queued; products: {products}\n{path}")
+        finally:
+            self.file_list.blockSignals(blocked)
 
     def _update_file_row(self, path: Path, status: str, bounds: str, message: str) -> None:
         """Update one discovered file row with current batch status."""
@@ -5234,14 +5260,22 @@ def _set_status_badge(label: QLabel, status: str, text: str | None = None) -> QL
 
 
 def _collapsible_section(parent: QVBoxLayout, title: str, checked: bool = False) -> tuple[QGroupBox, QVBoxLayout]:
-    """Add a checkable section whose contents are hidden until expanded."""
+    """Add a checkable section without overwriting child semantic visibility."""
     group = QGroupBox(title)
     group.setCheckable(True)
     group.setChecked(checked)
     group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-    layout = QVBoxLayout(group)
-    layout.setContentsMargins(*SECTION_MARGINS)
+    outer = QVBoxLayout(group)
+    outer.setContentsMargins(*SECTION_MARGINS)
+    outer.setSpacing(0)
+    content = QWidget(group)
+    content.setObjectName("collapsibleContent")
+    content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+    layout = QVBoxLayout(content)
+    layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(SECTION_SPACING)
+    outer.addWidget(content)
+    group._content_widget = content
     parent.addWidget(group)
     return group, layout
 
@@ -5253,17 +5287,22 @@ def _wire_collapsible_group(group: QGroupBox) -> None:
 
 
 def _set_collapsible_content_visible(group: QGroupBox, visible: bool) -> None:
-    layout = group.layout()
-    if layout is None:
-        return
-    for index in range(layout.count()):
-        item = layout.itemAt(index)
-        widget = item.widget()
-        child_layout = item.layout()
-        if widget is not None:
-            widget.setVisible(visible)
-        if child_layout is not None:
-            _set_layout_visible(child_layout, visible)
+    content = getattr(group, "_content_widget", None)
+    if isinstance(content, QWidget):
+        content.setVisible(visible)
+    _refresh_layout_geometry(group)
+
+
+def _refresh_layout_geometry(widget: QWidget) -> None:
+    """Recalculate expandable content without caching a collapsed height."""
+    layout = widget.layout()
+    if layout is not None:
+        layout.invalidate()
+        layout.activate()
+    widget.updateGeometry()
+    parent = widget.parentWidget()
+    if parent is not None:
+        parent.updateGeometry()
 
 
 def _set_layout_visible(layout: object, visible: bool) -> None:

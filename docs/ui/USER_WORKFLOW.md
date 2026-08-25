@@ -1,5 +1,7 @@
 # Mission Control User Workflow
 
+For normal Batch work: choose LiDAR data, choose products, choose output, and select Process LiDAR. PyForestScan validates current inputs automatically and either starts from a frozen request or shows an actionable blocker. Advanced Processing is optional.
+
 Mission Control uses a run-folder workflow so users do not need to manually pass
 JSON files between Dataset Explorer, Product Planner, and CHM execution.
 

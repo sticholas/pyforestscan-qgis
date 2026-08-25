@@ -1,5 +1,7 @@
 # Mission Control
 
+Batch Process automatically refreshes missing readiness when clicked; Run Detailed Check remains available for review but is not required. Automatic is the normal profile. Execution mode appears only for Custom, and Maximum Workers appears only for Custom + Parallel as an adaptive upper bound. Primary output loading defaults on. Software determines parallel safety.
+
 Phase 29B reduces normal decisions: repository paths refresh automatically, one Prepare Repository action owns normal setup, spatial actions refresh their required plan on demand, Automatic is the default profile, and detailed execution controls appear only under Custom. Mission Control no longer opens at QGIS startup unless enabled in Advanced Settings. See the [Phase 29B Workflow Simplification Audit](../development/PHASE_29B_WORKFLOW_SIMPLIFICATION_AUDIT.md).
 
 
