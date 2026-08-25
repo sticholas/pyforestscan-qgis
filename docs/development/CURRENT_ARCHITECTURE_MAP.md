@@ -9,7 +9,7 @@ This is the current architecture index. Phase reports are historical evidence, n
 | Polygon and CRS | `polygon_normalization.py`, `crs_alignment.py`, `polygon_source_selection.py` | QGIS adapters only acquire geometry. |
 | Adaptive/work-unit planning | `adaptive_processing.py`, `source_aware_processing.py` | `pilot_planning.py` is advisory; no live identity-changing replan. |
 | Resources and HAG | `resource_estimation.py`, `hag_strategy.py` | Shared by direct and durable paths. |
-| Scientific products | `adapter.py`, `chm_work_unit_execution.py`, `product_capabilities.py` | Coordinator orchestrates and does not implement CHM math. |
+| Scientific products | `adapter.py`, `chm_work_unit_execution.py`, `localized_rumple.py`, `product_capabilities.py` | Coordinator orchestrates and does not implement CHM or Rumple math. Spatial Rumple is CHM-derived. |
 | PBM and durable coordination | `backend/execution.py`, `backend_runner/polygon_job_coordinator.py`, `backend_runner/job_coordinator.py` | External workers remain disabled. |
 | Recovery/progress | `work_unit_scheduler.py`, `job_recovery.py`, `processing_monitor.py` | Checkpoints are authoritative, UI is observer only. |
 | Mosaic/mask | `raster_mosaic_plan.py`, `raster_mask.py` | Product contract defines semantics. |

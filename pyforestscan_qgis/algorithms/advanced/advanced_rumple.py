@@ -8,11 +8,11 @@ from qgis.core import QgsProcessingContext, QgsProcessingFeedback, QgsProcessing
 
 from ...core.adapter import PyForestScanAdapter
 from ...core.advanced_processing import AdvancedRumpleParameters, build_rumple_request
-from .common import AdvancedPyForestScanAlgorithm, load_csv_if_requested, run_adapter_call
+from .common import AdvancedPyForestScanAlgorithm, load_raster_if_requested, run_adapter_call
 
 
 class AdvancedRumpleAlgorithm(AdvancedPyForestScanAlgorithm):
-    """Generate an expert-configured rumple CSV summary through the adapter."""
+    """Generate an expert-configured spatial Rumple raster."""
 
     INTERPOLATION = "INTERPOLATION"
     INTERP_VALID_REGION = "INTERP_VALID_REGION"
@@ -23,13 +23,13 @@ class AdvancedRumpleAlgorithm(AdvancedPyForestScanAlgorithm):
         return "advanced_rumple"
 
     def displayName(self) -> str:
-        return self.tr("Rumple")
+        return self.tr("Rumple Index Raster")
 
     def shortHelpString(self) -> str:
-        return self.tr("Calculates a scalar Rumple Index from an internally generated CHM and writes a CSV summary. Use it for whole-dataset canopy surface complexity. Key parameters are CHM resolution, interpolation, edge handling, and optional min_height. The output is a table, not a raster.")
+        return self.tr("Creates a dimensionless spatial Rumple GeoTIFF from an internally generated CHM using the same two-triangle surface mathematics as upstream PyForestScan. A scalar compatibility summary is written beside the raster.")
 
     def initAlgorithm(self, configuration: dict[str, Any] | None = None) -> None:
-        self.add_input_dataset(); self.add_crs(); self.add_xy_resolution(); self.add_csv_output("Output rumple CSV summary")
+        self.add_input_dataset(); self.add_crs(); self.add_xy_resolution(); self.add_geotiff_output("Output Rumple GeoTIFF")
         self.add_interpolation(self.INTERPOLATION, "CHM interpolation", default_index=2)
         self.addParameter(QgsProcessingParameterBoolean(self.INTERP_VALID_REGION, self.tr("Interpolate valid region only"), defaultValue=False))
         self.addParameter(QgsProcessingParameterBoolean(self.CLEAN_EDGES, self.tr("Clean interpolation edges"), defaultValue=False))
@@ -41,5 +41,5 @@ class AdvancedRumpleAlgorithm(AdvancedPyForestScanAlgorithm):
         params = AdvancedRumpleParameters(dataset, output, crs, xres, yres, self.interpolation_value(parameters, self.INTERPOLATION, context), self.parameterAsBool(parameters, self.INTERP_VALID_REGION, context), self.parameterAsBool(parameters, self.CLEAN_EDGES, context), self.optional_double(parameters, self.MIN_HEIGHT, context), add)
         request = build_rumple_request(params)
         result = run_adapter_call(feedback, "Rumple", lambda: PyForestScanAdapter().create_rumple(request))
-        load_csv_if_requested(result.output_path, context, feedback, add, "PyForestScan Rumple Summary")
+        load_raster_if_requested(result.output_path, "rumple_geotiff", context, feedback, add)
         return self.push_result(feedback, result.output_path, "Rumple")

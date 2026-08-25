@@ -1,5 +1,7 @@
 # Known Limitations
 
+The spatial Rumple raster is mathematically regression-tested against upstream scalar behavior and synthetic tiling, and its PBM raster writer passed a live managed-backend test. Production adaptive Rumple work-unit execution is not yet wired to the CHM-only durable coordinator, so large-area partition support remains disabled. Real LAS/EPT polygon mosaics, visual seam inspection, runtime/memory benchmarking, and interactive QGIS loading remain not tested live. QGIS 3.44.9's local runtime launcher was unavailable; 3.44.13 failed before plugin import due to a local Qt DLL error. Rumple is scale-sensitive: CHM resolution, interpolation, and minimum-height settings must match for comparison.
+
 Phase 29E automated hardening is complete, but clean Windows/QGIS install, cancel/crash process-tree, upgrade-from-older-beta, and real-LiDAR scientific validation remain explicitly untested live. Historical job folders are retained; the maintenance API reports stale temporary/cache candidates but has no normal-user UI.
 
 EPT CHM is temporarily limited to one active worker. Live Windows confirmation of native DLL isolation, QGIS close/reopen recovery, and safe-mode pilot processing remains required; alternate HAG behavior is not enabled without measured evidence.

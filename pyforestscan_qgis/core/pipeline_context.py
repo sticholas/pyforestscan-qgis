@@ -98,8 +98,8 @@ class PipelineContext:
     @property
     def rumple_output_filename(self) -> str:
         """Return the planned rumple output filename."""
-        value = str(self._parameter("rumple_output_filename", "rumple_summary.csv"))
-        return value or "rumple_summary.csv"
+        value = str(self._parameter("rumple_output_filename", "rumple.tif"))
+        return value or "rumple.tif"
 
     @property
     def canopy_cover_height_threshold(self) -> float:

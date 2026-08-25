@@ -12,7 +12,7 @@ class Phase29EHardeningTests(unittest.TestCase):
   for key in ("chm","pad","pai","fhd","rumple","canopy_cover","dtm","point_density","voxel_stat"):
    cap=product_capability(key);self.assertIsNotNone(cap);self.assertTrue(cap.required_dimensions);self.assertTrue(cap.validation_status)
   self.assertEqual("multiband_raster",PRODUCT_CAPABILITIES["pad"].display_role)
-  self.assertEqual("table",PRODUCT_CAPABILITIES["rumple"].output_kind)
+  self.assertEqual("raster",PRODUCT_CAPABILITIES["rumple"].output_kind)
  def test_output_registry_uses_contract(self):
   with tempfile.TemporaryDirectory() as folder:
    pad=Path(folder)/"pad.tif";pad.touch();rumple=Path(folder)/"rumple.csv";rumple.touch()

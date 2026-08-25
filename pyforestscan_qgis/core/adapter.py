@@ -509,7 +509,7 @@ class PyForestScanAdapter:
             raise ProcessingError(f"FHD generation failed: {exc}") from exc
 
     def create_rumple(self, request: RumpleRequest) -> RumpleResult:
-        """Generate scalar rumple index and write a CSV summary."""
+        """Generate a patch-centered Rumple GeoTIFF plus scalar summary."""
         if request.grid_resolution <= 0:
             raise ProcessingError("Rumple X resolution must be greater than zero.")
         if request.y_resolution is not None and request.y_resolution <= 0:
@@ -519,7 +519,8 @@ class PyForestScanAdapter:
         if not request.crs:
             raise ProcessingError("Rumple generation requires a dataset CRS.")
         output_path = Path(request.output_path)
-        _validate_csv_output_path(output_path)
+        if output_path.suffix.lower() not in {".tif", ".tiff", ".csv"}:
+            raise ProcessingError("Rumple output must be a GeoTIFF, or CSV for legacy scalar compatibility.")
         pbm_result = self._run_pbm_product_if_selected(ProductType.RUMPLE, request)
         if pbm_result is not None:
             return pbm_result
@@ -549,17 +550,33 @@ class PyForestScanAdapter:
                 _xy_resolution(request.grid_resolution, request.y_resolution),
                 min_height=request.min_height,
             ))
-            self._progress.update(85, "Rumple index calculated")
-            _write_rumple_csv(output_path, rumple_index, request, extent, chm_source=chm_source)
+            from .localized_rumple import calculate_local_rumple_surface, rumple_patch_extent
+            surface = calculate_local_rumple_surface(chm, _xy_resolution(request.grid_resolution, request.y_resolution), request.min_height)
+            if not surface.valid_patch_count:
+                raise ProcessingError("Rumple cannot be calculated because no valid 2x2 CHM surface patches remain.")
+            difference = abs(rumple_index - surface.aggregate_rumple)
+            tolerance = 1e-10 * max(1.0, abs(rumple_index))
+            if output_path.suffix.lower() != ".csv" and difference > tolerance:
+                raise ProcessingError(f"Rumple scalar compatibility check failed ({difference:.3g} > {tolerance:.3g}).")
+            self._progress.update(85, "Spatial Rumple surface calculated")
+            if output_path.suffix.lower() == ".csv":
+                summary_path = output_path
+            else:
+                _write_rumple_geotiff(output_path, surface.values, request.crs, rumple_patch_extent(extent, surface.cell_resolution), request, surface, rumple_index)
+                summary_path = output_path.with_name(f"{output_path.stem}_summary.csv")
+            _write_rumple_csv(summary_path, rumple_index, request, extent, chm_source=chm_source, spatial_aggregate=surface.aggregate_rumple, valid_patch_count=surface.valid_patch_count)
             _validate_created_output(output_path)
-            self._progress.complete("Rumple summary created")
-            self._log(LogLevel.INFO, "Rumple generation complete", output=str(output_path), rumple_index=rumple_index)
+            self._progress.complete("Rumple raster created" if output_path.suffix.lower() != ".csv" else "Rumple summary created")
+            self._log(LogLevel.INFO, "Rumple generation complete", output=str(output_path), rumple_index=rumple_index, valid_patch_count=surface.valid_patch_count)
             return RumpleResult(
                 output_path=output_path,
                 rumple_index=rumple_index,
                 spatial_extent=tuple(float(value) for value in extent),
                 grid_resolution=request.grid_resolution,
                 crs=request.crs,
+                summary_path=summary_path,
+                valid_patch_count=surface.valid_patch_count,
+                spatial_aggregate=surface.aggregate_rumple,
             )
         except ProcessingError:
             self._progress.fail("Rumple generation failed")
@@ -1277,7 +1294,8 @@ def _adapter_result_from_backend(product: ProductType, request: object, backend_
     if product is ProductType.FHD:
         return FhdResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), float(metrics.get("voxel_height", getattr(request, "voxel_height"))), crs)
     if product is ProductType.RUMPLE:
-        return RumpleResult(output_path, float(metrics.get("rumple_index", 0.0)), extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), crs)
+        summary=metrics.get("summary_path")
+        return RumpleResult(output_path,float(metrics.get("rumple_index",0.0)),extent,float(metrics.get("grid_resolution",getattr(request,"grid_resolution"))),crs,Path(summary) if summary else None,int(metrics.get("valid_patch_count",0)),metrics.get("spatial_aggregate"))
     if product is ProductType.CANOPY_COVER:
         return CanopyCoverResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), float(metrics.get("canopy_height_threshold", getattr(request, "canopy_height_threshold"))), crs)
     if product is ProductType.POINT_DENSITY:
@@ -1337,19 +1355,22 @@ def _validate_las_output_path(output_path: Path) -> None:
             pass
 
 
-def _write_rumple_csv(output_path: Path, rumple_index: float, request: RumpleRequest, spatial_extent: object, *, chm_source: str = "internally generated for Rumple") -> None:
+def _write_rumple_csv(output_path: Path, rumple_index: float, request: RumpleRequest, spatial_extent: object, *, chm_source: str = "internally generated for Rumple", spatial_aggregate=None, valid_patch_count=0) -> None:
     """Write a scalar rumple result as a small CSV table."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     x_min, x_max, y_min, y_max = spatial_extent
     rows = [
         ("metric", "value"),
         ("rumple_index", f"{rumple_index:.12g}"),
+        ("spatial_raster_aggregate", "" if spatial_aggregate is None else f"{spatial_aggregate:.12g}"),
+        ("absolute_difference", "" if spatial_aggregate is None else f"{abs(rumple_index-spatial_aggregate):.12g}"),
+        ("valid_patch_count", str(valid_patch_count)),
         ("grid_resolution", f"{request.grid_resolution:.12g}"),
         ("min_height", "" if request.min_height is None else f"{request.min_height:.12g}"),
         ("native_pyforestscan_output", "scalar"),
         ("chm_source", chm_source),
         ("supporting_chm_saved", "false"),
-        ("interpretation_note", "Native PyForestScan Rumple is a whole-area scalar calculated from a CHM; it is not a raster."),
+        ("interpretation_note", "Upstream PyForestScan returns this area scalar; the primary QGIS raster stores the same ratio for each valid 2x2 CHM patch."),
         ("crs", request.crs),
         ("extent_x_min", f"{float(x_min):.12g}"),
         ("extent_x_max", f"{float(x_max):.12g}"),
@@ -1357,6 +1378,17 @@ def _write_rumple_csv(output_path: Path, rumple_index: float, request: RumpleReq
         ("extent_y_max", f"{float(y_max):.12g}"),
     ]
     output_path.write_text("\n".join(f"{name},{value}" for name, value in rows) + "\n", encoding="utf-8")
+
+def _write_rumple_geotiff(output_path, values, crs, extent, request, surface, upstream_scalar, nodata=-9999.0):
+    rasterio=_import_required("rasterio",ProcessingError);numpy=_import_required("numpy",ProcessingError)
+    from rasterio.transform import from_bounds
+    if values.ndim != 2 or not values.size: raise ProcessingError("Rumple raster has invalid dimensions.")
+    xmin,xmax,ymin,ymax=extent;output_path.parent.mkdir(parents=True,exist_ok=True);temporary=output_path.with_suffix(".partial.tif");raster_values=values.T
+    profile={"driver":"GTiff","height":raster_values.shape[0],"width":raster_values.shape[1],"count":1,"dtype":"float32","crs":crs,"transform":from_bounds(xmin,ymin,xmax,ymax,raster_values.shape[1],raster_values.shape[0]),"nodata":nodata,"compress":"deflate","tiled":raster_values.shape[0]>=16 and raster_values.shape[1]>=16}
+    with rasterio.open(temporary,"w",**profile) as dst:
+        dst.write(numpy.where(numpy.isfinite(raster_values),raster_values,nodata).astype("float32"),1);dst.set_band_description(1,"Rumple Index")
+        dst.update_tags(PRODUCT="Rumple Index",UNITS="dimensionless",METHOD="pyforestscan_qgis_patch_surface_v1",CHM_RESOLUTION=str(surface.cell_resolution),RUMPLE_ANALYSIS_SCALE="2x2 CHM patch",MIN_HEIGHT="None" if request.min_height is None else str(request.min_height),PYFORESTSCAN_SCALAR_COMPATIBLE="true",PYFORESTSCAN_SCALAR=f"{upstream_scalar:.12g}",VALID_PATCH_COUNT=str(surface.valid_patch_count))
+    temporary.replace(output_path)
 
 
 def _write_multiband_geotiff(layer: object, output_path: Path, crs: str, spatial_extent: object, nodata: float = -9999.0, *, voxel_height: float = 1.0, beer_lambert_constant: float = 1.0, drop_ground: bool = True) -> None:

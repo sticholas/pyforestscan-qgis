@@ -1008,7 +1008,7 @@ def _logical_product_output_path(folder: Path, product: ProductType) -> Path:
         ProductType.PAD: "pad.tif",
         ProductType.PAI: "pai.tif",
         ProductType.FHD: "fhd.tif",
-        ProductType.RUMPLE: "rumple_summary.csv",
+        ProductType.RUMPLE: "rumple.tif",
         ProductType.CANOPY_COVER: "canopy_cover.tif",
         ProductType.DTM: "dtm.tif",
         ProductType.POINT_DENSITY: "point_density.tif",

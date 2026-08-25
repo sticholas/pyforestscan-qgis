@@ -322,13 +322,16 @@ class RumpleRequest:
 
 @dataclass(frozen=True)
 class RumpleResult:
-    """Adapter result for a scalar rumple index table."""
+    """Adapter result for a spatial Rumple raster and scalar summary."""
 
     output_path: Path
     rumple_index: float
     spatial_extent: tuple[float, float, float, float]
     grid_resolution: float
     crs: str
+    summary_path: Path | None = None
+    valid_patch_count: int = 0
+    spatial_aggregate: float | None = None
 
 
 @dataclass(frozen=True)

@@ -263,8 +263,8 @@ def build_rumple_request(params: AdvancedRumpleParameters) -> RumpleRequest:
     if not params.crs.strip():
         raise ProcessingError("Rumple requires a CRS string such as EPSG:32610.")
     _validate_interpolation(params.interpolation)
-    if params.output_path.suffix.lower() != ".csv":
-        raise ProcessingError("Advanced Rumple output must be a CSV summary because PyForestScan returns a scalar value.")
+    if params.output_path.suffix.lower() not in {".tif", ".tiff"}:
+        raise ProcessingError("Advanced Rumple output must be a GeoTIFF raster.")
     return RumpleRequest(
         input_path=params.input_path,
         output_path=params.output_path,

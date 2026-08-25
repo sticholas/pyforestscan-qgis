@@ -243,8 +243,9 @@ def _execute_rumple_step(context: PipelineContext, step: PipelineStep, adapter: 
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
         return _step_result(step, PipelineStepStatus.FAILED, f"Rumple generation failed: {exc}")
     if not result.output_path.exists():
-        return _step_result(step, PipelineStepStatus.FAILED, f"Rumple generation did not produce a CSV table: {result.output_path}")
-    return _step_result(step, PipelineStepStatus.PASSED, f"Rumple CSV summary created: {result.output_path}", (result.output_path,))
+        return _step_result(step, PipelineStepStatus.FAILED, f"Rumple generation did not produce its requested output: {result.output_path}")
+    label="legacy scalar CSV" if result.output_path.suffix.lower()==".csv" else "spatial GeoTIFF"
+    return _step_result(step, PipelineStepStatus.PASSED, f"Rumple {label} created: {result.output_path}", (result.output_path,))
 
 
 def _fhd_output_path(context: PipelineContext) -> Path:
@@ -254,7 +255,9 @@ def _fhd_output_path(context: PipelineContext) -> Path:
 
 def _rumple_output_path(context: PipelineContext) -> Path:
     """Return the validated rumple output path for a pipeline context."""
-    return _simple_csv_output_path(context.output_folder, context.rumple_output_filename, "Rumple")
+    if Path(context.rumple_output_filename).suffix.lower()==".csv":
+        return _simple_csv_output_path(context.output_folder, context.rumple_output_filename, "Rumple")
+    return _simple_geotiff_output_path(context.output_folder, context.rumple_output_filename, "Rumple")
 
 def _pad_output_path(context: PipelineContext) -> Path:
     """Return the validated PAD output path for a pipeline context."""

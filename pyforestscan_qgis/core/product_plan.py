@@ -33,7 +33,7 @@ PRODUCT_OUTPUTS = {
     ProductType.PAD: ("pad.tif", "Multi-band GeoTIFF raster", "Height-binned plant area density stack; one band per height bin."),
     ProductType.FHD: ("fhd.tif", "GeoTIFF raster", "Future foliage height diversity raster."),
     ProductType.CANOPY_COVER: ("canopy_cover.tif", "GeoTIFF raster", "Canopy cover raster."),
-    ProductType.RUMPLE: ("rumple_summary.csv", "CSV table", "Scalar rumple index summary table.")
+    ProductType.RUMPLE: ("rumple.tif", "GeoTIFF raster", "Spatial canopy-surface complexity with a supporting scalar summary.")
 }
 
 
@@ -87,7 +87,7 @@ class ProductPlannerRequest:
     pad_output_filename: str = "pad.tif"
     pai_output_filename: str = "pai.tif"
     fhd_output_filename: str = "fhd.tif"
-    rumple_output_filename: str = "rumple_summary.csv"
+    rumple_output_filename: str = "rumple.tif"
     canopy_cover_height_threshold: float = 2.0
     canopy_cover_output_filename: str = "canopy_cover.tif"
     title: str = "PyForestScan Product Planner"
@@ -435,8 +435,8 @@ def _validate_metric_output_parameters(request: ProductPlannerRequest) -> None:
         if output_name.name != filename or output_name.suffix.lower() not in {".tif", ".tiff"}:
             raise ProductPlanError(f"{label} output filename must be a simple .tif or .tiff filename.")
     rumple_name = Path(request.rumple_output_filename)
-    if rumple_name.name != request.rumple_output_filename or rumple_name.suffix.lower() != ".csv":
-        raise ProductPlanError("Rumple output filename must be a simple .csv filename because PyForestScan returns a scalar rumple index.")
+    if rumple_name.name != request.rumple_output_filename or rumple_name.suffix.lower() not in {".tif", ".tiff", ".csv"}:
+        raise ProductPlanError("Rumple output filename must be a simple GeoTIFF filename; CSV is accepted only for legacy scalar plans.")
 
 
 def _validate_canopy_cover_parameters(request: ProductPlannerRequest) -> None:
@@ -591,7 +591,7 @@ def _build_plan_item(
     pad_output_filename: str = "pad.tif",
     pai_output_filename: str = "pai.tif",
     fhd_output_filename: str = "fhd.tif",
-    rumple_output_filename: str = "rumple_summary.csv",
+    rumple_output_filename: str = "rumple.tif",
 ) -> ProductPlanItem:
     label = PRODUCT_LABELS[product]
     raw = feasibility.get(product.value)
@@ -631,7 +631,7 @@ def _plan_status_from_feasibility(status: str) -> str:
     return "Blocked"
 
 
-def _planned_outputs(product: ProductType, output_folder: Path, chm_output_filename: str = "chm.tif", canopy_cover_output_filename: str = "canopy_cover.tif", pad_output_filename: str = "pad.tif", pai_output_filename: str = "pai.tif", fhd_output_filename: str = "fhd.tif", rumple_output_filename: str = "rumple_summary.csv") -> tuple[PlannedOutput, ...]:
+def _planned_outputs(product: ProductType, output_folder: Path, chm_output_filename: str = "chm.tif", canopy_cover_output_filename: str = "canopy_cover.tif", pad_output_filename: str = "pad.tif", pai_output_filename: str = "pai.tif", fhd_output_filename: str = "fhd.tif", rumple_output_filename: str = "rumple.tif") -> tuple[PlannedOutput, ...]:
     filename, output_type, description = PRODUCT_OUTPUTS[product]
     if product is ProductType.CHM:
         filename = chm_output_filename

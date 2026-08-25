@@ -214,13 +214,13 @@ class ProductPlannerTests(unittest.TestCase):
         with self.assertRaises(ProductPlanError):
             build_product_plan(explorer_payload(), request)
 
-    def test_rumple_output_filename_must_be_simple_csv_name(self) -> None:
+    def test_rumple_output_filename_must_be_simple_raster_or_legacy_csv_name(self) -> None:
         request = ProductPlannerRequest(
             explorer_report_path=Path("report.json"),
             requested_products=(ProductType.RUMPLE,),
             output_folder=Path("out"),
             grid_resolution=1.0,
-            rumple_output_filename="rumple.tif",
+            rumple_output_filename="rumple.json",
         )
 
         with self.assertRaises(ProductPlanError):

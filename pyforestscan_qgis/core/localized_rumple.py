@@ -5,6 +5,44 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+@dataclass(frozen=True)
+class LocalRumpleSurface:
+    """Patch-centered Rumple field and scalar compatibility evidence."""
+    values: object
+    surface_areas: object
+    valid_mask: object
+    cell_resolution: tuple[float,float]
+    valid_patch_count: int
+    surface_area: float
+    planar_area: float
+    aggregate_rumple: float
+
+def calculate_local_rumple_surface(chm, cell_resolution, min_height=None):
+    """Calculate the exact two-triangle Rumple ratio for every 2x2 CHM patch."""
+    import numpy as np
+    data=np.asarray(chm,dtype=float)
+    if data.ndim!=2:raise ValueError(f"chm must be a 2D array (got shape {data.shape})")
+    if len(cell_resolution)!=2:raise ValueError("cell_resolution must be a (dx, dy) tuple")
+    dx,dy=map(float,cell_resolution)
+    if dx<=0 or dy<=0:raise ValueError("cell_resolution components must be > 0")
+    if min_height is not None:data=np.where(data>=float(min_height),data,np.nan)
+    shape=(max(0,data.shape[0]-1),max(0,data.shape[1]-1))
+    if data.shape[0]<2 or data.shape[1]<2:
+        empty=np.full(shape,np.nan,dtype=float);valid=np.zeros(shape,dtype=bool)
+        return LocalRumpleSurface(empty,empty.copy(),valid,(dx,dy),0,0.0,0.0,float("nan"))
+    z00,z10,z01,z11=data[:-1,:-1],data[1:,:-1],data[:-1,1:],data[1:,1:]
+    valid=np.isfinite(z00)&np.isfinite(z10)&np.isfinite(z01)&np.isfinite(z11)
+    tri1=.5*np.sqrt((dy*(z10-z00))**2+(dx*(z01-z00))**2+(dx*dy)**2)
+    tri2=.5*np.sqrt((dy*(z01-z11))**2+(dx*(z11-z10))**2+(dx*dy)**2)
+    areas=np.where(valid,tri1+tri2,np.nan);values=areas/(dx*dy)
+    count=int(np.count_nonzero(valid));surface=float(np.sum(areas[valid],dtype=float)) if count else 0.0;planar=count*dx*dy
+    return LocalRumpleSurface(values,areas,valid,(dx,dy),count,surface,planar,surface/planar if planar else float("nan"))
+
+def rumple_patch_extent(chm_extent, cell_resolution):
+    """Return bounds inset half a CHM cell so pixels are patch-centered."""
+    xmin,xmax,ymin,ymax=map(float,chm_extent);dx,dy=map(float,cell_resolution)
+    return (xmin+dx/2,xmax-dx/2,ymin+dy/2,ymax-dy/2)
+
 
 @dataclass(frozen=True)
 class LocalizedRumpleSpec:
@@ -35,27 +73,8 @@ def calculate_rumple_from_chm_window(chm_window, cell_resolution: tuple[float, f
     masked = numpy.where(valid, data, numpy.nan)
     if masked.shape[0] < 2 or masked.shape[1] < 2:
         return nodata
-    dx, dy = float(cell_resolution[0]), float(cell_resolution[1])
-    if dx <= 0 or dy <= 0:
-        raise ValueError("Cell resolution must be positive.")
-    z00 = masked[:-1, :-1]
-    z10 = masked[1:, :-1]
-    z01 = masked[:-1, 1:]
-    z11 = masked[1:, 1:]
-    quad_valid = numpy.isfinite(z00) & numpy.isfinite(z10) & numpy.isfinite(z01) & numpy.isfinite(z11)
-    if not quad_valid.any():
-        return nodata
-    p00 = numpy.stack([numpy.zeros_like(z00), numpy.zeros_like(z00), z00], axis=-1)
-    p10 = numpy.stack([numpy.full_like(z10, dx), numpy.zeros_like(z10), z10], axis=-1)
-    p01 = numpy.stack([numpy.zeros_like(z01), numpy.full_like(z01, dy), z01], axis=-1)
-    p11 = numpy.stack([numpy.full_like(z11, dx), numpy.full_like(z11, dy), z11], axis=-1)
-    tri1 = 0.5 * numpy.linalg.norm(numpy.cross(p10 - p00, p01 - p00), axis=-1)
-    tri2 = 0.5 * numpy.linalg.norm(numpy.cross(p11 - p10, p01 - p10), axis=-1)
-    surface_area = numpy.nansum(numpy.where(quad_valid, tri1 + tri2, numpy.nan))
-    planimetric_area = float(quad_valid.sum()) * dx * dy
-    if planimetric_area <= 0:
-        return nodata
-    return float(surface_area / planimetric_area)
+    surface=calculate_local_rumple_surface(masked,cell_resolution)
+    return surface.aggregate_rumple if surface.valid_patch_count else nodata
 
 
 def calculate_localized_rumple(chm, spec: LocalizedRumpleSpec):

@@ -113,12 +113,12 @@ class AdvancedProcessingTests(unittest.TestCase):
         self.assertEqual(0.45, request.extinction_coefficient)
         self.assertEqual(0.9, request.beer_lambert_constant)
 
-    def test_rumple_requires_csv_output(self) -> None:
+    def test_rumple_requires_geotiff_output(self) -> None:
         with self.assertRaises(ProcessingError):
             build_rumple_request(
                 AdvancedRumpleParameters(
                     input_path="plot.laz",
-                    output_path=Path("rumple.tif"),
+                    output_path=Path("rumple.csv"),
                     crs="EPSG:32610",
                     x_resolution=1.0,
                     y_resolution=1.0,

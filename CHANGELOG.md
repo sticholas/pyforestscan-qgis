@@ -1,5 +1,11 @@
 # Changelog
 
+## Phase 30A - Spatial Rumple Index raster
+
+- Added a patch-centered Rumple GeoTIFF whose valid-cell mean reproduces upstream PyForestScan scalar Rumple.
+- Added automatic CHM generation/reuse, scalar compatibility summaries, half-cell georeferencing, one-cell halo contracts, typed raster/summary outputs, Advanced Toolbox loading, and scientific equivalence tests.
+- Preserved legacy scalar CSV plans without interpreting them as spatial rasters.
+
 ## Phase 29E - Technical hardening and release readiness
 
 - Added authoritative architecture, state ownership, product/output capability, error taxonomy, retention, and clean-machine QA contracts.

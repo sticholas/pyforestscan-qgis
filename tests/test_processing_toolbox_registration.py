@@ -58,7 +58,7 @@ class ProcessingToolboxRegistrationTests(unittest.TestCase):
             "PAI",
             "Canopy Cover",
             "FHD",
-            "Rumple",
+            "Rumple Index Raster",
             "Point Density",
             "Voxel Statistic",
             "Generate DTM",

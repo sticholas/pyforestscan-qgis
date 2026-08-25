@@ -144,6 +144,8 @@ def _infer_product_key(path: Path) -> str:
         return "point_density"
     if "voxel" in stem:
         return "voxel_stat"
+    if "rumple" in stem and path.suffix.lower()==".csv":
+        return "rumple_summary"
     for key in ("chm", "dtm", "pad", "pai", "fhd", "rumple"):
         if stem == key or key in stem:
             return key

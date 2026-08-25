@@ -4,6 +4,10 @@ This directory contains implementation notes for contributors working on PyFores
 
 ## Current Topics
 
+- [Rumple Raster Architecture](RUMPLE_RASTER_ARCHITECTURE.md)
+- [Rumple CHM Dependency](RUMPLE_CHM_DEPENDENCY.md)
+- [Rumple Product Audit](RUMPLE_PRODUCT_AUDIT.md)
+
 - [Current Architecture Map](CURRENT_ARCHITECTURE_MAP.md)
 - [State Ownership Model](STATE_OWNERSHIP_MODEL.md)
 - [Product Execution Capabilities](PRODUCT_EXECUTION_CAPABILITIES.md)

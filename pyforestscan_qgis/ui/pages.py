@@ -1405,7 +1405,7 @@ class PlanningPage(MissionPage):
         self.pad_output_filename_edit = QLineEdit("pad.tif")
         self.pai_output_filename_edit = QLineEdit("pai.tif")
         self.fhd_output_filename_edit = QLineEdit("fhd.tif")
-        self.rumple_output_filename_edit = QLineEdit("rumple_summary.csv")
+        self.rumple_output_filename_edit = QLineEdit("rumple.tif")
         raster_layout.addRow("PAD output", self.pad_output_filename_edit)
         raster_layout.addRow("PAI output", self.pai_output_filename_edit)
         raster_layout.addRow("FHD output", self.fhd_output_filename_edit)
@@ -1528,7 +1528,7 @@ class PlanningPage(MissionPage):
             pad_output_filename=self.pad_output_filename_edit.text().strip() or "pad.tif",
             pai_output_filename=self.pai_output_filename_edit.text().strip() or "pai.tif",
             fhd_output_filename=self.fhd_output_filename_edit.text().strip() or "fhd.tif",
-            rumple_output_filename=self.rumple_output_filename_edit.text().strip() or "rumple_summary.csv",
+            rumple_output_filename=self.rumple_output_filename_edit.text().strip() or "rumple.tif",
             canopy_cover_height_threshold=self.canopy_cover_threshold_spin.value(),
             canopy_cover_output_filename=self.canopy_cover_output_filename_edit.text().strip() or "canopy_cover.tif",
             title="Mission Control Product Plan",

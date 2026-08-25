@@ -42,7 +42,7 @@ def infer_output_result_type(path: Path, result_type: str | None = None) -> str:
     if "voxel" in stem:
         return "voxel_stat_geotiff"
     if "rumple" in stem:
-        return "rumple_csv"
+        return "rumple_csv" if path.suffix.lower()==".csv" else "rumple_geotiff"
     return "chm_geotiff"
 
 

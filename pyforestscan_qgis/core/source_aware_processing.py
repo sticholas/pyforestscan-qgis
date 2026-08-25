@@ -53,7 +53,8 @@ class ProductPartitionPolicy:
 
 PRODUCT_POLICIES={
  "chm":ProductPartitionPolicy("chm",True,50.0,"discard buffered pixels; retain globally aligned core","deterministic first-valid core cells","Tiled/reference equivalence requires live measurement.",True,"provisional",True),
- **{p:ProductPartitionPolicy(p,False,0.0,"monolithic","not reviewed",("Partition merge behavior is not validated.",),False,"not reviewed",False) for p in ("pad","pai","fhd","rumple","canopy_cover","dtm","point_density","voxel_stat")}
+ "rumple":ProductPartitionPolicy("rumple",True,1.0,"retain patch-centered aligned core after one-cell CHM halo","deterministic first-valid patch cells",("Array-level equivalence is validated; coordinator execution is not enabled.",),True,"synthetic-equivalence",False),
+ **{p:ProductPartitionPolicy(p,False,0.0,"monolithic","not reviewed",("Partition merge behavior is not validated.",),False,"not reviewed",False) for p in ("pad","pai","fhd","canopy_cover","dtm","point_density","voxel_stat")}
 }
 
 @dataclass(frozen=True)
