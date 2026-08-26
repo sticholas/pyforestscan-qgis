@@ -1,5 +1,11 @@
 # Changelog
 
+## Phase 31D - Unify folder and polygon LiDAR processing
+
+- Applied trusted repository CRS assignments to raw-unknown LAS/LAZ members before direct or catalog overlap selection.
+- Added raw/effective CRS provenance, conflict blocking, selection diagnostics, and an Olaa-shaped regression.
+- Unified polygon assignment state with the folder workflow while preserving strict polygon alignment and folder source-local fallback.
+
 ## Phase 31A
 
 - Added authoritative LiDAR preparation assessment, planning, recovery, recommendation, provenance, quality, and checkpoint contracts.

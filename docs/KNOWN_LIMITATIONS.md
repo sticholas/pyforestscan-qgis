@@ -1,5 +1,8 @@
 # Known Limitations
 
+- Polygon processing cannot use the folder-only source-local CRS fallback. A real embedded, sidecar, file, repository, consensus, or exact QGIS datasource CRS is required.
+- Legacy catalogs may contain historical repository override metadata. New assignments use the shared spatial assignment store and are applied at query time.
+
 - Durable automatic artifact routing is initially enabled for standalone CHM/Rumple; other HAG consumers retain existing execution paths.
 - Source-local ground/HAG preparation requires trusted linear units; magnitude and LAS scale are insufficient evidence.
 - Large preparation is isolated in PBM, but adaptive tiled Delaunay HAG is deferred until buffered-boundary equivalence is validated.

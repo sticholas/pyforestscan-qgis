@@ -1,5 +1,7 @@
 # Automatic CRS Resolution
 
+Polygon overlap is evaluated only after resolving the effective source spatial profile. Automatic exact geometry transformation is allowed; coordinate guessing and source-local fake alignment are not.
+
 Automatic preparation does not weaken CRS policy. A standalone source may remain CRS-undefined, but distance-based preparation requires separate trusted unit evidence. Polygon/reprojection still requires a resolved CRS.
 
 Missing CRS is serialized as explicit `source_local` mode with JSON `null`, never the string `"None"`. Source-local mode is not a CRS assignment and remains invalid for polygon alignment.

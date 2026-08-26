@@ -21,6 +21,7 @@ from .batch_executor import BatchExecutor
 from .ept_bounds import EptBounds
 from .ept_repository import incorrect_ept_catalog_detected
 from .direct_lidar_selection import DirectLidarFolderSelector, PolygonLidarSelectionResult, SelectionMethodComparison, compare_selection_methods
+from .effective_source_spatial_profile import shared_repository_crs
 from .lidar_catalog import catalog_summary
 from .lidar_catalog_models import CatalogThresholds, LidarCatalogQueryResult, PolygonQueryGeometry, default_lidar_catalog_path
 from .spatial_selection import Bounds2D
@@ -110,8 +111,14 @@ class PolygonBatchPreflightReport:
 
 def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: Callable[[], tuple[bool, str]] | None = None) -> PolygonBatchPreflightReport:
     """Resolve repository identity, select sources, and build one execution plan."""
+    assigned_crs, _assignment_source = shared_repository_crs(request.lidar_folder)
+    effective_repository_crs = assigned_crs or request.repository_crs_override
+    if effective_repository_crs != request.repository_crs_override:
+        request = replace(request, repository_crs_override=effective_repository_crs)
     service = PolygonSourceSelectionService()
     repository = service.resolve_repository(request.lidar_folder, request.catalog_path)
+    if effective_repository_crs and repository.repository_kind != "ept":
+        repository = replace(repository, source_crs=effective_repository_crs, resolution_method="shared_spatial_assignment")
     catalog_path = repository.catalog_path or request.catalog_path or default_lidar_catalog_path(repository.normalized_path)
     query_geometry = derive_polygon_query_geometry(request.polygon, catalog_crs=repository.source_crs or request.catalog_crs)
     batch_folder = request.batch_folder or _planned_polygon_batch_folder(request.output_folder)
@@ -183,7 +190,7 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         )
     if repository.repository_kind == "ept" and Path(catalog_path).exists() and incorrect_ept_catalog_detected(catalog_path, repository.normalized_path):
         blockers.append("Incorrect EPT Catalog Detected. Repair EPT Catalog before running; internal EPT node files should be one logical EPT dataset.")
-    selection = service.select_sources(repository, request.polygon, catalog_crs=request.catalog_crs, thresholds=request.thresholds)
+    selection = service.select_sources(repository, request.polygon, catalog_crs=repository.source_crs or request.catalog_crs, thresholds=request.thresholds)
     if repository.repository_kind == "ept":
         query_geometry = PolygonQueryGeometry(
             envelope=selection.transformed_envelope.to_bounds(),
@@ -620,6 +627,36 @@ def write_polygon_batch_manifest(
         "mask_records": mask_records or [],
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    _write_polygon_source_resolution(report, folder)
+    return path
+
+
+def _write_polygon_source_resolution(report: PolygonBatchPreflightReport, folder: Path) -> Path:
+    """Persist raw/effective selection evidence without changing source metadata."""
+    path = folder / "polygon_source_resolution.json"
+    direct = report.direct_selection
+    metadata_by_path = {} if direct is None else {str(item.path): item for item in direct.metadata}
+    rejected_by_path = {} if direct is None else {str(item.path): item for item in direct.rejected_sources}
+    rows = []
+    candidate_paths = set(metadata_by_path) | {str(item.path) for item in report.selected_sources} | set(rejected_by_path)
+    for source_path in sorted(candidate_paths):
+        metadata = metadata_by_path.get(source_path)
+        rejected = rejected_by_path.get(source_path)
+        selected = next((item for item in report.selected_sources if str(item.path) == source_path), None)
+        rows.append({
+            "path": source_path,
+            "raw_source_crs": None if metadata is None else metadata.embedded_crs,
+            "effective_crs": selected.crs if selected is not None else (None if rejected is None else rejected.effective_crs),
+            "assignment_source": "" if rejected is None else rejected.effective_crs_source,
+            "polygon_crs": report.request.polygon.processing_crs or report.request.polygon.source_crs,
+            "comparison_crs": report.query_geometry.catalog_crs,
+            "raw_bounds": None if metadata is None or metadata.bounds is None else metadata.bounds.__dict__,
+            "transformed_polygon_bounds": report.query_geometry.envelope.__dict__,
+            "overlap": selected is not None,
+            "reason": "selected" if selected is not None else ("not inspected" if rejected is None else rejected.reason),
+            "reason_code": "SELECTED" if selected is not None else ("NOT_INSPECTED" if rejected is None else rejected.reason_code),
+        })
+    path.write_text(json.dumps({"repository": str(report.request.lidar_folder), "sources": rows}, indent=2), encoding="utf-8")
     return path
 
 

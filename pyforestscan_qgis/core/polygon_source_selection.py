@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -359,10 +359,11 @@ class PolygonSourceSelectionService:
                 blockers = (_message("CATALOG_NOT_SPATIALLY_USABLE", "blocker", "Catalog Needs Repair", blocker_text, "Run Inspect Repository or Repair Catalog before polygon processing.", "Repair Catalog"),)
             else:
                 blockers = (_message("NO_COVERAGE", "blocker", "No LiDAR coverage", "No LiDAR coverage was found for this area."),)
+        effective_records = tuple(replace(item, crs=item.crs or source_crs) for item in query.source_records)
         return PolygonSourceSelectionResult(
             repository_kind=repository.repository_kind,
-            logical_candidates=query.source_records,
-            selected_sources=query.source_records,
+            logical_candidates=effective_records,
+            selected_sources=effective_records,
             rejected_sources=(),
             transformed_polygon=query_geometry.exact_polygon_wkt,
             transformed_envelope=transformed_envelope,
@@ -509,6 +510,8 @@ def build_polygon_execution_plan(
     readiness = "ready" if backend_ready and not blockers and bool(source_selection.selected_sources) else "blocked"
     payload = {
         "repository_id": repository.repository_id,
+        "repository_crs": repository.source_crs,
+        "repository_spatial_identity": repository.resolution_method,
         "polygon_hash": _hash_text(polygon_context.source_geometry),
         "polygon_crs": polygon_context.source_crs,
         "products": products,
@@ -518,6 +521,7 @@ def build_polygon_execution_plan(
         "backend_ready": backend_ready,
         "backend_message": backend_message,
         "selected_source_paths": [str(source.path) for source in source_selection.selected_sources],
+        "selected_source_crs": [source.crs for source in source_selection.selected_sources],
     }
     signature = _hash_text(json.dumps(payload, sort_keys=True, default=str))
     return PolygonExecutionPlan(

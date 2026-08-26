@@ -1,5 +1,7 @@
 # Polygon LiDAR Processing Architecture
 
+Phase 31D removes the catalog-only CRS dependency. Source selection resolves shared assignments before either direct or catalog overlap, then reuses common preparation, PBM execution, recovery, output, and loading contracts. Polygon-specific behavior is exact spatial subsetting and final masking.
+
 Phase 27F makes polygon-folder processing a Batch-owned workflow. Dataset remains a single-dataset page; Batch owns folder discovery, polygon preflight, clipped-source staging, checkpointing, resume, retry, summaries, and Results handoff.
 
 ## Modules

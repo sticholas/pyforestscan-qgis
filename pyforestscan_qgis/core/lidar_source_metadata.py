@@ -35,6 +35,7 @@ class LidarSourceMetadata:
     embedded_crs: str | None = None
     repository_crs_override: str | None = None
     effective_crs: str | None = None
+    effective_crs_source: str = ""
     point_count: int | None = None
     metadata_reader: str = HEADER_READER_VERSION
     metadata_signature: str = ""
@@ -74,6 +75,7 @@ class LidarSourceMetadata:
             embedded_crs=self.embedded_crs,
             repository_crs_override=override,
             effective_crs=effective,
+            effective_crs_source="embedded_metadata" if self.embedded_crs else ("legacy_repository_override" if override else ""),
             point_count=self.point_count,
             metadata_reader=self.metadata_reader,
             metadata_signature=_metadata_signature(self.path, self.file_size, self.modified_time_ns, self.metadata_reader, self.bounds, effective, self.point_count),
@@ -97,6 +99,7 @@ class LidarSourceMetadata:
             "embedded_crs": self.embedded_crs,
             "repository_crs_override": self.repository_crs_override,
             "effective_crs": self.effective_crs,
+            "effective_crs_source": self.effective_crs_source,
             "point_count": self.point_count,
             "metadata_reader": self.metadata_reader,
             "metadata_signature": self.metadata_signature,
@@ -126,6 +129,7 @@ class LidarSourceMetadata:
             embedded_crs=record.source_crs,
             repository_crs_override=(repository_crs_override or "").strip() or None,
             effective_crs=effective,
+            effective_crs_source="embedded_metadata" if record.source_crs else ("legacy_repository_override" if repository_crs_override else ""),
             point_count=record.point_count,
             metadata_reader="catalog",
             metadata_signature=record.header_signature or _metadata_signature(record.source_path, record.file_size, record.modified_time_ns, "catalog", record.bounds, effective, record.point_count),
@@ -203,6 +207,7 @@ class HeaderMetadataService:
             embedded_crs=record.source_crs,
             repository_crs_override=(repository_crs_override or "").strip() or None,
             effective_crs=effective,
+            effective_crs_source="embedded_metadata" if record.source_crs else ("legacy_repository_override" if repository_crs_override else ""),
             point_count=record.point_count,
             metadata_reader=self.reader_version,
             metadata_signature=_metadata_signature(path, record.file_size, record.modified_time_ns, self.reader_version, bounds, effective, record.point_count),

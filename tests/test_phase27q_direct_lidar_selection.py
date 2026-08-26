@@ -58,7 +58,7 @@ class Phase27QDirectSelectionTests(unittest.TestCase):
             selected = DirectLidarFolderSelector().select(root, polygon, repository_crs_override="EPSG:6635")
 
         self.assertFalse(missing.ready)
-        self.assertIn("coordinate system is unknown", " ".join(missing.blockers))
+        self.assertIn("does not identify its coordinate system", " ".join(missing.blockers))
         self.assertTrue(selected.ready)
         self.assertEqual(selected.intersecting_source_paths, (tile,))
 

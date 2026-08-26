@@ -1,3 +1,7 @@
+# PyForestScan QGIS User Guide
+
+Folder and Polygon Selection use the same products and automatic processing controls. Polygon Selection additionally requires trustworthy spatial alignment. If prompted, choose the repository CRS (or use the matching project CRS); Mission Control immediately retries source selection.
+
 ## Phase 29B smart workflow
 
 Mission Control stays closed when QGIS starts unless **Advanced Settings > Open Mission Control when QGIS starts** is enabled. Automatic is the normal processing profile; repository setup and spatial readiness are refreshed as needed, while specialist execution controls remain under Custom.

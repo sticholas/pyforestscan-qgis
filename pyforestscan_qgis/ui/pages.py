@@ -85,7 +85,7 @@ from ..core.lidar_catalog_jobs import CatalogJobRunner, CatalogJobSpec, CatalogJ
 from ..core.lidar_catalog_models import default_lidar_catalog_path, move_lidar_catalog_to_local_storage
 from ..core.lidar_catalog_probe import quick_probe_lidar_repository, select_lidar_repository_path
 from ..core.lidar_repository_discovery import discover_lidar_repository
-from ..core.lidar_catalog_integrity import inspect_catalog_integrity, repair_catalog, source_view_rows, assign_repository_crs_override, inspect_catalog_records
+from ..core.lidar_catalog_integrity import inspect_catalog_integrity, repair_catalog, source_view_rows, inspect_catalog_records
 from ..core.repository_actions import repository_action_states, repository_setup_recommendation
 from ..core.repository_coverage import build_repository_coverage_model
 from ..core.repository_diagnostics import export_repository_diagnostic_report
@@ -3199,8 +3199,7 @@ class BatchPage(MissionPage):
 
     def assign_polygon_repository_crs(self) -> None:
         folder = self.polygon_lidar_folder_edit.text().strip()
-        path = self._polygon_catalog_path()
-        if not folder or path is None:
+        if not folder:
             self.polygon_index_plan_text.setPlainText("Choose a LiDAR repository before assigning a coordinate system.")
             return
         crs, ok = QInputDialog.getText(self, "Assign Repository Coordinate System", "CRS auth id, for example EPSG:6635")
@@ -3208,17 +3207,16 @@ class BatchPage(MissionPage):
             self.polygon_index_plan_text.setPlainText("Repository CRS assignment cancelled.")
             return
         selection = select_lidar_repository_path(folder)
-        before = inspect_catalog_integrity(path, selection.normalized_path)
-        override = assign_repository_crs_override(path, selection.normalized_path, crs.strip(), assigned_by="qgis_user", method="qgis_crs_selector", note="Assigned from Mission Control.")
-        after = inspect_catalog_integrity(path, selection.normalized_path)
+        assignment = default_spatial_assignment_store().assign_repository(selection.normalized_path, crs.strip())
         self.polygon_index_plan_text.setPlainText("\n".join([
             "Repository Coordinate System Assigned",
-            f"CRS: {override.crs}",
-            f"Embedded CRS known before: {before.embedded_crs_known_count:,}",
-            f"Effective CRS-known sources after: {after.effective_crs_known_count:,}",
+            f"CRS: {assignment.horizontal_crs}",
+            "Unknown member files now inherit this trusted repository assignment.",
             "Original LAS/LAZ files were not modified.",
         ]))
+        self.preflight_report = None
         self.refresh_catalog_status()
+        self.run_preflight()
 
     def add_polygon_repository_coverage(self) -> None:
         folder = self.polygon_lidar_folder_edit.text().strip()
@@ -3842,12 +3840,12 @@ class BatchPage(MissionPage):
         )
         catalog_path = self._polygon_catalog_path()
         repository_crs_override = None
-        if catalog_path is not None:
-            try:
-                selection = select_lidar_repository_path(folder)
-                repository_crs_override = inspect_catalog_integrity(catalog_path, selection.normalized_path).repository_crs_override
-            except Exception:
-                repository_crs_override = None
+        try:
+            selection = select_lidar_repository_path(folder)
+            assignment = default_spatial_assignment_store().spatial_assignment_for(selection.normalized_path, selection.normalized_path)
+            repository_crs_override = assignment.horizontal_crs if assignment is not None else None
+        except Exception:
+            repository_crs_override = None
         return PolygonBatchRequest(
             lidar_folder=Path(folder),
             output_folder=Path(output_folder),

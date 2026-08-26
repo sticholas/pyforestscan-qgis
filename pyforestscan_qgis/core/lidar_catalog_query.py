@@ -110,7 +110,8 @@ def query_catalog_for_polygon(
         warnings.extend(integrity.messages)
     elif integrity.extent_union is not None and not geometry.envelope.intersects(integrity.extent_union):
         warnings.append("Healthy catalog coverage does not overlap the selected polygon envelope.")
-    if integrity.status == "CRS Assignment Required":
+    effective_assignment_supplied = bool((catalog_crs or "").strip())
+    if integrity.status == "CRS Assignment Required" and not effective_assignment_supplied:
         records = ()
     candidate_count = len(records)
     limited = False
@@ -157,7 +158,7 @@ def query_catalog_for_polygon(
         },
         point_estimate_confidence=estimate_confidence,
         workload_estimate=workload_estimate,
-        catalog_integrity_status=integrity.status,
+        catalog_integrity_status="Healthy with effective repository assignment" if integrity.status == "CRS Assignment Required" and effective_assignment_supplied else integrity.status,
         catalog_usable_source_count=integrity.rtree_row_count,
         skip_reason_counts=integrity.skip_reason_counts,
         repository_extent=integrity.extent_union,

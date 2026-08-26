@@ -1,5 +1,7 @@
 # Canopy Height Model (CHM)
 
+Folder and polygon modes use the same HAG preparation and CHM method. Polygon mode adds buffered spatial preparation and an exact final polygon mask while retaining the effective source/output CRS.
+
 When HAG is absent, PBM may prepare it from a compatible DTM, observed class-2 ground, or validated automatic SMRF ground. CHM metadata records HAG method and preparation signature. Vegetation classes 3/4/5 are not required.
 
 For standalone LAS/LAZ without CRS metadata, CHM may run in explicit source-local mode only when PBM verifies an existing normalized-height dimension. Coordinates and resolution remain in source units, no CRS is assigned, and ground normalization is not recalculated or silently substituted. A mismatch between inspected and execution dimensions is reported as `SOURCE_DIMENSION_MISMATCH`.

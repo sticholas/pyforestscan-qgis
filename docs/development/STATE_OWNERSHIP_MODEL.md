@@ -1,5 +1,7 @@
 # State Ownership Model
 
+Repository CRS assignment has one owner: the shared user-local spatial assignment store. Catalog metadata remains raw/cache state and does not own current user intent.
+
 `BatchExecutionReadiness` owns validated source disposition and plan identity. `BatchExecutionRequest` owns the immutable standard-Batch worker launch. Mission Control owns editable inputs and a disposable `preflight_report` projection. Progress events and list-row text do not own execution inputs.
 
 | Scope | Owner | Examples | Invalidation |

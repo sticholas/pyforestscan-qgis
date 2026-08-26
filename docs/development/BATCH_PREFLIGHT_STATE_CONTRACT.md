@@ -1,5 +1,7 @@
 # Batch Preflight State Contract
 
+Polygon plan identity includes the effective repository CRS and transformed polygon state. Changing a trusted repository assignment invalidates the old preflight and rebuilds selection.
+
 ## Previous lifecycle and failure
 
 Mission Control stored `preflight_report` as both a readiness presentation object and an execution dependency. Any execution-defining input invalidated it. During a standard run, `_mark_selected_files_queued()` changed `QListWidgetItem` text; `itemChanged` was wired to normal input invalidation, so the just-approved report became `None`. Progress then read `self.preflight_report.files_to_skip` and raised `AttributeError`.

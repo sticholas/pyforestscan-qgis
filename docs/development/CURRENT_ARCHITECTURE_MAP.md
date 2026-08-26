@@ -1,5 +1,7 @@
 # Current Architecture Map
 
+Phase 31D adds `core/effective_source_spatial_profile.py` between source metadata and polygon selection. Folder and polygon paths then converge on shared preparation, execution, recovery, and output systems.
+
 Phase 31A adds a PBM-owned LiDAR preparation layer between request validation and product adapters. Assessments, plans, bounded classification samples, prepared checkpoints, provenance, and recommendations are plugin-owned contracts; PyForestScan/PDAL perform ground and HAG operations.
 
 Phase 30F adds protocol-level spatial-reference and height-normalization contracts plus PBM runtime self-identity. Job diagnostics record actual backend module locations and source-local execution stages.
