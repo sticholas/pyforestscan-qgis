@@ -23,6 +23,9 @@ from .processing_engine import ProcessingEngineService, ProcessingEngineVerifier
 from .version_manager import BackendVersionManager, VersionCompatibilityResult
 
 
+_PROCESSING_ENGINE_SERVICES: dict[str, ProcessingEngineService] = {}
+
+
 class BackendService:
     """Detect, verify, preview, repair-plan, and guard the user-local backend."""
 
@@ -71,7 +74,7 @@ class BackendService:
 
     def execution_service(self) -> BackendExecutionService:
         """Return the controlled PBM processing execution service."""
-        return BackendExecutionService(self.paths, verifier=self.verify_backend)
+        return BackendExecutionService(self.paths, verifier=self.verify_backend, engine_service=self.processing_engine_service())
 
     def can_execute_processing(self) -> BackendExecutionAvailability:
         """Return whether PBM backend processing can run now."""
@@ -83,7 +86,14 @@ class BackendService:
 
     def processing_engine_service(self) -> ProcessingEngineService:
         """Return the single setup, state, contract, and runtime-token owner."""
-        return ProcessingEngineService(self.paths, setup_callback=self.install_backend)
+        key = str(self.paths.backend_root.resolve())
+        service = _PROCESSING_ENGINE_SERVICES.get(key)
+        if service is None:
+            service = ProcessingEngineService(self.paths, setup_callback=self.install_backend)
+            _PROCESSING_ENGINE_SERVICES[key] = service
+        elif service.setup_callback is None:
+            service.setup_callback = self.install_backend
+        return service
 
     def setup_processing_engine(self, progress_callback=None):
         """Idempotently install or repair the managed engine under one process lock."""

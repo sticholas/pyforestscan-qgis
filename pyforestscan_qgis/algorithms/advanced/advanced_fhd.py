@@ -31,6 +31,6 @@ class AdvancedFhdAlgorithm(AdvancedPyForestScanAlgorithm):
         dataset, crs, output, xres, yres, add = self.common_values(parameters, context)
         params = AdvancedVoxelParameters(dataset, output, crs, xres, yres, add, self.parameterAsDouble(parameters, "VOXEL_HEIGHT", context), self.parameterAsDouble(parameters, "MIN_HEIGHT", context), self.optional_double(parameters, "MAX_HEIGHT", context), 1.0, True)
         request = build_fhd_request(params)
-        result = run_adapter_call(feedback, "FHD", lambda: PyForestScanAdapter().create_fhd(request))
+        result = run_adapter_call(feedback, "FHD", lambda: PyForestScanAdapter(execution_mode="pbm_backend").create_fhd(request))
         load_raster_if_requested(result.output_path, "fhd_geotiff", context, feedback, add)
         return self.push_result(feedback, result.output_path, "FHD")

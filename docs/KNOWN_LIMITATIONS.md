@@ -1,5 +1,9 @@
 # Known Limitations
 
+## Phase 31H live gates
+
+Authoritative state/token behavior, stale-handler detection, 100-transition soak, product API smoke, and production-route guards are automated. Clean Windows downloads, two simultaneous live QGIS instances, no-console observation, corrupted-package repair, and a fresh Polygon CHM/Rumple completion still require manual release evidence.
+
 ## Phase 31G live validation
 
 Runtime identity, contract drift, no-QGIS-fallback behavior, and product mappings are automated. A fresh clean-Windows setup, multiple-QGIS-instance behavior, no-console observation, and the real two-LAS Polygon CHM plus rumple run still require live QGIS release-gate evidence. These are not claimed as passed by the QGIS-free suite.

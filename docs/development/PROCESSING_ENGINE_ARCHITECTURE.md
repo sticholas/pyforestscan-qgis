@@ -1,5 +1,9 @@
 # Processing Engine Architecture
 
+## Phase 31H authority
+
+One shared `ProcessingEngineService` per engine root owns setup, state publication, token issuance, and execution environment. `processing_engine.json` is authoritative; `backend.json` is installation metadata. See [Authoritative Processing Engine State](AUTHORITATIVE_PROCESSING_ENGINE_STATE.md).
+
 ## Phase 31G convergence
 
 `ProcessingEngineService` owns the authoritative state, setup/repair callback, verified runtime token, and shared environment. Folder and Polygon launch through the managed executable only. QGIS-side scientific imports are architecture violations, and launcher/coordinator/worker identity is persisted for diagnosis. See [Processing Engine Convergence](PROCESSING_ENGINE_CONVERGENCE.md).

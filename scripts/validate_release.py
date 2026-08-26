@@ -149,7 +149,7 @@ def _validate_pbm_internal_beta_guard() -> list[str]:
     version = (REPOSITORY_ROOT / PLUGIN_DIR_NAME / "__version__.py").read_text(encoding="utf-8")
     required = (
         "install_backend_internal_beta" in pages,
-        "This will install PyForestScan backend packages into your user-local PyForestScan folder" in pages,
+        "This will set up all PyForestScan processing components in your user-local PyForestScan folder" in pages,
         "It will not modify QGIS or system Python" in pages,
         "backend_install_availability" in installer,
         "BackendPlatform.WINDOWS" in installer,

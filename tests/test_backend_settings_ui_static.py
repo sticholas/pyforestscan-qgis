@@ -15,9 +15,9 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 
         self.assertIn('self.install_backend_button = QPushButton("Set Up")', source)
-        self.assertIn('self.install_backend_button.setText("Ready" if state.status.value == "Ready" else "Set Up")', source)
+        self.assertIn('self.install_backend_button.setText("Ready" if state.ready_for_processing else ("Repair" if state.repair_needed else "Set Up"))', source)
         self.assertIn("self.install_backend_button.clicked.connect(self.install_backend_internal_beta)", source)
-        self.assertIn("This will install PyForestScan backend packages into your user-local PyForestScan folder", source)
+        self.assertIn("This will set up all PyForestScan processing components in your user-local PyForestScan folder", source)
         self.assertIn("It will not modify QGIS or system Python", source)
 
     def test_phase_22b_preview_and_compatibility_buttons_are_present(self) -> None:

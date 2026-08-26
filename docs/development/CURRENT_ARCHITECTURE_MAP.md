@@ -1,5 +1,9 @@
 # Current Architecture Map
 
+## Phase 31H execution authority
+
+Mission Control and Advanced Toolbox explicitly select the managed adapter. BackendService shares one engine service. Process obtains its token before job creation; BackendExecutionService consumes that state/token and launches managed Python. Legacy backend checks are diagnostic only.
+
 ## Phase 31G scientific runtime
 
 Mission Control builds requests in QGIS, `ProcessingEngineService` verifies and freezes runtime identity, `BackendExecutionService` launches managed Python, and backend runner modules execute science. `ScientificRuntimeBoundary` prevents QGIS Python from becoming an accidental second scientific runtime.

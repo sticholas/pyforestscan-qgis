@@ -1,5 +1,14 @@
 # Changelog
 
+## Phase 31H - Authoritative one-click Processing Engine setup
+
+- Unified setup, repair, final verification, persisted state, runtime token, and launch readiness under one shared Processing Engine service.
+- Removed the normal Verify Backend ritual and routed normal Repair through the same one-click setup transaction.
+- Added critical-package fingerprinting, callable signature reporting, and all-product capability smoke results.
+- Removed default/auto scientific adapters from Mission Control, Process workers, and Advanced Toolbox production entry points.
+- Added object-valued engine state synchronization and an inline Process-page Set Up/Repair action that preserves selections.
+- Added state convergence, stale-handlers, token reuse, 100-transition soak, and legacy-route guard tests.
+
 ## Phase 31G - Processing Engine runtime convergence
 
 - Made the managed Processing Engine the sole normal scientific runtime and blocked QGIS-Python scientific fallback.

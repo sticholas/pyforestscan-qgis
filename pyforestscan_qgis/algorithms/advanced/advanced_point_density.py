@@ -54,6 +54,6 @@ class AdvancedPointDensityAlgorithm(AdvancedPyForestScanAlgorithm):
             cell_area=self.optional_double(parameters, self.CELL_AREA, context),
         )
         request = build_point_density_request(params)
-        result = run_adapter_call(feedback, "Point Density", lambda: PyForestScanAdapter().create_point_density(request))
+        result = run_adapter_call(feedback, "Point Density", lambda: PyForestScanAdapter(execution_mode="pbm_backend").create_point_density(request))
         load_raster_if_requested(result.output_path, "point_density_geotiff", context, feedback, add)
         return self.push_result(feedback, result.output_path, "Point Density")

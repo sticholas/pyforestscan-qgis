@@ -125,7 +125,7 @@ class PointCloudPreprocessAlgorithm(AdvancedPyForestScanAlgorithm):
             compress=self.parameterAsBool(parameters, self.COMPRESS, context),
         )
         request = build_point_cloud_preprocess_request(params)
-        result = run_adapter_call(feedback, "Preprocess Point Cloud", lambda: PyForestScanAdapter().preprocess_point_cloud(request))
+        result = run_adapter_call(feedback, "Preprocess Point Cloud", lambda: PyForestScanAdapter(execution_mode="pbm_backend").preprocess_point_cloud(request))
         feedback.setProgress(100)
         message = self.tr(f"Preprocessed point cloud written: {result.output_path}. Operations: {', '.join(result.operations) or 'none'}")
         feedback.pushInfo(message)

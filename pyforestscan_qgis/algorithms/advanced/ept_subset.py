@@ -142,7 +142,7 @@ class EptSubsetExtractAlgorithm(AdvancedPyForestScanAlgorithm):
             reproject=self.parameterAsBool(parameters, self.REPROJECT, context),
             compress=self.parameterAsBool(parameters, self.COMPRESS, context),
         )
-        result = run_adapter_call(feedback, "EPT Subset", lambda: PyForestScanAdapter().extract_lidar_subset(request))
+        result = run_adapter_call(feedback, "EPT Subset", lambda: PyForestScanAdapter(execution_mode="pbm_backend").extract_lidar_subset(request))
         message = compact_ept_subset_summary(result)
         feedback.setProgress(100)
         feedback.pushInfo(self.tr(message))

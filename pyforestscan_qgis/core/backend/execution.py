@@ -21,7 +21,7 @@ from .native_worker import classify_worker_exit, write_native_crash_bundle
 from .paths import BackendPaths
 from ..processing_monitor import ProcessingTimeoutPolicy, evaluate_liveness, heartbeat_path
 from .process_env import build_processing_engine_environment, clean_env_summary, hidden_subprocess_kwargs, summarize_subprocess_output
-from .processing_engine import ProcessingEngineVerifier
+from .processing_engine import ProcessingEngineService, ProcessingEngineVerifier, ProcessingRuntimeToken
 from ..atomic_state import atomic_write_json
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
@@ -68,6 +68,7 @@ class BackendExecutionService:
         timeout_seconds: int | None = None,
         timeout_policy: ProcessingTimeoutPolicy | None = None,
         plugin_parent: Path | None = None,
+        engine_service: ProcessingEngineService | None = None,
     ) -> None:
         self.paths = paths
         self.verifier = verifier
@@ -77,6 +78,7 @@ class BackendExecutionService:
         self.plugin_parent = plugin_parent or Path(__file__).resolve().parents[3]
         self.log_path = backend_log_path("execute", paths.logs_dir)
         self._runtime_contract: dict[str, Any] | None = None
+        self.engine_service = engine_service or ProcessingEngineService(paths)
 
     def can_execute_processing(self) -> BackendExecutionAvailability:
         """Return whether PBM backend processing can run now."""
@@ -86,8 +88,10 @@ class BackendExecutionService:
                 return BackendExecutionAvailability(False, f"Processing Engine is not ready: {verification.summary}", self.paths.python_executable)
             ok, message = validate_backend_python_executable(self.paths.python_executable)
             return BackendExecutionAvailability(ok, message, self.paths.python_executable)
-        report = ProcessingEngineVerifier(self.paths, runner=self.runner, plugin_parent=self.plugin_parent).verify()
-        return BackendExecutionAvailability(report.ready, report.summary, self.paths.python_executable)
+        state = self.engine_service.state(quick=True)
+        if not state.ready_for_processing:
+            state = self.engine_service.state(quick=False)
+        return BackendExecutionAvailability(state.ready_for_processing, state.message, self.paths.python_executable)
 
     def verify_runner(self) -> BackendExecutionAvailability:
         """Verify that the backend runner module can be imported by backend Python."""
@@ -115,7 +119,7 @@ class BackendExecutionService:
 
     def submit_polygon_coordinator(self, payload_path: Path, job_dir: Path):
         """Launch a detached PBM coordinator and return its process identity."""
-        token = ProcessingEngineVerifier(self.paths, runner=self.runner, plugin_parent=self.plugin_parent).assert_ready_for(("chm", "rumple"))
+        token = self.engine_service.runtime_token_for(("chm", "rumple"))
         command=[str(self.paths.python_executable),"-m","pyforestscan_qgis.backend_runner.polygon_job_coordinator","--payload",str(payload_path)]
         env=build_processing_engine_environment(self.paths.environment_path,self.paths.platform.value)
         env["PYFORESTSCAN_RUNTIME_TOKEN"] = json.dumps(token.to_dict(), sort_keys=True)
@@ -137,7 +141,7 @@ class BackendExecutionService:
     def run_processing_job(self, spec: BackendJobSpec, spec_path: Path | None = None) -> BackendJobResult:
         """Run one PBM backend job spec and return the structured result."""
         if self.runner is subprocess.run:
-            token = ProcessingEngineVerifier(self.paths, runner=self.runner, plugin_parent=self.plugin_parent).assert_ready_for((spec.product,))
+            token = ProcessingRuntimeToken.from_dict(spec.runtime_token) or self.engine_service.runtime_token_for((spec.product,))
         else:
             availability = self.can_execute_processing()
             if not availability.ready:

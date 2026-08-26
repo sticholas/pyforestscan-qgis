@@ -1,5 +1,7 @@
 # Mission Control
 
+Normal Tools & Setup shows one Processing Engine card and one Set Up/Repair action. Recheck and technical backend information are collapsed under Troubleshooting. Process shows a compact Set Up/Repair action in place, preserves selections, and refreshes automatically through `processingEngineStateChanged`.
+
 The normal setup surface presents one Processing Engine state: Ready, Checking, Setup required, Needs repair, Update required, or Failed. Setup verifies automatically. Technical PBM terminology, module contracts, and logs remain under troubleshooting. Process validates readiness before preserving a job token or creating batch work.
 
 ## Processing Engine status

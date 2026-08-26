@@ -6,7 +6,7 @@ from pyforestscan_qgis.backend_runner.job_coordinator import DurableJobCoordinat
 from pyforestscan_qgis.core.atomic_state import atomic_write_json
 from pyforestscan_qgis.core.adapter import PyForestScanAdapter
 from pyforestscan_qgis.backend_runner.runtime_contract import inspect_runtime_contract
-from pyforestscan_qgis.core.backend.processing_engine import ProcessingRuntimeToken,contract_hash
+from pyforestscan_qgis.core.backend.processing_engine import ProcessingRuntimeToken,contract_hash,product_capability_hash
 
 def _atomic_pickle(path,value):
     import uuid
@@ -44,7 +44,15 @@ def main():
 def _validate_and_trace_runtime(job_dir,job_id):
     contract=inspect_runtime_contract();token=ProcessingRuntimeToken.from_dict(json.loads(os.environ.get("PYFORESTSCAN_RUNTIME_TOKEN","{}")))
     if token is None:raise RuntimeError("ENGINE_RUNTIME_TOKEN_MISSING: polygon coordinator was not launched by the Processing Engine.")
-    if str(Path(token.executable).resolve())!=str(Path(contract.get("python_executable","")).resolve()) or token.contract_hash!=contract_hash(contract):raise RuntimeError("ENGINE_RUNTIME_CHANGED: polygon coordinator runtime differs from the verified Processing Engine.")
+    identity_matches=(
+        str(Path(token.executable).resolve())==str(Path(contract.get("python_executable","")).resolve())
+        and token.contract_hash==contract_hash(contract)
+        and token.backend_runner_hash==str(contract.get("runner_sha256",""))
+        and token.plugin_build_id==str(contract.get("plugin_build_id",""))
+        and token.dependency_manifest_hash==str(contract.get("dependency_manifest_hash",""))
+        and token.product_capability_hash==product_capability_hash(("chm",))
+    )
+    if not identity_matches:raise RuntimeError("ENGINE_RUNTIME_CHANGED: polygon coordinator runtime differs from the verified Processing Engine.")
     path=Path(job_dir)/"execution_runtime_trace.json"
     try:trace=json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"stages":{}}
     except (OSError,ValueError):trace={"stages":{}}

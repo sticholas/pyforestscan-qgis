@@ -1942,9 +1942,7 @@ class _BackendInstallWorker(QObject):
     def run(self) -> None:
         """Run backend installation and emit progress/result signals."""
         try:
-            result = self.service.install_backend(progress_callback=self.progressUpdated.emit)
-            if getattr(result, "success", False):
-                self.service.processing_engine_state(quick=False)
+            result = self.service.setup_processing_engine(progress_callback=self.progressUpdated.emit)
         except Exception as exc:  # noqa: BLE001 - worker must never crash QGIS UI.
             self.failed.emit(f"Unexpected backend installation failure: {exc}")
             return
@@ -2017,6 +2015,7 @@ class BatchPage(MissionPage):
     openCurrentOutputFolderRequested = pyqtSignal()
     clearCurrentResultRequested = pyqtSignal()
     sessionStateChanged = pyqtSignal(object)
+    processingEngineSetupRequested = pyqtSignal()
 
     def __init__(self, adapter: PyForestScanAdapter, iface: object | None = None, parent: QWidget | None = None) -> None:
         """Create the Batch page."""
@@ -2583,6 +2582,11 @@ class BatchPage(MissionPage):
         self.run_button.setEnabled(False)
         button_row = QHBoxLayout()
         button_row.addWidget(self.run_button)
+        self.engine_setup_button = QPushButton("Set Up Processing Engine")
+        self.engine_setup_button.clicked.connect(self.processingEngineSetupRequested.emit)
+        _apply_button_role(self.engine_setup_button, "primary")
+        self.engine_setup_button.setVisible(False)
+        button_row.addWidget(self.engine_setup_button)
         self.resume_button = QPushButton("Resume Batch")
         self.resume_button.setEnabled(False)
         self.resume_button.clicked.connect(self.run_batch)
@@ -2664,6 +2668,18 @@ class BatchPage(MissionPage):
 
     def set_job_token_factory(self,factory) -> None:
         self._job_token_factory=factory
+
+    def set_processing_engine_state(self, engine: object) -> None:
+        """Show one compact setup action without discarding current selections."""
+        ready = bool(getattr(engine, "ready_for_processing", False))
+        repair = bool(getattr(engine, "repair_needed", False))
+        self.engine_setup_button.setText("Repair Processing Engine" if repair else "Set Up Processing Engine")
+        self.engine_setup_button.setVisible(not ready)
+        if not ready:
+            self.run_button.setEnabled(False)
+            _set_status_badge(self.status_label, getattr(getattr(engine, "status", None), "value", "SETUP_REQUIRED"), getattr(engine, "message", "Processing Engine setup required."))
+        elif hasattr(self, "preflight_report"):
+            self._update_run_button_enabled()
 
     def _begin_logical_job(self):
         if self._job_token_factory is None:return None
@@ -3714,7 +3730,7 @@ class BatchPage(MissionPage):
         _set_status_badge(self.status_label, "RUNNING", f"Status: Running - {len(selected)} dataset(s).")
         self._processed_items = 0
         self._total_items = max(1, execution.logical_inputs)
-        executor = BatchExecutor(adapter_factory=PyForestScanAdapter)
+        executor = BatchExecutor(adapter_factory=lambda: PyForestScanAdapter(execution_mode="pbm_backend"))
         try:
             guardrail = executor.guardrails(request)
         except BatchExecutionError as exc:
@@ -3724,7 +3740,7 @@ class BatchPage(MissionPage):
         self.active_workers = guardrail.max_workers if guardrail.is_parallel else 1
         mode_label = guardrail.effective_mode.replace("_", " ")
         self.worker_status_label.setText(f"Active workers: {self.active_workers} ({mode_label})")
-        backend_label = PyForestScanAdapter().selected_execution_backend().replace("_", " ")
+        backend_label = PyForestScanAdapter(execution_mode="pbm_backend").selected_execution_backend().replace("_", " ")
         _set_status_badge(self.status_label, "RUNNING", f"Status: Running - {len(selected)} dataset(s) in {mode_label}. Execution backend: {backend_label}.")
         self.batch_thread = QThread(self)
         self.batch_worker = _BatchExecutionWorker(request, self._batch_control_state)
@@ -4568,6 +4584,7 @@ class SettingsPage(MissionPage):
 
     defaultOutputFolderChanged = pyqtSignal(object)
     backendStateChanged = pyqtSignal(str, str)
+    processingEngineStateChanged = pyqtSignal(object)
     verifyEnvironmentRequested = pyqtSignal()
     openToolboxRequested = pyqtSignal()
     guidanceDetailsRequested = pyqtSignal()
@@ -4748,7 +4765,7 @@ class SettingsPage(MissionPage):
         self._set_backend_progress_visible(False)
 
         install_availability = self.backend_service.install_availability()
-        self.verify_backend_button = QPushButton(primary_action_label("settings"))
+        self.verify_backend_button = QPushButton("Recheck Processing Engine")
         self.verify_backend_button.clicked.connect(self.verify_backend)
         _apply_button_role(self.verify_backend_button, "primary")
         self.install_backend_button = QPushButton("Set Up")
@@ -4757,7 +4774,7 @@ class SettingsPage(MissionPage):
         if install_availability.enabled:
             self.install_backend_button.clicked.connect(self.install_backend_internal_beta)
         self.repair_backend_button = QPushButton("Repair")
-        self.repair_backend_button.clicked.connect(self.repair_backend_preview)
+        self.repair_backend_button.clicked.connect(self.install_backend_internal_beta)
         _apply_button_role(self.repair_backend_button, "secondary")
         self.preview_install_plan_button = QPushButton("Preview Install Plan")
         self.preview_install_plan_button.clicked.connect(self.preview_install_plan)
@@ -4969,26 +4986,23 @@ class SettingsPage(MissionPage):
         )
 
     def verify_backend(self) -> None:
-        """Run safe PBM verification and display dependency results."""
+        """Recheck the authoritative engine state for troubleshooting."""
         self.verify_backend_button.setEnabled(False)
-        _set_status_badge(self.backend_status_label, "RUNNING", readiness_status_text("RUNNING", "Backend Status: Running - verifying backend."))
+        _set_status_badge(self.backend_status_label, "RUNNING", "Processing Engine: Checking")
         QApplication.processEvents()
         try:
-            result = self.backend_service.verify_backend()
+            engine = self.backend_service.processing_engine_service().recheck()
         finally:
             self.verify_backend_button.setEnabled(True)
-        _set_status_badge(self.backend_status_label, result.status.value, readiness_status_text(result.status.value, f"Backend Status: {status_badge_label(result.status.value)}"))
-        python_dependency = _find_backend_dependency(result, "python")
-        pdal_dependency = _find_backend_dependency(result, "pdal")
-        self.backend_python_label.setText(f"Python Version: {python_dependency.detected_version if python_dependency and python_dependency.detected_version else 'Not detected'}")
-        self.backend_pdal_label.setText(f"PDAL Version: {pdal_dependency.detected_version if pdal_dependency and pdal_dependency.detected_version else 'Not detected'}")
-        required = result.registry.required_dependencies()
-        verified_required = sum(1 for dependency in required if dependency.verification_status.value == "pass")
         self.refresh_backend_summary()
-        _set_status_badge(self.backend_status_label, result.status.value, readiness_status_text(result.status.value, f"Backend Status: {status_badge_label(result.status.value)}"))
-        self.backend_dependency_label.setText(f"Verification: {verified_required}/{len(required)} required checks passed")
-        self.backend_details.setPlainText(self.backend_service.format_verification_report(result))
-        self.backendStateChanged.emit(result.status.value, "Backend verification complete.")
+        self.backend_dependency_label.setText("Verification: complete" if engine.ready_for_processing else engine.message)
+        self.backend_details.setPlainText(
+            f"Processing Engine Recheck\n\nStatus: {engine.status.value}\nExecutable: {engine.executable}\n"
+            f"Engine ID: {engine.engine_id}\nContract: {engine.contract_hash}\nProtocol: {engine.protocol_version}\n"
+            f"Plugin build: {engine.plugin_build_id}\nFailure: {engine.failure_code or 'None'}"
+        )
+        self.processingEngineStateChanged.emit(engine)
+        self.backendStateChanged.emit(engine.status.value, engine.message)
 
     def verify_qgis_compatibility(self) -> None:
         """Display defensive QGIS compatibility details."""
@@ -5000,7 +5014,7 @@ class SettingsPage(MissionPage):
         """Display the dry-run backend installation plan."""
         plan = self.backend_service.preview_install_plan()
         availability = self.backend_service.install_availability()
-        self.backend_install_readiness_label.setText(f"Backend setup: {availability.reason}; {len(plan.required_package_names())} packages planned")
+        self.backend_install_readiness_label.setText(f"Processing Engine setup: {availability.reason}; {len(plan.required_package_names())} packages planned")
         self.backend_details.setPlainText(self.backend_service.format_install_plan(plan))
 
     def install_backend_internal_beta(self) -> None:
@@ -5010,14 +5024,14 @@ class SettingsPage(MissionPage):
             self.backend_details.setPlainText(f"Install Backend is not available for this platform.\n\n{availability.reason}")
             return
         message = (
-            "This will install PyForestScan backend packages into your user-local PyForestScan folder. "
+            "This will set up all PyForestScan processing components in your user-local PyForestScan folder. "
             "It will not modify QGIS or system Python.\n\n"
             f"Backend folder: {self.backend_service.paths.backend_root}\n"
             "The installer downloads Micromamba, creates the backend, verifies it, and writes settings only under that folder."
         )
         reply = QMessageBox.question(
             self,
-            "Install PyForestScan Backend",
+            "Set Up Processing Engine",
             message,
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -5054,14 +5068,14 @@ class SettingsPage(MissionPage):
             self._set_backend_progress_visible(True)
             self.backend_install_started_at = time.monotonic()
             self.backend_install_timer.start()
-            _set_status_badge(self.backend_status_label, "RUNNING", readiness_status_text("RUNNING", "Backend Status: Running - installation in progress."))
+            _set_status_badge(self.backend_status_label, "RUNNING", "Processing Engine: Setting up")
             self.backend_install_progress_bar.setValue(5)
             self.backend_install_stage_label.setText("Stage: Preparing")
             self.backend_install_action_label.setText("Current step: preparing files")
             self.backend_install_message_label.setText("Latest message: Installation is running. Please wait for this step to finish.")
             self.backend_install_estimate_label.setText("Step progress is estimated.")
             self.backend_details.setPlainText(
-                "Backend installation is running in the background.\n\n"
+                "Processing Engine setup is running in the background.\n\n"
                 "Installation is running. Please wait for this step to finish.\n"
                 "Step progress is estimated. Technical logs are hidden under Troubleshooting."
             )
@@ -5072,9 +5086,9 @@ class SettingsPage(MissionPage):
         for button in self._backend_install_action_buttons():
             button.setEnabled(not running)
         if not running:
-            state = self.backend_service.detect_backend()
-            self.install_backend_button.setText("Ready" if state.status.value == "Ready" else "Set Up")
-            self.install_backend_button.setEnabled(availability.enabled and state.status.value != "Ready")
+            state = self.backend_service.processing_engine_state(quick=True)
+            self.install_backend_button.setText("Ready" if state.ready_for_processing else ("Repair" if state.repair_needed else "Set Up"))
+            self.install_backend_button.setEnabled(availability.enabled and not state.ready_for_processing)
 
     def _set_backend_progress_visible(self, visible: bool) -> None:
         """Show PBM progress UI only while it is useful."""
@@ -5120,46 +5134,46 @@ class SettingsPage(MissionPage):
         self._set_backend_progress_visible(True)
         self.refresh_backend_summary()
         status_value = getattr(getattr(result, "status", None), "value", str(getattr(result, "status", "Unknown")))
-        success = bool(getattr(result, "success", False))
+        success = bool(getattr(result, "ready_for_processing", False))
         if success:
-            final_state = "Backend Ready"
+            final_state = "Ready"
             self.backend_install_progress_bar.setValue(100)
         elif status_value == "Repair Required":
             final_state = "Repair Required"
         else:
             final_state = "Install Failed"
-        _set_status_badge(self.backend_status_label, final_state, readiness_status_text(final_state, f"Backend Status: {status_badge_label(final_state)} - {final_state}"))
+        _set_status_badge(self.backend_status_label, status_value, f"Processing Engine: {final_state}")
         self.backend_install_stage_label.setText(f"Stage: {final_state}")
         self.backend_install_message_label.setText(f"Latest message: {getattr(result, 'message', '')}")
         self.backend_details.setPlainText(
-            "PBM Backend Install Result\n\n"
+            "Processing Engine Setup Result\n\n"
             f"Final state: {final_state}\n"
-            f"Operation: {getattr(result, 'operation', 'install_backend')}\n"
-            f"Success: {success}\n"
+            f"Ready for processing: {success}\n"
             f"Status: {status_value}\n"
-            f"Modified user-local backend files: {getattr(result, 'modified_system', False)}\n"
             f"Log path: {getattr(result, 'log_path', None) or self.backend_service.paths.install_log}\n"
             f"Message: {getattr(result, 'message', '')}\n\n"
-            "Use Repair if installation failed. Technical logs are available under Troubleshooting or View Logs."
+            "Technical logs are available under Troubleshooting."
         )
         self._refresh_backend_technical_log()
-        notice = "Backend installed successfully." if success else "Backend installation needs review."
+        notice = "Processing Engine is ready." if success else "Processing Engine setup needs review."
+        self.processingEngineStateChanged.emit(result)
         self.backendStateChanged.emit(status_value, notice)
 
     def _on_backend_install_failed(self, message: str) -> None:
         """Display unexpected installer worker failure."""
         self._set_backend_install_running(False)
         self._set_backend_progress_visible(True)
-        _set_status_badge(self.backend_status_label, "FAILED", readiness_status_text("FAILED", "Backend Status: Failed - install failed."))
+        _set_status_badge(self.backend_status_label, "FAILED", "Processing Engine: Setup failed")
         self.backend_install_stage_label.setText("Stage: Install Failed")
         self.backend_install_message_label.setText(f"Latest message: {message}")
         self.backend_details.setPlainText(
-            "PBM Backend Install Result\n\n"
+            "Processing Engine Setup Result\n\n"
             "Final state: Install Failed\n"
             f"Message: {message}\n\n"
             "Use View Logs for details. Technical logs are hidden under Troubleshooting."
         )
         self._refresh_backend_technical_log()
+        self.processingEngineStateChanged.emit(self.backend_service.processing_engine_state(quick=True))
         self.backendStateChanged.emit("Failed", "Backend installation failed. Use View Logs for details.")
 
     def _refresh_backend_install_elapsed(self) -> None:
@@ -5186,13 +5200,8 @@ class SettingsPage(MissionPage):
 
 
     def repair_backend_preview(self) -> None:
-        """Display the non-mutating backend repair plan."""
-        result = self.backend_service.repair_backend()
-        plan = self.backend_service.preview_repair_plan()
-        self.refresh_backend_summary()
-        _set_status_badge(self.backend_status_label, result.status.value, readiness_status_text(result.status.value, f"Backend Status: {status_badge_label(result.status.value)}"))
-        self.backend_details.setPlainText(self.backend_service.format_repair_plan(plan))
-        self.backendStateChanged.emit(result.status.value, "Backend repair plan updated.")
+        """Compatibility wrapper: repair uses the same setup transaction."""
+        self.install_backend_internal_beta()
 
     def show_backend_advanced(self) -> None:
         """Display advanced PBM architecture details."""
@@ -5234,7 +5243,7 @@ class SettingsPage(MissionPage):
             "1. Install the ZIP through QGIS Plugin Manager.\n"
             "2. Open Mission Control and run Environment Check.\n"
             "3. Open Backend settings and click Install Backend on Windows beta builds.\n"
-            "4. Verify Backend until status is Ready before running Guided, Advanced, or Batch workflows.\n\n"
+            "4. Setup publishes Ready automatically when all checks pass.\n\n"
             "Reference docs: docs/INSTALLATION_STRATEGY.md, docs/releases/CLEAN_MACHINE_SMOKE_TEST.md, and docs/releases/PBM_INTERNAL_BETA_SMOKE_TEST.md."
         )
 

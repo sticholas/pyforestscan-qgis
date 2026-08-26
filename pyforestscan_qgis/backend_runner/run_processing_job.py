@@ -41,7 +41,7 @@ from pyforestscan_qgis.core.types import (
     VoxelStatRequest,
 )
 from pyforestscan_qgis.core.backend.native_runtime import print_native_runtime
-from pyforestscan_qgis.core.backend.processing_engine import ProcessingRuntimeToken, contract_hash
+from pyforestscan_qgis.core.backend.processing_engine import ProcessingRuntimeToken, contract_hash, product_capability_hash
 
 PRODUCT_REQUESTS = {
     "chm": (ChmRequest, "create_chm"),
@@ -302,6 +302,14 @@ def _validate_runtime_token(spec: BackendJobSpec, runtime_contract: dict[str, An
         raise RuntimeError("ENGINE_PROTOCOL_MISMATCH: Processing Engine protocol changed after verification.")
     if token.contract_hash != contract_hash(runtime_contract):
         raise RuntimeError("ENGINE_RUNTIME_CHANGED: Processing Engine contract changed after verification.")
+    if token.backend_runner_hash != str(runtime_contract.get("runner_sha256", "")):
+        raise RuntimeError("ENGINE_RUNTIME_CHANGED: Processing Engine runner changed after verification.")
+    if token.plugin_build_id != str(runtime_contract.get("plugin_build_id", "")):
+        raise RuntimeError("ENGINE_RUNTIME_CHANGED: plugin execution code changed after verification.")
+    if token.dependency_manifest_hash != str(runtime_contract.get("dependency_manifest_hash", "")):
+        raise RuntimeError("ENGINE_RUNTIME_CHANGED: Processing Engine dependency contract changed after verification.")
+    if token.product_capability_hash != product_capability_hash((spec.product,)):
+        raise RuntimeError("ENGINE_RUNTIME_CHANGED: selected product capability changed after verification.")
 
 
 def _write_execution_runtime_trace(spec: BackendJobSpec, contract: dict[str, Any]) -> None:

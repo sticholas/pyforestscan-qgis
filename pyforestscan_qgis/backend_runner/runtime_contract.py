@@ -8,6 +8,7 @@ import json
 import platform
 import os
 import sys
+import inspect
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,7 @@ def inspect_runtime_contract() -> dict[str, Any]:
     """Return protocol, versions, hashes, and actual module locations."""
     from pyforestscan_qgis import __version__
     from pyforestscan_qgis.core import adapter, pipeline
+    from pyforestscan_qgis.core.backend.processing_engine import dependency_manifest_hash, product_capability_hash
 
     runner = Path(__file__).with_name("run_processing_job.py")
     modules = {
@@ -44,6 +46,7 @@ def inspect_runtime_contract() -> dict[str, Any]:
     required_modules = tuple(dict.fromkeys((*PYFORESTSCAN_FUNCTION_CONTRACT, *(item.import_name for item in PROCESSING_ENGINE_DEPENDENCIES))))
     failed_required_components: list[str] = []
     function_contract: dict[str, dict[str, bool]] = {}
+    function_signatures: dict[str, dict[str, str]] = {}
     for name in required_modules:
         try:
             module = importlib.import_module(name)
@@ -51,6 +54,10 @@ def inspect_runtime_contract() -> dict[str, Any]:
             versions[name] = _module_version(name, module)
             expected_functions = PYFORESTSCAN_FUNCTION_CONTRACT.get(name, ())
             function_contract[name] = {function: callable(getattr(module, function, None)) for function in expected_functions}
+            function_signatures[name] = {
+                function: str(inspect.signature(getattr(module, function)))
+                for function, available in function_contract[name].items() if available
+            }
             failed_required_components.extend(f"{name}.{function}" for function, available in function_contract[name].items() if not available)
         except Exception as exc:  # noqa: BLE001 - identity must remain available when a dependency is broken.
             modules[name] = f"unavailable: {exc}"
@@ -60,6 +67,16 @@ def inspect_runtime_contract() -> dict[str, Any]:
         failed_required_components.append(
             f"pyforestscan.version:{versions.get('pyforestscan', 'unknown')}"
         )
+    available_functions = {
+        function for checks in function_contract.values() for function, available in checks.items() if available
+    }
+    capability_smoke = {
+        product: all(function in available_functions for function in functions)
+        for product, functions in PRODUCT_CAPABILITIES.items()
+    }
+    failed_required_components.extend(
+        f"product_capability:{product}" for product, passed in capability_smoke.items() if not passed
+    )
     protocol_compatible = str(PBM_PROTOCOL_VERSION) == "2"
     build_inputs = tuple(Path(path) for path in (runner, Path(adapter.__file__).resolve(), Path(pipeline.__file__).resolve()))
     build_id = hashlib.sha256(b"".join(path.read_bytes() for path in build_inputs)).hexdigest()
@@ -69,6 +86,8 @@ def inspect_runtime_contract() -> dict[str, Any]:
         "plugin_version": getattr(__version__, "full_version", lambda: "unknown")(),
         "runner_sha256": hashlib.sha256(runner.read_bytes()).hexdigest(),
         "plugin_build_id": build_id,
+        "dependency_manifest_hash": dependency_manifest_hash(),
+        "product_capability_hash": product_capability_hash(tuple(PRODUCT_CAPABILITIES)),
         "installed_plugin_contract": {
             "plugin_version": getattr(__version__, "full_version", lambda: "unknown")(),
             "protocol": PBM_PROTOCOL_VERSION,
@@ -83,7 +102,9 @@ def inspect_runtime_contract() -> dict[str, Any]:
         "sys_path": list(sys.path),
         "required_modules": list(required_modules),
         "required_functions": function_contract,
+        "required_function_signatures": function_signatures,
         "product_capabilities": {name: list(functions) for name, functions in PRODUCT_CAPABILITIES.items()},
+        "capability_smoke_results": capability_smoke,
         "failed_required_components": failed_required_components,
         "protocol_compatible": protocol_compatible,
         "versions": versions,

@@ -38,6 +38,6 @@ class AdvancedChmAlgorithm(AdvancedPyForestScanAlgorithm):
         dataset, crs, output, xres, yres, add = self.common_values(parameters, context)
         params = AdvancedChmParameters(dataset, output, crs, xres, yres, add, self.interpolation_value(parameters, self.INTERPOLATION, context), self.parameterAsBool(parameters, self.INTERP_VALID_REGION, context), self.parameterAsBool(parameters, self.CLEAN_EDGES, context))
         request = build_chm_request(params)
-        result = run_adapter_call(feedback, "CHM", lambda: PyForestScanAdapter().create_chm(request))
+        result = run_adapter_call(feedback, "CHM", lambda: PyForestScanAdapter(execution_mode="pbm_backend").create_chm(request))
         load_raster_if_requested(result.output_path, "chm_geotiff", context, feedback, add)
         return self.push_result(feedback, result.output_path, "CHM")

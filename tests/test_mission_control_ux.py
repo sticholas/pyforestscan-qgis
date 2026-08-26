@@ -255,7 +255,7 @@ class MissionControlUxTests(unittest.TestCase):
             "Processing Engine Setup",
             "PyForestScan uses an isolated processing environment",
             'self.install_backend_button = QPushButton("Set Up")',
-            'self.install_backend_button.setText("Ready" if state.status.value == "Ready" else "Set Up")',
+            'self.install_backend_button.setText("Ready" if state.ready_for_processing else ("Repair" if state.repair_needed else "Set Up"))',
         )
         for snippet in primary_snippets:
             self.assertIn(snippet, source)
@@ -268,7 +268,7 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn("def _notify(self, message: str", controller)
         self.assertIn("messageBar", controller)
         self.assertIn("self.home_page.checkEnvironmentRequested.connect(self._open_environment_and_refresh)", controller)
-        self.assertIn("self.settings_page.backendStateChanged.connect(self._set_backend_page_status)", controller)
+        self.assertIn("self.settings_page.processingEngineStateChanged.connect(self._set_processing_engine_state)", controller)
         self.assertIn("self.results_page.outputsLoaded.connect(self._set_outputs_loaded_status)", controller)
         self.assertIn("self.dataset_page.datasetSelectionChanged.connect(self._set_dataset_pending)", controller)
         self.assertIn("self.environment_page.refresh()", controller)

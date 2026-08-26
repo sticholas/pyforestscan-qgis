@@ -64,7 +64,7 @@ class MissionControlDock(QDockWidget):
         """Create the Mission Control dock and wire page navigation."""
         super().__init__("PyForestScan Mission Control", parent)
         self.iface = iface
-        self.adapter = PyForestScanAdapter()
+        self.adapter = PyForestScanAdapter(execution_mode="pbm_backend")
         self.knowledge_engine = KnowledgeEngine()
         self.workspace_manager = WorkspaceManager()
         self.workspace_session = self._load_workspace_session()
@@ -134,6 +134,7 @@ class MissionControlDock(QDockWidget):
         self.page_by_name = dict(zip(self.INTERNAL_PAGE_NAMES, self.pages))
         self.page_by_name.update({"Process":self.batch_page,"Tools & Setup":self.settings_page})
         self.batch_page.set_job_token_factory(self._begin_current_job)
+        self.batch_page.set_processing_engine_state(self.settings_page.backend_service.processing_engine_state(quick=True))
         self._last_content_navigation_row = 0
 
         self._configure_style()
@@ -223,11 +224,12 @@ class MissionControlDock(QDockWidget):
         self.batch_page.openCurrentOutputFolderRequested.connect(self.results_page.open_output_folder)
         self.batch_page.clearCurrentResultRequested.connect(self._clear_current_run_state)
         self.batch_page.sessionStateChanged.connect(self._set_session_state)
+        self.batch_page.processingEngineSetupRequested.connect(self.settings_page.install_backend_internal_beta)
         self.results_page.outputsLoaded.connect(self._set_outputs_loaded_status)
         self.results_page.currentRunCleared.connect(self._clear_current_run_state)
         self.results_page.goToBatchRequested.connect(lambda: self._navigate_to("Process"))
         self.settings_page.defaultOutputFolderChanged.connect(self._set_default_output_folder)
-        self.settings_page.backendStateChanged.connect(self._set_backend_page_status)
+        self.settings_page.processingEngineStateChanged.connect(self._set_processing_engine_state)
         self.settings_page.verifyEnvironmentRequested.connect(self.environment_page.refresh)
         self.settings_page.openToolboxRequested.connect(self._open_advanced_toolbox)
         self.settings_page.guidanceDetailsRequested.connect(self._show_guidance_details)
@@ -606,6 +608,21 @@ class MissionControlDock(QDockWidget):
         level = "success" if "ready" in normalized else ("error" if "fail" in normalized else "warning")
         self._notify(message, level)
 
+    def _set_processing_engine_state(self, engine: object) -> None:
+        """Project one authoritative Processing Engine state across Mission Control."""
+        status = str(getattr(getattr(engine, "status", None), "value", "FAILED"))
+        message = str(getattr(engine, "message", "Processing Engine state changed."))
+        ready = bool(getattr(engine, "ready_for_processing", False))
+        self.session_state = self.session_state.with_updates(backend_status=status)
+        self.session_events.backendStatusChanged.emit(self.session_state)
+        self.state = self.state.with_backend(status).with_environment("READY" if ready else "NOT READY")
+        self.environment_page.refresh()
+        self.settings_page.refresh_backend_summary()
+        self.batch_page.set_processing_engine_state(engine)
+        self._refresh_home()
+        self._update_status_bar()
+        self._notify(message, "success" if ready else "warning")
+
 
     def _ensure_workspace_for_context(self, context: RunContext) -> None:
         """Load or create the workspace for a run context output root."""
@@ -980,12 +997,12 @@ class MissionControlDock(QDockWidget):
         self._go_to_guided_next_step("Home")
 
     def _update_status_bar(self) -> None:
-        smart=build_smart_status(backend_ready=environment_is_ready(self.state.environment_status),repository_kind=self.session_state.repository_kind,polygon_area=self.session_state.polygon_area,products=self.session_state.selected_products,output_folder=self.session_state.output_folder,processing_state=self.session_state.processing_status,has_outputs=bool(self.active_job_controller.current and self.active_job_controller.current.state=="complete"),error=self.session_state.last_error)
+        engine = self.settings_page.backend_service.processing_engine_state(quick=True)
+        smart=build_smart_status(backend_ready=engine.ready_for_processing,repository_kind=self.session_state.repository_kind,polygon_area=self.session_state.polygon_area,products=self.session_state.selected_products,output_folder=self.session_state.output_folder,processing_state=self.session_state.processing_status,has_outputs=bool(self.active_job_controller.current and self.active_job_controller.current.state=="complete"),error=self.session_state.last_error)
         detail=" | ".join(item for item in smart.details if item)
         self.batch_page.smart_status_label.setText(smart.headline+(f" - {detail}" if detail else ""))
         self.settings_page.smart_system_status_label.setText(smart.headline+(f"\n{detail}" if detail else ""))
-        engine = self.settings_page.backend_service.processing_engine_state(quick=True)
-        engine_text = "Ready" if engine.runtime_available else ("Needs repair" if engine.repair_needed else "Setup required")
+        engine_text = "Ready" if engine.ready_for_processing else ("Needs repair" if engine.repair_needed else "Setup required")
         self.ui.environmentStatusLabel.setText(f"{readiness_marker_label(engine.status.value)} Processing Engine: {engine_text}")
         repo = self.session_state.repository_kind.upper() if self.session_state.repository_path else "Not selected"
         self.ui.datasetStatusLabel.setText(f"LiDAR: {repo}")
