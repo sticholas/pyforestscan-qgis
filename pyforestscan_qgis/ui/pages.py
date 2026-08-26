@@ -8,6 +8,7 @@ the adapter boundary.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 import time
 from html import escape
 from pathlib import Path
@@ -107,7 +108,7 @@ from ..core.product_plan import (
 from ..core.types import ProductType
 from ..core.spatial_assignment import AssignmentScope, LinearUnit
 from ..core.spatial_reference_resolver import default_spatial_assignment_store
-from ..core.processing_spatial_context import SourceLocalFallbackChoice, SourceLocalFallbackPolicy, default_source_local_policy_store
+from ..core.processing_spatial_context import PolygonAlignmentFallbackChoice, SourceLocalFallbackChoice, SourceLocalFallbackPolicy, default_source_local_policy_store
 from ..core.processing_ui_state import ProcessingUiState, control_policy, reconcile_ui_state, terminal_state_from_result
 from ..core.durable_errors import DurableErrorRecord, read_recent_error, write_recent_error
 from ..core.completed_job_summary import CompletedJobSummary, completed_job_summary, format_completed_job_summary
@@ -2885,7 +2886,8 @@ class BatchPage(MissionPage):
             f"Live QGIS action: {coverage_result.message if coverage_result else 'Repository extent unavailable; preview text only.'}",
             f"Repository kind: {selection.repository_kind}",
             f"Intersecting LiDAR files: {len(selection.selected_sources)}",
-            f"Overlap: {'Yes' if selection.overlap_result == 'yes' else 'No'}",
+            f"Raw coordinate overlap: {'Yes' if selection.overlap_result == 'yes' else ('No' if selection.overlap_result == 'no' else 'Not evaluated')}",
+            f"Spatial alignment: {getattr(report, 'spatial_alignment_status', 'Unknown')}",
             f"Polygon extent ({selection.transformed_envelope.crs}): {selection.transformed_envelope.xmin:g}, {selection.transformed_envelope.ymin:g}, {selection.transformed_envelope.xmax:g}, {selection.transformed_envelope.ymax:g}",
         ]
         if selection.source_extent is not None:
@@ -2912,7 +2914,8 @@ class BatchPage(MissionPage):
             f"Polygon CRS: {getattr(report.request.polygon, 'source_crs', '')}",
             f"Repository CRS: {getattr(report.repository, 'source_crs', '')}",
             f"Transformation required: {'Yes' if alignment and alignment.transformation_required else 'No'}",
-            f"Overlap: {'Yes' if selection.overlap_result == 'yes' else 'No'}",
+            f"Raw coordinate overlap: {'Yes' if selection.overlap_result == 'yes' else ('No' if selection.overlap_result == 'no' else 'Not evaluated')}",
+            f"Final source selected: {'Yes' if selection.selected_sources else 'No'}",
         ]
         self.preflight_text.setPlainText("\n".join(lines))
 
@@ -3618,7 +3621,7 @@ class BatchPage(MissionPage):
         QApplication.processEvents()
         if self._current_batch_mode() == "polygon":
             try:
-                request = self._build_polygon_batch_request()
+                request = self.build_current_processing_request()
                 report = run_polygon_batch_preflight(request)
                 write_polygon_batch_manifest(report)
             except (BatchExecutionError, ValueError) as exc:
@@ -3638,7 +3641,7 @@ class BatchPage(MissionPage):
             self._publish_session_state(plan_status="ready")
             return
         try:
-            request = self._build_batch_request()
+            request = self.build_current_processing_request()
         except BatchExecutionError as exc:
             self.preflight_text.setPlainText(f"BLOCKER: {exc}")
             self.preflight_report = None
@@ -3732,6 +3735,13 @@ class BatchPage(MissionPage):
         report = self.preflight_report
         if report is None:
             return
+        current_policy = default_source_local_policy_store().read()
+        if getattr(getattr(report, "request", None), "spatial_policy", None) != current_policy:
+            self.preflight_report = None
+            self.run_preflight()
+            report = self.preflight_report
+            if report is None:
+                return
         if getattr(report, "blockers", ()):
             _set_status_badge(self.status_label, "FAILED", "Status: Failed - polygon Prerun Check issues must be resolved before processing.")
             return
@@ -3812,6 +3822,13 @@ class BatchPage(MissionPage):
             batch_folder=batch_folder,
         )
 
+    def build_current_processing_request(self, batch_folder: Path | None = None):
+        """Build the current immutable request through one mode-aware contract."""
+        if self._current_batch_mode() == "polygon":
+            request = self._build_polygon_batch_request()
+            return replace(request, batch_folder=batch_folder) if batch_folder is not None else request
+        return self._build_batch_request(batch_folder)
+
     def _build_polygon_batch_request(self) -> PolygonBatchRequest:
         folder = self.polygon_lidar_folder_edit.text().strip()
         output_folder = self.output_folder_edit.text().strip()
@@ -3859,6 +3876,7 @@ class BatchPage(MissionPage):
             selection_mode=str(self.polygon_selection_mode_combo.currentData() or "automatic"),
             direct_header_fallback=self.polygon_direct_fallback_check.isChecked(),
             repository_crs_override=repository_crs_override,
+            spatial_policy=default_source_local_policy_store().read(),
             polygon_options=PolygonBatchOptions(
                 exact_raster_mask=self.exact_raster_mask_check.isChecked(),
                 mask_engine=str(self.mask_engine_combo.currentData() or "automatic"),
@@ -4573,14 +4591,22 @@ class SettingsPage(MissionPage):
         self.source_local_fallback_combo.addItem("International feet", SourceLocalFallbackChoice.INTERNATIONAL_FEET.value)
         self.source_local_fallback_combo.addItem("US survey feet", SourceLocalFallbackChoice.US_SURVEY_FEET.value)
         self.source_local_fallback_combo.addItem("Require explicit assignment", SourceLocalFallbackChoice.REQUIRE_EXPLICIT_ASSIGNMENT.value)
+        self.polygon_alignment_fallback_combo = QComboBox()
+        self.polygon_alignment_fallback_combo.addItem("Automatic when coordinates are compatible", PolygonAlignmentFallbackChoice.AUTOMATIC_WHEN_COMPATIBLE.value)
+        self.polygon_alignment_fallback_combo.addItem("Ask", PolygonAlignmentFallbackChoice.ASK.value)
+        self.polygon_alignment_fallback_combo.addItem("Require explicit CRS", PolygonAlignmentFallbackChoice.REQUIRE_EXPLICIT_CRS.value)
         fallback_policy = default_source_local_policy_store().read()
         fallback_index = self.source_local_fallback_combo.findData(fallback_policy.default_units.value)
         self.source_local_fallback_combo.setCurrentIndex(max(0, fallback_index))
         self.source_local_fallback_combo.currentIndexChanged.connect(self.save_source_local_fallback_policy)
+        polygon_fallback_index = self.polygon_alignment_fallback_combo.findData(fallback_policy.polygon_alignment.value)
+        self.polygon_alignment_fallback_combo.setCurrentIndex(max(0, polygon_fallback_index))
+        self.polygon_alignment_fallback_combo.currentIndexChanged.connect(self.save_polygon_alignment_fallback_policy)
         spatial_form.addRow("Source", self.spatial_target_edit)
         spatial_form.addRow("Scope", self.spatial_scope_combo)
         spatial_form.addRow("Coordinate units", self.spatial_units_combo)
         spatial_form.addRow("Default units for unreferenced standalone LiDAR", self.source_local_fallback_combo)
+        spatial_form.addRow("Unreferenced polygon LiDAR alignment", self.polygon_alignment_fallback_combo)
         spatial_tools.addLayout(spatial_form)
         spatial_actions = QHBoxLayout()
         self.save_spatial_units_button = QPushButton("Save Trusted Units")
@@ -4845,12 +4871,23 @@ class SettingsPage(MissionPage):
     def save_source_local_fallback_policy(self) -> None:
         try:
             choice = SourceLocalFallbackChoice(str(self.source_local_fallback_combo.currentData()))
-            default_source_local_policy_store().write(SourceLocalFallbackPolicy(choice))
+            current = default_source_local_policy_store().read()
+            default_source_local_policy_store().write(SourceLocalFallbackPolicy(choice, current.version, current.polygon_alignment))
         except (ValueError, OSError) as exc:
             self.spatial_assignment_status_label.setText(f"Fallback preference could not be saved: {exc}")
             return
         label = self.source_local_fallback_combo.currentText()
         self.spatial_assignment_status_label.setText(f"Standalone source-local fallback: {label}. This preference never assigns a CRS or permits polygon alignment.")
+
+    def save_polygon_alignment_fallback_policy(self) -> None:
+        try:
+            choice = PolygonAlignmentFallbackChoice(str(self.polygon_alignment_fallback_combo.currentData()))
+            current = default_source_local_policy_store().read()
+            default_source_local_policy_store().write(SourceLocalFallbackPolicy(current.default_units, current.version, choice))
+        except (ValueError, OSError) as exc:
+            self.spatial_assignment_status_label.setText(f"Polygon alignment preference could not be saved: {exc}")
+            return
+        self.spatial_assignment_status_label.setText(f"Unreferenced polygon LiDAR alignment: {self.polygon_alignment_fallback_combo.currentText()}.")
 
     def emit_default_output_folder(self) -> None:
         """Emit the configured default output folder."""

@@ -2,6 +2,8 @@
 
 Phase 31D removes the catalog-only CRS dependency. Source selection resolves shared assignments before either direct or catalog overlap, then reuses common preparation, PBM execution, recovery, output, and loading contracts. Polygon-specific behavior is exact spatial subsetting and final masking.
 
+Direct and catalog paths now freeze the same effective spatial context. Raw overlap, alignment permission, and final selection are separate states, preventing an unresolved CRS from being mislabeled as geometric non-overlap.
+
 Phase 27F makes polygon-folder processing a Batch-owned workflow. Dataset remains a single-dataset page; Batch owns folder discovery, polygon preflight, clipped-source staging, checkpointing, resume, retry, summaries, and Results handoff.
 
 ## Modules

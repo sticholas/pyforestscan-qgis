@@ -15,6 +15,7 @@ from .lidar_catalog_models import CatalogBuildOptions
 from .lidar_inventory import LidarSourceRecord
 from .lidar_source_metadata import HeaderMetadataService, LidarSourceMetadata
 from .effective_source_spatial_profile import resolve_effective_source_spatial_profile
+from .processing_spatial_context import EffectiveSpatialContext, EffectiveSpatialMode, SourceLocalFallbackPolicy
 from .polygon_source import NormalizedPolygonSelection
 from .spatial_selection import Bounds2D
 from .spatial_reference_resolver import SpatialReferenceAssignmentStore
@@ -33,6 +34,8 @@ class DirectRejectedSource:
     effective_crs: str | None = None
     metadata_signature: str = ""
     effective_crs_source: str = ""
+    raw_overlap: bool | None = None
+    spatial_alignment: str = "not_evaluated"
 
 
 @dataclass(frozen=True)
@@ -55,6 +58,7 @@ class PolygonLidarSelectionResult:
     warnings: tuple[str, ...]
     metadata: tuple[LidarSourceMetadata, ...] = ()
     selected_metadata: tuple[LidarSourceMetadata, ...] = ()
+    spatial_contexts: tuple[EffectiveSpatialContext, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -71,10 +75,11 @@ class SelectionMethodComparison:
 class DirectLidarFolderSelector:
     """Apply the bbox overlap equation to shared source metadata."""
 
-    def __init__(self, *, metadata_service: HeaderMetadataService | None = None, bounds_transformer: BoundsTransformer | None = None, assignment_store: SpatialReferenceAssignmentStore | None = None) -> None:
+    def __init__(self, *, metadata_service: HeaderMetadataService | None = None, bounds_transformer: BoundsTransformer | None = None, assignment_store: SpatialReferenceAssignmentStore | None = None, spatial_policy: SourceLocalFallbackPolicy | None = None) -> None:
         self.metadata_service = metadata_service or HeaderMetadataService()
-        self.bounds_transformer = bounds_transformer
+        self.bounds_transformer = bounds_transformer or _default_bounds_transform
         self.assignment_store = assignment_store
+        self.spatial_policy = spatial_policy
 
     def select(
         self,
@@ -95,6 +100,7 @@ class DirectLidarFolderSelector:
         selected: list[LidarSourceRecord] = []
         selected_metadata: list[LidarSourceMetadata] = []
         rejected: list[DirectRejectedSource] = []
+        contexts: list[EffectiveSpatialContext] = []
         if not normalized.is_dir():
             return PolygonLidarSelectionResult(normalized, polygon_crs, polygon_crs, polygon.bounds, 0, 0, 0, 0, (), (), (), time.perf_counter() - start, "direct_header_metadata", False, (f"LiDAR repository does not exist: {normalized}",), ())
         records = tuple(metadata) if metadata is not None else self.metadata_service.discover(normalized, repository_crs_override=repository_crs_override, recursive=recursive, options=options)
@@ -120,18 +126,24 @@ class DirectLidarFolderSelector:
                 assignment_store=self.assignment_store,
                 repository_crs_override=repository_crs_override,
                 polygon_crs=polygon_crs,
+                polygon_bounds=polygon.bounds,
+                policy=self.spatial_policy,
             )
+            if profile.context is not None:
+                contexts.append(profile.context)
             effective_crs = profile.effective_crs
+            raw_overlap = bool(profile.compatibility and profile.compatibility.raw_overlap)
             if profile.conflict:
-                rejected.append(DirectRejectedSource(item.path, "CRS_CONFLICT", "Different coordinate systems were detected in this repository.", bounds, item.embedded_crs, None, item.metadata_signature, profile.assignment_source))
+                rejected.append(DirectRejectedSource(item.path, "CRS_CONFLICT", "Different coordinate systems were detected in this repository.", bounds, item.embedded_crs, None, item.metadata_signature, profile.assignment_source, raw_overlap, "blocked"))
                 continue
             if not effective_crs:
-                rejected.append(DirectRejectedSource(item.path, "CRS_MISSING", "The LiDAR repository does not identify its coordinate system.", bounds, item.embedded_crs, None, item.metadata_signature, profile.assignment_source))
+                reason = profile.context.blockers[0] if profile.context and profile.context.blockers else "The LiDAR repository does not identify its coordinate system."
+                rejected.append(DirectRejectedSource(item.path, "CRS_MISSING", reason, bounds, item.embedded_crs, None, item.metadata_signature, profile.assignment_source, raw_overlap, "blocked"))
                 continue
             try:
                 query_bounds = _polygon_bounds_for_source(polygon.bounds, polygon_crs, effective_crs, self.bounds_transformer)
             except ValueError as exc:
-                rejected.append(DirectRejectedSource(item.path, "CRS_TRANSFORM_UNAVAILABLE", str(exc), bounds, item.embedded_crs, effective_crs, item.metadata_signature, profile.assignment_source))
+                rejected.append(DirectRejectedSource(item.path, "CRS_TRANSFORM_UNAVAILABLE", str(exc), bounds, item.embedded_crs, effective_crs, item.metadata_signature, profile.assignment_source, raw_overlap, "blocked"))
                 continue
             usable += 1
             comparison_crs_values.add(_norm_crs(effective_crs))
@@ -140,8 +152,10 @@ class DirectLidarFolderSelector:
             if _overlaps(bounds, query_bounds):
                 selected.append(source)
                 selected_metadata.append(resolved_item)
+                if profile.mode is EffectiveSpatialMode.ASSUMED_MATCHING_COORDINATE_SPACE:
+                    warnings.append(f"Using polygon coordinate system {effective_crs} for unreferenced LiDAR; coordinates were not reprojected.")
             else:
-                rejected.append(DirectRejectedSource(item.path, "OUTSIDE_QUERY_EXTENT", "Source bounds do not overlap the selected polygon envelope.", bounds, item.embedded_crs, effective_crs, item.metadata_signature))
+                rejected.append(DirectRejectedSource(item.path, "OUTSIDE_QUERY_EXTENT", "Source bounds do not overlap the selected polygon envelope.", bounds, item.embedded_crs, effective_crs, item.metadata_signature, profile.assignment_source, raw_overlap, "verified" if profile.mode is not EffectiveSpatialMode.ASSUMED_MATCHING_COORDINATE_SPACE else "assumed"))
         if discovered == 0:
             blockers.append("No supported LAS, LAZ, or COPC files were found.")
         elif metadata_read == 0:
@@ -177,6 +191,7 @@ class DirectLidarFolderSelector:
             tuple(dict.fromkeys(warnings)),
             records,
             tuple(selected_metadata),
+            tuple(contexts),
         )
 
 
@@ -200,6 +215,17 @@ def _polygon_bounds_for_source(polygon_bounds: Bounds2D, polygon_crs: str, sourc
     if transformer is None:
         raise ValueError("Direct metadata selection cannot compare source and polygon bounds without a CRS transformer.")
     return transformer(polygon_bounds, polygon_crs, source_crs)
+
+
+def _default_bounds_transform(bounds: Bounds2D, source_crs: str, target_crs: str) -> Bounds2D:
+    try:
+        from pyproj import Transformer  # type: ignore
+        transformer = Transformer.from_crs(source_crs, target_crs, always_xy=True)
+        coordinates = [transformer.transform(x, y) for x, y in ((bounds.xmin, bounds.ymin), (bounds.xmin, bounds.ymax), (bounds.xmax, bounds.ymin), (bounds.xmax, bounds.ymax))]
+    except Exception as exc:
+        raise ValueError(f"Direct metadata selection cannot transform polygon bounds from {source_crs} to {target_crs}: {exc}") from exc
+    xs, ys = zip(*coordinates)
+    return Bounds2D(min(xs), min(ys), max(xs), max(ys))
 
 
 def _overlaps(source: Bounds2D, polygon: Bounds2D) -> bool:

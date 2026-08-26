@@ -9,3 +9,5 @@ Legacy catalog overrides remain readable for compatibility but are not the user-
 An unknown member inherits a valid repository assignment. An authoritative member CRS that differs from the assignment produces `CONFLICT`; the assignment never overwrites header truth. Polygon selection blocks when no real CRS is available. Folder source-local processing may use its separate unit-aware fallback policy.
 
 `polygon_source_resolution.json` records raw CRS, effective CRS, assignment provenance, polygon/comparison CRS, bounds, overlap, and selection or rejection reason.
+
+The profile now carries the shared `EffectiveSpatialContext`, effective units, coordinate compatibility, and assumed/verified alignment mode. `effective_spatial_trace.json` also records assignment-store path, scope, lookup result, and fingerprint status.

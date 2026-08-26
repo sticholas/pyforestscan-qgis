@@ -16,7 +16,10 @@ from .lidar_catalog_models import LidarCatalogQuery, LidarCatalogQueryResult, Po
 from .lidar_catalog_integrity import inspect_catalog_integrity
 from .lidar_catalog_query import derive_polygon_query_geometry, query_catalog_for_polygon
 from .lidar_inventory import LidarSourceRecord
+from .lidar_source_metadata import LidarSourceMetadata
 from .polygon_source import NormalizedPolygonSelection
+from .effective_source_spatial_profile import resolve_effective_source_spatial_profile
+from .processing_spatial_context import EffectiveSpatialContext, EffectiveSpatialMode, SourceLocalFallbackPolicy, default_source_local_policy_store
 from .spatial_selection import Bounds2D
 
 
@@ -191,6 +194,7 @@ class PolygonSourceSelectionResult:
     catalog_skipped_count: int = 0
     workload_estimate: WorkloadEstimate | None = None
     spatial_alignment: SpatialAlignmentResult | None = None
+    spatial_contexts: tuple[EffectiveSpatialContext, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -208,6 +212,7 @@ class PolygonSourceSelectionResult:
             "timings": self.timings,
             "catalog_skipped_count": self.catalog_skipped_count,
             "spatial_alignment": None if self.spatial_alignment is None else self.spatial_alignment.to_dict(),
+            "spatial_contexts": [item.to_dict() for item in self.spatial_contexts],
         }
 
 
@@ -323,6 +328,7 @@ class PolygonSourceSelectionService:
         *,
         catalog_crs: str | None = None,
         thresholds: Any = None,
+        spatial_policy: SourceLocalFallbackPolicy | None = None,
     ) -> PolygonSourceSelectionResult:
         start = time.perf_counter()
         normalization = polygon_normalization_report(polygon)
@@ -347,23 +353,44 @@ class PolygonSourceSelectionService:
             repository.catalog_path or default_lidar_catalog_path(repository.normalized_path),
             repository.normalized_path,
             polygon,
-            catalog_crs=catalog_crs,
+            catalog_crs=source_crs,
             thresholds=thresholds,
         )
         warnings = tuple(_message("CATALOG_WARNING", "warning", "Catalog warning", item) for item in query.warnings)
         blockers: tuple[PreflightMessage, ...] = ()
         integrity_status = getattr(query, "catalog_integrity_status", "Unknown")
         if not query.records:
-            if integrity_status not in {"Healthy", "Healthy with validated repository CRS override"}:
+            if integrity_status not in {"Healthy", "Healthy with validated repository CRS override", "Healthy with effective repository assignment"}:
                 blocker_text = next((item for item in query.warnings if "catalog" in item.lower() or "spatial bounds" in item.lower() or "supported" in item.lower()), "Repository catalog is not spatially usable.")
                 blockers = (_message("CATALOG_NOT_SPATIALLY_USABLE", "blocker", "Catalog Needs Repair", blocker_text, "Run Inspect Repository or Repair Catalog before polygon processing.", "Repair Catalog"),)
             else:
                 blockers = (_message("NO_COVERAGE", "blocker", "No LiDAR coverage", "No LiDAR coverage was found for this area."),)
-        effective_records = tuple(replace(item, crs=item.crs or source_crs) for item in query.source_records)
+        policy = spatial_policy or default_source_local_policy_store().read()
+        contexts: list[EffectiveSpatialContext] = []
+        effective_records: list[LidarSourceRecord] = []
+        for record in query.records:
+            metadata = LidarSourceMetadata.from_catalog_record(record)
+            profile = resolve_effective_source_spatial_profile(
+                metadata,
+                repository.normalized_path,
+                repository_crs_override=repository.source_crs,
+                polygon_crs=polygon.processing_crs or polygon.source_crs,
+                polygon_bounds=polygon.bounds,
+                policy=policy,
+            )
+            if profile.context is not None:
+                contexts.append(profile.context)
+            if profile.safe_for_spatial_alignment and profile.effective_crs:
+                effective_records.append(replace(record.to_source_record(), crs=profile.effective_crs))
+        if query.records and not effective_records:
+            blockers = (_message("SOURCE_CRS_REQUIRED", "blocker", "Coordinate system needed", "The selected LiDAR cannot be aligned safely with this polygon.", "Raw coordinate overlap is reported separately from spatial alignment.", "Use Project CRS or Choose CRS"),)
+        assumed = [item for item in contexts if item.mode is EffectiveSpatialMode.ASSUMED_MATCHING_COORDINATE_SPACE]
+        if assumed:
+            warnings = (*warnings, _message("ASSUMED_MATCHING_COORDINATE_SPACE", "warning", "Spatial reference assumed", f"Using polygon coordinate system {assumed[0].effective_crs} for unreferenced LiDAR. Coordinates are unchanged."))
         return PolygonSourceSelectionResult(
             repository_kind=repository.repository_kind,
-            logical_candidates=effective_records,
-            selected_sources=effective_records,
+            logical_candidates=tuple(effective_records),
+            selected_sources=tuple(effective_records),
             rejected_sources=(),
             transformed_polygon=query_geometry.exact_polygon_wkt,
             transformed_envelope=transformed_envelope,
@@ -376,6 +403,7 @@ class PolygonSourceSelectionService:
             query_result=query,
             catalog_skipped_count=query.skipped_count,
             workload_estimate=query.workload_estimate,
+            spatial_contexts=tuple(contexts),
         )
 
     @property
@@ -514,6 +542,7 @@ def build_polygon_execution_plan(
         "repository_spatial_identity": repository.resolution_method,
         "polygon_hash": _hash_text(polygon_context.source_geometry),
         "polygon_crs": polygon_context.source_crs,
+        "polygon_bounds": source_selection.transformed_envelope.to_dict(),
         "products": products,
         "shared_batch_options": _to_dict(shared_batch_options),
         "polygon_batch_options": _to_dict(polygon_batch_options),
@@ -522,6 +551,9 @@ def build_polygon_execution_plan(
         "backend_message": backend_message,
         "selected_source_paths": [str(source.path) for source in source_selection.selected_sources],
         "selected_source_crs": [source.crs for source in source_selection.selected_sources],
+        "selected_source_bounds": [None if source.bounds is None else source.bounds.__dict__ for source in source_selection.selected_sources],
+        "spatial_modes": [context.mode.value for context in source_selection.spatial_contexts],
+        "spatial_provenance": [context.provenance for context in source_selection.spatial_contexts],
     }
     signature = _hash_text(json.dumps(payload, sort_keys=True, default=str))
     return PolygonExecutionPlan(

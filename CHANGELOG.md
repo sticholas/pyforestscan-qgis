@@ -1,5 +1,11 @@
 # Changelog
 
+## Phase 31E - Unified polygon spatial fallback
+
+- Added one effective spatial context for Folder and Polygon Selection, including trusted, assumed, unresolved, and conflict modes.
+- Added strong coordinate-space compatibility fallback for unreferenced polygon LiDAR with explicit no-reprojection provenance.
+- Separated raw overlap from alignment readiness, stabilized repository assignment fingerprints against catalog churn, and added live spatial traces.
+
 ## Phase 31D - Unify folder and polygon LiDAR processing
 
 - Applied trusted repository CRS assignments to raw-unknown LAS/LAZ members before direct or catalog overlap selection.

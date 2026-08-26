@@ -22,12 +22,15 @@ from .ept_bounds import EptBounds
 from .ept_repository import incorrect_ept_catalog_detected
 from .direct_lidar_selection import DirectLidarFolderSelector, PolygonLidarSelectionResult, SelectionMethodComparison, compare_selection_methods
 from .effective_source_spatial_profile import shared_repository_crs
+from .processing_spatial_context import EffectiveSpatialMode, SourceLocalFallbackPolicy, default_source_local_policy_store
+from .spatial_reference_resolver import default_spatial_assignment_store
 from .lidar_catalog import catalog_summary
 from .lidar_catalog_models import CatalogThresholds, LidarCatalogQueryResult, PolygonQueryGeometry, default_lidar_catalog_path
 from .spatial_selection import Bounds2D
 from .lidar_catalog_query import derive_polygon_query_geometry, query_catalog_for_polygon
 from .polygon_source_selection import PolygonExecutionPlan, PolygonSourceSelectionResult, PolygonSourceSelectionService, build_polygon_execution_plan
 from .lidar_inventory import LidarInventory, LidarSourceRecord
+from .lidar_source_metadata import LidarSourceMetadata
 from .polygon_processing import PolygonProcessingPlan, build_polygon_processing_plan
 from .polygon_source import NormalizedPolygonSelection
 from .polygon_transport import polygon_execution_input_from_selection, unique_polygon_job_id
@@ -68,6 +71,7 @@ class PolygonBatchRequest:
     selection_mode: str = "automatic"
     direct_header_fallback: bool = True
     repository_crs_override: str | None = None
+    spatial_policy: SourceLocalFallbackPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -111,6 +115,9 @@ class PolygonBatchPreflightReport:
 
 def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: Callable[[], tuple[bool, str]] | None = None) -> PolygonBatchPreflightReport:
     """Resolve repository identity, select sources, and build one execution plan."""
+    active_spatial_policy = request.spatial_policy or default_source_local_policy_store().read()
+    if request.spatial_policy is None:
+        request = replace(request, spatial_policy=active_spatial_policy)
     assigned_crs, _assignment_source = shared_repository_crs(request.lidar_folder)
     effective_repository_crs = assigned_crs or request.repository_crs_override
     if effective_repository_crs != request.repository_crs_override:
@@ -134,7 +141,7 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
     if not Path(repository.normalized_path).is_dir():
         blockers.append(f"LiDAR repository does not exist: {repository.normalized_path}")
     if repository.repository_kind != "ept" and (request.selection_mode == "direct_header_scan" or (request.direct_header_fallback and not Path(catalog_path).exists())):
-        direct = DirectLidarFolderSelector().select(repository.normalized_path, request.polygon, repository_crs_override=request.repository_crs_override or repository.source_crs, recursive=request.recursive)
+        direct = DirectLidarFolderSelector(spatial_policy=active_spatial_policy).select(repository.normalized_path, request.polygon, repository_crs_override=request.repository_crs_override or repository.source_crs, recursive=request.recursive)
         return _report_from_direct_selection(request, repository, service, query_geometry, batch_folder, manifest_path, direct, backend_ready, backend_message, catalog_path)
     if repository.repository_kind != "ept" and not Path(catalog_path).exists():
         blockers.append("Build a LiDAR catalog before running Polygon Area Processing, or use Direct Header Scan.")
@@ -190,7 +197,7 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         )
     if repository.repository_kind == "ept" and Path(catalog_path).exists() and incorrect_ept_catalog_detected(catalog_path, repository.normalized_path):
         blockers.append("Incorrect EPT Catalog Detected. Repair EPT Catalog before running; internal EPT node files should be one logical EPT dataset.")
-    selection = service.select_sources(repository, request.polygon, catalog_crs=repository.source_crs or request.catalog_crs, thresholds=request.thresholds)
+    selection = service.select_sources(repository, request.polygon, catalog_crs=repository.source_crs or request.catalog_crs, thresholds=request.thresholds, spatial_policy=active_spatial_policy)
     if repository.repository_kind == "ept":
         query_geometry = PolygonQueryGeometry(
             envelope=selection.transformed_envelope.to_bounds(),
@@ -206,9 +213,12 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
     comparison = None
     selection_method = "catalog"
     if repository.repository_kind not in {"ept", "copc"} and request.direct_header_fallback:
-        direct_selection = DirectLidarFolderSelector().select(repository.normalized_path, request.polygon, repository_crs_override=request.repository_crs_override or repository.source_crs, recursive=request.recursive)
+        direct_selection = DirectLidarFolderSelector(spatial_policy=active_spatial_policy).select(repository.normalized_path, request.polygon, repository_crs_override=request.repository_crs_override or repository.source_crs, recursive=request.recursive)
         comparison = compare_selection_methods(direct_selection, selected, catalog_seconds=0 if query is None else query.query_seconds)
-        if (not selected and direct_selection.selected_sources and request.selection_mode in {"automatic", "direct_header_scan"}) or request.selection_mode == "direct_header_scan":
+        catalog_status = "" if query is None else str(getattr(query, "catalog_integrity_status", ""))
+        catalog_broken = bool(query is not None and catalog_status not in {"Healthy", "Healthy with validated repository CRS override", "Healthy with effective repository assignment"})
+        trusted_repository_interpretation = bool(request.repository_crs_override or getattr(repository, "source_crs", None))
+        if (not selected and direct_selection.selected_sources and (not catalog_broken or trusted_repository_interpretation) and request.selection_mode in {"automatic", "direct_header_scan"}) or request.selection_mode == "direct_header_scan":
             selected = direct_selection.selected_sources
             selection_method = "direct_header_scan"
             warnings.append("Catalog selection found no files. Direct Header Scan selected real source files; repair or rebuild the catalog when convenient.")
@@ -346,7 +356,7 @@ def _report_from_direct_selection(request, repository, service, query_geometry, 
         catalog_skipped_count=0,
         backend_ready=backend_ready,
         backend_message=backend_message,
-        spatial_alignment_status="Ready" if direct.ready else "Needs review",
+        spatial_alignment_status=_direct_spatial_alignment_status(direct),
         repository=repository,
         source_selection=selection,
         execution_plan=execution_plan,
@@ -366,6 +376,8 @@ def _selection_from_direct(repository, request, query_geometry, direct, service)
     setattr(service, "_last_polygon_context", _fallback_polygon_context(request.polygon, query_geometry))
     warnings = tuple(PreflightMessage("DIRECT_HEADER_SCAN", "warning", "Direct Header Scan", item) for item in direct.warnings)
     blockers = tuple(PreflightMessage("DIRECT_SELECTION_BLOCKED", "blocker", "Selection blocked", item) for item in direct.blockers)
+    raw_overlap_values = [item.raw_overlap for item in direct.rejected_sources if item.raw_overlap is not None]
+    overlap_result = "yes" if direct.selected_sources or any(raw_overlap_values) else ("no" if raw_overlap_values else "not_evaluated")
     return PolygonSourceSelectionResult(
         repository_kind=repository.repository_kind,
         logical_candidates=direct.selected_sources,
@@ -374,7 +386,7 @@ def _selection_from_direct(repository, request, query_geometry, direct, service)
         transformed_polygon=query_geometry.exact_polygon_wkt,
         transformed_envelope=transformed,
         source_extent=None,
-        overlap_result="yes" if direct.selected_sources else "no",
+        overlap_result=overlap_result,
         exact_intersection_result="direct_header_scan",
         warnings=warnings,
         blockers=blockers,
@@ -382,7 +394,14 @@ def _selection_from_direct(repository, request, query_geometry, direct, service)
         query_result=None,
         catalog_skipped_count=len(direct.rejected_sources),
         workload_estimate=None,
+        spatial_contexts=direct.spatial_contexts,
     )
+
+
+def _direct_spatial_alignment_status(direct: PolygonLidarSelectionResult) -> str:
+    if any(context.mode is EffectiveSpatialMode.ASSUMED_MATCHING_COORDINATE_SPACE for context in direct.spatial_contexts):
+        return "Assumed"
+    return "Verified" if direct.ready else "Blocked"
 
 
 def _estimated_points_for_sources(sources):
@@ -461,7 +480,10 @@ def polygon_preflight_text(report: PolygonBatchPreflightReport) -> str:
         if report.source_selection.source_extent is not None:
             extent = report.source_selection.source_extent
             lines.append(f"- Repository extent: {extent.xmin:g}, {extent.ymin:g}, {extent.xmax:g}, {extent.ymax:g}")
-        lines.append(f"- Overlap: {'Yes' if report.source_selection.overlap_result == 'yes' else 'No'}")
+        overlap = report.source_selection.overlap_result
+        lines.append(f"- Raw coordinate overlap: {'Yes' if overlap == 'yes' else ('No' if overlap == 'no' else 'Not evaluated')}")
+        lines.append(f"- Spatial alignment: {report.spatial_alignment_status}")
+        lines.append(f"- Final source selected: {'Yes' if report.selected_sources else 'No'}")
         if report.source_selection.rejected_sources:
             lines.append("- Rejected sources:")
             for rejected in report.source_selection.rejected_sources[:5]:
@@ -556,6 +578,7 @@ def write_polygon_batch_manifest(
         "concurrency": requested_effective_concurrency(_shared_options(report), source_types=_source_types(report), product_count=len(report.request.products)),
         "execution_plan": None if report.execution_plan is None else report.execution_plan.to_dict(),
         "source_aware_chm_plan": _source_aware_chm_plan_dict(report),
+        "spatial_provenance": _spatial_provenance(report),
         "plan_signature": report.plan_signature,
         "repository_identity": None if report.repository is None else report.repository.to_dict(),
         "source_selection": None if report.source_selection is None else report.source_selection.to_dict(),
@@ -628,6 +651,82 @@ def write_polygon_batch_manifest(
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     _write_polygon_source_resolution(report, folder)
+    _write_effective_spatial_trace(report, folder)
+    return path
+
+
+def _report_spatial_contexts(report: PolygonBatchPreflightReport):
+    if report.source_selection is not None and report.source_selection.spatial_contexts:
+        return report.source_selection.spatial_contexts
+    if report.direct_selection is not None:
+        return report.direct_selection.spatial_contexts
+    return ()
+
+
+def _spatial_provenance(report: PolygonBatchPreflightReport) -> dict[str, object]:
+    contexts = _report_spatial_contexts(report)
+    context = contexts[0] if contexts else None
+    polygon_crs = report.request.polygon.processing_crs or report.request.polygon.source_crs
+    return {
+        "SOURCE_CRS_EMBEDDED": bool(context and context.raw_crs),
+        "SOURCE_CRS_EFFECTIVE": "" if context is None else context.effective_crs,
+        "SOURCE_CRS_BASIS": "" if context is None else context.crs_basis,
+        "SOURCE_CRS_CONFIDENCE": "" if context is None else context.confidence,
+        "COORDINATES_TRANSFORMED": bool(context and context.coordinates_transformed),
+        "POLYGON_CRS": polygon_crs,
+        "SPATIAL_FALLBACK_USED": bool(context and context.fallback_used),
+    }
+
+
+def _write_effective_spatial_trace(report: PolygonBatchPreflightReport, folder: Path) -> Path:
+    """Write the single effective-state trace used to diagnose selection truth."""
+    path = folder / "effective_spatial_trace.json"
+    direct = report.direct_selection
+    contexts = _report_spatial_contexts(report)
+    metadata = () if direct is None else direct.metadata
+    rejected = {} if direct is None else {str(item.path): item for item in direct.rejected_sources}
+    selected = {str(item.path): item for item in report.selected_sources}
+    sources = []
+    if metadata:
+        source_rows = [(item.path, item, contexts[index] if index < len(contexts) else None) for index, item in enumerate(metadata)]
+    elif report.query_result is not None:
+        source_rows = [(record.source_path, LidarSourceMetadata.from_catalog_record(record), contexts[index] if index < len(contexts) else None) for index, record in enumerate(report.query_result.records)]
+    else:
+        source_rows = []
+    store = default_spatial_assignment_store()
+    repository_path = Path(report.request.lidar_folder)
+    for source_path, item, context in source_rows:
+        rejection = rejected.get(str(source_path))
+        compatibility = None if context is None else context.compatibility
+        source = selected.get(str(source_path))
+        sources.append({
+            "path": str(source_path),
+            "raw_crs": item.embedded_crs,
+            "effective_crs": None if context is None else context.effective_crs,
+            "effective_crs_source": None if context is None else context.provenance,
+            "effective_units": None if context is None or context.units is None else context.units.value,
+            "spatial_mode": None if context is None else context.mode.value,
+            "polygon_crs": report.request.polygon.processing_crs or report.request.polygon.source_crs,
+            "comparison_crs": report.query_geometry.catalog_crs,
+            "raw_bounds": None if item.bounds is None else item.bounds.__dict__,
+            "comparison_bounds": report.query_geometry.envelope.__dict__,
+            "raw_coordinate_overlap": None if compatibility is None else compatibility.raw_overlap,
+            "spatial_alignment": "assumed" if context and context.mode is EffectiveSpatialMode.ASSUMED_MATCHING_COORDINATE_SPACE else ("verified" if context and context.alignment_allowed else "blocked"),
+            "final_source_selected": source is not None,
+            "rejection_reason": "" if rejection is None else rejection.reason,
+            **store.assignment_diagnostics(source_path, repository_path),
+        })
+    payload = {
+        "repository_raw_crs": None if report.repository is None else getattr(report.repository, "source_spatial_reference", None),
+        "repository_effective_crs": None if report.repository is None else getattr(report.repository, "source_crs", None),
+        "catalog_crs": report.query_geometry.catalog_crs,
+        "polygon_crs": report.request.polygon.processing_crs or report.request.polygon.source_crs,
+        "processing_crs": report.query_geometry.catalog_crs,
+        "output_crs": report.query_geometry.catalog_crs,
+        "sources": sources,
+    }
+    payload["repository_raw_crs"] = None if payload["repository_raw_crs"] is None else getattr(payload["repository_raw_crs"], "crs_text", None)
+    path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     return path
 
 

@@ -17,6 +17,7 @@ from pyforestscan_qgis.core.lidar_catalog_builder import build_lidar_catalog
 from pyforestscan_qgis.core.lidar_catalog_integrity import assign_repository_crs_override
 from pyforestscan_qgis.core.polygon_batch import PolygonBatchRequest, run_polygon_batch_preflight, write_polygon_batch_manifest
 from pyforestscan_qgis.core.polygon_normalization import normalized_selection_from_wkt
+from pyforestscan_qgis.core.processing_spatial_context import PolygonAlignmentFallbackChoice, SourceLocalFallbackPolicy
 from pyforestscan_qgis.core.types import ProductType
 
 
@@ -54,7 +55,8 @@ class Phase27QDirectSelectionTests(unittest.TestCase):
             tile = root / "tile.las"
             write_las_header(tile, bounds=(0, 10, 0, 10, 0, 1))
             polygon = normalized_selection_from_wkt("POLYGON ((10 2, 12 2, 12 4, 10 4, 10 2))", "EPSG:6635")
-            missing = DirectLidarFolderSelector().select(root, polygon)
+            strict = SourceLocalFallbackPolicy(polygon_alignment=PolygonAlignmentFallbackChoice.REQUIRE_EXPLICIT_CRS)
+            missing = DirectLidarFolderSelector(spatial_policy=strict).select(root, polygon)
             selected = DirectLidarFolderSelector().select(root, polygon, repository_crs_override="EPSG:6635")
 
         self.assertFalse(missing.ready)

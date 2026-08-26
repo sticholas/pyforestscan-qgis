@@ -31,10 +31,15 @@ def derive_polygon_query_geometry(
     wkt = polygon.geometry_wkt
     from .crs_alignment import crs_equivalent
     if target_crs and source_crs and not crs_equivalent(source_crs, target_crs):
+        if transformer is None:
+            try:
+                from pyproj import Transformer  # type: ignore
+                projection = Transformer.from_crs(source_crs, target_crs, always_xy=True)
+                transformer = projection.transform
+            except Exception:
+                warnings.append("Polygon CRS differs from catalog CRS; a coordinate transformer is unavailable, so spatial alignment is blocked.")
         if transformer is not None:
             wkt = transform_wkt_coordinates(wkt, transformer)
-        else:
-            warnings.append("Polygon CRS differs from catalog CRS; using normalized polygon coordinates because no transformer was available.")
     selection = polygon_selection_from_wkt(wkt, target_crs or source_crs, source_label=polygon.source_description)
     return PolygonQueryGeometry(
         envelope=selection.bounds,

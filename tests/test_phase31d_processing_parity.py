@@ -16,6 +16,7 @@ from pyforestscan_qgis.core.lidar_source_metadata import HeaderMetadataService, 
 from pyforestscan_qgis.core.lidar_catalog_builder import build_lidar_catalog
 from pyforestscan_qgis.core.polygon_batch import PolygonBatchRequest, run_polygon_batch_preflight
 from pyforestscan_qgis.core.polygon_normalization import normalized_selection_from_wkt
+from pyforestscan_qgis.core.processing_spatial_context import PolygonAlignmentFallbackChoice, SourceLocalFallbackPolicy
 from pyforestscan_qgis.core.spatial_reference_resolver import SpatialReferenceAssignmentStore, SpatialReferenceStatus
 from pyforestscan_qgis.core.spatial_selection import Bounds2D
 from pyforestscan_qgis.core.types import ProductType
@@ -58,7 +59,8 @@ class EffectiveSpatialProfileTests(unittest.TestCase):
             _write_las(root / "unknown.las", (0, 10, 0, 10))
             polygon = normalized_selection_from_wkt("POLYGON ((1 1, 9 1, 9 9, 1 9, 1 1))", "EPSG:6635")
             store = SpatialReferenceAssignmentStore(root / "empty.json")
-            result = DirectLidarFolderSelector(assignment_store=store).select(root, polygon)
+            strict = SourceLocalFallbackPolicy(polygon_alignment=PolygonAlignmentFallbackChoice.REQUIRE_EXPLICIT_CRS)
+            result = DirectLidarFolderSelector(assignment_store=store, spatial_policy=strict).select(root, polygon)
 
         self.assertFalse(result.ready)
         self.assertIn("Use Project CRS or Choose CRS", " ".join(result.blockers))

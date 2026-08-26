@@ -18,3 +18,5 @@ Standalone source-local processing may continue with unknown CRS when coordinate
 Polygon processing requires a real source CRS because LiDAR and polygon coordinates must be aligned. It transforms the exact polygon to source coordinates, selects overlapping sources, uses buffered preparation context, and applies the exact polygon mask to final rasters. Source-local CRS assumptions are forbidden.
 
 Mode-specific controls are limited to polygon source, polygon selection, spatial assignment intervention, and exact-mask status. Scientific and execution controls remain shared.
+
+Phase 31E permits a controlled polygon-coordinate interpretation when unreferenced LiDAR and polygon envelopes are strongly compatible. This remains distinct from folder source-local units: polygon outputs receive the polygon CRS with explicit assumed provenance and no coordinate transformation.

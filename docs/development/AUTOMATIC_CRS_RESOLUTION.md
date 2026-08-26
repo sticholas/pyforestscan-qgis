@@ -2,6 +2,8 @@
 
 Polygon overlap is evaluated only after resolving the effective source spatial profile. Automatic exact geometry transformation is allowed; coordinate guessing and source-local fake alignment are not.
 
+When no CRS evidence exists, Phase 31E may assign the known polygon CRS as an explicit assumed interpretation after strong coordinate compatibility. It is labeled assumed, never detected, and performs no reprojection.
+
 Automatic preparation does not weaken CRS policy. A standalone source may remain CRS-undefined, but distance-based preparation requires separate trusted unit evidence. Polygon/reprojection still requires a resolved CRS.
 
 Missing CRS is serialized as explicit `source_local` mode with JSON `null`, never the string `"None"`. Source-local mode is not a CRS assignment and remains invalid for polygon alignment.

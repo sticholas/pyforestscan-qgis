@@ -2,6 +2,8 @@
 
 Polygon Selection asks for a coordinate system only when the repository cannot identify one. Choosing a CRS writes a shared repository assignment, reruns Prerun Check, and leaves source files untouched. Successful review stays compact; provenance is available in Technical Details.
 
+For strongly compatible unreferenced LiDAR, the default advanced preference automatically uses the polygon coordinate system and displays a non-blocking assumed-reference warning. Technical views distinguish raw overlap, alignment, and final selection.
+
 Prerun preparation remains concise, for example **Height normalization will be generated automatically**. Ground samples, parameters, provenance, and recommendations remain in technical output rather than the primary workflow.
 
 Batch Process automatically refreshes missing readiness when clicked; Run Detailed Check remains available for review but is not required. Automatic is the normal profile. Execution mode appears only for Custom, and Maximum Workers appears only for Custom + Parallel as an adaptive upper bound. Primary output loading defaults on. Software determines parallel safety.

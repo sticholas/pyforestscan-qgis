@@ -2,6 +2,7 @@
 
 - Polygon processing cannot use the folder-only source-local CRS fallback. A real embedded, sidecar, file, repository, consensus, or exact QGIS datasource CRS is required.
 - Legacy catalogs may contain historical repository override metadata. New assignments use the shared spatial assignment store and are applied at query time.
+- Automatic polygon-coordinate fallback is an assumed interpretation, not authoritative CRS discovery. It is intentionally unavailable when raw coordinate spaces are incompatible or spatial evidence conflicts.
 
 - Durable automatic artifact routing is initially enabled for standalone CHM/Rumple; other HAG consumers retain existing execution paths.
 - Source-local ground/HAG preparation requires trusted linear units; magnitude and LAS scale are insufficient evidence.

@@ -2,6 +2,8 @@
 
 Folder and polygon requests enter this same preparation engine after source selection. Polygon mode may select members with different preparation methods; existing HAG, class-2 Delaunay, and SMRF work can coexist when final product validity is preserved.
 
+An assumed polygon CRS supplies CRS-derived units to the existing preparation plan. Classification evidence may be reused; unit-dependent HAG parameters and signatures are rebuilt for the new spatial interpretation.
+
 Phase 31A separates observed capabilities from required work. `LidarPreparationAssessment` records source identity, spatial-reference mode, coordinate units, dimensions, bounded classification evidence, DTM, product requirements, and scale. `HeightNormalizationPlanner` emits a signed `LidarPreparationPlan`; PBM executes its checkpointable steps and returns `PreparedLidarCapabilities`.
 
 For standalone CHM/Rumple, PBM samples classification before loading product arrays. When preparation is required it runs a file-to-file PDAL pipeline, writes `preparation/<signature>/prepared_hag.laz`, validates completion, records provenance, and then calculates products from that artifact. The original source is never changed. A compatible second product reuses the checkpoint.

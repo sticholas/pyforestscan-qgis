@@ -120,9 +120,29 @@ class SpatialReferenceAssignmentStore:
             return _assignment_from_record(record, AssignmentScope.FILE, file_key)
         if repository is not None:
             record = data.get("repositories", {}).get(_path_key(repository))
-            if isinstance(record, dict) and (record.get("repository_fingerprint") or record.get("fingerprint")) == repository_fingerprint(repository):
+            if isinstance(record, dict) and _repository_record_matches(record, repository):
                 return _assignment_from_record(record, AssignmentScope.REPOSITORY, _path_key(repository))
         return None
+
+    def assignment_diagnostics(self, source: Path, repository: Path | None = None) -> dict[str, object]:
+        """Explain lookup/fingerprint state without exposing unrelated settings."""
+        source = Path(source)
+        repository = Path(repository) if repository is not None else None
+        data = self._read()
+        file_record = data.get("files", {}).get(_path_key(source))
+        repository_record = data.get("repositories", {}).get(_path_key(repository)) if repository is not None else None
+        file_match = isinstance(file_record, dict) and (file_record.get("source_fingerprint") or file_record.get("signature")) == _file_signature(source)
+        repository_match = isinstance(repository_record, dict) and _repository_record_matches(repository_record, repository)
+        assignment = self.spatial_assignment_for(source, repository)
+        return {
+            "assignment_store_path": str(self.path),
+            "assignment_record_found": bool(isinstance(file_record, dict) or isinstance(repository_record, dict)),
+            "assignment_scope": assignment.scope.value if assignment else "",
+            "assignment_fingerprint_match": bool(file_match or repository_match),
+            "assignment_effective": bool(assignment and assignment.horizontal_crs),
+            "source_identity": _path_key(source),
+            "repository_identity": _path_key(repository) if repository is not None else "",
+        }
 
     def assign_file(self, source: Path, crs: str) -> None:
         self.assign(source, scope=AssignmentScope.FILE, crs=crs)
@@ -329,15 +349,12 @@ def normalize_crs(value: object) -> str:
 def repository_fingerprint(repository: Path | str) -> str:
     root = Path(repository)
     parts = [_path_key(root)]
-    try:
-        for path in sorted(root.iterdir(), key=lambda item: item.name.casefold())[:64]:
-            try:
-                stat = path.stat()
-                parts.append(f"{path.name}|{stat.st_size}|{stat.st_mtime_ns}")
-            except OSError:
-                continue
-    except OSError:
-        pass
+    for path in _repository_sources(root)[:256]:
+        try:
+            stat = path.stat()
+            parts.append(f"{path.relative_to(root)}|{stat.st_size}|{stat.st_mtime_ns}")
+        except (OSError, ValueError):
+            continue
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
 
@@ -349,9 +366,17 @@ def default_spatial_assignment_store() -> SpatialReferenceAssignmentStore:
 
 def _repository_sources(repository: Path) -> tuple[Path, ...]:
     try:
-        return tuple(item for item in repository.iterdir() if item.is_file() and item.name.lower().endswith((".las", ".laz", ".copc.laz", "ept.json")))
+        return tuple(sorted((item for item in repository.rglob("*") if item.is_file() and item.name.lower().endswith((".las", ".laz", ".copc.laz", "ept.json"))), key=lambda item: str(item).casefold()))
     except OSError:
         return ()
+
+
+def _repository_record_matches(record: Mapping[str, object], repository: Path) -> bool:
+    current_fingerprint = repository_fingerprint(repository)
+    if (record.get("repository_fingerprint") or record.get("fingerprint")) == current_fingerprint:
+        return True
+    stored_inventory = str(record.get("inventory_signature") or "")
+    return bool(stored_inventory and stored_inventory == source_inventory_signature(_repository_sources(repository)))
 
 
 def _validate_repository_assignment(repository: Path, assigned_crs: str, assigned_units: LinearUnit | None, *, sample_limit: int = 32) -> None:

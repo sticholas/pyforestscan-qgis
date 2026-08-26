@@ -1,5 +1,7 @@
 # Source-Local Fallback Policy
 
+The folder policy remains source-local assumed units and never assigns a CRS. The adjacent polygon preference controls assumed matching-coordinate-space alignment and defaults to automatic only for strongly compatible raw envelopes.
+
 Unknown spatial metadata is not automatically a scientific blocker. `resolve_processing_spatial_context` owns one application policy for eligible standalone products. The default is metres, represented as:
 
 - CRS: none

@@ -2,6 +2,8 @@
 
 Phase 31D makes this store authoritative for both Folder Selection and Polygon Selection. Repository assignments are inherited by raw-unknown members through the [effective source spatial profile](EFFECTIVE_SOURCE_SPATIAL_PROFILE.md) before overlap testing; raw header/catalog CRS is never rewritten.
 
+Repository fingerprints now follow recursive LiDAR inventory rather than catalog/cache files. A compatible descendant inherits its repository assignment; catalog churn does not invalidate trusted spatial meaning.
+
 Phase 31B separates coordinate meaning from coordinate transformation. `SpatialAssignment` is the authoritative typed record for explicit file or repository evidence. It can carry a horizontal/vertical CRS, trusted `LinearUnit`, fingerprints, scope, provenance, confidence, confirmation, timestamp, and notes.
 
 ## Evidence order

@@ -2,6 +2,8 @@
 
 Repository CRS assignment has one owner: the shared user-local spatial assignment store. Catalog metadata remains raw/cache state and does not own current user intent.
 
+The effective spatial context is the single owner of runtime interpretation. Legacy catalog CRS is input evidence only; blockers and technical diagnostics consume the same frozen context.
+
 `BatchExecutionReadiness` owns validated source disposition and plan identity. `BatchExecutionRequest` owns the immutable standard-Batch worker launch. Mission Control owns editable inputs and a disposable `preflight_report` projection. Progress events and list-row text do not own execution inputs.
 
 | Scope | Owner | Examples | Invalidation |
