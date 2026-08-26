@@ -1,5 +1,7 @@
 # PyForestScan Backend Manager Architecture
 
+Phase 31F places PBM behind the user-facing **Processing Engine** boundary. PBM remains the installer and isolated-environment implementation; `ProcessingEngineVerifier` is the sole readiness authority used by preflight and execution.
+
 Processing requests use protocol 2 contracts for spatial-reference mode and height normalization. Managed Python imports the active plugin package from the launch working directory; per-job module-location evidence proves the actual runtime path and prevents version ambiguity.
 
 The PyForestScan Backend Manager (PBM) is the planned backend dependency management subsystem for PyForestScan QGIS. PBM keeps the plugin lightweight while preparing a user-local backend runtime for PyForestScan, PDAL, GDAL, rasterio, numpy, scipy, vector/geospatial libraries, visualization support, and future scientific modules.

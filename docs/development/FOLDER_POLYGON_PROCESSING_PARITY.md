@@ -1,5 +1,11 @@
 # Folder and Polygon Processing Parity
 
+## Runtime parity
+
+Folder and Polygon execution share the same managed Processing Engine contract. Neither workflow requires QGIS Python to import PyForestScan for PBM-owned science. Required imports, protocol compatibility, environment initialization, and executable identity are mode-independent; only source selection and polygon geometry differ.
+
+Normal Mission Control Folder Batch and Polygon execution both force the verified managed adapter. They do not silently fall back to QGIS Python after a transient readiness failure.
+
 Folder Selection and Polygon Selection are entry points into one processing system.
 
 ## Shared systems

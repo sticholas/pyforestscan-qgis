@@ -19,6 +19,7 @@ from .registry import default_backend_registry
 from .repair import RepairPlan, format_repair_plan, plan_backend_repair
 from .state import detect_backend_state
 from .verification import format_verification_result, verify_backend
+from .processing_engine import ProcessingEngineSetupLock, ProcessingEngineVerifier
 from .version_manager import BackendVersionManager, VersionCompatibilityResult
 
 
@@ -75,6 +76,22 @@ class BackendService:
     def can_execute_processing(self) -> BackendExecutionAvailability:
         """Return whether PBM backend processing can run now."""
         return self.execution_service().can_execute_processing()
+
+    def processing_engine_state(self, *, quick: bool = False):
+        """Return the one user-facing Processing Engine readiness report."""
+        verifier = ProcessingEngineVerifier(self.paths)
+        return verifier.quick() if quick else verifier.verify()
+
+    def setup_processing_engine(self, progress_callback=None):
+        """Idempotently install or repair the managed engine under one process lock."""
+        current = ProcessingEngineVerifier(self.paths).verify(persist=False)
+        if current.ready:
+            return current
+        with ProcessingEngineSetupLock(self.paths):
+            result = self.install_backend(progress_callback=progress_callback)
+            if not result.success:
+                return ProcessingEngineVerifier(self.paths).verify()
+            return ProcessingEngineVerifier(self.paths).verify()
 
     def verify_runner(self) -> BackendExecutionAvailability:
         """Verify the PBM backend runner module."""

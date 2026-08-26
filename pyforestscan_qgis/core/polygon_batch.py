@@ -505,11 +505,22 @@ def execute_polygon_batch(
     """Clip intersecting sources to the exact polygon, then execute the normal Batch runner."""
     if report.blockers:
         raise ValueError("Polygon batch preflight blockers must be resolved before execution.")
+    # Normal Polygon execution is PBM-owned. Never silently fall back to QGIS Python
+    # when a managed-engine check fails between preflight and launch.
+    adapter = adapter or PyForestScanAdapter(execution_mode="pbm_backend")
+    # Recheck the exact managed execution interpreter before creating any real PBM batch attempt.
+    # Injected adapters remain available to QGIS-free tests and supported adapter integrations.
+    if isinstance(adapter, PyForestScanAdapter) and adapter.execution_mode != "qgis_python":
+        from .backend import BackendService
+        from .backend.processing_engine import ProcessingEngineError, ProcessingEngineVerifier
+        try:
+            ProcessingEngineVerifier(BackendService().paths).require_ready()
+        except ProcessingEngineError as exc:
+            raise RuntimeError(str(exc)) from exc
     if not _is_logical_spatial_report(report):
         path_blockers = selected_path_invariant(report.selected_sources, ordinary=True)
         if path_blockers:
             raise ValueError("; ".join(path_blockers))
-    adapter = adapter or PyForestScanAdapter()
     batch_folder = report.batch_folder if report.batch_folder.exists() else create_batch_folder(report.request.output_folder)
     if _is_logical_spatial_report(report):
         return _execute_logical_spatial_batch(report, adapter, batch_folder, item_callback=item_callback)
@@ -857,8 +868,9 @@ def _probe_pbm_backend(probe: Callable[[], tuple[bool, str]] | None) -> tuple[bo
     try:
         from .backend import BackendService
 
-        availability = BackendService().can_execute_processing()
-        return bool(availability.ready), availability.message
+        from .backend.processing_engine import ProcessingEngineVerifier
+        report = ProcessingEngineVerifier(BackendService().paths).verify()
+        return report.ready, report.summary
     except Exception as exc:  # noqa: BLE001
         return False, f"PBM backend check failed: {exc}"
 

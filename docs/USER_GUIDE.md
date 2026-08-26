@@ -1,5 +1,11 @@
 # PyForestScan QGIS User Guide
 
+## Processing Engine
+
+PyForestScan uses an isolated Processing Engine for point-cloud and raster work. When it is ready, Folder and Polygon processing do not require PyForestScan in QGIS Python. If setup or repair is needed, use the single action in **Tools & Setup**. The engine is stored in your user-local PyForestScan folder and does not modify QGIS Python or system Python.
+
+Technical module names, managed-environment details, and setup logs are available under troubleshooting and are not normal workflow requirements.
+
 Folder and Polygon Selection use the same products and automatic processing controls. Polygon Selection additionally requires trustworthy spatial alignment. If prompted, choose the repository CRS (or use the matching project CRS); Mission Control immediately retries source selection.
 
 When unreferenced LiDAR coordinates strongly match the selected polygon, PyForestScan can process them as already expressed in the polygon CRS. Coordinates are not reprojected, and product metadata records the assumption. Tools & Setup offers Automatic, Ask, and Require explicit CRS policies.

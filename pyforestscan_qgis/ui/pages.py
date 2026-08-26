@@ -1855,7 +1855,11 @@ class _BatchExecutionWorker(QObject):
     def run(self) -> None:
         """Execute the batch and emit a final result or error message."""
         try:
-            result = BatchExecutor(adapter_factory=PyForestScanAdapter).run(
+            from ..core.backend import BackendService
+            from ..core.backend.processing_engine import ProcessingEngineVerifier
+
+            ProcessingEngineVerifier(BackendService().paths).require_ready()
+            result = BatchExecutor(adapter_factory=lambda: PyForestScanAdapter(execution_mode="pbm_backend")).run(
                 self.request,
                 item_callback=self.itemReady.emit,
                 job_callback=self.jobReady.emit,
@@ -4559,11 +4563,11 @@ class SettingsPage(MissionPage):
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create the settings page."""
         super().__init__("Tools & Setup", parent)
-        system = self.add_section("System")
-        self.smart_system_status_label = _body_label("Checking managed backend and processing readiness.")
+        system = self.add_section("Processing Engine")
+        self.smart_system_status_label = _body_label("Checking processing readiness.")
         system.addWidget(self.smart_system_status_label)
         system_actions=QHBoxLayout()
-        self.verify_environment_button=QPushButton("Verify Environment");self.verify_environment_button.clicked.connect(self.verifyEnvironmentRequested.emit);_apply_button_role(self.verify_environment_button,"secondary")
+        self.verify_environment_button=QPushButton("Check");self.verify_environment_button.clicked.connect(self.verifyEnvironmentRequested.emit);_apply_button_role(self.verify_environment_button,"secondary")
         self.open_toolbox_button=QPushButton("Open Processing Toolbox");self.open_toolbox_button.clicked.connect(self.openToolboxRequested.emit);_apply_button_role(self.open_toolbox_button,"secondary")
         self.guidance_details_button=QPushButton("Guidance Details");self.guidance_details_button.clicked.connect(self.guidanceDetailsRequested.emit);_apply_button_role(self.guidance_details_button,"neutral")
         system_actions.addWidget(self.verify_environment_button)
@@ -4662,8 +4666,8 @@ class SettingsPage(MissionPage):
         workspace.addLayout(workspace_form)
         _wire_collapsible_group(workspace_group)
 
-        backend = self.add_section("Managed Backend")
-        backend.addWidget(_body_label("Windows beta builds can install a user-local backend. This does not modify QGIS Python, system Python, PATH, shell profiles, or QGIS folders."))
+        backend = self.add_section("Processing Engine Setup")
+        backend.addWidget(_body_label("PyForestScan uses an isolated processing environment so point-cloud and raster libraries do not interfere with QGIS Python."))
         self.backend_service = BackendService()
         self.backend_install_running = False
         self.backend_install_thread: QThread | None = None
@@ -4673,7 +4677,7 @@ class SettingsPage(MissionPage):
         self.backend_install_timer.setInterval(1000)
         self.backend_install_timer.timeout.connect(self._refresh_backend_install_elapsed)
         self.backend_status_label = _body_label("")
-        _set_status_badge(self.backend_status_label, "NOT CONFIGURED", readiness_status_text("NOT CONFIGURED", "Backend Status: Not set up - verify backend."))
+        _set_status_badge(self.backend_status_label, "NOT CONFIGURED", readiness_status_text("NOT CONFIGURED", "Processing Engine: Setup required"))
         self.backend_location_label = _body_label("Backend Location: Unknown")
         self.backend_environment_label = _body_label("Environment Location: Unknown")
         self.backend_installed_version_label = _body_label("Installed Version: Not installed")
@@ -4686,7 +4690,7 @@ class SettingsPage(MissionPage):
         self.backend_auto_install_ready_label = _body_label("Backend installer: Not checked")
         self.manual_dependency_setup_label = _body_label("Manual setup: Required until the backend is ready")
         self.qgis_compatibility_label = _body_label("QGIS compatibility: Not checked")
-        self.backend_install_readiness_label = _body_label("Backend setup: Not checked")
+        self.backend_install_readiness_label = _body_label("Processing setup: Not checked")
         for label in (
             self.backend_status_label,
             self.backend_dependency_label,
@@ -4695,7 +4699,7 @@ class SettingsPage(MissionPage):
         ):
             backend.addWidget(label)
 
-        backend_detail_group, backend_detail_layout = _collapsible_section(self.content_layout, "Advanced / Troubleshooting: backend details", checked=False)
+        backend_detail_group, backend_detail_layout = _collapsible_section(self.content_layout, "Troubleshooting", checked=False)
         for label in (
             self.zip_install_ready_label,
             self.backend_auto_install_ready_label,
@@ -4734,7 +4738,7 @@ class SettingsPage(MissionPage):
         self.verify_backend_button = QPushButton(primary_action_label("settings"))
         self.verify_backend_button.clicked.connect(self.verify_backend)
         _apply_button_role(self.verify_backend_button, "primary")
-        self.install_backend_button = QPushButton(install_availability.button_label)
+        self.install_backend_button = QPushButton("Set Up")
         self.install_backend_button.setEnabled(install_availability.enabled)
         _apply_button_role(self.install_backend_button, "primary" if install_availability.enabled else "neutral")
         if install_availability.enabled:
@@ -4767,10 +4771,15 @@ class SettingsPage(MissionPage):
 
         self.backend_primary_buttons = QHBoxLayout()
         self.backend_primary_buttons.setSpacing(ACTION_ROW_SPACING)
-        for button in (self.verify_backend_button, self.install_backend_button, self.repair_backend_button):
-            self.backend_primary_buttons.addWidget(button)
+        self.backend_primary_buttons.addWidget(self.install_backend_button)
         self.backend_primary_buttons.addStretch(1)
         backend.addLayout(self.backend_primary_buttons)
+
+        backend_troubleshooting_actions = QHBoxLayout()
+        backend_troubleshooting_actions.addWidget(self.verify_backend_button)
+        backend_troubleshooting_actions.addWidget(self.repair_backend_button)
+        backend_troubleshooting_actions.addStretch(1)
+        backend_detail_layout.addLayout(backend_troubleshooting_actions)
 
         self.backend_secondary_buttons = QHBoxLayout()
         self.backend_secondary_buttons.setSpacing(ACTION_ROW_SPACING)
@@ -4925,8 +4934,12 @@ class SettingsPage(MissionPage):
         self.qgis_compatibility_label.setText(f"QGIS compatibility: {compatibility.summary()}; backend {compat_text}")
         self.backend_install_readiness_label.setText(f"Backend setup: {availability.reason}; {len(plan.required_package_names())} packages planned")
         if not self.backend_install_running:
-            self.install_backend_button.setText(availability.button_label)
-            self.install_backend_button.setEnabled(availability.enabled)
+            if state.status.value == "Ready":
+                self.install_backend_button.setText("Ready")
+                self.install_backend_button.setEnabled(False)
+            else:
+                self.install_backend_button.setText("Set Up")
+                self.install_backend_button.setEnabled(availability.enabled)
         self.developer_mode_button.setText("Internal Beta Install: On" if availability.enabled else "Internal Beta Install: Off")
         if self.backend_install_running:
             return
@@ -5041,8 +5054,9 @@ class SettingsPage(MissionPage):
         for button in self._backend_install_action_buttons():
             button.setEnabled(not running)
         if not running:
-            self.install_backend_button.setText(availability.button_label)
-            self.install_backend_button.setEnabled(availability.enabled)
+            state = self.backend_service.detect_backend()
+            self.install_backend_button.setText("Ready" if state.status.value == "Ready" else "Set Up")
+            self.install_backend_button.setEnabled(availability.enabled and state.status.value != "Ready")
 
     def _set_backend_progress_visible(self, visible: bool) -> None:
         """Show PBM progress UI only while it is useful."""

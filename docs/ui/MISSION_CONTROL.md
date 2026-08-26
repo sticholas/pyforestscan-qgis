@@ -1,5 +1,11 @@
 # Mission Control
 
+## Processing Engine status
+
+Mission Control presents one Processing Engine state: Ready, Checking, Setup required, Updating, Repair required, Incompatible, or Failed. Normal setup exposes one state-dependent action. Detailed PBM controls, dependency probes, protocol identity, and logs belong under troubleshooting.
+
+Polygon and Folder processing use the same engine verifier immediately before launch. An incomplete engine blocks the launch before a scientific batch attempt is created.
+
 Polygon Selection asks for a coordinate system only when the repository cannot identify one. Choosing a CRS writes a shared repository assignment, reruns Prerun Check, and leaves source files untouched. Successful review stays compact; provenance is available in Technical Details.
 
 For strongly compatible unreferenced LiDAR, the default advanced preference automatically uses the polygon coordinate system and displays a non-blocking assumed-reference warning. Technical views distinguish raw overlap, alignment, and final selection.

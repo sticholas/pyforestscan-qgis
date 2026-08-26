@@ -1,5 +1,7 @@
 # PBM Installer Safety
 
+Processing Engine setup retains the transactional user-local installer, sanitized subprocess environment, no-`shell=True` policy, and hidden Windows process flags. A cross-process lock prevents concurrent QGIS sessions from modifying one environment. Setup never runs during `initGui()`.
+
 Phase 23C enables real backend installer execution for Windows internal beta builds only.
 
 ## Internal Beta Guard

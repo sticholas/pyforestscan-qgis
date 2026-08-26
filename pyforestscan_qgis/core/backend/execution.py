@@ -19,6 +19,7 @@ from .native_worker import classify_worker_exit, write_native_crash_bundle
 from .paths import BackendPaths
 from ..processing_monitor import ProcessingTimeoutPolicy, evaluate_liveness, heartbeat_path
 from .process_env import build_clean_subprocess_env, clean_env_summary, conda_environment_data_env, conda_environment_path_entries, hidden_subprocess_kwargs, summarize_subprocess_output
+from .processing_engine import ProcessingEngineVerifier
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -76,11 +77,14 @@ class BackendExecutionService:
 
     def can_execute_processing(self) -> BackendExecutionAvailability:
         """Return whether PBM backend processing can run now."""
-        verification = self.verifier()
-        if verification.status is not BackendStatus.READY:
-            return BackendExecutionAvailability(False, f"PBM backend is not ready: {verification.summary}", self.paths.python_executable)
-        ok, message = validate_backend_python_executable(self.paths.python_executable)
-        return BackendExecutionAvailability(ok, message, self.paths.python_executable)
+        if self.runner is not subprocess.run:
+            verification = self.verifier()
+            if verification.status is not BackendStatus.READY:
+                return BackendExecutionAvailability(False, f"Processing Engine is not ready: {verification.summary}", self.paths.python_executable)
+            ok, message = validate_backend_python_executable(self.paths.python_executable)
+            return BackendExecutionAvailability(ok, message, self.paths.python_executable)
+        report = ProcessingEngineVerifier(self.paths, runner=self.runner, plugin_parent=self.plugin_parent).verify()
+        return BackendExecutionAvailability(report.ready, report.summary, self.paths.python_executable)
 
     def verify_runner(self) -> BackendExecutionAvailability:
         """Verify that the backend runner module can be imported by backend Python."""
@@ -108,8 +112,7 @@ class BackendExecutionService:
 
     def submit_polygon_coordinator(self, payload_path: Path, job_dir: Path):
         """Launch a detached PBM coordinator and return its process identity."""
-        availability=self.can_execute_processing()
-        if not availability.ready:raise RuntimeError(availability.message)
+        report = ProcessingEngineVerifier(self.paths, runner=self.runner, plugin_parent=self.plugin_parent).require_ready()
         command=[str(self.paths.python_executable),"-m","pyforestscan_qgis.backend_runner.polygon_job_coordinator","--payload",str(payload_path)]
         env=build_clean_subprocess_env(prepend_paths=conda_environment_path_entries(self.paths.environment_path,self.paths.platform.value),extra_env=conda_environment_data_env(self.paths.environment_path,self.paths.platform.value))
         kwargs=dict(cwd=str(self.plugin_parent),env=env,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -117,7 +120,7 @@ class BackendExecutionService:
             hidden=hidden_subprocess_kwargs();flags=int(hidden.pop("creationflags",0));flags|=getattr(subprocess,"DETACHED_PROCESS",0)|getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0);kwargs.update(hidden);kwargs["creationflags"]=flags
         else:kwargs["start_new_session"]=True
         process=subprocess.Popen(command,**kwargs)
-        write_backend_log_entry(self.log_path,"execute","Submitted durable polygon coordinator.",stage="COORDINATOR",details={"pid":process.pid,"payload":str(payload_path),"job_dir":str(job_dir)})
+        write_backend_log_entry(self.log_path,"execute","Submitted durable polygon coordinator.",stage="COORDINATOR",details={"pid":process.pid,"payload":str(payload_path),"job_dir":str(job_dir),"preflight_runtime_identity":report.executable,"execution_runtime_identity":str(self.paths.python_executable)})
         return process.pid,command
 
     def run_product(self, product: str, request: Any) -> BackendJobResult:
@@ -207,6 +210,7 @@ class BackendExecutionService:
         """Block science when the managed runner cannot satisfy protocol v2."""
         if self._runtime_contract is not None and not refresh:
             return self._runtime_contract
+        engine_report = ProcessingEngineVerifier(self.paths, runner=self.runner, plugin_parent=self.plugin_parent).require_ready()
         command = self.runner_command_for_args(("inspect_runtime_contract",))
         env = build_clean_subprocess_env(
             prepend_paths=conda_environment_path_entries(self.paths.environment_path, self.paths.platform.value),

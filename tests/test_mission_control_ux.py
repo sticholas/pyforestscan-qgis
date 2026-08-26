@@ -237,7 +237,7 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn('Advanced Batch Options', source)
         self.assertNotIn('_collapsible_section(self.content_layout, "Batch Footprint Estimate"', source)
         self.assertIn('Technical Report', source)
-        self.assertIn('Advanced / Troubleshooting: backend details', source)
+        self.assertIn('_collapsible_section(self.content_layout, "Troubleshooting", checked=False)', source)
         self.assertIn('Troubleshooting: technical log', source)
         self.assertIn('self.recommendations_card.setVisible(bool(report.suggested_next_actions))', source)
         self.assertIn('self.warnings_card.setVisible(bool(report.warnings))', source)
@@ -252,15 +252,14 @@ class MissionControlUxTests(unittest.TestCase):
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 
         primary_snippets = (
-            "Windows beta builds can install a user-local backend.",
-            "Plugin ZIP: ready for QGIS Plugin Manager installs",
-            "Backend installer: available on Windows beta builds",
-            "Manual setup: not required for PBM-routed products",
-            "Verify or install the user-local backend from this page.",
+            "Processing Engine Setup",
+            "PyForestScan uses an isolated processing environment",
+            'self.install_backend_button = QPushButton("Set Up")',
+            'self.install_backend_button.setText("Ready" if state.status.value == "Ready" else "Set Up")',
         )
         for snippet in primary_snippets:
             self.assertIn(snippet, source)
-            self.assertTrue(technical_wording_is_advanced(snippet), snippet)
+        self.assertIn('_collapsible_section(self.content_layout, "Troubleshooting", checked=False)', source)
 
     def test_unified_interaction_model_static_hooks(self) -> None:
         controller = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text(encoding="utf-8")

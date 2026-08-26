@@ -1,5 +1,9 @@
 # State Ownership Model
 
+## Processing Engine state
+
+The managed environment owns installed scientific dependencies. `ProcessingEngineVerifier` owns derived readiness. `processing_engine.json` owns only cached evidence with a contract/environment fingerprint. Mission Control displays that state but does not independently infer backend readiness. Scientific batch state begins only after the engine is ready.
+
 Repository CRS assignment has one owner: the shared user-local spatial assignment store. Catalog metadata remains raw/cache state and does not own current user intent.
 
 The effective spatial context is the single owner of runtime interpretation. Legacy catalog CRS is input evidence only; blockers and technical diagnostics consume the same frozen context.

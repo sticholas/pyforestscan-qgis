@@ -1,5 +1,11 @@
 # Known Limitations
 
+## Processing Engine validation
+
+- Phase 31F prevents a missing `pyforestscan.handlers` module from becoming a scientific batch failure and classifies partial installs as repair-required before launch.
+- Clean Windows first-install, broken-install repair, and the reported two-source CHM/Rumple Polygon run still require live QGIS evidence before release sign-off.
+- The managed setup action continues to use the existing transactional PBM installer; Linux and macOS installation support retains its existing experimental status.
+
 - Polygon processing cannot use the folder-only source-local CRS fallback. A real embedded, sidecar, file, repository, consensus, or exact QGIS datasource CRS is required.
 - Legacy catalogs may contain historical repository override metadata. New assignments use the shared spatial assignment store and are applied at query time.
 - Automatic polygon-coordinate fallback is an assumed interpretation, not authoritative CRS discovery. It is intentionally unavailable when raw coordinate spaces are incompatible or spatial evidence conflicts.

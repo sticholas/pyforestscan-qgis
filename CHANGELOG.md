@@ -1,5 +1,11 @@
 # Changelog
 
+## Phase 31F - Processing Engine bootstrap and runtime contract
+
+- Added one Processing Engine readiness state and verifier for Folder and Polygon execution.
+- Made required PyForestScan submodules, protocol, and actual managed-interpreter identity blocking contract checks before scientific job creation.
+- Added atomic readiness caching, a cross-session setup lock, centralized silent Windows execution, support diagnostics, and concise setup/repair semantics.
+
 ## Phase 31E - Unified polygon spatial fallback
 
 - Added one effective spatial context for Folder and Polygon Selection, including trusted, assumed, unresolved, and conflict modes.

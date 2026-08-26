@@ -55,7 +55,7 @@ class Phase28CInterfaceCompactionTests(unittest.TestCase):
         self.assertIn('"QGIS Python fallback environment", checked=False', PAGES)
         self.assertIn('"Technical dependency details", checked=False', PAGES)
         self.assertIn('"Advanced Settings", checked=False', PAGES)
-        self.assertIn('"Advanced / Troubleshooting: backend details", checked=False', PAGES)
+        self.assertIn('"Troubleshooting", checked=False', PAGES)
 
     def test_primary_action_and_toolbox_contract(self):
         self.assertIn("self.resume_button.setVisible(enabled and resumable)", PAGES)

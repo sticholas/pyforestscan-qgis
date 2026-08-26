@@ -1,5 +1,7 @@
 # PBM Processing Execution
 
+Before Folder or Polygon job creation, the Processing Engine contract probes the exact managed executable used for launch. Required PyForestScan submodules, PDAL, Rasterio, NumPy, GDAL, protocol, runner identity, and module locations must pass. Engine faults are blocked before batch state exists.
+
 PBM protocol 2 verifies runtime identity before scientific execution and carries explicit spatial-reference and HAG decisions. Source-local jobs record `backend_module_locations.json` and `source_local_trace.json`; protocol mismatch is blocked with a Repair Backend action before PDAL or PyForestScan runs.
 
 Phase 23D routes supported PyForestScan processing through the managed PBM backend when that backend verifies as `Ready`.

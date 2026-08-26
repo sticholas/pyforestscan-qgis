@@ -14,8 +14,8 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
     def test_install_button_uses_internal_beta_availability(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 
-        self.assertIn("install_availability.button_label", source)
-        self.assertIn("self.install_backend_button.setEnabled(install_availability.enabled)", source)
+        self.assertIn('self.install_backend_button = QPushButton("Set Up")', source)
+        self.assertIn('self.install_backend_button.setText("Ready" if state.status.value == "Ready" else "Set Up")', source)
         self.assertIn("self.install_backend_button.clicked.connect(self.install_backend_internal_beta)", source)
         self.assertIn("This will install PyForestScan backend packages into your user-local PyForestScan folder", source)
         self.assertIn("It will not modify QGIS or system Python", source)
@@ -27,7 +27,7 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
         self.assertIn('QPushButton("Verify QGIS Compatibility")', source)
         self.assertIn("preview_install_plan", source)
         self.assertIn("verify_qgis_compatibility", source)
-        self.assertIn("Windows beta builds can install a user-local backend", source)
+        self.assertIn("PyForestScan uses an isolated processing environment", source)
 
     def test_release_readiness_and_manual_setup_guidance_are_present(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")

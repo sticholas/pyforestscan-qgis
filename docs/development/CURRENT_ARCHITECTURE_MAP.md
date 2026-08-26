@@ -1,5 +1,9 @@
 # Current Architecture Map
 
+## Phase 31F runtime boundary
+
+`ProcessingEngineVerifier` is the authoritative readiness boundary shared by preflight and execution. It probes `pyforestscan_qgis.backend_runner inspect_runtime_contract` through the exact managed executable used by `BackendExecutionService`. `processing_engine.json` provides fingerprinted quick discovery; it never overrides a changed environment.
+
 Phase 31D adds `core/effective_source_spatial_profile.py` between source metadata and polygon selection. Folder and polygon paths then converge on shared preparation, execution, recovery, and output systems.
 
 Phase 31A adds a PBM-owned LiDAR preparation layer between request validation and product adapters. Assessments, plans, bounded classification samples, prepared checkpoints, provenance, and recommendations are plugin-owned contracts; PyForestScan/PDAL perform ground and HAG operations.
