@@ -40,3 +40,5 @@ Record the input dataset, CRS, grid resolution, CHM interpolation settings, mini
 # Source-local CRS behavior
 
 Rumple may derive from a compatible source-local CHM without a named CRS. Rumple mathematics is unchanged. The raster and scalar summary retain unresolved/source-local provenance; spatial alignment still requires a resolved CRS.
+
+Trusted units may now unlock automatic HAG preparation before the shared CHM surface and Rumple raster are calculated. The assignment scope, source units, HAG source, and CRS status are retained in provenance.

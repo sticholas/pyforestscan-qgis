@@ -11,3 +11,5 @@ Statuses are `RESOLVED_AUTHORITATIVE`, `RESOLVED_REPOSITORY_INHERITANCE`, `RESOL
 Supported sidecars are exact-name `.prj` and `.wkt`, plus explicit `repository.prj`. Higher-confidence conflicts return `CONFLICT`; no majority is silently selected. Equivalent EPSG, WKT/WKT2, compound-horizontal, and PROJ representations normalize through `pyproj` where available.
 
 QGIS evidence must match the canonical datasource path. Project CRS is only a confirmable suggestion unless reinforced by authoritative repository/source evidence. Once source and polygon CRS are known, existing exact-geometry transformation produces read-CRS bounds automatically.
+
+Phase 31B adds typed units-only/file/repository assignments. Exact user assignments follow embedded/sidecar evidence and conflicts are surfaced. **Use Project CRS** is an explicit assignment confirmation, never an automatic inference.

@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any
 
 from .types import Bounds3D, ClassificationCount, DatasetInspection, ProductType
+from .source_coordinate_units import assess_source_coordinate_units
+from .spatial_reference_resolver import SpatialReferenceAssignmentStore, SpatialReferenceResolver, default_spatial_assignment_store
 
 LOW_DENSITY_THRESHOLD = 1.0
 GROUND_CLASSIFICATION = 2
@@ -69,6 +71,10 @@ class DatasetExplorerReport:
     recommended_actions: tuple[str, ...] = field(default_factory=tuple)
     preparation_readiness: str = "READY"
     planned_height_method: str = "USE_EXISTING_HAG"
+    source_coordinate_units: str = ""
+    spatial_assignment_scope: str = ""
+    spatial_assignment_provenance: str = ""
+    crs_assignment_status: str = "EMBEDDED_OR_DISCOVERED"
 
 
 def format_count_for_display(value: int | None) -> str:
@@ -96,6 +102,7 @@ def format_crs_for_display(crs: str | None) -> str:
 def build_dataset_explorer_report(
     inspection: DatasetInspection,
     title: str = "PyForestScan Dataset Explorer",
+    assignment_store: SpatialReferenceAssignmentStore | None = None,
 ) -> DatasetExplorerReport:
     """Build a typed Dataset Explorer report from adapter inspection output."""
     dimensions = tuple(inspection.dimensions)
@@ -135,7 +142,13 @@ def build_dataset_explorer_report(
         has_classification_summary=has_classification_summary,
     )
     actions = _recommended_actions(warnings, products)
-    preparation_readiness, planned_height_method = _preparation_semantics(has_hag, has_z, has_ground, has_classification_dimension, has_classification_summary, bool(inspection.crs))
+    source_path = Path(inspection.source.path)
+    store = assignment_store or default_spatial_assignment_store()
+    assignment = store.spatial_assignment_for(source_path, source_path.parent) if not inspection.source.is_remote else None
+    resolution = SpatialReferenceResolver(store).resolve(source_path, embedded_crs=inspection.crs, source_local_allowed=True) if not inspection.source.is_remote else None
+    effective_crs = resolution.resolved_crs if resolution and resolution.resolved else inspection.crs
+    unit_assessment = assess_source_coordinate_units(effective_crs, assignment.linear_units if assignment else None)
+    preparation_readiness, planned_height_method = _preparation_semantics(has_hag, has_z, has_ground, has_classification_dimension, has_classification_summary, unit_assessment.distance_operations_safe)
 
     return DatasetExplorerReport(
         title=title,
@@ -146,7 +159,7 @@ def build_dataset_explorer_report(
         metadata_source=inspection.metadata_source,
         point_count=inspection.point_count,
         bounds=bounds,
-        crs=inspection.crs,
+        crs=effective_crs,
         point_format=inspection.point_format,
         dimensions=dimensions,
         classification_summary=inspection.classification_summary,
@@ -160,6 +173,10 @@ def build_dataset_explorer_report(
         recommended_actions=actions,
         preparation_readiness=preparation_readiness,
         planned_height_method=planned_height_method,
+        source_coordinate_units=unit_assessment.units.value if unit_assessment.distance_operations_safe else "",
+        spatial_assignment_scope=assignment.scope.value if assignment else "",
+        spatial_assignment_provenance=assignment.provenance if assignment else (resolution.source if resolution else ""),
+        crs_assignment_status="USER_ASSIGNED" if assignment and assignment.horizontal_crs else ("SOURCE_LOCAL" if not effective_crs else "EMBEDDED_OR_DISCOVERED"),
     )
 
 
@@ -212,8 +229,11 @@ def report_to_dict(report: DatasetExplorerReport) -> dict[str, Any]:
         "preparation": {
             "readiness": report.preparation_readiness,
             "planned_height_method": report.planned_height_method,
-            "source_coordinate_units": "" if not report.crs else "FROM_CRS",
-            "message": "PyForestScan can prepare missing HeightAboveGround automatically when ground and source-unit checks pass.",
+            "source_coordinate_units": report.source_coordinate_units,
+            "spatial_assignment_scope": report.spatial_assignment_scope,
+            "spatial_assignment_provenance": report.spatial_assignment_provenance,
+            "crs_assignment_status": report.crs_assignment_status,
+            "message": "PyForestScan can prepare missing HeightAboveGround automatically when ground and source-unit checks pass." if report.preparation_readiness != "NEEDS_USER_INPUT" else "PyForestScan found usable ground data and can prepare this LiDAR. Choose the coordinate units to continue.",
         },
     }
 
@@ -460,12 +480,12 @@ def _recommended_actions(
     return tuple(actions)
 
 
-def _preparation_semantics(has_hag, has_z, has_ground, has_classification_dimension, has_classification_summary, crs_known):
+def _preparation_semantics(has_hag, has_z, has_ground, has_classification_dimension, has_classification_summary, units_known):
     if has_hag:
         return "READY", "USE_EXISTING_HAG"
     if not has_z:
         return "BLOCKED", "UNAVAILABLE"
-    if not crs_known:
+    if not units_known:
         return "NEEDS_USER_INPUT", "INSPECT_GROUND_AFTER_SOURCE_UNITS"
     if has_ground:
         return "READY_AFTER_PREPARATION", "DELAUNAY_FROM_EXISTING_GROUND"

@@ -18,3 +18,5 @@ CHM and Rumple may execute from usable height-above-ground data without vegetati
 # Phase 30E CRS capability
 
 Standalone CHM, Rumple, PAD, PAI, FHD, Canopy Cover, Point Density, Voxel Statistic, and DTM calculations are classified as source-local capable when their scientific inputs and source units are valid. Phase 30E production integration enables CHM/Rumple first. Polygon alignment, reprojection, and multi-source mosaicking require a named source CRS.
+
+Phase 31B enables raw standalone CHM/Rumple preparation with trusted units. Units-only output stays unreferenced; assigned-CRS output carries the confirmed CRS. Polygon workflows continue to reject units-only evidence.

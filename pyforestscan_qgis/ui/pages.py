@@ -105,6 +105,8 @@ from ..core.product_plan import (
     write_plan_json,
 )
 from ..core.types import ProductType
+from ..core.spatial_assignment import AssignmentScope, LinearUnit
+from ..core.spatial_reference_resolver import default_spatial_assignment_store
 from ..core.processing_ui_state import ProcessingUiState, control_policy, reconcile_ui_state, terminal_state_from_result
 from ..core.durable_errors import DurableErrorRecord, read_recent_error, write_recent_error
 from ..core.completed_job_summary import CompletedJobSummary, completed_job_summary, format_completed_job_summary
@@ -2060,6 +2062,38 @@ class BatchPage(MissionPage):
         repository_layout.addLayout(folder_row)
         self.recursive_check = QCheckBox("Search subfolders")
         repository_layout.addWidget(self.recursive_check)
+        self.spatial_assignment_frame = QFrame()
+        assignment_layout = QVBoxLayout(self.spatial_assignment_frame)
+        assignment_layout.setContentsMargins(0, SECTION_SPACING, 0, SECTION_SPACING)
+        self.spatial_assignment_title = _body_label("Preparation needs one detail")
+        assignment_layout.addWidget(self.spatial_assignment_title)
+        assignment_layout.addWidget(_details_label("PyForestScan found usable ground data and can prepare this LiDAR. Choose the coordinate units to continue."))
+        assignment_row = QHBoxLayout()
+        self.source_units_combo = QComboBox()
+        self.source_units_combo.addItem("Meters", LinearUnit.METERS.value)
+        self.source_units_combo.addItem("International feet", LinearUnit.INTERNATIONAL_FEET.value)
+        self.source_units_combo.addItem("US survey feet", LinearUnit.US_SURVEY_FEET.value)
+        self.assignment_scope_combo = QComboBox()
+        self.assignment_scope_combo.addItem("This file", AssignmentScope.FILE.value)
+        self.assignment_scope_combo.addItem("This repository", AssignmentScope.REPOSITORY.value)
+        self.confirm_source_units_button = QPushButton("Continue")
+        self.confirm_source_units_button.clicked.connect(self.assign_selected_source_units)
+        _apply_button_role(self.confirm_source_units_button, "primary")
+        self.choose_source_crs_button = QPushButton("Choose Coordinate System")
+        self.choose_source_crs_button.clicked.connect(self.assign_selected_source_crs)
+        _apply_button_role(self.choose_source_crs_button, "secondary")
+        self.use_project_crs_button = QPushButton("Use Project CRS")
+        self.use_project_crs_button.clicked.connect(self.assign_project_crs_to_selected_source)
+        _apply_button_role(self.use_project_crs_button, "secondary")
+        assignment_row.addWidget(self.source_units_combo)
+        assignment_row.addWidget(self.assignment_scope_combo)
+        assignment_row.addWidget(self.confirm_source_units_button)
+        assignment_row.addWidget(self.choose_source_crs_button)
+        assignment_row.addWidget(self.use_project_crs_button)
+        assignment_row.addStretch(1)
+        assignment_layout.addLayout(assignment_row)
+        self.spatial_assignment_frame.setVisible(False)
+        repository_layout.addWidget(self.spatial_assignment_frame)
         discover_row = QHBoxLayout()
         self.discover_button = QPushButton("Discover Files")
         self.discover_button.clicked.connect(self.discover_files)
@@ -3476,6 +3510,71 @@ class BatchPage(MissionPage):
         if path:
             self.input_folder_edit.setText(path)
 
+    def show_spatial_assignment_prompt(self, visible: bool = True) -> None:
+        """Expose the compact resolver only when missing spatial meaning blocks preparation."""
+        self.spatial_assignment_frame.setVisible(bool(visible))
+
+    def _assignment_target(self) -> tuple[Path, AssignmentScope]:
+        scope = AssignmentScope(str(self.assignment_scope_combo.currentData() or AssignmentScope.FILE.value))
+        selected = self._selected_paths()
+        if scope is AssignmentScope.FILE:
+            if len(selected) != 1:
+                raise ValueError("Select one LiDAR file for a file-specific assignment.")
+            return Path(selected[0]), scope
+        folder = self.input_folder_edit.text().strip()
+        if not folder:
+            raise ValueError("Choose a LiDAR repository first.")
+        return Path(folder), scope
+
+    def assign_selected_source_units(self) -> None:
+        try:
+            target, scope = self._assignment_target()
+            units = LinearUnit.parse(self.source_units_combo.currentData())
+            default_spatial_assignment_store().assign_units(target, units, scope=scope, notes="Confirmed in Mission Control before processing.")
+        except (ValueError, OSError) as exc:
+            QMessageBox.warning(self, "Spatial Assignment", str(exc))
+            return
+        self.preflight_report = None
+        self.show_spatial_assignment_prompt(False)
+        self.preflight_summary_label.setText("Source units saved. Run Prerun Check to rebuild the preparation plan.")
+        self.run_preflight()
+
+    def assign_selected_source_crs(self) -> None:
+        try:
+            target, scope = self._assignment_target()
+            from qgis.gui import QgsProjectionSelectionDialog
+            dialog = QgsProjectionSelectionDialog(self)
+            if not dialog.exec_():
+                return
+            crs = dialog.crs()
+            authid = crs.authid() or crs.toWkt()
+            default_spatial_assignment_store().assign(target, scope=scope, crs=authid, provenance="qgis_crs_selector", notes="Coordinates unchanged; CRS assigned in Mission Control.")
+        except (ImportError, ValueError, OSError) as exc:
+            QMessageBox.warning(self, "Coordinate System", str(exc))
+            return
+        self.preflight_report = None
+        self.show_spatial_assignment_prompt(False)
+        self.run_preflight()
+
+    def assign_project_crs_to_selected_source(self) -> None:
+        try:
+            target, scope = self._assignment_target()
+            from qgis.core import QgsProject
+            crs = QgsProject.instance().crs()
+            authid = crs.authid() or crs.toWkt()
+            if not authid:
+                raise ValueError("The current QGIS project has no valid coordinate system.")
+            answer = QMessageBox.question(self, "Use Project CRS", f"Confirm that {target.name} coordinates are already expressed in {authid}. Coordinates will not be transformed.")
+            if answer != QMessageBox.Yes:
+                return
+            default_spatial_assignment_store().assign(target, scope=scope, crs=authid, provenance="confirmed_project_crs", notes="Explicitly confirmed as matching the QGIS project CRS; coordinates unchanged.")
+        except (ImportError, ValueError, OSError) as exc:
+            QMessageBox.warning(self, "Project Coordinate System", str(exc))
+            return
+        self.preflight_report = None
+        self.show_spatial_assignment_prompt(False)
+        self.run_preflight()
+
     def browse_output_folder(self) -> None:
         """Choose the batch output root folder."""
         path = QFileDialog.getExistingDirectory(self, "Choose output folder")
@@ -3554,6 +3653,8 @@ class BatchPage(MissionPage):
         self.preflight_report = report
         self.preflight_text.setPlainText(_format_preflight_report(report))
         self.preflight_summary_label.setText("Ready to process." if not report.blockers else f"{len(report.blockers)} item(s) need attention.")
+        blocker_text = " ".join(str(item) for item in report.blockers).upper()
+        self.show_spatial_assignment_prompt("SOURCE_UNITS_UNKNOWN" in blocker_text)
         self._update_run_button_enabled()
         self._publish_session_state(plan_status="ready")
 
@@ -4456,6 +4557,36 @@ class SettingsPage(MissionPage):
         additional_row.addWidget(self.guidance_details_button)
         additional_row.addStretch(1)
         additional_tools.addLayout(additional_row)
+        spatial_group, spatial_tools = _collapsible_section(additional_tools, "LiDAR Spatial Reference", checked=False)
+        spatial_tools.addWidget(_details_label("Assign missing spatial meaning without changing LiDAR coordinates. Polygon matching requires a coordinate system; standalone preparation may use trusted units only."))
+        spatial_form = QFormLayout()
+        self.spatial_target_edit = QLineEdit()
+        self.spatial_target_edit.setPlaceholderText("LiDAR file or coherent repository path")
+        self.spatial_scope_combo = QComboBox()
+        self.spatial_scope_combo.addItem("This file", AssignmentScope.FILE.value)
+        self.spatial_scope_combo.addItem("This repository", AssignmentScope.REPOSITORY.value)
+        self.spatial_units_combo = QComboBox()
+        self.spatial_units_combo.addItem("Meters", LinearUnit.METERS.value)
+        self.spatial_units_combo.addItem("International feet", LinearUnit.INTERNATIONAL_FEET.value)
+        self.spatial_units_combo.addItem("US survey feet", LinearUnit.US_SURVEY_FEET.value)
+        spatial_form.addRow("Source", self.spatial_target_edit)
+        spatial_form.addRow("Scope", self.spatial_scope_combo)
+        spatial_form.addRow("Coordinate units", self.spatial_units_combo)
+        spatial_tools.addLayout(spatial_form)
+        spatial_actions = QHBoxLayout()
+        self.save_spatial_units_button = QPushButton("Save Trusted Units")
+        self.save_spatial_units_button.clicked.connect(self.save_managed_spatial_units)
+        _apply_button_role(self.save_spatial_units_button, "secondary")
+        self.clear_spatial_assignment_button = QPushButton("Clear Assignment")
+        self.clear_spatial_assignment_button.clicked.connect(self.clear_managed_spatial_assignment)
+        _apply_button_role(self.clear_spatial_assignment_button, "danger")
+        spatial_actions.addWidget(self.save_spatial_units_button)
+        spatial_actions.addWidget(self.clear_spatial_assignment_button)
+        spatial_actions.addStretch(1)
+        spatial_tools.addLayout(spatial_actions)
+        self.spatial_assignment_status_label = _details_label("No source selected.")
+        spatial_tools.addWidget(self.spatial_assignment_status_label)
+        _wire_collapsible_group(spatial_group)
         _wire_collapsible_group(additional_tools_group)
         defaults = self.add_section("Preferences")
         form = QFormLayout()
@@ -4675,6 +4806,32 @@ class SettingsPage(MissionPage):
         if path:
             self.default_output_folder.setText(path)
             self.emit_default_output_folder()
+
+    def save_managed_spatial_units(self) -> None:
+        target = Path(self.spatial_target_edit.text().strip())
+        if not str(target) or str(target) == ".":
+            self.spatial_assignment_status_label.setText("Choose a LiDAR file or repository path.")
+            return
+        try:
+            scope = AssignmentScope(str(self.spatial_scope_combo.currentData()))
+            assignment = default_spatial_assignment_store().assign_units(target, self.spatial_units_combo.currentData(), scope=scope, notes="Managed in Tools & Setup.")
+        except (ValueError, OSError) as exc:
+            self.spatial_assignment_status_label.setText(str(exc))
+            return
+        self.spatial_assignment_status_label.setText(f"Source units assigned - {assignment.linear_units.value.replace('_', ' ').title()}. Coordinate system not assigned; coordinates remain source-local.")
+
+    def clear_managed_spatial_assignment(self) -> None:
+        target = Path(self.spatial_target_edit.text().strip())
+        store = default_spatial_assignment_store()
+        try:
+            if AssignmentScope(str(self.spatial_scope_combo.currentData())) is AssignmentScope.REPOSITORY:
+                store.clear_repository(target)
+            else:
+                store.clear_file(target)
+        except OSError as exc:
+            self.spatial_assignment_status_label.setText(str(exc))
+            return
+        self.spatial_assignment_status_label.setText("Spatial assignment cleared. Embedded/sidecar evidence remains unchanged.")
 
     def emit_default_output_folder(self) -> None:
         """Emit the configured default output folder."""

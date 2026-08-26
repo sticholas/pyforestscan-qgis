@@ -14,6 +14,16 @@ from typing import Iterable, Mapping
 
 from .crs_alignment import compare_crs
 from .ept_spatial_reference import resolve_ept_spatial_reference
+from .source_coordinate_units import assess_source_coordinate_units
+from .spatial_assignment import (
+    AssignmentScope,
+    LidarSpatialProfile,
+    LinearUnit,
+    SpatialAssignment,
+    SpatialAssignmentType,
+    assignment_timestamp,
+    source_inventory_signature,
+)
 
 
 class SpatialReferenceStatus(str, Enum):
@@ -90,52 +100,87 @@ class RepositorySpatialReferenceProfile:
 
 
 class SpatialReferenceAssignmentStore:
-    """Small JSON store for explicit file/repository assignments."""
+    """Versioned JSON store for explicit CRS and trusted-unit assignments."""
 
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
 
     def assignment_for(self, source: Path, repository: Path | None = None) -> SpatialReferenceEvidence | None:
+        assignment = self.spatial_assignment_for(source, repository)
+        if assignment is None or not assignment.horizontal_crs:
+            return None
+        name = "persisted_file_assignment" if assignment.scope is AssignmentScope.FILE else "persisted_repository_assignment"
+        return SpatialReferenceEvidence(name, assignment.horizontal_crs, SpatialReferenceConfidence.HIGH, assignment.notes or "Explicit user assignment")
+
+    def spatial_assignment_for(self, source: Path, repository: Path | None = None) -> SpatialAssignment | None:
         data = self._read()
         file_key = _path_key(source)
         record = data.get("files", {}).get(file_key)
-        if isinstance(record, dict) and record.get("signature") == _file_signature(source):
-            return SpatialReferenceEvidence("persisted_file_assignment", str(record.get("crs", "")), SpatialReferenceConfidence.HIGH, "Explicit file assignment")
+        if isinstance(record, dict) and (record.get("source_fingerprint") or record.get("signature")) == _file_signature(source):
+            return _assignment_from_record(record, AssignmentScope.FILE, file_key)
         if repository is not None:
             record = data.get("repositories", {}).get(_path_key(repository))
-            if isinstance(record, dict) and record.get("fingerprint") == repository_fingerprint(repository):
-                return SpatialReferenceEvidence("persisted_repository_assignment", str(record.get("crs", "")), SpatialReferenceConfidence.HIGH, "Explicit repository assignment")
+            if isinstance(record, dict) and (record.get("repository_fingerprint") or record.get("fingerprint")) == repository_fingerprint(repository):
+                return _assignment_from_record(record, AssignmentScope.REPOSITORY, _path_key(repository))
         return None
 
     def assign_file(self, source: Path, crs: str) -> None:
-        self._write_assignment("files", _path_key(source), crs, "signature", _file_signature(source))
+        self.assign(source, scope=AssignmentScope.FILE, crs=crs)
 
     def assign_repository(self, repository: Path, crs: str) -> None:
-        self._write_assignment("repositories", _path_key(repository), crs, "fingerprint", repository_fingerprint(repository))
+        self.assign(repository, scope=AssignmentScope.REPOSITORY, crs=crs)
+
+    def assign_units(self, target: Path, units: LinearUnit | str, *, scope: AssignmentScope = AssignmentScope.FILE, notes: str = "") -> SpatialAssignment:
+        return self.assign(target, scope=scope, units=units, notes=notes)
+
+    def assign(self, target: Path, *, scope: AssignmentScope, crs: str = "", units: LinearUnit | str | None = None, provenance: str = "user", notes: str = "") -> SpatialAssignment:
+        target = Path(target)
+        normalized = normalize_crs(crs)
+        linear = LinearUnit.parse(units)
+        if normalized and linear is None:
+            linear = assess_source_coordinate_units(normalized).linear_unit
+        if not normalized and linear is None:
+            raise ValueError("A valid CRS or supported trusted linear unit is required.")
+        if scope is AssignmentScope.REPOSITORY:
+            _validate_repository_assignment(target, normalized, linear)
+        identity = _path_key(target)
+        assignment_type = SpatialAssignmentType.USER_UNITS_ONLY if not normalized else (SpatialAssignmentType.USER_FILE_ASSIGNMENT if scope is AssignmentScope.FILE else SpatialAssignmentType.USER_REPOSITORY_ASSIGNMENT)
+        record = SpatialAssignment(
+            scope=scope, identity=identity, assignment_type=assignment_type,
+            horizontal_crs=normalized, linear_units=linear, provenance=provenance,
+            confidence="HIGH", user_confirmed=True, created_at=assignment_timestamp(),
+            source_fingerprint=_file_signature(target) if scope is AssignmentScope.FILE else "",
+            repository_fingerprint=repository_fingerprint(target) if scope is AssignmentScope.REPOSITORY else "",
+            inventory_signature=source_inventory_signature(_repository_sources(target)) if scope is AssignmentScope.REPOSITORY else "",
+            notes=notes,
+        )
+        data = self._read()
+        group = "files" if scope is AssignmentScope.FILE else "repositories"
+        data.setdefault(group, {})[identity] = record.to_dict()
+        self._write(data)
+        return record
+
+    def clear_file(self, source: Path) -> None:
+        data = self._read()
+        data.setdefault("files", {}).pop(_path_key(source), None)
+        self._write(data)
 
     def clear_repository(self, repository: Path) -> None:
         data = self._read()
         data.setdefault("repositories", {}).pop(_path_key(repository), None)
         self._write(data)
 
-    def _write_assignment(self, group: str, key: str, crs: str, signature_key: str, signature: str) -> None:
-        normalized = normalize_crs(crs)
-        if not normalized:
-            raise ValueError("A valid CRS is required for assignment.")
-        data = self._read()
-        data.setdefault(group, {})[key] = {"crs": normalized, signature_key: signature, "assigned_at": datetime.now(timezone.utc).isoformat(), "source": "user"}
-        self._write(data)
-
     def _read(self) -> dict[str, object]:
         if not self.path.exists():
-            return {"version": 1, "files": {}, "repositories": {}}
+            return {"version": 2, "files": {}, "repositories": {}}
         try:
             value = json.loads(self.path.read_text(encoding="utf-8"))
-            return value if isinstance(value, dict) else {"version": 1, "files": {}, "repositories": {}}
+            return value if isinstance(value, dict) else {"version": 2, "files": {}, "repositories": {}}
         except (OSError, json.JSONDecodeError):
-            return {"version": 1, "files": {}, "repositories": {}}
+            return {"version": 2, "files": {}, "repositories": {}}
 
     def _write(self, data: dict[str, object]) -> None:
+        data["version"] = 2
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
         temporary.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -208,6 +253,25 @@ class SpatialReferenceResolver:
             return SpatialReferenceResolution(SpatialReferenceStatus.SOURCE_LOCAL_ONLY, source="source_local", confidence=SpatialReferenceConfidence.NONE, evidence=tuple(evidence), safe_for_source_local_processing=True, warnings=("No authoritative CRS was found; processing will retain source coordinates with undefined CRS.",))
         return SpatialReferenceResolution(SpatialReferenceStatus.INVALID, evidence=tuple(evidence), user_action_required=True, warnings=("No valid coordinate system was found.",))
 
+    def spatial_profile(self, source: Path | str, **kwargs: object) -> LidarSpatialProfile:
+        path = Path(source)
+        repository = path if path.is_dir() else path.parent
+        resolution = self.resolve(path, source_local_allowed=True, **kwargs)
+        assignment = self.assignment_store.spatial_assignment_for(path, repository) if self.assignment_store else None
+        units = assess_source_coordinate_units(resolution.resolved_crs, assignment.linear_units if assignment else None).linear_unit
+        conflict = "; ".join(resolution.warnings) if resolution.status is SpatialReferenceStatus.CONFLICT else ""
+        return LidarSpatialProfile(
+            source=path, repository=repository,
+            embedded_crs=resolution.resolved_crs if resolution.source in {"embedded_metadata", "file_sidecar", "repository_sidecar"} else "",
+            assigned_crs=assignment.horizontal_crs if assignment else "",
+            linear_units=units,
+            assignment_scope=assignment.scope.value if assignment else "",
+            evidence=resolution.source,
+            preparation_safe=bool(units),
+            polygon_alignment_safe=resolution.safe_for_spatial_alignment,
+            conflict=conflict,
+        )
+
 
 def profile_repository(repository: Path | str, sources: Iterable[object], *, sample_limit: int = 200) -> RepositorySpatialReferenceProfile:
     """Build a bounded consensus profile from source metadata records."""
@@ -275,6 +339,50 @@ def repository_fingerprint(repository: Path | str) -> str:
     except OSError:
         pass
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def default_spatial_assignment_store() -> SpatialReferenceAssignmentStore:
+    """Return the user-local store without creating it until an assignment is made."""
+    from .backend.paths import resolve_backend_paths
+    return SpatialReferenceAssignmentStore(resolve_backend_paths().backend_root / "spatial_assignments.json")
+
+
+def _repository_sources(repository: Path) -> tuple[Path, ...]:
+    try:
+        return tuple(item for item in repository.iterdir() if item.is_file() and item.name.lower().endswith((".las", ".laz", ".copc.laz", "ept.json")))
+    except OSError:
+        return ()
+
+
+def _validate_repository_assignment(repository: Path, assigned_crs: str, assigned_units: LinearUnit | None, *, sample_limit: int = 32) -> None:
+    """Reject obvious authoritative conflicts; never infer meaning from numeric bounds."""
+    authoritative: list[str] = []
+    authoritative_units: list[LinearUnit] = []
+    for source in _repository_sources(repository)[:sample_limit]:
+        crs = _discover_embedded_crs(source, None)
+        if not crs:
+            sidecars = _sidecar_evidence(source)
+            crs = sidecars[0].crs if sidecars else ""
+        normalized = normalize_crs(crs)
+        if normalized and not any(compare_crs(normalized, existing).horizontally_equivalent for existing in authoritative):
+            authoritative.append(normalized)
+        units = assess_source_coordinate_units(normalized).linear_unit if normalized else None
+        if units and units not in authoritative_units:
+            authoritative_units.append(units)
+    if len(authoritative) > 1:
+        raise ValueError("Repository assignment blocked: sampled sources contain conflicting authoritative coordinate systems.")
+    if assigned_crs and authoritative and not compare_crs(assigned_crs, authoritative[0]).horizontally_equivalent:
+        raise ValueError(f"Repository assignment conflicts with authoritative source CRS {authoritative[0]}.")
+    if assigned_units and authoritative_units and any(item is not assigned_units for item in authoritative_units):
+        raise ValueError("Repository unit assignment conflicts with authoritative source coordinate units.")
+
+
+def _assignment_from_record(record: dict[str, object], scope: AssignmentScope, identity: str) -> SpatialAssignment:
+    migrated = dict(record)
+    migrated.setdefault("scope", scope.value)
+    migrated.setdefault("identity", identity)
+    migrated.setdefault("assignment_type", (SpatialAssignmentType.USER_FILE_ASSIGNMENT if scope is AssignmentScope.FILE else SpatialAssignmentType.USER_REPOSITORY_ASSIGNMENT).value if (record.get("horizontal_crs") or record.get("crs")) else SpatialAssignmentType.USER_UNITS_ONLY.value)
+    return SpatialAssignment.from_dict(migrated)
 
 
 def _sidecar_evidence(path: Path) -> tuple[SpatialReferenceEvidence, ...]:
@@ -410,5 +518,5 @@ def _file_signature(path: Path) -> str:
 __all__ = [
     "RepositorySpatialReferenceProfile", "SpatialReferenceAssignmentStore", "SpatialReferenceConfidence",
     "SpatialReferenceEvidence", "SpatialReferenceResolution", "SpatialReferenceResolver", "SpatialReferenceStatus",
-    "normalize_crs", "profile_repository", "repository_fingerprint",
+    "default_spatial_assignment_store", "normalize_crs", "profile_repository", "repository_fingerprint",
 ]

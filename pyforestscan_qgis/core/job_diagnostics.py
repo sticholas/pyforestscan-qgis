@@ -125,7 +125,7 @@ def classify_exception(exc: BaseException, *, stage: str = "Processing") -> Stru
     lowered = text.lower()
     traceback_text = traceback_module.format_exc()
     preparation_codes = {
-        "source_units_unknown": (JobErrorCode.SOURCE_UNITS_UNKNOWN.value, "Source coordinate units must be confirmed before automatic ground preparation.", ("Assign a CRS or trusted repository units.",)),
+        "source_units_unknown": (JobErrorCode.SOURCE_UNITS_UNKNOWN.value, "PyForestScan found usable ground data and can prepare this LiDAR. Choose the coordinate units to continue.", ("Choose trusted source units or assign the source coordinate system.",)),
         "ground_class_unavailable": (JobErrorCode.GROUND_CLASS_UNAVAILABLE.value, "PyForestScan could not identify a supported ground-preparation path.", ("Provide a compatible DTM or review ground classification.",)),
         "ground_classification_failed": (JobErrorCode.GROUND_CLASSIFICATION_FAILED.value, "Automatic ground classification did not produce enough reliable ground points.", ("Provide a DTM or review ground classification.",)),
         "preparation_validation_failed": (JobErrorCode.PREPARATION_VALIDATION_FAILED.value, "The prepared height values did not pass scientific quality checks.", ("Review preparation diagnostics and provide a DTM if appropriate.",)),

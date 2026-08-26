@@ -163,6 +163,16 @@ class PipelineContext:
         preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
         return str(preparation.get("source_coordinate_units") or "") if isinstance(preparation, Mapping) else ""
 
+    @property
+    def spatial_assignment_scope(self) -> str:
+        preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
+        return str(preparation.get("spatial_assignment_scope") or "") if isinstance(preparation, Mapping) else ""
+
+    @property
+    def source_crs_status(self) -> str:
+        preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
+        return str(preparation.get("crs_assignment_status") or "") if isinstance(preparation, Mapping) else ""
+
 
 def load_pipeline_contexts(product_plan_path: Path | str, output_folder: Path | str) -> tuple[PipelineContext, ...]:
     """Load one pipeline context per requested product from Product Planner JSON."""

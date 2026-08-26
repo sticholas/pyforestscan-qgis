@@ -266,3 +266,10 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 - Added evidence-driven CRS resolution, normalization, sidecars, exact QGIS datasource evidence, repository consensus, conflict detection, and persisted assignments.
 - Enabled source-local CHM and Rumple for unknown-CRS LAS/LAZ/COPC with existing HAG, without fake EPSG metadata.
 - Added explicit source/output CRS provenance tags and preserved automatic exact polygon transformation once CRS is known.
+
+## Phase 31B - Spatial assignment and large-LAS completion
+
+- Added typed metres, international-feet, and US-survey-feet assignments for files and coherent repositories without modifying source LiDAR.
+- Added compact Process resolution controls, explicit **Use Project CRS**, and collapsed Tools & Setup assignment management.
+- Added assignment persistence/precedence/conflict handling, source-local and assigned-CRS provenance, and non-destructive raster CRS registration.
+- Added cached bounded classification evidence, spatial ground-strata quality reporting, canonical metre parameter conversion, and automatic plan rebuilding after assignment.

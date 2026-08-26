@@ -17,6 +17,7 @@ from .external_worker import (
     external_workers_enabled,
 )
 from .batch_manifest import MANIFEST_NAME, completed_dataset_paths, failed_dataset_paths, load_manifest
+from .dataset_report import build_dataset_explorer_report
 
 DiskUsageProvider = Callable[[Path], tuple[int, int, int]]
 
@@ -112,6 +113,7 @@ def run_batch_preflight(
             warnings.append("QGIS Python scientific dependencies are not READY, but PBM backend is READY and will be used for routed products.")
     except Exception as exc:  # noqa: BLE001 - preflight reports environment uncertainty.
         warnings.append(f"Environment readiness could not be verified: {exc}")
+    _check_preparation_spatial_readiness(request, files_to_process, adapter, blockers, warnings)
     workload_score = len(files_to_process) * max(1, len(request.settings.products))
     if len(files_to_process) >= LARGE_FILE_COUNT:
         warnings.append("Large batch: many files selected.")
@@ -193,6 +195,28 @@ def recommend_batch_workers(file_count: int, workload_score: int, execution_mode
     if execution_mode == EXTERNAL_WORKER_MODE:
         return min(4, file_count)
     return min(3, file_count) if workload_score <= 8 else 2
+
+
+def _check_preparation_spatial_readiness(request, sources, adapter, blockers, warnings) -> None:
+    """Surface resolvable unit metadata before a PBM worker starts."""
+    products = {str(getattr(item, "value", item)) for item in request.settings.products}
+    if not products.intersection({"chm", "rumple", "pad", "pai", "fhd", "canopy_cover", "voxel_stat"}):
+        return
+    unresolved: list[Path] = []
+    inspected = tuple(sources[:50])
+    for source in inspected:
+        try:
+            report = build_dataset_explorer_report(adapter.inspect_dataset(source))
+        except Exception as exc:  # noqa: BLE001 - ordinary metadata uncertainty is reported, not fatal.
+            warnings.append(f"Preparation metadata could not be checked for {Path(source).name}: {exc}")
+            continue
+        if report.preparation_readiness == "NEEDS_USER_INPUT":
+            unresolved.append(Path(source))
+    if unresolved:
+        names = ", ".join(path.name for path in unresolved[:5])
+        blockers.append(f"SOURCE_UNITS_UNKNOWN: PyForestScan found usable preparation inputs for {names}. Choose trusted coordinate units or assign the source coordinate system to continue.")
+    if len(sources) > len(inspected):
+        warnings.append(f"Preparation metadata was checked for the first {len(inspected)} selected sources; repository assignments will be revalidated during execution.")
 
 
 def _recommended_workers(file_count: int, workload_score: int, execution_mode: str) -> int:

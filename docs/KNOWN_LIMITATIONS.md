@@ -135,3 +135,6 @@ Adaptive Rumple coordinator integration is synthetically validated, but medium a
 - Repository consensus is bounded and conservative; any sampled known-CRS conflict prevents inheritance.
 - Automatic file-header discovery continues through Dataset Explorer/PDAL. The resolver's standalone API accepts discovered embedded metadata rather than duplicating every native reader.
 - Live QGIS/PBM validation of the original unknown-CRS LAS remains outstanding.
+- The 104,819,538-point Olaa production LAS was not available in the development workspace, so its real Delaunay/CHM/Rumple runtime and spatial ground distribution remain a managed-Windows QA gate.
+- Units-only assignments cannot support polygon alignment, reprojection, or map overlay. A confirmed source CRS is required.
+- Repository assignments invalidate conservatively when the bounded inventory fingerprint changes and must then be revalidated.

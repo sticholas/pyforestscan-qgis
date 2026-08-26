@@ -136,6 +136,8 @@ def _execute_chm_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 hag_source_dimension=context.point_dimensions.hag_dimension_name or "HeightAboveGround",
                 source_dimensions=context.point_dimensions.names,
                 source_coordinate_units=context.source_coordinate_units,
+                spatial_assignment_scope=context.spatial_assignment_scope,
+                source_crs_status=context.source_crs_status,
                 source_point_count=context.source_point_count,
             )
         )
@@ -243,6 +245,8 @@ def _execute_rumple_step(context: PipelineContext, step: PipelineStep, adapter: 
                 hag_source_dimension=context.point_dimensions.hag_dimension_name or "HeightAboveGround",
                 source_dimensions=context.point_dimensions.names,
                 source_coordinate_units=context.source_coordinate_units,
+                spatial_assignment_scope=context.spatial_assignment_scope,
+                source_crs_status=context.source_crs_status,
                 source_point_count=context.source_point_count,
             )
         )

@@ -22,6 +22,10 @@ class ClassificationAssessment:
     warnings: tuple[str, ...] = ()
     class_counts: tuple[tuple[int, int], ...] = ()
     observed_dimensions: tuple[str, ...] = ()
+    strata_sampled: int = 0
+    strata_with_ground: int = 0
+    ground_coverage_ratio: float | None = None
+    ground_coverage_confidence: str = "UNKNOWN"
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -35,6 +39,10 @@ class ClassificationAssessment:
             "warnings": list(self.warnings),
             "class_counts": [{"classification": key, "count": value} for key, value in self.class_counts],
             "observed_dimensions": list(self.observed_dimensions),
+            "strata_sampled": self.strata_sampled,
+            "strata_with_ground": self.strata_with_ground,
+            "ground_coverage_ratio": self.ground_coverage_ratio,
+            "ground_coverage_confidence": self.ground_coverage_confidence,
         }
 
 
@@ -53,8 +61,11 @@ class ClassificationInspectionService:
         sampled = 0
         dimension_seen = False
         observed_dimensions: list[str] = []
+        strata_sampled = 0
+        strata_with_ground = 0
         factory = self.pipeline_factory or _default_pipeline_factory
         for start in starts:
+            stratum_ground = 0
             reader_type = _reader_type(path)
             reader = {"type": reader_type, "filename": str(path)}
             stages = [reader]
@@ -74,12 +85,19 @@ class ClassificationInspectionService:
                 values = array["Classification"]
                 sampled += len(values)
                 classes.update(int(value) for value in values)
+                stratum_ground += sum(1 for value in values if int(value) == 2)
+            strata_sampled += 1
+            if stratum_ground:
+                strata_with_ground += 1
         ground = classes.get(2, 0)
         warnings: list[str] = []
         if not dimension_seen:
             warnings.append("Classification dimension was not observed in sampled execution arrays.")
         elif not ground:
             warnings.append("Ground class 2 was not observed in the bounded sample; absence is not proof for unsampled points.")
+        coverage = strata_with_ground / strata_sampled if strata_sampled else None
+        if ground and strata_sampled >= 3 and coverage is not None and coverage < 0.5:
+            warnings.append("Ground returns occurred in fewer than half of sampled storage strata; review spatial support before Delaunay HAG.")
         return ClassificationAssessment(
             dimension_seen,
             sampled,
@@ -91,6 +109,10 @@ class ClassificationInspectionService:
             tuple(warnings),
             tuple(sorted(classes.items())),
             tuple(observed_dimensions),
+            strata_sampled,
+            strata_with_ground,
+            coverage,
+            "HIGH" if strata_sampled >= 5 else ("MEDIUM" if strata_sampled >= 3 else "LOW"),
         )
 
 
@@ -100,7 +122,8 @@ def assessment_from_array(array: object) -> ClassificationAssessment:
         return ClassificationAssessment(False, len(array), False, None, (), "HIGH", "execution array", ("Classification dimension is missing.",), observed_dimensions=names)
     counts = Counter(int(value) for value in array["Classification"])
     total = len(array)
-    return ClassificationAssessment(True, total, counts.get(2, 0) > 0, counts.get(2, 0) / total if total else None, tuple(code for code in (3, 4, 5) if counts.get(code, 0)), "HIGH", "complete execution array", class_counts=tuple(sorted(counts.items())), observed_dimensions=names)
+    has_ground = counts.get(2, 0) > 0
+    return ClassificationAssessment(True, total, has_ground, counts.get(2, 0) / total if total else None, tuple(code for code in (3, 4, 5) if counts.get(code, 0)), "HIGH", "complete execution array", class_counts=tuple(sorted(counts.items())), observed_dimensions=names, strata_sampled=1, strata_with_ground=1 if has_ground else 0, ground_coverage_ratio=1.0 if has_ground else 0.0, ground_coverage_confidence="HIGH")
 
 
 def _sample_starts(point_count: int, window: int, strata: int) -> tuple[int, ...]:

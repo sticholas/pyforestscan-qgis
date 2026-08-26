@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pyforestscan_qgis.core.classification_inspection import ClassificationInspectionService
+from pyforestscan_qgis.core.classification_inspection import ClassificationAssessment, ClassificationInspectionService
 from pyforestscan_qgis.core.lidar_preparation import HeightNormalizationPlanMode, HeightNormalizationPlanner, build_preparation_assessment, preparation_recommendations
 from pyforestscan_qgis.core.lidar_preparation_execution import checkpoint_is_compatible
 from pyforestscan_qgis.core.point_dimensions import PointDimensionCapabilities
@@ -32,11 +32,18 @@ def prepare_request_source(spec, request, *, progress=None) -> PreparedSourceRes
     if dimensions.has_existing_hag:
         return None
     units = assess_source_coordinate_units(getattr(request, "crs", None), getattr(request, "source_coordinate_units", ""))
-    _notify(progress, "Inspecting Ground Returns")
-    classification = ClassificationInspectionService().inspect(
-        Path(request.input_path),
-        point_count=getattr(request, "source_point_count", None),
-    )
+    fingerprint = _source_fingerprint(Path(request.input_path))
+    classification_path = spec.run_folder / "preparation" / f"classification_{fingerprint}.json"
+    classification = _read_classification(classification_path)
+    if classification is None:
+        _notify(progress, "Inspecting Ground Returns")
+        classification = ClassificationInspectionService().inspect(
+            Path(request.input_path),
+            point_count=getattr(request, "source_point_count", None),
+        )
+        _write_json(classification_path, classification.to_dict())
+    else:
+        _notify(progress, "Reusing Ground Inspection")
     if not dimensions.names:
         dimensions = PointDimensionCapabilities.from_names(classification.observed_dimensions)
     spatial_mode = "resolved" if getattr(request, "crs", None) else "source_local"
@@ -86,7 +93,7 @@ def prepare_request_source(spec, request, *, progress=None) -> PreparedSourceRes
         "ground_method": "automatic_smrf" if plan.height_mode is HeightNormalizationPlanMode.AUTO_CLASSIFY_GROUND_THEN_DELAUNAY else "existing_class_2",
         "hag_method": "generated_ground_then_delaunay" if plan.height_mode is HeightNormalizationPlanMode.AUTO_CLASSIFY_GROUND_THEN_DELAUNAY else "delaunay" if plan.height_mode is HeightNormalizationPlanMode.DELAUNAY_FROM_EXISTING_GROUND else "dtm",
         "dtm": str(assessment.dtm_path or ""),
-        "parameters": {"smrf": {"cell": 1.0, "scalar": 1.25, "slope": 0.15, "threshold": 0.5, "window": 18.0}},
+        "parameters": {"canonical_metres": {"smrf_cell": 1.0, "smrf_threshold": 0.5, "smrf_window": 18.0}, "source_unit_factor": assessment.coordinate_units.from_meters(1.0)},
         "output_dimensions": [*assessment.dimensions.names, "HeightAboveGround"],
         "warnings": list(plan.warnings),
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -103,7 +110,7 @@ def _pipeline(assessment, plan, output):
     reader = "readers.ept" if source.lower().endswith("ept.json") else "readers.copc" if source.lower().endswith((".copc", ".copc.laz")) else "readers.las"
     stages = [{"type": reader, "filename": source}]
     if plan.height_mode is HeightNormalizationPlanMode.AUTO_CLASSIFY_GROUND_THEN_DELAUNAY:
-        scale = 3.280839895 if assessment.coordinate_units.units.value == "FEET" else 1.0
+        scale = assessment.coordinate_units.from_meters(1.0)
         stages.append({"type": "filters.smrf", "ignore": "Classification[7:7]", "cell": 1.0 * scale, "scalar": 1.25, "slope": 0.15, "threshold": 0.5 * scale, "window": 18.0 * scale, "returns": "last,only"})
     if plan.height_mode is HeightNormalizationPlanMode.DTM_EXISTING:
         stages.append({"type": "filters.hag_dem", "raster": str(assessment.dtm_path)})
@@ -139,6 +146,29 @@ def _write_json(path, payload):
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
     temporary.replace(path)
+
+
+def _source_fingerprint(path: Path) -> str:
+    from pyforestscan_qgis.core.lidar_preparation import source_fingerprint
+    return source_fingerprint(path)
+
+
+def _read_classification(path: Path) -> ClassificationAssessment | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        counts = tuple((int(item["classification"]), int(item["count"])) for item in value.get("class_counts", ()))
+        return ClassificationAssessment(
+            bool(value.get("classification_present")), int(value.get("sampled_points", 0)),
+            bool(value.get("ground_class_2_observed")), value.get("ground_fraction_estimate"),
+            tuple(int(item) for item in value.get("vegetation_classes_observed", ())),
+            str(value.get("confidence", "UNKNOWN")), str(value.get("sampling_method", "cached bounded sample")),
+            tuple(str(item) for item in value.get("warnings", ())), counts,
+            tuple(str(item) for item in value.get("observed_dimensions", ())),
+            int(value.get("strata_sampled", 0)), int(value.get("strata_with_ground", 0)),
+            value.get("ground_coverage_ratio"), str(value.get("ground_coverage_confidence", "UNKNOWN")),
+        )
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return None
 
 
 def _notify(callback, message):

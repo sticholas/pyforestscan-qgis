@@ -137,9 +137,11 @@ class HeightNormalizationPlanner:
         if assessment.dtm_path:
             return _plan(assessment, PreparationReadiness.READY_AFTER_PREPARATION, PreparationRecoveryDecision.AUTOMATICALLY_RECOVERED, HeightNormalizationPlanMode.DTM_EXISTING, (LidarPreparationStep("hag_dtm", "Generating Height Above Ground", "PyForestScan/PDAL DTM HAG", True),), (), checkpoint_root)
         if not assessment.coordinate_units.distance_operations_safe:
-            return _plan(assessment, PreparationReadiness.NEEDS_USER_INPUT, PreparationRecoveryDecision.USER_INPUT_REQUIRED, HeightNormalizationPlanMode.UNAVAILABLE, (), ("SOURCE_UNITS_UNKNOWN: assign trusted source units or a CRS before distance-based ground/HAG preparation.",), checkpoint_root)
+            return _plan(assessment, PreparationReadiness.NEEDS_USER_INPUT, PreparationRecoveryDecision.USER_INPUT_REQUIRED, HeightNormalizationPlanMode.UNAVAILABLE, (), ("SOURCE_UNITS_UNKNOWN: PyForestScan found usable ground data and can prepare this LiDAR. Choose the coordinate units to continue.",), checkpoint_root)
         classification = assessment.classification
         if classification and classification.ground_class_2_observed:
+            if classification.strata_sampled >= 3 and (classification.ground_coverage_ratio or 0.0) < 0.5:
+                return _plan(assessment, PreparationReadiness.BLOCKED, PreparationRecoveryDecision.SCIENTIFICALLY_BLOCKED, HeightNormalizationPlanMode.UNAVAILABLE, (), ("GROUND_SPATIAL_COVERAGE_INSUFFICIENT: class-2 ground was not distributed across enough bounded sample strata for defensible Delaunay interpolation.",), checkpoint_root)
             return _plan(assessment, PreparationReadiness.READY_AFTER_PREPARATION, PreparationRecoveryDecision.AUTOMATICALLY_RECOVERED, HeightNormalizationPlanMode.DELAUNAY_FROM_EXISTING_GROUND, (LidarPreparationStep("hag_delaunay", "Generating Height Above Ground", "PyForestScan/PDAL Delaunay HAG", True),), tuple(classification.warnings), checkpoint_root)
         if assessment.dimensions.names and "Classification" in assessment.dimensions.names:
             steps = (
@@ -165,7 +167,7 @@ def source_fingerprint(path: Path) -> str:
 
 
 def _plan(assessment, readiness, recovery, mode, steps, messages, checkpoint_root):
-    basis = {"source": assessment.source_fingerprint, "spatial_mode": assessment.spatial_reference_mode, "units": assessment.coordinate_units.units.value, "height_mode": mode.value, "steps": [asdict(step) for step in steps], "dtm": str(assessment.dtm_path or ""), "version": "phase31a-v1"}
+    basis = {"source": assessment.source_fingerprint, "spatial_mode": assessment.spatial_reference_mode, "crs": assessment.crs or "", "units": assessment.coordinate_units.units.value, "height_mode": mode.value, "steps": [asdict(step) for step in steps], "dtm": str(assessment.dtm_path or ""), "version": "phase31b-v1"}
     signature = hashlib.sha256(json.dumps(basis, sort_keys=True).encode()).hexdigest()
     artifact = (checkpoint_root / signature / "prepared_hag.laz") if checkpoint_root and mode is not HeightNormalizationPlanMode.USE_EXISTING_HAG else None
     return LidarPreparationPlan(readiness, recovery, mode, tuple(steps), tuple(messages) if readiness is not PreparationReadiness.BLOCKED else (), tuple(messages) if readiness in {PreparationReadiness.BLOCKED, PreparationReadiness.NEEDS_USER_INPUT} else (), signature, artifact, bool((assessment.point_count or 0) >= 20_000_000))

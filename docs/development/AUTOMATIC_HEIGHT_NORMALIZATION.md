@@ -8,3 +8,4 @@ Source-local Delaunay is allowed only with trusted linear-unit evidence. SMRF pa
 
 Upstream references: [PyForestScan preprocessing guide](https://pyforestscan.sefa.ai/usage/getting-started-import-and-preprocess/) and [filters API](https://pyforestscan.sefa.ai/api/filters/).
 
+Phase 31B uses one canonical-metre conversion for metres, international feet, and US survey feet. After trusted units resolve, class-2 ground with adequate bounded-strata coverage proceeds automatically through Delaunay HAG and quality validation.

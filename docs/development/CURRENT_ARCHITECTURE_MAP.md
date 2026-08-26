@@ -47,3 +47,6 @@ flowchart LR
 - `core.product_crs_capabilities`: product-specific named/source-local CRS policy.
 - `core.adapter`: PDAL source-local read and unassigned GeoTIFF provenance for CHM/Rumple.
 - `core.crs_alignment`: retained exact polygon transformation once source and target CRS resolve.
+- `core.spatial_assignment`: typed units, scope, provenance, fingerprints, and compact spatial profiles.
+- `core.output_spatial_assignment`: non-destructive CRS registration for a copied source-local raster.
+- `backend_runner.pbm_lidar_preparation`: cached classification evidence, unit-aware parameters, bounded ground coverage, and durable HAG.

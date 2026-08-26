@@ -350,7 +350,7 @@ class PyForestScanAdapter:
                 _write_source_local_adapter_trace(request, "chm_writer", {"source_local": True, "crs": None, "hag_mode": "EXISTING_HAG"})
             else:
                 handlers.create_geotiff(chm, str(output_path), request.crs, extent)
-                _write_crs_provenance(output_path, resolution)
+                _write_crs_provenance(output_path, resolution, request)
             _write_preparation_output_tags(output_path, preparation_plan)
             _validate_created_output(output_path)
             self._progress.complete("CHM GeoTIFF created")
@@ -596,7 +596,7 @@ class PyForestScanAdapter:
                 summary_path = output_path
             else:
                 _write_rumple_geotiff(output_path, surface.values, request.crs, rumple_patch_extent(extent, surface.cell_resolution), request, surface, rumple_index)
-                _write_crs_provenance(output_path, resolution)
+                _write_crs_provenance(output_path, resolution, request)
                 if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
                     _write_source_local_adapter_trace(request, "rumple_writer", {"source_local": True, "crs": None, "supporting_chm": chm_source})
                 summary_path = output_path.with_name(f"{output_path.stem}_summary.csv")
@@ -1623,14 +1623,15 @@ def _backend_user_error(product: ProductType, exc: Exception) -> str:
     return f"{product.value.upper()} could not be created. Reason: {reason}"
 
 
-def _write_crs_provenance(output_path: Path, resolution: object) -> None:
+def _write_crs_provenance(output_path: Path, resolution: object, request: object | None = None) -> None:
     """Attach resolution provenance without changing raster coordinates."""
     if output_path.suffix.lower() not in {".tif", ".tiff"} or not output_path.exists():
         return
     try:
         rasterio = _import_required("rasterio", ProcessingError)
         with rasterio.open(output_path, "r+") as dataset:
-            dataset.update_tags(PYFORESTSCAN_SPATIAL_REFERENCE="SOURCE_LOCAL" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "RESOLVED", SOURCE_CRS_RESOLVED="false" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "true", SOURCE_CRS_STATUS=resolution.status.value, SOURCE_CRS=resolution.resolved_crs, OUTPUT_CRS=resolution.resolved_crs, CRS_RESOLUTION_SOURCE=resolution.source, CRS_CONFIDENCE=resolution.confidence.value, TRANSFORMATION_APPLIED="true" if resolution.transformation_required else "false")
+            assigned = resolution.status is SpatialReferenceStatus.RESOLVED_USER_ASSIGNMENT or str(getattr(request, "source_crs_status", "")) == "USER_ASSIGNED"
+            dataset.update_tags(PYFORESTSCAN_SPATIAL_REFERENCE="SOURCE_LOCAL" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "RESOLVED", SOURCE_SPATIAL_MODE="SOURCE_LOCAL" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "GEOREFERENCED", SOURCE_CRS_RESOLVED="false" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "true", SOURCE_CRS_STATUS="USER_ASSIGNED" if assigned else resolution.status.value, SOURCE_CRS=resolution.resolved_crs, SOURCE_UNITS=str(getattr(request, "source_coordinate_units", "") or "FROM_CRS"), CRS_ASSIGNED="true" if assigned else "false", CRS_ASSIGNMENT_SCOPE=str(getattr(request, "spatial_assignment_scope", "") or ("file" if assigned else "")), OUTPUT_CRS=resolution.resolved_crs, CRS_RESOLUTION_SOURCE=resolution.source, CRS_CONFIDENCE=resolution.confidence.value, TRANSFORMATION_APPLIED="true" if resolution.transformation_required else "false")
     except Exception:
         return
 
