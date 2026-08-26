@@ -1,5 +1,7 @@
 # Error Taxonomy
 
+Preparation adds `NO_HAG_AVAILABLE`, `GROUND_CLASS_UNAVAILABLE`, `GROUND_CLASSIFICATION_FAILED`, `HAG_GENERATION_FAILED`, `DTM_GENERATION_FAILED`, `DTM_INCOMPATIBLE`, `PREPARATION_VALIDATION_FAILED`, and `SOURCE_UNITS_UNKNOWN`. Messages recommend unit/CRS assignment, a DTM, or ground review.
+
 `SOURCE_DIMENSION_MISMATCH` means Dataset Explorer/request metadata expected a point dimension that the PBM execution read did not return. It is not a CRS error and does not trigger a different HAG method.
 
 Terminal errors use: code, category, user message, technical context, retryability, recommended action, and diagnostic context. Categories are INPUT, REPOSITORY, CRS, COVERAGE, SCIENTIFIC, BACKEND, NETWORK, FILESYSTEM, RESOURCE, PROCESS, CANCELLED, RECOVERY, OUTPUT, and UNKNOWN.

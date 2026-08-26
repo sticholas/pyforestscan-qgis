@@ -67,6 +67,8 @@ class DatasetExplorerReport:
     warnings: tuple[DatasetWarning, ...]
     products: tuple[ProductFeasibility, ...]
     recommended_actions: tuple[str, ...] = field(default_factory=tuple)
+    preparation_readiness: str = "READY"
+    planned_height_method: str = "USE_EXISTING_HAG"
 
 
 def format_count_for_display(value: int | None) -> str:
@@ -133,6 +135,7 @@ def build_dataset_explorer_report(
         has_classification_summary=has_classification_summary,
     )
     actions = _recommended_actions(warnings, products)
+    preparation_readiness, planned_height_method = _preparation_semantics(has_hag, has_z, has_ground, has_classification_dimension, has_classification_summary, bool(inspection.crs))
 
     return DatasetExplorerReport(
         title=title,
@@ -155,6 +158,8 @@ def build_dataset_explorer_report(
         warnings=warnings,
         products=products,
         recommended_actions=actions,
+        preparation_readiness=preparation_readiness,
+        planned_height_method=planned_height_method,
     )
 
 
@@ -204,6 +209,12 @@ def report_to_dict(report: DatasetExplorerReport) -> dict[str, Any]:
             for product in report.products
         ],
         "recommended_actions": list(report.recommended_actions),
+        "preparation": {
+            "readiness": report.preparation_readiness,
+            "planned_height_method": report.planned_height_method,
+            "source_coordinate_units": "" if not report.crs else "FROM_CRS",
+            "message": "PyForestScan can prepare missing HeightAboveGround automatically when ground and source-unit checks pass.",
+        },
     }
 
 
@@ -364,11 +375,11 @@ def _build_warnings(
     if has_classification_summary and not has_ground:
         warnings.append(DatasetWarning("NO_GROUND_CLASS", "WARNING", "Ground class 2 was not detected."))
     if has_classification_summary and not has_vegetation:
-        warnings.append(DatasetWarning("NO_VEGETATION_CLASSES", "WARNING", "Vegetation classes 3, 4, or 5 were not detected."))
+        warnings.append(DatasetWarning("NO_VEGETATION_CLASSES", "INFO", "Vegetation classes 3, 4, or 5 were not detected; they are not required for CHM or Rumple."))
     if not has_hag and not has_z:
         warnings.append(DatasetWarning("NO_HEIGHT_DIMENSION", "ERROR", "Neither HeightAboveGround nor Z was reported."))
     elif not has_hag:
-        warnings.append(DatasetWarning("NO_HEIGHT_ABOVE_GROUND", "WARNING", "HeightAboveGround is not present; future products will need HAG generation."))
+        warnings.append(DatasetWarning("NO_HEIGHT_ABOVE_GROUND", "INFO", "HeightAboveGround is not present. PyForestScan can prepare it automatically when a validated ground strategy and source units are available."))
     if not has_color:
         warnings.append(DatasetWarning("NO_COLOR", "WARNING", "RGB color dimensions were not detected."))
     if not has_gps_time:
@@ -407,7 +418,7 @@ def _build_product_feasibility(
         elif has_hag and (has_vegetation or not has_classification_summary):
             products.append(ProductFeasibility(product, label, "Available", height_reason + vegetation_note))
         else:
-            products.append(ProductFeasibility(product, label, "Warning", height_reason + vegetation_note))
+            products.append(ProductFeasibility(product, label, "Ready after preparation", height_reason + vegetation_note))
     return tuple(products)
 
 
@@ -422,9 +433,9 @@ def _height_reason(
     if has_z and has_ground:
         return "Z and ground class 2 are present; future HAG generation appears feasible."
     if has_z and not has_classification_summary:
-        return "Z is present, but classifications were not confirmed; future HAG setup must be validated."
+        return "Z is present; PyForestScan will inspect ground classifications and prepare HeightAboveGround automatically when valid."
     if has_z:
-        return "Z is present, but no ground class was detected for HAG generation."
+        return "Z is present; PyForestScan will attempt validated automatic ground classification before HAG generation."
     return "No usable height dimension was detected."
 
 
@@ -437,16 +448,30 @@ def _recommended_actions(
     if "UNKNOWN_CRS" in warning_codes:
         actions.append("Confirm or assign the dataset CRS before running product workflows.")
     if "NO_HEIGHT_ABOVE_GROUND" in warning_codes:
-        actions.append("Plan a height-above-ground step using ground class or a DTM before CHM and metric generation.")
+        actions.append("PyForestScan will plan height normalization automatically; review the preparation report after processing.")
     if "NO_GROUND_CLASS" in warning_codes:
-        actions.append("Classify ground points or provide an external DTM before height-based products.")
+        actions.append("PyForestScan will evaluate automatic ground classification; provide a DTM if that validation cannot find reliable ground.")
     if "MISSING_CLASSIFICATION_SUMMARY" in warning_codes:
-        actions.append("Run a sampled or full classification inspection before committing to production processing.")
+        actions.append("A bounded ground-class sample will run in PBM before preparation.")
     if all(product.status == "Available" for product in products):
         actions.append("Dataset appears ready for the future CHM workflow once processing is implemented.")
     else:
         actions.append("Resolve warnings marked above before treating product feasibility as final.")
     return tuple(actions)
+
+
+def _preparation_semantics(has_hag, has_z, has_ground, has_classification_dimension, has_classification_summary, crs_known):
+    if has_hag:
+        return "READY", "USE_EXISTING_HAG"
+    if not has_z:
+        return "BLOCKED", "UNAVAILABLE"
+    if not crs_known:
+        return "NEEDS_USER_INPUT", "INSPECT_GROUND_AFTER_SOURCE_UNITS"
+    if has_ground:
+        return "READY_AFTER_PREPARATION", "DELAUNAY_FROM_EXISTING_GROUND"
+    if has_classification_dimension:
+        return "READY_AFTER_PREPARATION", "INSPECT_OR_AUTO_CLASSIFY_GROUND"
+    return "BLOCKED", "UNAVAILABLE"
 
 
 def _csv_rows(report: DatasetExplorerReport) -> tuple[tuple[str, str, str, str, str], ...]:

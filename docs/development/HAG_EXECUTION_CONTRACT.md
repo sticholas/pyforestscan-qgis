@@ -1,5 +1,7 @@
 # HAG Execution Contract
 
+Phase 31A adds DTM, existing-ground Delaunay, and SMRF-then-Delaunay preparation ahead of the Phase 30F execution contract. Once preparation succeeds, products receive a signed prepared source with canonical HAG; CHM/Rumple never silently change methods.
+
 `HeightNormalizationDecision` is the authoritative PBM height contract. Modes are `EXISTING_HAG`, `DELAUNAY_HAG`, `DTM_HAG`, `NO_HAG_REQUIRED`, and `UNAVAILABLE`.
 
 For source-local CHM and Rumple, only `EXISTING_HAG` is accepted. The request records the expected source dimension and method signature. PBM then validates the decision against the dimensions returned by its own PDAL read. It never silently falls back to Delaunay or another scientific method.

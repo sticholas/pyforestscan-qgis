@@ -152,6 +152,17 @@ class PipelineContext:
                 names.append(item if isinstance(item, str) else str(item.get("name", "")) if isinstance(item, Mapping) else "")
         return PointDimensionCapabilities.from_names(names)
 
+    @property
+    def source_point_count(self) -> int | None:
+        statistics = self.dataset_report.get("point_statistics", {}) if self.dataset_report else {}
+        value = statistics.get("point_count") if isinstance(statistics, Mapping) else None
+        return int(value) if isinstance(value, int) else None
+
+    @property
+    def source_coordinate_units(self) -> str:
+        preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
+        return str(preparation.get("source_coordinate_units") or "") if isinstance(preparation, Mapping) else ""
+
 
 def load_pipeline_contexts(product_plan_path: Path | str, output_folder: Path | str) -> tuple[PipelineContext, ...]:
     """Load one pipeline context per requested product from Product Planner JSON."""

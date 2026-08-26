@@ -1,5 +1,7 @@
 # Batch Processing v2
 
+Preparation is planned per source because repositories may mix existing and missing HAG. Method/signature provenance prevents silent mixing; repository-wide consistency is preferred and mixed methods must remain visible in reporting.
+
 Batch Processing adds folder-to-products workflows for users who need to run the same product plan across multiple lidar datasets without repeating the single-file Mission Control workflow by hand. Phase 27F adds a second Batch mode for polygon-driven LiDAR folder processing.
 
 ## Scope

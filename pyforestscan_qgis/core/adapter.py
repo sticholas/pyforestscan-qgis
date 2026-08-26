@@ -24,6 +24,10 @@ from .pad_products import pad_band_mapping, pad_metadata_tags
 from .spatial_reference_resolver import SpatialReferenceResolver, SpatialReferenceStatus
 from .point_dimensions import PointDimensionCapabilities, SourceDimensionMismatch
 from .spatial_reference_contract import SpatialReferenceMode
+from .classification_inspection import assessment_from_array
+from .lidar_preparation import HeightNormalizationPlanner, HeightNormalizationPlanMode, build_preparation_assessment
+from .lidar_preparation_execution import checkpoint_is_compatible, execute_preparation
+from .source_coordinate_units import assess_source_coordinate_units
 from .polygon_transport import looks_like_wkt, materialize_polygon_input, polygon_execution_input_from_mapping
 from .ept_subset import EptSubsetRequest, EptSubsetResult, ept_read_lidar_kwargs
 from .types import (
@@ -316,16 +320,13 @@ class PyForestScanAdapter:
             point_array, capabilities = _canonicalize_hag_dimension(point_array)
             names = capabilities.names
             inspected = PointDimensionCapabilities.from_names(getattr(request, "source_dimensions", ()))
-            if planned_method == "existing_normalized_height" and not capabilities.has_existing_hag:
+            if planned_method == "existing_normalized_height" and inspected.has_existing_hag and not capabilities.has_existing_hag:
                 raise SourceDimensionMismatch(getattr(request, "hag_source_dimension", "HeightAboveGround"), names)
-            if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
-                if capabilities.has_existing_hag:
-                    planned_method = "existing_normalized_height"
-                    request = replace(request, hag_method=planned_method, hag_source_dimension="HeightAboveGround")
-                elif inspected.has_existing_hag:
-                    raise SourceDimensionMismatch(inspected.hag_dimension_name or "HeightAboveGround", names)
-                else:
-                    raise ProcessingError("Source-local CHM requires an existing normalized-height dimension; the execution read did not contain one.")
+            point_array, preparation_plan = _ensure_hag_for_product(point_array, request, resolution, "chm", handlers=handlers)
+            capabilities = PointDimensionCapabilities.from_names(point_array.dtype.names)
+            names = capabilities.names
+            planned_method = "existing_normalized_height"
+            request = replace(request, hag_method=planned_method, hag_source_dimension="HeightAboveGround")
             _write_source_local_adapter_trace(request, "pdal_read", {"dimensions": list(names), "has_existing_hag": capabilities.has_existing_hag})
             if planned_method == "existing_normalized_height":
                 from .chm_work_unit_execution import validate_existing_hag_array
@@ -350,6 +351,7 @@ class PyForestScanAdapter:
             else:
                 handlers.create_geotiff(chm, str(output_path), request.crs, extent)
                 _write_crs_provenance(output_path, resolution)
+            _write_preparation_output_tags(output_path, preparation_plan)
             _validate_created_output(output_path)
             self._progress.complete("CHM GeoTIFF created")
             self._log(LogLevel.INFO, "CHM generation complete", output=str(output_path))
@@ -1124,6 +1126,9 @@ class PyForestScanAdapter:
         self._progress.update(25, "Point cloud loaded")
         point_array = _merge_point_cloud_arrays(point_cloud)
         point_array, capabilities = _canonicalize_hag_dimension(point_array)
+        resolution = _resolve_product_spatial_reference(request_or_path, source_local_allowed=True)
+        point_array, preparation_plan = _ensure_hag_for_product(point_array, request_or_path, resolution, str(product_label), handlers=handlers)
+        capabilities = PointDimensionCapabilities.from_names(point_array.dtype.names)
         names = capabilities.names
         required = {"X", "Y", "HeightAboveGround"}
         missing = sorted(required.difference(names))
@@ -1530,6 +1535,64 @@ def _canonicalize_hag_dimension(point_array: object) -> tuple[object, PointDimen
     for name in names:
         normalized["HeightAboveGround" if name == source else name] = point_array[name]
     return normalized, PointDimensionCapabilities.from_names(normalized.dtype.names)
+
+
+def _ensure_hag_for_product(point_array: object, request: object, resolution: object, product: str, *, handlers: object) -> tuple[object, object]:
+    """Assess and prepare one in-memory execution array using the shared planner."""
+    point_array, capabilities = _canonicalize_hag_dimension(point_array)
+    units = assess_source_coordinate_units(getattr(request, "crs", None), getattr(request, "source_coordinate_units", ""))
+    classification = assessment_from_array(point_array)
+    spatial_mode = "source_local" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "resolved"
+    output = Path(getattr(request, "output_path"))
+    assessment = build_preparation_assessment(
+        source=Path(getattr(request, "input_path")),
+        spatial_reference_mode=spatial_mode,
+        crs=getattr(request, "crs", None),
+        coordinate_units=units,
+        dimensions=capabilities.names,
+        classification=classification,
+        dtm_path=getattr(request, "dtm_path", None),
+        requested_products=(product,),
+        point_count=getattr(request, "source_point_count", None) or len(point_array),
+    )
+    plan = HeightNormalizationPlanner().plan(assessment, checkpoint_root=output.parent / ".pyforestscan_prepared")
+    if capabilities.has_existing_hag:
+        return point_array, plan
+    if not plan.can_execute:
+        raise ProcessingError("; ".join(plan.blockers))
+    if plan.large_source:
+        raise ProcessingError("Large sources must complete durable PBM preparation before product calculation.")
+    filters = _import_required("pyforestscan.filters", ProcessingError)
+    result = execute_preparation(
+        (point_array,),
+        assessment,
+        plan,
+        run_folder=output.parent,
+        job_identity=str(getattr(request, "attempt_id", "") or output.stem),
+        filters_module=filters,
+        handlers_module=handlers,
+        progress=lambda message: None,
+    )
+    _write_source_local_adapter_trace(request, "preparation", {"mode": plan.height_mode.value, "signature": plan.signature, "quality": result.quality.__dict__, "provenance": str(result.provenance_path)})
+    return _merge_point_cloud_arrays(result.arrays), plan
+
+
+def _write_preparation_output_tags(output_path: Path, plan: object) -> None:
+    if not output_path.exists() or output_path.suffix.lower() not in {".tif", ".tiff"}:
+        return
+    try:
+        rasterio = _import_required("rasterio", ProcessingError)
+        mode = getattr(getattr(plan, "height_mode", None), "value", "USE_EXISTING_HAG")
+        source = {
+            "USE_EXISTING_HAG": "existing",
+            "DELAUNAY_FROM_EXISTING_GROUND": "delaunay",
+            "DTM_EXISTING": "dtm",
+            "AUTO_CLASSIFY_GROUND_THEN_DELAUNAY": "generated_ground_then_delaunay",
+        }.get(mode, mode.lower())
+        with rasterio.open(output_path, "r+") as dataset:
+            dataset.update_tags(HAG_SOURCE=source, GROUND_CLASS_SOURCE="automatic_smrf" if "AUTO_CLASSIFY" in mode else "existing", PREPARATION_APPLIED="false" if mode == "USE_EXISTING_HAG" else "true", PREPARATION_SIGNATURE=str(getattr(plan, "signature", "")))
+    except Exception:
+        return
 
 
 def _write_source_local_adapter_trace(request: object, stage: str, payload: dict[str, object]) -> None:

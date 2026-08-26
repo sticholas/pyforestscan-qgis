@@ -168,6 +168,9 @@ class ChmRequest:
     polygon_intersection_area: float = 0.0
     polygon_coverage_percent: float = 0.0
     source_dimensions: tuple[str, ...] = ()
+    source_coordinate_units: str = ""
+    source_point_count: int | None = None
+    dtm_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -319,11 +322,14 @@ class RumpleRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
-    hag_method: str = "existing_normalized_height"
+    hag_method: str = "automatic"
     hag_source_dimension: str = "HeightAboveGround"
     hag_method_signature: str = ""
     source_dimensions: tuple[str, ...] = ()
     diagnostics_path: Path | None = None
+    source_coordinate_units: str = ""
+    source_point_count: int | None = None
+    dtm_path: Path | None = None
 
 
 @dataclass(frozen=True)

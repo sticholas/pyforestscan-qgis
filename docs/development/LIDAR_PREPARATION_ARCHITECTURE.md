@@ -1,0 +1,10 @@
+# LiDAR Preparation Architecture
+
+Phase 31A separates observed capabilities from required work. `LidarPreparationAssessment` records source identity, spatial-reference mode, coordinate units, dimensions, bounded classification evidence, DTM, product requirements, and scale. `HeightNormalizationPlanner` emits a signed `LidarPreparationPlan`; PBM executes its checkpointable steps and returns `PreparedLidarCapabilities`.
+
+For standalone CHM/Rumple, PBM samples classification before loading product arrays. When preparation is required it runs a file-to-file PDAL pipeline, writes `preparation/<signature>/prepared_hag.laz`, validates completion, records provenance, and then calculates products from that artifact. The original source is never changed. A compatible second product reuses the checkpoint.
+
+Precedence is existing HAG, supplied DTM, Delaunay from observed class 2, SMRF then Delaunay, then block. Vegetation classes 3/4/5 are not prerequisites. Products receive preparation method, signature, and provenance metadata.
+
+Large preparation runs in managed PBM, not QGIS Python. Phase 31A deliberately does not split Delaunay normalization into independent tiles: buffered-core context and whole/tiled equivalence must be proven before adaptive normalization is enabled.
+

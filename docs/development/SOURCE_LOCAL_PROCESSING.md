@@ -1,5 +1,7 @@
 # Source-Local Processing
 
+Existing-HAG source-local processing remains unchanged. Missing-HAG preparation requires trusted meters/feet evidence because ground classification is distance-sensitive. No EPSG or unit is inferred from coordinate magnitude. Polygon source-local processing remains prohibited.
+
 Phase 30F carries source-local state through PBM protocol 2 instead of inferring it from an empty CRS. See [PBM Spatial Reference Contract](PBM_SPATIAL_REFERENCE_CONTRACT.md) and [HAG Execution Contract](HAG_EXECUTION_CONTRACT.md).
 
 Source-local mode represents native X/Y coordinates without geographic authority. It is not an EPSG code and cannot be used for reprojection, polygon alignment, or cross-source mosaicking.

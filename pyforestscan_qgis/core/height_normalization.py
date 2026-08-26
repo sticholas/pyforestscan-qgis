@@ -36,7 +36,7 @@ class HeightNormalizationDecision:
             return cls(HeightNormalizationMode.EXISTING_HAG, "HeightAboveGround", hag_method_signature("existing_normalized_height", "HeightAboveGround"))
         if requested_method in {"provided_dtm", "dtm"}:
             return cls(HeightNormalizationMode.DTM_HAG, method_signature=hag_method_signature("provided_dtm"))
-        if requested_method in {"classified_ground_delaunay", "delaunay"}:
+        if requested_method in {"classified_ground_delaunay", "delaunay", "automatic", "auto"}:
             return cls(HeightNormalizationMode.DELAUNAY_HAG, method_signature=hag_method_signature("classified_ground_delaunay"))
         return cls(HeightNormalizationMode.UNAVAILABLE)
 
@@ -60,4 +60,3 @@ class HeightNormalizationDecision:
 
     def to_dict(self) -> dict[str, object]:
         return {"mode": self.mode.value, "source_dimension": self.source_dimension, "method_signature": self.method_signature, "fallback_allowed": self.fallback_allowed}
-

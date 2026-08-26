@@ -1,5 +1,7 @@
 # Automatic CRS Resolution
 
+Automatic preparation does not weaken CRS policy. A standalone source may remain CRS-undefined, but distance-based preparation requires separate trusted unit evidence. Polygon/reprojection still requires a resolved CRS.
+
 Missing CRS is serialized as explicit `source_local` mode with JSON `null`, never the string `"None"`. Source-local mode is not a CRS assignment and remains invalid for polygon alignment.
 
 `SpatialReferenceResolver` applies evidence in strict order: embedded LAS/LAZ/COPC/EPT metadata, exact file sidecar, persisted file assignment, persisted repository assignment, high-confidence repository consensus, repository sidecar, and exact loaded-QGIS datasource assignment. Project/polygon context can suggest a CRS but cannot prove one by itself. Coordinate magnitudes never generate candidates.

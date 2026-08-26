@@ -626,6 +626,8 @@ def _plan_status_from_feasibility(status: str) -> str:
     normalized = status.lower()
     if normalized == "available":
         return "Ready"
+    if normalized == "ready after preparation":
+        return "Ready"
     if normalized == "warning":
         return "Needs review"
     return "Blocked"

@@ -1,5 +1,7 @@
 # Product Execution Capabilities
 
+CHM and Rumple now support automatic standalone PBM preparation. Existing HAG is reused; missing HAG can use a DTM, existing class 2, or validated SMRF ground. Other HAG consumers share the requirement model, while durable cross-product artifact routing is initially enabled for CHM/Rumple.
+
 Standalone source-local CHM and Rumple are PBM-capable when the execution read contains an existing normalized-height dimension. Other source-local products remain unchanged; polygon processing still requires a resolved CRS.
 
 Phase 30C changes workflow state only. CHM/Rumple dependency reuse, adaptive Rumple mathematics, masking, routing, and output contracts are unchanged. A single LAS request containing CHM and Rumple is normalized through the same immutable Batch launch contract as a multi-file folder request.

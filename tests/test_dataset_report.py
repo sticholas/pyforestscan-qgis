@@ -69,7 +69,7 @@ class DatasetReportTests(unittest.TestCase):
         report = build_dataset_explorer_report(make_inspection())
 
         statuses = {product.product.value: product.status for product in report.products}
-        self.assertEqual(statuses["chm"], "Warning")
+        self.assertEqual(statuses["chm"], "Ready after preparation")
         self.assertIn("NO_HEIGHT_ABOVE_GROUND", {warning.code for warning in report.warnings})
         self.assertTrue(report.has_color)
         self.assertTrue(report.has_gps_time)

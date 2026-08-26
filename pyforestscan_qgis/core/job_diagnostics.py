@@ -37,6 +37,14 @@ class JobErrorCode(str, Enum):
     JOB_CANCELLED = "JOB_CANCELLED"
     UNKNOWN_BACKEND_FAILURE = "UNKNOWN_BACKEND_FAILURE"
     SOURCE_DIMENSION_MISMATCH = "SOURCE_DIMENSION_MISMATCH"
+    NO_HAG_AVAILABLE = "NO_HAG_AVAILABLE"
+    GROUND_CLASS_UNAVAILABLE = "GROUND_CLASS_UNAVAILABLE"
+    GROUND_CLASSIFICATION_FAILED = "GROUND_CLASSIFICATION_FAILED"
+    HAG_GENERATION_FAILED = "HAG_GENERATION_FAILED"
+    DTM_GENERATION_FAILED = "DTM_GENERATION_FAILED"
+    DTM_INCOMPATIBLE = "DTM_INCOMPATIBLE"
+    PREPARATION_VALIDATION_FAILED = "PREPARATION_VALIDATION_FAILED"
+    SOURCE_UNITS_UNKNOWN = "SOURCE_UNITS_UNKNOWN"
 
 
 @dataclass(frozen=True)
@@ -116,6 +124,16 @@ def classify_exception(exc: BaseException, *, stage: str = "Processing") -> Stru
     text = str(exc)
     lowered = text.lower()
     traceback_text = traceback_module.format_exc()
+    preparation_codes = {
+        "source_units_unknown": (JobErrorCode.SOURCE_UNITS_UNKNOWN.value, "Source coordinate units must be confirmed before automatic ground preparation.", ("Assign a CRS or trusted repository units.",)),
+        "ground_class_unavailable": (JobErrorCode.GROUND_CLASS_UNAVAILABLE.value, "PyForestScan could not identify a supported ground-preparation path.", ("Provide a compatible DTM or review ground classification.",)),
+        "ground_classification_failed": (JobErrorCode.GROUND_CLASSIFICATION_FAILED.value, "Automatic ground classification did not produce enough reliable ground points.", ("Provide a DTM or review ground classification.",)),
+        "preparation_validation_failed": (JobErrorCode.PREPARATION_VALIDATION_FAILED.value, "The prepared height values did not pass scientific quality checks.", ("Review preparation diagnostics and provide a DTM if appropriate.",)),
+        "height above ground pipeline failed": (JobErrorCode.HAG_GENERATION_FAILED.value, "Height normalization failed during LiDAR preparation.", ("Review ground classification or provide a compatible DTM.",)),
+    }
+    for marker, (code, message, actions) in preparation_codes.items():
+        if marker in lowered:
+            return StructuredJobError(code=code, user_message=message, technical_message=text, stage="LiDAR Preparation", exception_type=type(exc).__name__, traceback=traceback_text, suggested_actions=actions, retryable=False)
     if "source_dimension_mismatch" in lowered:
         return StructuredJobError(
             code=JobErrorCode.SOURCE_DIMENSION_MISMATCH.value,

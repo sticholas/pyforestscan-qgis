@@ -1,5 +1,12 @@
 # Changelog
 
+## Phase 31A
+
+- Added authoritative LiDAR preparation assessment, planning, recovery, recommendation, provenance, quality, and checkpoint contracts.
+- Added bounded PBM classification sampling plus DTM, existing-ground Delaunay, and SMRF-then-Delaunay paths for CHM/Rumple.
+- Added non-destructive prepared-LAZ reuse, output method tags, actionable preparation errors, and Dataset Explorer readiness semantics.
+- Preserved existing-HAG and strict polygon CRS behavior while requiring trusted units for source-local distance operations.
+
 ## Phase 30F
 
 - Added PBM protocol 2 contracts for source-local coordinates and authoritative height normalization.

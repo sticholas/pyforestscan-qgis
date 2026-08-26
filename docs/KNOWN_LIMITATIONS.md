@@ -1,5 +1,10 @@
 # Known Limitations
 
+- Durable automatic artifact routing is initially enabled for standalone CHM/Rumple; other HAG consumers retain existing execution paths.
+- Source-local ground/HAG preparation requires trusted linear units; magnitude and LAS scale are insufficient evidence.
+- Large preparation is isolated in PBM, but adaptive tiled Delaunay HAG is deferred until buffered-boundary equivalence is validated.
+- The 104,819,538-point production LAS was unavailable for Phase 31A live execution; its classification fraction and outputs remain unclaimed.
+
 - Source-local CHM and Rumple require an existing normalized-height dimension. Source-local polygon processing remains blocked because spatial alignment cannot be proven without a CRS.
 - The real scientific subprocess regression is skipped on development hosts without the managed geospatial dependency stack; clean Windows/QGIS evidence must record the managed-backend run separately.
 

@@ -1,5 +1,7 @@
 # Dataset Page
 
+**Height above ground: Not present** is preparable, not automatically a failure. Dataset Explorer reports `READY`, `READY_AFTER_PREPARATION`, `NEEDS_USER_INPUT`, or `BLOCKED`. PBM performs bounded ground inspection and the final preparation report explains the selected method.
+
 The Dataset page is the first required page in the single-dataset Mission Control workflow after backend readiness is checked.
 
 Use it to:

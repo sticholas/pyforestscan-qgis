@@ -17,6 +17,7 @@ from .job_result import BackendJobResult
 from .job_spec import BackendJobSpec
 from .job_spec import PBM_PROTOCOL_VERSION
 from .runtime_contract import inspect_runtime_contract, print_runtime_contract
+from .pbm_lidar_preparation import prepare_request_source
 from .api_contract import print_api_contract
 from .request_validation import RequestValidationError, validate_processing_request
 from pyforestscan_qgis.core.adapter import PyForestScanAdapter
@@ -81,6 +82,12 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
             outputs = {}
         else:
             request = _request_from_spec(spec)
+            heartbeat_state.update(stage="Inspecting Ground Returns", activity="Assessing LiDAR preparation requirements.")
+            _write_heartbeat(spec, heartbeat_state, heartbeat_started)
+            preparation = prepare_request_source(spec, request, progress=lambda message: heartbeat_state.update(stage=message, activity=message))
+            if preparation is not None:
+                request = preparation.request
+                _update_source_local_trace(spec, "preparation", {"mode": preparation.plan.height_mode.value, "signature": preparation.plan.signature, "artifact": str(getattr(request, "input_path", "")), "reused": preparation.reused, "provenance": str(preparation.provenance_path)})
             validation = validate_processing_request(spec, request)
             heartbeat_state.update(stage="Reading LiDAR", activity="Backend adapter is processing the selected bounded source.")
             _write_heartbeat(spec, heartbeat_state, heartbeat_started)
@@ -96,6 +103,9 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
             _request_class, method_name = PRODUCT_REQUESTS[spec.product]
             result = getattr(adapter, method_name)(request)
             metrics = _json_ready(asdict(result))
+            if preparation is not None:
+                metrics["preparation"] = {"mode": preparation.plan.height_mode.value, "signature": preparation.plan.signature, "provenance": str(preparation.provenance_path), "reused": preparation.reused}
+                _tag_preparation_output(Path(metrics.get("output_path", "")), preparation)
             outputs = {"primary": Path(metrics.get("output_path", spec.output_paths.get("primary", "")))}
         heartbeat_state.update(stage="Finalizing Output", activity="Product calculation completed.", completed_count=heartbeat_state["total_count"])
         _write_heartbeat(spec, heartbeat_state, heartbeat_started)
@@ -289,6 +299,19 @@ def _update_source_local_trace(spec: BackendJobSpec, stage: str, payload: dict[s
         trace = {"job_id": spec.job_id, "product": spec.product, "stages": {}}
     trace.setdefault("stages", {})[stage] = payload
     write_json(path, trace)
+
+
+def _tag_preparation_output(path: Path, preparation: object) -> None:
+    if not path.is_file() or path.suffix.lower() not in {".tif", ".tiff"}:
+        return
+    mode = preparation.plan.height_mode.value
+    hag_source = {"DELAUNAY_FROM_EXISTING_GROUND": "delaunay", "DTM_EXISTING": "dtm", "AUTO_CLASSIFY_GROUND_THEN_DELAUNAY": "generated_ground_then_delaunay"}.get(mode, "existing")
+    try:
+        import rasterio
+        with rasterio.open(path, "r+") as dataset:
+            dataset.update_tags(HAG_SOURCE=hag_source, GROUND_CLASS_SOURCE="automatic_smrf" if mode == "AUTO_CLASSIFY_GROUND_THEN_DELAUNAY" else "existing", PREPARATION_APPLIED="true", PREPARATION_SIGNATURE=preparation.plan.signature, PREPARATION_PROVENANCE=str(preparation.provenance_path))
+    except Exception:
+        return
 
 
 if __name__ == "__main__":
