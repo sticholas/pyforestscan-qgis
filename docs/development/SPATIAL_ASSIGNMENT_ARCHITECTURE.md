@@ -22,3 +22,5 @@ Conflicting authoritative/high-confidence CRS evidence produces `CONFLICT`; it i
 Persistence is user-local at the PBM root in `spatial_assignments.json`. File fingerprints and repository inventory fingerprints invalidate stale records after material source changes. Original LAS/LAZ bytes are never modified.
 
 Previously source-local rasters may be copied and registered with a later confirmed CRS through `register_raster_crs_copy`; pixels and transform remain unchanged and the original is preserved.
+
+Phase 31C adds `ASSUMED_SOURCE_LOCAL` as a processing-policy basis, not an assignment. It is lower precedence than every explicit assignment and never enters `spatial_assignments.json`. The immutable request records the assumption separately from CRS evidence.

@@ -63,6 +63,7 @@ def prepare_batch_execution(
         "workers": request.settings.max_workers,
         "resolution": request.settings.grid_resolution,
         "profile": profile,
+        "processing_spatial_contexts": report.processing_spatial_contexts,
     }
     identity = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
     readiness = BatchExecutionReadiness(
@@ -86,6 +87,7 @@ def prepare_batch_execution(
         settings=request.settings,
         title=request.title,
         batch_folder=report.batch_folder,
+        processing_spatial_contexts=report.processing_spatial_contexts,
     )
     return BatchExecutionRequest(approved, readiness, len(selected), len(selected), len(skipped))
 

@@ -167,7 +167,7 @@ def source_fingerprint(path: Path) -> str:
 
 
 def _plan(assessment, readiness, recovery, mode, steps, messages, checkpoint_root):
-    basis = {"source": assessment.source_fingerprint, "spatial_mode": assessment.spatial_reference_mode, "crs": assessment.crs or "", "units": assessment.coordinate_units.units.value, "height_mode": mode.value, "steps": [asdict(step) for step in steps], "dtm": str(assessment.dtm_path or ""), "version": "phase31b-v1"}
+    basis = {"source": assessment.source_fingerprint, "spatial_mode": assessment.spatial_reference_mode, "crs": assessment.crs or "", "units": assessment.coordinate_units.units.value, "unit_basis": assessment.coordinate_units.unit_basis, "units_authoritative": assessment.coordinate_units.authoritative, "height_mode": mode.value, "steps": [asdict(step) for step in steps], "dtm": str(assessment.dtm_path or ""), "version": "phase31c-v1"}
     signature = hashlib.sha256(json.dumps(basis, sort_keys=True).encode()).hexdigest()
     artifact = (checkpoint_root / signature / "prepared_hag.laz") if checkpoint_root and mode is not HeightNormalizationPlanMode.USE_EXISTING_HAG else None
     return LidarPreparationPlan(readiness, recovery, mode, tuple(steps), tuple(messages) if readiness is not PreparationReadiness.BLOCKED else (), tuple(messages) if readiness in {PreparationReadiness.BLOCKED, PreparationReadiness.NEEDS_USER_INPUT} else (), signature, artifact, bool((assessment.point_count or 0) >= 20_000_000))

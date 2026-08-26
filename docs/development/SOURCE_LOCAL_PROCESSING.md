@@ -11,3 +11,5 @@ For standalone CHM and Rumple, the adapter reads LAS/LAZ/COPC directly through P
 Source-local GeoTIFFs have `crs=None` and tags including `PYFORESTSCAN_SPATIAL_REFERENCE=SOURCE_LOCAL`, `SOURCE_CRS_RESOLVED=false`, source/output CRS status, resolution source, confidence, and transformation flag. QGIS may load the raster in its native coordinate frame but no CRS is silently assigned.
 
 Phase 31B extends source-local CHM/Rumple to missing-HAG sources when trusted linear units and defensible ground evidence permit automatic preparation. A later confirmed CRS can be attached to a preserved copy without recomputing pixels; previous outputs are never silently changed.
+
+Phase 31C permits eligible independent CHM/Rumple jobs to use the configured source-local unit fallback when units are absent. Output remains unassigned, loads as a successful source-coordinate raster, and records the assumption. Polygon/reprojection/cross-source alignment remains unavailable until CRS compatibility is confirmed.

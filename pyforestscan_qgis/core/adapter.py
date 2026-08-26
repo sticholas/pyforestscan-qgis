@@ -27,7 +27,7 @@ from .spatial_reference_contract import SpatialReferenceMode
 from .classification_inspection import assessment_from_array
 from .lidar_preparation import HeightNormalizationPlanner, HeightNormalizationPlanMode, build_preparation_assessment
 from .lidar_preparation_execution import checkpoint_is_compatible, execute_preparation
-from .source_coordinate_units import assess_source_coordinate_units
+from .source_coordinate_units import assess_processing_coordinate_units, assess_source_coordinate_units
 from .polygon_transport import looks_like_wkt, materialize_polygon_input, polygon_execution_input_from_mapping
 from .ept_subset import EptSubsetRequest, EptSubsetResult, ept_read_lidar_kwargs
 from .types import (
@@ -1540,7 +1540,7 @@ def _canonicalize_hag_dimension(point_array: object) -> tuple[object, PointDimen
 def _ensure_hag_for_product(point_array: object, request: object, resolution: object, product: str, *, handlers: object) -> tuple[object, object]:
     """Assess and prepare one in-memory execution array using the shared planner."""
     point_array, capabilities = _canonicalize_hag_dimension(point_array)
-    units = assess_source_coordinate_units(getattr(request, "crs", None), getattr(request, "source_coordinate_units", ""))
+    units = assess_processing_coordinate_units(getattr(request, "crs", None), getattr(request, "source_coordinate_units", ""), getattr(request, "source_units_basis", "UNRESOLVED"))
     classification = assessment_from_array(point_array)
     spatial_mode = "source_local" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "resolved"
     output = Path(getattr(request, "output_path"))
@@ -1631,7 +1631,7 @@ def _write_crs_provenance(output_path: Path, resolution: object, request: object
         rasterio = _import_required("rasterio", ProcessingError)
         with rasterio.open(output_path, "r+") as dataset:
             assigned = resolution.status is SpatialReferenceStatus.RESOLVED_USER_ASSIGNMENT or str(getattr(request, "source_crs_status", "")) == "USER_ASSIGNED"
-            dataset.update_tags(PYFORESTSCAN_SPATIAL_REFERENCE="SOURCE_LOCAL" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "RESOLVED", SOURCE_SPATIAL_MODE="SOURCE_LOCAL" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "GEOREFERENCED", SOURCE_CRS_RESOLVED="false" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "true", SOURCE_CRS_STATUS="USER_ASSIGNED" if assigned else resolution.status.value, SOURCE_CRS=resolution.resolved_crs, SOURCE_UNITS=str(getattr(request, "source_coordinate_units", "") or "FROM_CRS"), CRS_ASSIGNED="true" if assigned else "false", CRS_ASSIGNMENT_SCOPE=str(getattr(request, "spatial_assignment_scope", "") or ("file" if assigned else "")), OUTPUT_CRS=resolution.resolved_crs, CRS_RESOLUTION_SOURCE=resolution.source, CRS_CONFIDENCE=resolution.confidence.value, TRANSFORMATION_APPLIED="true" if resolution.transformation_required else "false")
+            dataset.update_tags(PYFORESTSCAN_SPATIAL_REFERENCE="SOURCE_LOCAL" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "RESOLVED", SOURCE_SPATIAL_MODE="SOURCE_LOCAL" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "GEOREFERENCED", PROCESSING_COORDINATE_MODE=str(getattr(request, "processing_coordinate_mode", "source_local")), SOURCE_CRS_RESOLVED="false" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "true", SOURCE_CRS_STATUS="USER_ASSIGNED" if assigned else resolution.status.value, SOURCE_CRS=resolution.resolved_crs, SOURCE_UNITS=str(getattr(request, "source_coordinate_units", "") or "FROM_CRS"), SOURCE_UNITS_BASIS=str(getattr(request, "source_units_basis", "UNRESOLVED")).lower(), SOURCE_UNITS_AUTHORITATIVE="true" if getattr(request, "source_units_authoritative", False) else "false", GEOREFERENCED="false" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "true", CRS_ASSIGNED="true" if assigned else "false", CRS_ASSIGNMENT_SCOPE=str(getattr(request, "spatial_assignment_scope", "") or ("file" if assigned else "")), OUTPUT_CRS=resolution.resolved_crs, CRS_RESOLUTION_SOURCE=resolution.source, CRS_CONFIDENCE=resolution.confidence.value, TRANSFORMATION_APPLIED="true" if resolution.transformation_required else "false")
     except Exception:
         return
 

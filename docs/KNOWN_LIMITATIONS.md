@@ -138,3 +138,5 @@ Adaptive Rumple coordinator integration is synthetically validated, but medium a
 - The 104,819,538-point Olaa production LAS was not available in the development workspace, so its real Delaunay/CHM/Rumple runtime and spatial ground distribution remain a managed-Windows QA gate.
 - Units-only assignments cannot support polygon alignment, reprojection, or map overlay. A confirmed source CRS is required.
 - Repository assignments invalidate conservatively when the bounded inventory fingerprint changes and must then be revalidated.
+- Assumed source-local units reduce confidence in distance-sensitive preparation. They are enabled only for reviewed standalone CHM/Rumple paths and must not be treated as survey metadata.
+- Independent unknown-source batch products may use per-source fallback, but mosaicking or cross-source spatial comparison still requires compatibility evidence.

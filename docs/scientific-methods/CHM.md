@@ -36,3 +36,5 @@ Record the input dataset, CRS, grid or voxel resolution, height thresholds, PyFo
 CHM mathematics may run in native source X/Y coordinates when valid `HeightAboveGround` already exists. The output remains unassigned and explicitly tagged source-local. Polygon alignment and new HAG normalization still require resolved spatial context.
 
 With Phase 31B, trusted source units can also authorize automatic Delaunay/SMRF HAG preparation for standalone CHM. A units-only result remains `crs=None`; a user-assigned CRS is propagated without transforming source coordinates.
+
+When neither CRS nor units is encoded, Phase 31C may use the configured standalone fallback. This lowers spatial/unit confidence but does not bypass ground-coverage or HAG quality validation. Record `SOURCE_UNITS_BASIS` when interpreting distances or comparing results.

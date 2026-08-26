@@ -17,7 +17,7 @@ from .external_worker import (
     external_workers_enabled,
 )
 from .batch_manifest import MANIFEST_NAME, completed_dataset_paths, failed_dataset_paths, load_manifest
-from .dataset_report import build_dataset_explorer_report
+from .dataset_report import build_dataset_explorer_report, report_to_dict
 
 DiskUsageProvider = Callable[[Path], tuple[int, int, int]]
 
@@ -40,6 +40,7 @@ class BatchPreflightReport:
     execution_mode: str
     max_workers: int
     recommended_workers: int
+    processing_spatial_contexts: tuple[tuple[str, dict[str, object]], ...] = ()
 
     @property
     def has_warnings(self) -> bool:
@@ -113,7 +114,7 @@ def run_batch_preflight(
             warnings.append("QGIS Python scientific dependencies are not READY, but PBM backend is READY and will be used for routed products.")
     except Exception as exc:  # noqa: BLE001 - preflight reports environment uncertainty.
         warnings.append(f"Environment readiness could not be verified: {exc}")
-    _check_preparation_spatial_readiness(request, files_to_process, adapter, blockers, warnings)
+    spatial_contexts = _check_preparation_spatial_readiness(request, files_to_process, adapter, blockers, warnings)
     workload_score = len(files_to_process) * max(1, len(request.settings.products))
     if len(files_to_process) >= LARGE_FILE_COUNT:
         warnings.append("Large batch: many files selected.")
@@ -153,6 +154,7 @@ def run_batch_preflight(
         execution_mode=request.settings.execution_mode,
         max_workers=request.settings.max_workers,
         recommended_workers=recommend_batch_workers(len(files_to_process), workload_score, request.settings.execution_mode),
+        processing_spatial_contexts=spatial_contexts,
     )
 
 
@@ -197,26 +199,47 @@ def recommend_batch_workers(file_count: int, workload_score: int, execution_mode
     return min(3, file_count) if workload_score <= 8 else 2
 
 
-def _check_preparation_spatial_readiness(request, sources, adapter, blockers, warnings) -> None:
+def _check_preparation_spatial_readiness(request, sources, adapter, blockers, warnings) -> tuple[tuple[str, dict[str, object]], ...]:
     """Surface resolvable unit metadata before a PBM worker starts."""
     products = {str(getattr(item, "value", item)) for item in request.settings.products}
     if not products.intersection({"chm", "rumple", "pad", "pai", "fhd", "canopy_cover", "voxel_stat"}):
-        return
+        return ()
     unresolved: list[Path] = []
+    resolved_contexts: list[tuple[str, dict[str, object]]] = []
     inspected = tuple(sources[:50])
     for source in inspected:
         try:
-            report = build_dataset_explorer_report(adapter.inspect_dataset(source))
+            report = build_dataset_explorer_report(adapter.inspect_dataset(source), requested_products=tuple(products))
         except Exception as exc:  # noqa: BLE001 - ordinary metadata uncertainty is reported, not fatal.
             warnings.append(f"Preparation metadata could not be checked for {Path(source).name}: {exc}")
             continue
         if report.preparation_readiness == "NEEDS_USER_INPUT":
             unresolved.append(Path(source))
+        preparation = report_to_dict(report).get("preparation", {}) if hasattr(report, "source_coordinate_units") else {}
+        if isinstance(preparation, dict) and preparation:
+            basis = str(preparation.get("source_units_basis", "UNRESOLVED"))
+            resolved_contexts.append((str(Path(source)), {
+                "crs": report.crs or "",
+                "linear_units": str(preparation.get("source_coordinate_units", "")),
+                "unit_basis": basis,
+                "confidence": "ASSUMED" if basis == "ASSUMED_SOURCE_LOCAL" else ("HIGH" if preparation.get("source_units_authoritative") else "NONE"),
+                "source_units_authoritative": bool(preparation.get("source_units_authoritative")),
+                "georeferenced": bool(report.crs),
+                "processing_coordinate_mode": str(preparation.get("processing_coordinate_mode", "unresolved")),
+                "distance_operations_safe": report.preparation_readiness not in {"NEEDS_USER_INPUT", "BLOCKED"},
+                "fallback_applied": basis == "ASSUMED_SOURCE_LOCAL",
+                "warnings": tuple(item.message for item in report.warnings if item.code == "SOURCE_UNITS_ASSUMED"),
+                "blockers": (),
+            }))
+        for item in getattr(report, "warnings", ()):
+            if item.code == "SOURCE_UNITS_ASSUMED":
+                warnings.append(item.message)
     if unresolved:
         names = ", ".join(path.name for path in unresolved[:5])
         blockers.append(f"SOURCE_UNITS_UNKNOWN: PyForestScan found usable preparation inputs for {names}. Choose trusted coordinate units or assign the source coordinate system to continue.")
     if len(sources) > len(inspected):
         warnings.append(f"Preparation metadata was checked for the first {len(inspected)} selected sources; repository assignments will be revalidated during execution.")
+    return tuple(resolved_contexts)
 
 
 def _recommended_workers(file_count: int, workload_score: int, execution_mode: str) -> int:

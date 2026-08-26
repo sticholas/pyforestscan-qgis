@@ -107,6 +107,7 @@ from ..core.product_plan import (
 from ..core.types import ProductType
 from ..core.spatial_assignment import AssignmentScope, LinearUnit
 from ..core.spatial_reference_resolver import default_spatial_assignment_store
+from ..core.processing_spatial_context import SourceLocalFallbackChoice, SourceLocalFallbackPolicy, default_source_local_policy_store
 from ..core.processing_ui_state import ProcessingUiState, control_policy, reconcile_ui_state, terminal_state_from_result
 from ..core.durable_errors import DurableErrorRecord, read_recent_error, write_recent_error
 from ..core.completed_job_summary import CompletedJobSummary, completed_job_summary, format_completed_job_summary
@@ -4569,9 +4570,19 @@ class SettingsPage(MissionPage):
         self.spatial_units_combo.addItem("Meters", LinearUnit.METERS.value)
         self.spatial_units_combo.addItem("International feet", LinearUnit.INTERNATIONAL_FEET.value)
         self.spatial_units_combo.addItem("US survey feet", LinearUnit.US_SURVEY_FEET.value)
+        self.source_local_fallback_combo = QComboBox()
+        self.source_local_fallback_combo.addItem("Meters", SourceLocalFallbackChoice.METERS.value)
+        self.source_local_fallback_combo.addItem("International feet", SourceLocalFallbackChoice.INTERNATIONAL_FEET.value)
+        self.source_local_fallback_combo.addItem("US survey feet", SourceLocalFallbackChoice.US_SURVEY_FEET.value)
+        self.source_local_fallback_combo.addItem("Require explicit assignment", SourceLocalFallbackChoice.REQUIRE_EXPLICIT_ASSIGNMENT.value)
+        fallback_policy = default_source_local_policy_store().read()
+        fallback_index = self.source_local_fallback_combo.findData(fallback_policy.default_units.value)
+        self.source_local_fallback_combo.setCurrentIndex(max(0, fallback_index))
+        self.source_local_fallback_combo.currentIndexChanged.connect(self.save_source_local_fallback_policy)
         spatial_form.addRow("Source", self.spatial_target_edit)
         spatial_form.addRow("Scope", self.spatial_scope_combo)
         spatial_form.addRow("Coordinate units", self.spatial_units_combo)
+        spatial_form.addRow("Default units for unreferenced standalone LiDAR", self.source_local_fallback_combo)
         spatial_tools.addLayout(spatial_form)
         spatial_actions = QHBoxLayout()
         self.save_spatial_units_button = QPushButton("Save Trusted Units")
@@ -4832,6 +4843,16 @@ class SettingsPage(MissionPage):
             self.spatial_assignment_status_label.setText(str(exc))
             return
         self.spatial_assignment_status_label.setText("Spatial assignment cleared. Embedded/sidecar evidence remains unchanged.")
+
+    def save_source_local_fallback_policy(self) -> None:
+        try:
+            choice = SourceLocalFallbackChoice(str(self.source_local_fallback_combo.currentData()))
+            default_source_local_policy_store().write(SourceLocalFallbackPolicy(choice))
+        except (ValueError, OSError) as exc:
+            self.spatial_assignment_status_label.setText(f"Fallback preference could not be saved: {exc}")
+            return
+        label = self.source_local_fallback_combo.currentText()
+        self.spatial_assignment_status_label.setText(f"Standalone source-local fallback: {label}. This preference never assigns a CRS or permits polygon alignment.")
 
     def emit_default_output_folder(self) -> None:
         """Emit the configured default output folder."""

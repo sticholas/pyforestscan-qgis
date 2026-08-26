@@ -169,6 +169,9 @@ class ChmRequest:
     polygon_coverage_percent: float = 0.0
     source_dimensions: tuple[str, ...] = ()
     source_coordinate_units: str = ""
+    source_units_basis: str = "UNRESOLVED"
+    source_units_authoritative: bool = False
+    processing_coordinate_mode: str = "unresolved"
     spatial_assignment_scope: str = ""
     source_crs_status: str = ""
     source_point_count: int | None = None
@@ -330,6 +333,9 @@ class RumpleRequest:
     source_dimensions: tuple[str, ...] = ()
     diagnostics_path: Path | None = None
     source_coordinate_units: str = ""
+    source_units_basis: str = "UNRESOLVED"
+    source_units_authoritative: bool = False
+    processing_coordinate_mode: str = "unresolved"
     spatial_assignment_scope: str = ""
     source_crs_status: str = ""
     source_point_count: int | None = None

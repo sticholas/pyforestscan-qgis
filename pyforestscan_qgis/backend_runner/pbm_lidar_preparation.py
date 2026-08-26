@@ -11,7 +11,7 @@ from pyforestscan_qgis.core.classification_inspection import ClassificationAsses
 from pyforestscan_qgis.core.lidar_preparation import HeightNormalizationPlanMode, HeightNormalizationPlanner, build_preparation_assessment, preparation_recommendations
 from pyforestscan_qgis.core.lidar_preparation_execution import checkpoint_is_compatible
 from pyforestscan_qgis.core.point_dimensions import PointDimensionCapabilities
-from pyforestscan_qgis.core.source_coordinate_units import assess_source_coordinate_units
+from pyforestscan_qgis.core.source_coordinate_units import assess_processing_coordinate_units
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,7 @@ def prepare_request_source(spec, request, *, progress=None) -> PreparedSourceRes
     dimensions = PointDimensionCapabilities.from_names(getattr(request, "source_dimensions", ()))
     if dimensions.has_existing_hag:
         return None
-    units = assess_source_coordinate_units(getattr(request, "crs", None), getattr(request, "source_coordinate_units", ""))
+    units = assess_processing_coordinate_units(getattr(request, "crs", None), getattr(request, "source_coordinate_units", ""), getattr(request, "source_units_basis", "UNRESOLVED"))
     fingerprint = _source_fingerprint(Path(request.input_path))
     classification_path = spec.run_folder / "preparation" / f"classification_{fingerprint}.json"
     classification = _read_classification(classification_path)
@@ -89,11 +89,15 @@ def prepare_request_source(spec, request, *, progress=None) -> PreparedSourceRes
         "original_dimensions": list(assessment.dimensions.names),
         "original_crs_status": assessment.spatial_reference_mode,
         "coordinate_units": assessment.coordinate_units.units.value,
+        "source_units_basis": assessment.coordinate_units.unit_basis,
+        "source_units_authoritative": assessment.coordinate_units.authoritative,
+        "georeferenced": bool(assessment.crs),
+        "processing_coordinate_mode": "georeferenced" if assessment.crs else "source_local",
         "classification_assessment": classification.to_dict(),
         "ground_method": "automatic_smrf" if plan.height_mode is HeightNormalizationPlanMode.AUTO_CLASSIFY_GROUND_THEN_DELAUNAY else "existing_class_2",
         "hag_method": "generated_ground_then_delaunay" if plan.height_mode is HeightNormalizationPlanMode.AUTO_CLASSIFY_GROUND_THEN_DELAUNAY else "delaunay" if plan.height_mode is HeightNormalizationPlanMode.DELAUNAY_FROM_EXISTING_GROUND else "dtm",
         "dtm": str(assessment.dtm_path or ""),
-        "parameters": {"canonical_metres": {"smrf_cell": 1.0, "smrf_threshold": 0.5, "smrf_window": 18.0}, "source_unit_factor": assessment.coordinate_units.from_meters(1.0)},
+        "parameters": {"canonical_metres": {"smrf_cell": 1.0, "smrf_threshold": 0.5, "smrf_window": 18.0}, "source_unit_factor": assessment.coordinate_units.from_meters(1.0), "unit_sensitive": ["SMRF cell", "SMRF threshold", "SMRF window", "ground/HAG interpolation distances", "buffers"]},
         "output_dimensions": [*assessment.dimensions.names, "HeightAboveGround"],
         "warnings": list(plan.warnings),
         "timestamp": datetime.now(timezone.utc).isoformat(),

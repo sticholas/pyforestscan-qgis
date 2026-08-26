@@ -274,3 +274,5 @@ The Process workspace uses automatic scheduling and automatic current-job output
 Resolved CRS remains quiet. Source-local standalone processing may show **Source coordinates**. Spatial ambiguity presents one compact assignment action; technical evidence stays in diagnostics.
 
 When coordinate units are the sole blocker, Process shows **Preparation needs one detail** with metres/feet, file/repository scope, and Continue. Users may instead choose a CRS or explicitly use the project CRS. Tools & Setup contains collapsed **LiDAR Spatial Reference** management. Assignment never reprojects coordinates.
+
+With the default Phase 31C policy, eligible standalone CHM/Rumple no longer show that intervention: Prerun is ready with a concise source-coordinate fallback warning. The compact assignment action appears only when policy requires explicit assignment or geography is required. No global warning acknowledgement is used.

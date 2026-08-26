@@ -29,3 +29,5 @@ Source, selection, polygon, products, output, resolution, profile, execution pol
 # Phase 30D amendment
 
 Warnings do not invalidate readiness. New preflight requests create new batch identities; historical manifests require explicit recovery selection. Scheduler details are technical diagnostics rather than normal summary content.
+
+Phase 31C resolves each independent source through the central spatial policy. Eligible assumed units produce `SOURCE_UNITS_ASSUMED` as a warning and keep Process enabled. The resulting context is serialized into Dataset Report/Product Plan and must equal PBM execution context. CRS-required and contradictory-evidence states remain blockers.

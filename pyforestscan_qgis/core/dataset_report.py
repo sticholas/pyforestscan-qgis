@@ -19,6 +19,7 @@ from typing import Any
 from .types import Bounds3D, ClassificationCount, DatasetInspection, ProductType
 from .source_coordinate_units import assess_source_coordinate_units
 from .spatial_reference_resolver import SpatialReferenceAssignmentStore, SpatialReferenceResolver, default_spatial_assignment_store
+from .processing_spatial_context import SourceLocalFallbackPolicy, default_source_local_policy_store, processing_spatial_context_from_dict, resolve_processing_spatial_context
 
 LOW_DENSITY_THRESHOLD = 1.0
 GROUND_CLASSIFICATION = 2
@@ -75,6 +76,9 @@ class DatasetExplorerReport:
     spatial_assignment_scope: str = ""
     spatial_assignment_provenance: str = ""
     crs_assignment_status: str = "EMBEDDED_OR_DISCOVERED"
+    source_units_basis: str = "UNRESOLVED"
+    source_units_authoritative: bool = False
+    processing_coordinate_mode: str = "unresolved"
 
 
 def format_count_for_display(value: int | None) -> str:
@@ -103,6 +107,9 @@ def build_dataset_explorer_report(
     inspection: DatasetInspection,
     title: str = "PyForestScan Dataset Explorer",
     assignment_store: SpatialReferenceAssignmentStore | None = None,
+    requested_products: tuple[object, ...] = ("chm", "rumple"),
+    fallback_policy: SourceLocalFallbackPolicy | None = None,
+    frozen_spatial_context: dict[str, object] | None = None,
 ) -> DatasetExplorerReport:
     """Build a typed Dataset Explorer report from adapter inspection output."""
     dimensions = tuple(inspection.dimensions)
@@ -141,14 +148,25 @@ def build_dataset_explorer_report(
         has_vegetation=has_vegetation,
         has_classification_summary=has_classification_summary,
     )
-    actions = _recommended_actions(warnings, products)
     source_path = Path(inspection.source.path)
     store = assignment_store or default_spatial_assignment_store()
     assignment = store.spatial_assignment_for(source_path, source_path.parent) if not inspection.source.is_remote else None
     resolution = SpatialReferenceResolver(store).resolve(source_path, embedded_crs=inspection.crs, source_local_allowed=True) if not inspection.source.is_remote else None
-    effective_crs = resolution.resolved_crs if resolution and resolution.resolved else inspection.crs
-    unit_assessment = assess_source_coordinate_units(effective_crs, assignment.linear_units if assignment else None)
-    preparation_readiness, planned_height_method = _preparation_semantics(has_hag, has_z, has_ground, has_classification_dimension, has_classification_summary, unit_assessment.distance_operations_safe)
+    effective_crs = None if resolution and resolution.status.value == "CONFLICT" else (resolution.resolved_crs if resolution and resolution.resolved else inspection.crs)
+    spatial_context = processing_spatial_context_from_dict(frozen_spatial_context) if frozen_spatial_context else resolve_processing_spatial_context(
+        crs=effective_crs,
+        explicit_units=assignment.linear_units if assignment else None,
+        assignment_scope=assignment.scope.value if assignment else "",
+        resolution_source=resolution.source if resolution else "",
+        requested_products=requested_products,
+        source_local_allowed=True,
+        contradictory_evidence=bool(resolution and resolution.status.value == "CONFLICT"),
+        policy=fallback_policy or default_source_local_policy_store().read(),
+    )
+    if spatial_context.fallback_applied:
+        warnings = (*warnings, DatasetWarning("SOURCE_UNITS_ASSUMED", "warning", spatial_context.warnings[0]))
+    actions = _recommended_actions(warnings, products)
+    preparation_readiness, planned_height_method = _preparation_semantics(has_hag, has_z, has_ground, has_classification_dimension, has_classification_summary, spatial_context.distance_operations_safe)
 
     return DatasetExplorerReport(
         title=title,
@@ -173,10 +191,13 @@ def build_dataset_explorer_report(
         recommended_actions=actions,
         preparation_readiness=preparation_readiness,
         planned_height_method=planned_height_method,
-        source_coordinate_units=unit_assessment.units.value if unit_assessment.distance_operations_safe else "",
+        source_coordinate_units=spatial_context.linear_units.value if spatial_context.linear_units else "",
         spatial_assignment_scope=assignment.scope.value if assignment else "",
         spatial_assignment_provenance=assignment.provenance if assignment else (resolution.source if resolution else ""),
         crs_assignment_status="USER_ASSIGNED" if assignment and assignment.horizontal_crs else ("SOURCE_LOCAL" if not effective_crs else "EMBEDDED_OR_DISCOVERED"),
+        source_units_basis=spatial_context.unit_basis.value,
+        source_units_authoritative=spatial_context.source_units_authoritative,
+        processing_coordinate_mode=spatial_context.processing_coordinate_mode,
     )
 
 
@@ -233,6 +254,9 @@ def report_to_dict(report: DatasetExplorerReport) -> dict[str, Any]:
             "spatial_assignment_scope": report.spatial_assignment_scope,
             "spatial_assignment_provenance": report.spatial_assignment_provenance,
             "crs_assignment_status": report.crs_assignment_status,
+            "source_units_basis": report.source_units_basis,
+            "source_units_authoritative": report.source_units_authoritative,
+            "processing_coordinate_mode": report.processing_coordinate_mode,
             "message": "PyForestScan can prepare missing HeightAboveGround automatically when ground and source-unit checks pass." if report.preparation_readiness != "NEEDS_USER_INPUT" else "PyForestScan found usable ground data and can prepare this LiDAR. Choose the coordinate units to continue.",
         },
     }
@@ -465,8 +489,10 @@ def _recommended_actions(
 ) -> tuple[str, ...]:
     warning_codes = {warning.code for warning in warnings}
     actions = ["Review the JSON report and keep it with project metadata."]
-    if "UNKNOWN_CRS" in warning_codes:
+    if "UNKNOWN_CRS" in warning_codes and "SOURCE_UNITS_ASSUMED" not in warning_codes:
         actions.append("Confirm or assign the dataset CRS before running product workflows.")
+    elif "SOURCE_UNITS_ASSUMED" in warning_codes:
+        actions.append("Standalone products may run in source coordinates; assign the correct CRS before map alignment or polygon analysis.")
     if "NO_HEIGHT_ABOVE_GROUND" in warning_codes:
         actions.append("PyForestScan will plan height normalization automatically; review the preparation report after processing.")
     if "NO_GROUND_CLASS" in warning_codes:
@@ -476,7 +502,7 @@ def _recommended_actions(
     if all(product.status == "Available" for product in products):
         actions.append("Dataset appears ready for the future CHM workflow once processing is implemented.")
     else:
-        actions.append("Resolve warnings marked above before treating product feasibility as final.")
+        actions.append("Review preparation quality after processing; warnings do not replace scientific validation.")
     return tuple(actions)
 
 

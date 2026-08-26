@@ -9,3 +9,5 @@ Source-local Delaunay is allowed only with trusted linear-unit evidence. SMRF pa
 Upstream references: [PyForestScan preprocessing guide](https://pyforestscan.sefa.ai/usage/getting-started-import-and-preprocess/) and [filters API](https://pyforestscan.sefa.ai/api/filters/).
 
 Phase 31B uses one canonical-metre conversion for metres, international feet, and US survey feet. After trusted units resolve, class-2 ground with adequate bounded-strata coverage proceeds automatically through Delaunay HAG and quality validation.
+
+For eligible standalone CHM/Rumple, Phase 31C may use configured assumed units after metadata resolution fails. Reports identify SMRF windows, thresholds, interpolation distances, and buffers as unit-sensitive. Implausible HAG remains a scientific failure, not an overridable warning.

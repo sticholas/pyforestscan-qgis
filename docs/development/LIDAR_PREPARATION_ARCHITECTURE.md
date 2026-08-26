@@ -9,3 +9,5 @@ Precedence is existing HAG, supplied DTM, Delaunay from observed class 2, SMRF t
 Large preparation runs in managed PBM, not QGIS Python. Phase 31A deliberately does not split Delaunay normalization into independent tiles: buffered-core context and whole/tiled equivalence must be proven before adaptive normalization is enabled.
 
 Phase 31B persists classification evidence independently from the spatial assignment. Resolving units rebuilds the plan without repeating the 50,000-point sample. Delaunay additionally checks ground occurrence across bounded strata; low overall ground percentage alone is not a rejection criterion.
+
+Phase 31C freezes unit, unit basis, authority, CRS, and processing mode into product requests. PBM rehydrates that exact context. Preparation signatures distinguish assumed and trusted units; scientific HAG validation remains mandatory for both.

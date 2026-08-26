@@ -173,6 +173,21 @@ class PipelineContext:
         preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
         return str(preparation.get("crs_assignment_status") or "") if isinstance(preparation, Mapping) else ""
 
+    @property
+    def source_units_basis(self) -> str:
+        preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
+        return str(preparation.get("source_units_basis") or "UNRESOLVED") if isinstance(preparation, Mapping) else "UNRESOLVED"
+
+    @property
+    def source_units_authoritative(self) -> bool:
+        preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
+        return bool(preparation.get("source_units_authoritative")) if isinstance(preparation, Mapping) else False
+
+    @property
+    def processing_coordinate_mode(self) -> str:
+        preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
+        return str(preparation.get("processing_coordinate_mode") or "unresolved") if isinstance(preparation, Mapping) else "unresolved"
+
 
 def load_pipeline_contexts(product_plan_path: Path | str, output_folder: Path | str) -> tuple[PipelineContext, ...]:
     """Load one pipeline context per requested product from Product Planner JSON."""

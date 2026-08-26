@@ -21,6 +21,8 @@ from .types import (
     RumpleRequest,
     VoxelStatRequest,
 )
+from .processing_spatial_context import default_source_local_policy_store, resolve_processing_spatial_context
+from .spatial_reference_resolver import SpatialReferenceResolver, default_spatial_assignment_store
 
 Interpolation = Literal["none", "nearest", "linear", "cubic"]
 
@@ -173,14 +175,21 @@ class AdvancedPointCloudPreprocessParameters:
 
 def build_chm_request(params: AdvancedChmParameters) -> ChmRequest:
     """Validate advanced CHM parameters and return an adapter request."""
-    _validate_raster_params(params, product="CHM")
+    _validate_raster_params(params, product="CHM", require_crs=False)
     interpolation = _adapter_interpolation(params.interpolation)
+    spatial = _standalone_spatial_fields(params.input_path, params.crs, "chm")
     return ChmRequest(
         input_path=params.input_path,
         output_path=params.output_path,
         grid_resolution=params.x_resolution,
         y_resolution=params.y_resolution,
-        crs=params.crs,
+        crs=spatial["crs"],
+        source_coordinate_units=spatial["source_coordinate_units"],
+        source_units_basis=spatial["source_units_basis"],
+        source_units_authoritative=spatial["source_units_authoritative"],
+        processing_coordinate_mode=spatial["processing_coordinate_mode"],
+        spatial_assignment_scope=spatial["spatial_assignment_scope"],
+        source_crs_status=spatial["source_crs_status"],
         interpolation=interpolation,
         interp_valid_region=params.interpolate_valid_region,
         interp_clean_edges=params.clean_edges,
@@ -260,17 +269,22 @@ def build_rumple_request(params: AdvancedRumpleParameters) -> RumpleRequest:
         raise ProcessingError("Rumple X and Y resolution must be greater than zero.")
     if params.min_height is not None and params.min_height < 0:
         raise ProcessingError("Rumple minimum height must be zero or greater.")
-    if not params.crs.strip():
-        raise ProcessingError("Rumple requires a CRS string such as EPSG:32610.")
     _validate_interpolation(params.interpolation)
     if params.output_path.suffix.lower() not in {".tif", ".tiff"}:
         raise ProcessingError("Advanced Rumple output must be a GeoTIFF raster.")
+    spatial = _standalone_spatial_fields(params.input_path, params.crs, "rumple")
     return RumpleRequest(
         input_path=params.input_path,
         output_path=params.output_path,
         grid_resolution=params.x_resolution,
         y_resolution=params.y_resolution,
-        crs=params.crs,
+        crs=spatial["crs"],
+        source_coordinate_units=spatial["source_coordinate_units"],
+        source_units_basis=spatial["source_units_basis"],
+        source_units_authoritative=spatial["source_units_authoritative"],
+        processing_coordinate_mode=spatial["processing_coordinate_mode"],
+        spatial_assignment_scope=spatial["spatial_assignment_scope"],
+        source_crs_status=spatial["source_crs_status"],
         min_height=params.min_height,
         interpolation=_adapter_interpolation(params.interpolation),
         interp_valid_region=params.interpolate_valid_region,
@@ -465,13 +479,41 @@ def result_type_for_product(product: ProductType) -> str:
     }.get(product, "table")
 
 
-def _validate_raster_params(params: AdvancedRasterParameters, *, product: str) -> None:
+def _validate_raster_params(params: AdvancedRasterParameters, *, product: str, require_crs: bool = True) -> None:
     if params.x_resolution <= 0 or params.y_resolution <= 0:
         raise ProcessingError(f"{product} X and Y resolution must be greater than zero.")
-    if not params.crs.strip():
+    if require_crs and not params.crs.strip():
         raise ProcessingError(f"{product} requires a CRS string such as EPSG:32610.")
     if params.output_path.suffix.lower() not in {".tif", ".tiff"}:
         raise ProcessingError(f"{product} output must be a GeoTIFF path ending in .tif or .tiff.")
+
+
+def _standalone_spatial_fields(input_path: Path | str, crs: str, product: str) -> dict[str, object]:
+    path = Path(input_path)
+    store = default_spatial_assignment_store()
+    assignment = store.spatial_assignment_for(path, path.parent)
+    resolution = SpatialReferenceResolver(store).resolve(path, embedded_crs=crs, source_local_allowed=True)
+    effective_crs = resolution.resolved_crs if resolution.resolved else ""
+    context = resolve_processing_spatial_context(
+        crs=effective_crs,
+        explicit_units=assignment.linear_units if assignment else None,
+        assignment_scope=assignment.scope.value if assignment else "",
+        resolution_source=resolution.source,
+        requested_products=(product,),
+        contradictory_evidence=resolution.status.value == "CONFLICT",
+        policy=default_source_local_policy_store().read(),
+    )
+    if context.blockers:
+        raise ProcessingError(context.blockers[0])
+    return {
+        "crs": context.crs,
+        "source_coordinate_units": context.linear_units.value if context.linear_units else "",
+        "source_units_basis": context.unit_basis.value,
+        "source_units_authoritative": context.source_units_authoritative,
+        "processing_coordinate_mode": context.processing_coordinate_mode,
+        "spatial_assignment_scope": assignment.scope.value if assignment else "",
+        "source_crs_status": "USER_ASSIGNED" if assignment and assignment.horizontal_crs else ("SOURCE_LOCAL" if not context.crs else "EMBEDDED_OR_DISCOVERED"),
+    }
 
 
 def _validate_voxel_params(params: AdvancedVoxelParameters, *, product: str) -> None:

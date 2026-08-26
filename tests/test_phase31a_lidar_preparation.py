@@ -185,10 +185,12 @@ class DatasetSemanticsTests(unittest.TestCase):
         statuses = {item["product"]: item["status"] for item in payload["supported_products"]}
         self.assertEqual(statuses["chm"], "Ready after preparation")
 
-    def test_unknown_crs_raw_source_needs_unit_input(self):
+    def test_unknown_crs_raw_source_uses_controlled_standalone_fallback(self):
         inspection = DatasetInspection(DatasetSource("large.las", DatasetFormat.LAS), 104_819_538, None, None, ("X", "Y", "Z", "Classification"), (), "6", None, (), "pdal")
         payload = report_to_dict(build_dataset_explorer_report(inspection))
-        self.assertEqual(payload["preparation"]["readiness"], "NEEDS_USER_INPUT")
+        self.assertEqual(payload["preparation"]["readiness"], "READY_AFTER_PREPARATION")
+        self.assertEqual(payload["preparation"]["source_units_basis"], "ASSUMED_SOURCE_LOCAL")
+        self.assertFalse(payload["preparation"]["source_units_authoritative"])
 
 
 class ManagedBackendPreparationIntegrationTests(unittest.TestCase):

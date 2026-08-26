@@ -124,7 +124,8 @@ class BatchRunner:
         context = batch_run_context(dataset, batch_folder, reuse_existing=True).ensure_directories()
         try:
             inspection = self.adapter.inspect_dataset(dataset)
-            report = build_dataset_explorer_report(inspection)
+            frozen_contexts = dict(request.processing_spatial_contexts)
+            report = build_dataset_explorer_report(inspection, requested_products=tuple(item.value for item in request.settings.products), frozen_spatial_context=frozen_contexts.get(str(Path(dataset))))
             write_json_report(report, context.dataset_report_json)
             write_csv_summary(report, context.dataset_summary_csv)
             write_html_report(report, context.dataset_report_html)

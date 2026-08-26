@@ -273,3 +273,10 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 - Added compact Process resolution controls, explicit **Use Project CRS**, and collapsed Tools & Setup assignment management.
 - Added assignment persistence/precedence/conflict handling, source-local and assigned-CRS provenance, and non-destructive raster CRS registration.
 - Added cached bounded classification evidence, spatial ground-strata quality reporting, canonical metre parameter conversion, and automatic plan rebuilding after assignment.
+
+## Phase 31C - Non-blocking source-local fallback
+
+- Added a centralized, configurable source-local unit policy with assumed metres as the default and explicit lower-confidence provenance.
+- Changed eligible standalone CHM/Rumple missing-unit readiness from blocker to warning while preserving CRS requirements for polygon, reprojection, and cross-source alignment.
+- Froze unit basis/authority/mode into PBM requests and checkpoint identities so prerun and execution agree and assumed/trusted preparations never collide.
+- Added the fallback preference under collapsed LiDAR Spatial Reference tools without restoring global warning acknowledgement.

@@ -19,3 +19,5 @@ The immutable current request owns its new batch folder, requested products, and
 # Phase 30E spatial-reference ownership
 
 Embedded source metadata is immutable evidence. Explicit assignments belong to the file/repository fingerprint store, not the LAS header. Current job output owns a serialized provenance snapshot; QGIS project context is evidence, never silent source truth.
+
+The source-local fallback preference belongs to the user-local application policy store. Prerun owns resolution; the immutable product request owns the frozen decision; PBM consumes it without reinterpretation. Output provenance owns the final observation/decision/preparation record.

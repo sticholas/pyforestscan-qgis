@@ -442,3 +442,5 @@ Prerun warnings describe conditions that deserve attention but do not require a 
 # Automatic coordinate systems
 
 PyForestScan checks embedded metadata, trusted sidecars, saved assignments, repository consensus, and an exact matching QGIS layer. Usually no CRS control appears. Standalone CHM/Rumple can process valid existing-HAG data as **Source coordinates** when no real CRS is known. Polygon workflows instead ask for one coordinate-system assignment because alignment cannot be guessed safely.
+
+For standalone CHM/Rumple with missing units, the default is a clearly recorded metres assumption. This keeps Prerun ready and does not assign a CRS. Tools & Setup can change the fallback to international feet, US survey feet, or require explicit assignment. Assign the correct CRS before polygon or map alignment.
