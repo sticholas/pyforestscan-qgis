@@ -8,10 +8,25 @@ import json
 import platform
 import os
 import sys
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
 from .job_spec import PBM_PROTOCOL_VERSION
+from pyforestscan_qgis.core.backend.runtime_manifest import PYFORESTSCAN_FUNCTION_CONTRACT, PROCESSING_ENGINE_DEPENDENCIES, PRODUCT_CAPABILITIES, SUPPORTED_PYFORESTSCAN_VERSION
+
+
+_DISTRIBUTION_NAMES = {
+    "pyforestscan": "pyforestscan",
+    "pdal": "pdal",
+    "rasterio": "rasterio",
+    "numpy": "numpy",
+    "osgeo.gdal": "GDAL",
+    "scipy": "scipy",
+    "shapely": "shapely",
+    "pyproj": "pyproj",
+    "pandas": "pandas",
+}
 
 
 def inspect_runtime_contract() -> dict[str, Any]:
@@ -26,33 +41,40 @@ def inspect_runtime_contract() -> dict[str, Any]:
         "pipeline": str(Path(pipeline.__file__).resolve()),
     }
     versions: dict[str, str] = {}
-    required_modules = (
-        "pyforestscan",
-        "pyforestscan.handlers",
-        "pyforestscan.calculate",
-        "pyforestscan.filters",
-        "pyforestscan.process",
-        "pdal",
-        "rasterio",
-        "numpy",
-        "osgeo.gdal",
-    )
+    required_modules = tuple(dict.fromkeys((*PYFORESTSCAN_FUNCTION_CONTRACT, *(item.import_name for item in PROCESSING_ENGINE_DEPENDENCIES))))
     failed_required_components: list[str] = []
+    function_contract: dict[str, dict[str, bool]] = {}
     for name in required_modules:
         try:
             module = importlib.import_module(name)
             modules[name] = str(Path(module.__file__).resolve()) if getattr(module, "__file__", None) else "built-in"
-            versions[name] = str(getattr(module, "__version__", "unknown"))
+            versions[name] = _module_version(name, module)
+            expected_functions = PYFORESTSCAN_FUNCTION_CONTRACT.get(name, ())
+            function_contract[name] = {function: callable(getattr(module, function, None)) for function in expected_functions}
+            failed_required_components.extend(f"{name}.{function}" for function, available in function_contract[name].items() if not available)
         except Exception as exc:  # noqa: BLE001 - identity must remain available when a dependency is broken.
             modules[name] = f"unavailable: {exc}"
             versions[name] = "unavailable"
             failed_required_components.append(name)
+    if versions.get("pyforestscan") != SUPPORTED_PYFORESTSCAN_VERSION:
+        failed_required_components.append(
+            f"pyforestscan.version:{versions.get('pyforestscan', 'unknown')}"
+        )
     protocol_compatible = str(PBM_PROTOCOL_VERSION) == "2"
+    build_inputs = tuple(Path(path) for path in (runner, Path(adapter.__file__).resolve(), Path(pipeline.__file__).resolve()))
+    build_id = hashlib.sha256(b"".join(path.read_bytes() for path in build_inputs)).hexdigest()
     return {
         "backend_api_version": "2",
         "protocol_version": PBM_PROTOCOL_VERSION,
         "plugin_version": getattr(__version__, "full_version", lambda: "unknown")(),
         "runner_sha256": hashlib.sha256(runner.read_bytes()).hexdigest(),
+        "plugin_build_id": build_id,
+        "installed_plugin_contract": {
+            "plugin_version": getattr(__version__, "full_version", lambda: "unknown")(),
+            "protocol": PBM_PROTOCOL_VERSION,
+            "build_id": build_id,
+            "package_root": str(Path(__file__).resolve().parents[2]),
+        },
         "python_version": platform.python_version(),
         "python_executable": sys.executable,
         "pid": os.getpid(),
@@ -60,11 +82,26 @@ def inspect_runtime_contract() -> dict[str, Any]:
         "working_directory": os.getcwd(),
         "sys_path": list(sys.path),
         "required_modules": list(required_modules),
+        "required_functions": function_contract,
+        "product_capabilities": {name: list(functions) for name, functions in PRODUCT_CAPABILITIES.items()},
         "failed_required_components": failed_required_components,
         "protocol_compatible": protocol_compatible,
         "versions": versions,
         "module_locations": modules,
     }
+
+
+def _module_version(name: str, module: object) -> str:
+    value = getattr(module, "__version__", None)
+    if value:
+        return str(value)
+    distribution = _DISTRIBUTION_NAMES.get(name)
+    if distribution:
+        try:
+            return metadata.version(distribution)
+        except metadata.PackageNotFoundError:
+            pass
+    return "unknown"
 
 
 def print_runtime_contract() -> int:

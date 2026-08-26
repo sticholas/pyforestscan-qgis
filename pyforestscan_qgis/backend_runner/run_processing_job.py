@@ -41,6 +41,7 @@ from pyforestscan_qgis.core.types import (
     VoxelStatRequest,
 )
 from pyforestscan_qgis.core.backend.native_runtime import print_native_runtime
+from pyforestscan_qgis.core.backend.processing_engine import ProcessingRuntimeToken, contract_hash
 
 PRODUCT_REQUESTS = {
     "chm": (ChmRequest, "create_chm"),
@@ -69,7 +70,9 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
         _validate_runtime_protocol(spec)
         diagnostics_dir = create_diagnostics_dir(spec.run_folder)
         runtime_contract = inspect_runtime_contract()
+        _validate_runtime_token(spec, runtime_contract)
         write_json(diagnostics_dir / "backend_module_locations.json", runtime_contract)
+        _write_execution_runtime_trace(spec, runtime_contract)
         _update_source_local_trace(spec, "backend_runner_input", {
             "spatial_reference": spec.spatial_reference,
             "height_normalization": spec.height_normalization,
@@ -283,6 +286,39 @@ def _validate_runtime_protocol(spec: BackendJobSpec) -> None:
     decision = HeightNormalizationDecision.from_dict(spec.height_normalization)
     if spec.product in {"chm", "rumple"} and decision.mode is HeightNormalizationMode.UNAVAILABLE:
         raise RuntimeError("BACKEND_CONTRACT_MISMATCH: CHM/Rumple request has no height-normalization decision.")
+
+
+def _validate_runtime_token(spec: BackendJobSpec, runtime_contract: dict[str, Any]) -> None:
+    token = ProcessingRuntimeToken.from_dict(spec.runtime_token)
+    if token is None:
+        if os.environ.get("PYFORESTSCAN_MANAGED_ENGINE") != "1":
+            return
+        raise RuntimeError("ENGINE_RUNTIME_TOKEN_MISSING: Processing Engine request must be revalidated before launch.")
+    actual_executable = str(Path(runtime_contract.get("python_executable", "")).resolve())
+    expected_executable = str(Path(token.executable).resolve())
+    if actual_executable != expected_executable:
+        raise RuntimeError(f"ENGINE_RUNTIME_CHANGED: expected {expected_executable}, running {actual_executable}.")
+    if token.protocol != str(runtime_contract.get("protocol_version", "")):
+        raise RuntimeError("ENGINE_PROTOCOL_MISMATCH: Processing Engine protocol changed after verification.")
+    if token.contract_hash != contract_hash(runtime_contract):
+        raise RuntimeError("ENGINE_RUNTIME_CHANGED: Processing Engine contract changed after verification.")
+
+
+def _write_execution_runtime_trace(spec: BackendJobSpec, contract: dict[str, Any]) -> None:
+    path = create_diagnostics_dir(spec.run_folder) / "execution_runtime_trace.json"
+    try:
+        trace = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"stages": {}}
+    except (OSError, ValueError):
+        trace = {"stages": {}}
+    trace.setdefault("stages", {})["backend_runner"] = {
+        "job_id": spec.job_id, "pid": os.getpid(), "parent_pid": os.getppid(),
+        "executable": contract.get("python_executable"), "sys_prefix": os.sys.prefix,
+        "cwd": os.getcwd(), "pythonpath": os.environ.get("PYTHONPATH", ""),
+        "path": os.environ.get("PATH", ""), "sys_path": contract.get("sys_path", []),
+        "module_locations": contract.get("module_locations", {}),
+        "protocol": contract.get("protocol_version"), "contract_hash": contract_hash(contract),
+    }
+    atomic_write_json(path, trace)
 
 
 def _update_source_local_trace(spec: BackendJobSpec, stage: str, payload: dict[str, Any]) -> None:

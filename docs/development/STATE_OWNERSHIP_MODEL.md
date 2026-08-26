@@ -1,5 +1,7 @@
 # State Ownership Model
 
+`ProcessingEngineStateModel` is the only supported Processing Engine projection. Its status, verification time, contract hash, version, setup/repair flags, availability, and message drive the engine card and footer. Setup and repair refresh this model automatically.
+
 ## Processing Engine state
 
 The managed environment owns installed scientific dependencies. `ProcessingEngineVerifier` owns derived readiness. `processing_engine.json` owns only cached evidence with a contract/environment fingerprint. Mission Control displays that state but does not independently infer backend readiness. Scientific batch state begins only after the engine is ready.

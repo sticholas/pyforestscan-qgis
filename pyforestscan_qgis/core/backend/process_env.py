@@ -168,6 +168,18 @@ def conda_environment_path_entries(environment_path: Path, platform_value: str) 
     )
 
 
+def build_processing_engine_environment(environment_path: Path, platform_value: str, base_env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Return the one environment used by verification and every scientific process."""
+    return build_clean_subprocess_env(
+        base_env=base_env,
+        prepend_paths=conda_environment_path_entries(environment_path, platform_value),
+        extra_env={
+            **conda_environment_data_env(environment_path, platform_value),
+            "PYFORESTSCAN_MANAGED_ENGINE": "1",
+        },
+    )
+
+
 def _path_key(env: Mapping[str, str]) -> str:
     for key in env:
         if key.upper() == "PATH":

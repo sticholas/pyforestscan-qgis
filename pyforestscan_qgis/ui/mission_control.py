@@ -984,7 +984,9 @@ class MissionControlDock(QDockWidget):
         detail=" | ".join(item for item in smart.details if item)
         self.batch_page.smart_status_label.setText(smart.headline+(f" - {detail}" if detail else ""))
         self.settings_page.smart_system_status_label.setText(smart.headline+(f"\n{detail}" if detail else ""))
-        self.ui.environmentStatusLabel.setText(f"{readiness_marker_label(self.state.environment_status)} Backend: {self.state.environment_status}")
+        engine = self.settings_page.backend_service.processing_engine_state(quick=True)
+        engine_text = "Ready" if engine.runtime_available else ("Needs repair" if engine.repair_needed else "Setup required")
+        self.ui.environmentStatusLabel.setText(f"{readiness_marker_label(engine.status.value)} Processing Engine: {engine_text}")
         repo = self.session_state.repository_kind.upper() if self.session_state.repository_path else "Not selected"
         self.ui.datasetStatusLabel.setText(f"LiDAR: {repo}")
         area = f"{self.session_state.polygon_area / 10000:.3g} ha" if self.session_state.polygon_area is not None else "Not selected"

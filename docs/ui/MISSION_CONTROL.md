@@ -1,5 +1,7 @@
 # Mission Control
 
+The normal setup surface presents one Processing Engine state: Ready, Checking, Setup required, Needs repair, Update required, or Failed. Setup verifies automatically. Technical PBM terminology, module contracts, and logs remain under troubleshooting. Process validates readiness before preserving a job token or creating batch work.
+
 ## Processing Engine status
 
 Mission Control presents one Processing Engine state: Ready, Checking, Setup required, Updating, Repair required, Incompatible, or Failed. Normal setup exposes one state-dependent action. Detailed PBM controls, dependency probes, protocol identity, and logs belong under troubleshooting.

@@ -1,5 +1,7 @@
 # Folder and Polygon Processing Parity
 
+Both normal modes now assert the same managed runtime, use `build_processing_engine_environment()`, and record the same runtime token and identity trace. Neither mode may fall back to QGIS Python science. Polygon adds a durable coordinator boundary, which validates the same frozen token before scheduling work.
+
 ## Runtime parity
 
 Folder and Polygon execution share the same managed Processing Engine contract. Neither workflow requires QGIS Python to import PyForestScan for PBM-owned science. Required imports, protocol compatibility, environment initialization, and executable identity are mode-independent; only source selection and polygon geometry differ.

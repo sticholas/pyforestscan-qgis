@@ -39,7 +39,8 @@ class Phase29AProductizationUiTests(unittest.TestCase):
     def test_live_status_strip_is_responsive_and_textual(self):
         self.assertIn('self.ui.statusFrame.setVisible(True)', MISSION)
         self.assertIn('compact = self.width() < 620', MISSION)
-        self.assertIn('Backend:', MISSION)
+        self.assertIn('Processing Engine:', MISSION)
+        self.assertNotIn('Backend:', MISSION)
         self.assertIn('Status:', MISSION)
 
 if __name__=='__main__': unittest.main()

@@ -1,5 +1,9 @@
 # Current Architecture Map
 
+## Phase 31G scientific runtime
+
+Mission Control builds requests in QGIS, `ProcessingEngineService` verifies and freezes runtime identity, `BackendExecutionService` launches managed Python, and backend runner modules execute science. `ScientificRuntimeBoundary` prevents QGIS Python from becoming an accidental second scientific runtime.
+
 ## Phase 31F runtime boundary
 
 `ProcessingEngineVerifier` is the authoritative readiness boundary shared by preflight and execution. It probes `pyforestscan_qgis.backend_runner inspect_runtime_contract` through the exact managed executable used by `BackendExecutionService`. `processing_engine.json` provides fingerprinted quick discovery; it never overrides a changed environment.

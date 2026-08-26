@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 31G - Processing Engine runtime convergence
+
+- Made the managed Processing Engine the sole normal scientific runtime and blocked QGIS-Python scientific fallback.
+- Added a frozen runtime token, executable/contract validation across launcher, coordinator, and worker, plus durable runtime identity traces.
+- Added complete PyForestScan module/function, dependency, product-capability, and parameter registries for the supported `0.4.1` contract.
+- Consolidated setup/repair state and normal UI wording around one Processing Engine model; successful setup now verifies automatically.
+- Added Processing Engine dependency/runtime error classification and regression matrices for clean setup, wrong interpreter, and Polygon launch behavior.
+
 ## Phase 31F - Processing Engine bootstrap and runtime contract
 
 - Added one Processing Engine readiness state and verifier for Folder and Polygon execution.

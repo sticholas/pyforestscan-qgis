@@ -1,5 +1,7 @@
 # PyForestScan QGIS User Guide
 
+When **Processing Engine: Ready** is shown, normal Folder and Polygon products run in the isolated user-local engine, not QGIS Python. **Set Up** installs the complete supported product environment; **Repair** restores a failed contract. If the engine changes after selection, processing stops before job creation and keeps the current LiDAR, area, and product choices.
+
 ## Processing Engine
 
 PyForestScan uses an isolated Processing Engine for point-cloud and raster work. When it is ready, Folder and Polygon processing do not require PyForestScan in QGIS Python. If setup or repair is needed, use the single action in **Tools & Setup**. The engine is stored in your user-local PyForestScan folder and does not modify QGIS Python or system Python.

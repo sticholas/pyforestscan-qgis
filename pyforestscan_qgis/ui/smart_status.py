@@ -12,7 +12,7 @@ def build_smart_status(*,backend_ready=False,repository_kind='',polygon_area=Non
         return SmartStatusSummary('processing','Processing',(progress,),'')
     if has_outputs:return SmartStatusSummary('complete','Complete',('Generated output is ready to load.',),'Load into QGIS')
     missing=[]
-    if not backend_ready:missing.append('Managed backend needs attention.')
+    if not backend_ready:missing.append('Processing Engine needs attention.')
     if not repository_kind:missing.append('Select LiDAR data.')
     if polygon_area is None:missing.append('Select a processing area.')
     if not products:missing.append('Select a product.')

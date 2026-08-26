@@ -14,6 +14,8 @@ from typing import Any
 
 
 class JobErrorCode(str, Enum):
+    ENGINE_DEPENDENCY_MISSING = "ENGINE_DEPENDENCY_MISSING"
+    ENGINE_RUNTIME_CHANGED = "ENGINE_RUNTIME_CHANGED"
     REQUEST_VALIDATION_FAILED = "REQUEST_VALIDATION_FAILED"
     BACKEND_CONTRACT_MISMATCH = "BACKEND_CONTRACT_MISMATCH"
     EPT_BOUNDS_INVALID = "EPT_BOUNDS_INVALID"
@@ -131,6 +133,28 @@ def classify_exception(exc: BaseException, *, stage: str = "Processing") -> Stru
         "preparation_validation_failed": (JobErrorCode.PREPARATION_VALIDATION_FAILED.value, "The prepared height values did not pass scientific quality checks.", ("Review preparation diagnostics and provide a DTM if appropriate.",)),
         "height above ground pipeline failed": (JobErrorCode.HAG_GENERATION_FAILED.value, "Height normalization failed during LiDAR preparation.", ("Review ground classification or provide a compatible DTM.",)),
     }
+    if "scientific_runtime_boundary" in lowered or "required dependency is not importable" in lowered:
+        return StructuredJobError(
+            code=JobErrorCode.ENGINE_DEPENDENCY_MISSING.value,
+            user_message="The Processing Engine is missing a required scientific dependency.",
+            technical_message=text,
+            stage="Processing Engine",
+            exception_type=type(exc).__name__,
+            traceback=traceback_text,
+            suggested_actions=("Open Settings and repair the Processing Engine.",),
+            retryable=False,
+        )
+    if "engine_runtime_changed" in lowered or "runtime token" in lowered or "contract hash" in lowered:
+        return StructuredJobError(
+            code=JobErrorCode.ENGINE_RUNTIME_CHANGED.value,
+            user_message="The Processing Engine changed after this job was prepared.",
+            technical_message=text,
+            stage="Processing Engine",
+            exception_type=type(exc).__name__,
+            traceback=traceback_text,
+            suggested_actions=("Repair or refresh the Processing Engine, then start the job again.",),
+            retryable=False,
+        )
     for marker, (code, message, actions) in preparation_codes.items():
         if marker in lowered:
             return StructuredJobError(code=code, user_message=message, technical_message=text, stage="LiDAR Preparation", exception_type=type(exc).__name__, traceback=traceback_text, suggested_actions=actions, retryable=False)

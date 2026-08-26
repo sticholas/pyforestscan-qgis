@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 import time
 import json
+import os
+from dataclasses import replace
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -18,8 +20,9 @@ from .models import BackendStatus, BackendVerificationResult
 from .native_worker import classify_worker_exit, write_native_crash_bundle
 from .paths import BackendPaths
 from ..processing_monitor import ProcessingTimeoutPolicy, evaluate_liveness, heartbeat_path
-from .process_env import build_clean_subprocess_env, clean_env_summary, conda_environment_data_env, conda_environment_path_entries, hidden_subprocess_kwargs, summarize_subprocess_output
+from .process_env import build_processing_engine_environment, clean_env_summary, hidden_subprocess_kwargs, summarize_subprocess_output
 from .processing_engine import ProcessingEngineVerifier
+from ..atomic_state import atomic_write_json
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -93,7 +96,7 @@ class BackendExecutionService:
             return availability
         command = self.runner_command_for_args(("--help",))
         try:
-            completed = self.runner(command, check=False, capture_output=True, text=True, timeout=30, cwd=str(self.plugin_parent), env=build_clean_subprocess_env(prepend_paths=conda_environment_path_entries(self.paths.environment_path, self.paths.platform.value), extra_env=conda_environment_data_env(self.paths.environment_path, self.paths.platform.value)), **hidden_subprocess_kwargs())
+            completed = self.runner(command, check=False, capture_output=True, text=True, timeout=30, cwd=str(self.plugin_parent), env=build_processing_engine_environment(self.paths.environment_path, self.paths.platform.value), **hidden_subprocess_kwargs())
         except Exception as exc:  # noqa: BLE001 - report safely to UI/tests.
             return BackendExecutionAvailability(False, f"PBM runner verification failed: {exc}", self.paths.python_executable)
         if completed.returncode != 0:
@@ -112,15 +115,17 @@ class BackendExecutionService:
 
     def submit_polygon_coordinator(self, payload_path: Path, job_dir: Path):
         """Launch a detached PBM coordinator and return its process identity."""
-        report = ProcessingEngineVerifier(self.paths, runner=self.runner, plugin_parent=self.plugin_parent).require_ready()
+        token = ProcessingEngineVerifier(self.paths, runner=self.runner, plugin_parent=self.plugin_parent).assert_ready_for(("chm", "rumple"))
         command=[str(self.paths.python_executable),"-m","pyforestscan_qgis.backend_runner.polygon_job_coordinator","--payload",str(payload_path)]
-        env=build_clean_subprocess_env(prepend_paths=conda_environment_path_entries(self.paths.environment_path,self.paths.platform.value),extra_env=conda_environment_data_env(self.paths.environment_path,self.paths.platform.value))
+        env=build_processing_engine_environment(self.paths.environment_path,self.paths.platform.value)
+        env["PYFORESTSCAN_RUNTIME_TOKEN"] = json.dumps(token.to_dict(), sort_keys=True)
         kwargs=dict(cwd=str(self.plugin_parent),env=env,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         if self.paths.platform.value=="windows":
             hidden=hidden_subprocess_kwargs();flags=int(hidden.pop("creationflags",0));flags|=getattr(subprocess,"DETACHED_PROCESS",0)|getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0);kwargs.update(hidden);kwargs["creationflags"]=flags
         else:kwargs["start_new_session"]=True
         process=subprocess.Popen(command,**kwargs)
-        write_backend_log_entry(self.log_path,"execute","Submitted durable polygon coordinator.",stage="COORDINATOR",details={"pid":process.pid,"payload":str(payload_path),"job_dir":str(job_dir),"preflight_runtime_identity":report.executable,"execution_runtime_identity":str(self.paths.python_executable)})
+        _append_runtime_trace(job_dir, "qgis_launcher", {"pid": os.getpid(), "parent_pid": os.getppid(), "executable": str(self.paths.python_executable), "cwd": str(self.plugin_parent), "contract_hash": token.contract_hash, "protocol": token.protocol, "coordinator_pid": process.pid})
+        write_backend_log_entry(self.log_path,"execute","Submitted durable polygon coordinator.",stage="COORDINATOR",details={"pid":process.pid,"payload":str(payload_path),"job_dir":str(job_dir),"preflight_runtime_identity":token.executable,"execution_runtime_identity":str(self.paths.python_executable),"contract_hash":token.contract_hash})
         return process.pid,command
 
     def run_product(self, product: str, request: Any) -> BackendJobResult:
@@ -131,12 +136,19 @@ class BackendExecutionService:
 
     def run_processing_job(self, spec: BackendJobSpec, spec_path: Path | None = None) -> BackendJobResult:
         """Run one PBM backend job spec and return the structured result."""
-        availability = self.can_execute_processing()
-        if not availability.ready:
-            raise RuntimeError(availability.message)
         if self.runner is subprocess.run:
-            self.verify_runtime_contract()
+            token = ProcessingEngineVerifier(self.paths, runner=self.runner, plugin_parent=self.plugin_parent).assert_ready_for((spec.product,))
+        else:
+            availability = self.can_execute_processing()
+            if not availability.ready:
+                raise RuntimeError(availability.message)
+            token = None
+        if token is not None:
+            spec = replace(spec, runtime_token=token.to_dict())
         path = spec_path or spec.write()
+        if token is not None:
+            spec.write(path)
+            _append_runtime_trace(spec.run_folder, "qgis_launcher", {"pid": os.getpid(), "parent_pid": os.getppid(), "executable": str(self.paths.python_executable), "cwd": str(self.plugin_parent), "job_id": spec.job_id, "contract_hash": token.contract_hash, "protocol": token.protocol})
         command = self.runner_command(path)
         write_backend_log_entry(
             self.log_path,
@@ -148,7 +160,7 @@ class BackendExecutionService:
         try:
             kwargs = dict(
                 cwd=str(self.plugin_parent),
-                env=build_clean_subprocess_env(prepend_paths=conda_environment_path_entries(self.paths.environment_path, self.paths.platform.value), extra_env=conda_environment_data_env(self.paths.environment_path, self.paths.platform.value)),
+                env=build_processing_engine_environment(self.paths.environment_path, self.paths.platform.value),
                 **hidden_subprocess_kwargs(),
             )
             if self.runner is subprocess.run:
@@ -212,10 +224,7 @@ class BackendExecutionService:
             return self._runtime_contract
         engine_report = ProcessingEngineVerifier(self.paths, runner=self.runner, plugin_parent=self.plugin_parent).require_ready()
         command = self.runner_command_for_args(("inspect_runtime_contract",))
-        env = build_clean_subprocess_env(
-            prepend_paths=conda_environment_path_entries(self.paths.environment_path, self.paths.platform.value),
-            extra_env=conda_environment_data_env(self.paths.environment_path, self.paths.platform.value),
-        )
+        env = build_processing_engine_environment(self.paths.environment_path, self.paths.platform.value)
         completed = self.runner(command, check=False, capture_output=True, text=True, timeout=30, cwd=str(self.plugin_parent), env=env, **hidden_subprocess_kwargs())
         try:
             contract = json.loads(completed.stdout or "{}")
@@ -227,7 +236,6 @@ class BackendExecutionService:
         self._runtime_contract = contract
         write_backend_log_entry(self.log_path, "execute", "PBM runtime contract verified.", stage="CONTRACT", details=contract)
         return contract
-
 
     def _run_monitored(self, command: list[str], spec: BackendJobSpec, kwargs: dict[str, object]) -> subprocess.CompletedProcess[str]:
         """Run the real backend process while monitoring heartbeat liveness."""
@@ -299,3 +307,13 @@ def validate_backend_python_executable(path: Path) -> tuple[bool, str]:
     if not path.exists():
         return False, f"PBM backend Python does not exist: {path}"
     return True, f"PBM backend Python is safe to execute: {path}"
+
+
+def _append_runtime_trace(folder: Path, stage: str, payload: dict[str, Any]) -> None:
+    path = Path(folder) / "diagnostics" / "execution_runtime_trace.json"
+    try:
+        current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"stages": {}}
+    except (OSError, ValueError):
+        current = {"stages": {}}
+    current.setdefault("stages", {})[stage] = payload
+    atomic_write_json(path, current)

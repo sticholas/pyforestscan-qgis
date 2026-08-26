@@ -1,5 +1,9 @@
 # Known Limitations
 
+## Phase 31G live validation
+
+Runtime identity, contract drift, no-QGIS-fallback behavior, and product mappings are automated. A fresh clean-Windows setup, multiple-QGIS-instance behavior, no-console observation, and the real two-LAS Polygon CHM plus rumple run still require live QGIS release-gate evidence. These are not claimed as passed by the QGIS-free suite.
+
 ## Processing Engine validation
 
 - Phase 31F prevents a missing `pyforestscan.handlers` module from becoming a scientific batch failure and classifies partial installs as repair-required before launch.

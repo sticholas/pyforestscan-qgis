@@ -1,5 +1,7 @@
 # Processing Engine Runtime Contract
 
+Phase 31G adds the stable contract hash, plugin build identity, full PyForestScan function probes, product capabilities, and `ProcessingRuntimeToken`. Volatile process values remain diagnostic but do not change the stable hash. Every managed worker validates its executable, protocol, and contract against the pre-launch token.
+
 Contract version `1` records the backend protocol, plugin and runner identity, Python executable/version, process identity, working directory, module paths and versions, environment fingerprint, and verification time.
 
 Required imports are:

@@ -1916,7 +1916,7 @@ class _PolygonBatchExecutionWorker(QObject):
         try:
             result = execute_polygon_batch(
                 self.report,
-                adapter=PyForestScanAdapter(),
+                adapter=PyForestScanAdapter(execution_mode="pbm_backend"),
                 item_callback=self.itemReady.emit,
                 job_callback=self.jobReady.emit,
                 control_callback=self.control_callback,
@@ -1943,6 +1943,8 @@ class _BackendInstallWorker(QObject):
         """Run backend installation and emit progress/result signals."""
         try:
             result = self.service.install_backend(progress_callback=self.progressUpdated.emit)
+            if getattr(result, "success", False):
+                self.service.processing_engine_state(quick=False)
         except Exception as exc:  # noqa: BLE001 - worker must never crash QGIS UI.
             self.failed.emit(f"Unexpected backend installation failure: {exc}")
             return
@@ -3683,6 +3685,11 @@ class BatchPage(MissionPage):
         except BatchExecutionError as exc:
             _set_status_badge(self.status_label, "FAILED", f"Status: Failed - batch could not start: {exc}")
             return
+        try:
+            BackendService().processing_engine_service().assert_ready_for(tuple(product.value for product in request.settings.products))
+        except Exception:
+            _set_status_badge(self.status_label, "REPAIR_REQUIRED", "Processing Engine needs repair before this job can start.")
+            return
         token=self._begin_logical_job()
         if token is False:return
         self._completed_job_summary=None
@@ -3748,6 +3755,11 @@ class BatchPage(MissionPage):
                 return
         if getattr(report, "blockers", ()):
             _set_status_badge(self.status_label, "FAILED", "Status: Failed - polygon Prerun Check issues must be resolved before processing.")
+            return
+        try:
+            BackendService().processing_engine_service().assert_ready_for(tuple(product.value for product in report.request.products))
+        except Exception:
+            _set_status_badge(self.status_label, "REPAIR_REQUIRED", "Processing Engine needs repair before this job can start.")
             return
         token=self._begin_logical_job()
         if token is False:return
@@ -4564,6 +4576,7 @@ class SettingsPage(MissionPage):
         """Create the settings page."""
         super().__init__("Tools & Setup", parent)
         system = self.add_section("Processing Engine")
+        system.parentWidget().setVisible(False)  # Replaced by the authoritative engine card below.
         self.smart_system_status_label = _body_label("Checking processing readiness.")
         system.addWidget(self.smart_system_status_label)
         system_actions=QHBoxLayout()
@@ -4906,6 +4919,7 @@ class SettingsPage(MissionPage):
     def refresh_backend_summary(self) -> None:
         """Display backend path, install-plan readiness, and detected state."""
         state = self.backend_service.detect_backend()
+        engine = self.backend_service.processing_engine_state(quick=True)
         paths = self.backend_service.paths
         registry = self.backend_service.get_registry()
         plan = self.backend_service.preview_install_plan()
@@ -4913,7 +4927,11 @@ class SettingsPage(MissionPage):
         version = self.backend_service.version_compatibility()
         compatibility = build_qgis_compatibility_report()
         availability = self.backend_service.install_availability()
-        _set_status_badge(self.backend_status_label, state.status.value, readiness_status_text(state.status.value, f"Backend Status: {status_badge_label(state.status.value)} - {state.message}"))
+        display = {
+            "READY": "Ready", "CHECKING": "Checking", "SETUP_REQUIRED": "Setup required",
+            "REPAIR_REQUIRED": "Needs repair", "INCOMPATIBLE": "Update required", "FAILED": "Failed",
+        }.get(engine.status.value, engine.status.value.title())
+        _set_status_badge(self.backend_status_label, engine.status.value, f"Processing Engine: {display}")
         self.backend_location_label.setText(f"Storage Location: {paths.backend_root}")
         self.backend_environment_label.setText(f"Environment Location: {paths.environment_path}")
         self.backend_installed_version_label.setText(f"Installed Version: {'configured' if state.config_exists else 'Not installed'}")
@@ -4925,20 +4943,20 @@ class SettingsPage(MissionPage):
         self.zip_install_ready_label.setText("Plugin ZIP: ready for QGIS Plugin Manager installs")
         auto_ready = "available on Windows beta builds" if availability.enabled else f"not available; {availability.reason}"
         self.backend_auto_install_ready_label.setText(f"Backend installer: {auto_ready}")
-        if state.status.value == "Ready":
-            manual_text = "Manual setup: not required for PBM-routed products"
+        if engine.runtime_available:
+            manual_text = "Everything required for LiDAR processing is installed."
         else:
             manual_text = "Manual setup: not required after PBM is ready; QGIS-Python-only tools still show their own requirements"
         self.manual_dependency_setup_label.setText(manual_text)
         compat_text = version.message if version else "Backend recipe unavailable"
         self.qgis_compatibility_label.setText(f"QGIS compatibility: {compatibility.summary()}; backend {compat_text}")
-        self.backend_install_readiness_label.setText(f"Backend setup: {availability.reason}; {len(plan.required_package_names())} packages planned")
+        self.backend_install_readiness_label.setText(engine.message)
         if not self.backend_install_running:
-            if state.status.value == "Ready":
+            if engine.runtime_available:
                 self.install_backend_button.setText("Ready")
                 self.install_backend_button.setEnabled(False)
             else:
-                self.install_backend_button.setText("Set Up")
+                self.install_backend_button.setText("Repair" if engine.repair_needed else "Set Up")
                 self.install_backend_button.setEnabled(availability.enabled)
         self.developer_mode_button.setText("Internal Beta Install: On" if availability.enabled else "Internal Beta Install: Off")
         if self.backend_install_running:
