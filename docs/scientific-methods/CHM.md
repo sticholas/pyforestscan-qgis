@@ -1,5 +1,7 @@
 # Canopy Height Model (CHM)
 
+For standalone LAS/LAZ without CRS metadata, CHM may run in explicit source-local mode only when PBM verifies an existing normalized-height dimension. Coordinates and resolution remain in source units, no CRS is assigned, and ground normalization is not recalculated or silently substituted. A mismatch between inspected and execution dimensions is reported as `SOURCE_DIMENSION_MISMATCH`.
+
 ## What It Measures
 
 Canopy surface height above ground as a single-band GeoTIFF.

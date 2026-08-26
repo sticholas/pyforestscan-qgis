@@ -36,6 +36,7 @@ class JobErrorCode(str, Enum):
     NATIVE_BACKEND_CRASH = "NATIVE_BACKEND_CRASH"
     JOB_CANCELLED = "JOB_CANCELLED"
     UNKNOWN_BACKEND_FAILURE = "UNKNOWN_BACKEND_FAILURE"
+    SOURCE_DIMENSION_MISMATCH = "SOURCE_DIMENSION_MISMATCH"
 
 
 @dataclass(frozen=True)
@@ -115,6 +116,18 @@ def classify_exception(exc: BaseException, *, stage: str = "Processing") -> Stru
     text = str(exc)
     lowered = text.lower()
     traceback_text = traceback_module.format_exc()
+    if "source_dimension_mismatch" in lowered:
+        return StructuredJobError(
+            code=JobErrorCode.SOURCE_DIMENSION_MISMATCH.value,
+            user_message="The backend did not detect the expected normalized-height field.",
+            technical_message=text,
+            stage="Reading LiDAR",
+            exception_type=type(exc).__name__,
+            traceback=traceback_text,
+            likely_causes=("Dataset inspection and the PBM execution read reported different point dimensions.",),
+            suggested_actions=("Open the source-local trace.", "Re-run Dataset Explorer and retry."),
+            retryable=False,
+        )
     if "all points collinear" in lowered or "all_points_collinear" in lowered or "ground_points_collinear" in lowered or ("ground" in lowered and "collinear" in lowered):
         return StructuredJobError(code=JobErrorCode.HAG_COLLINEAR_INPUT.value,user_message="Ground-normalization points cannot form a two-dimensional surface in this area.",technical_message=text,stage="Height Normalization",exception_type=type(exc).__name__,traceback=traceback_text,likely_causes=("The bounded ground-point subset is rank-deficient or spatially degenerate.",),suggested_actions=("Inspect Ground Classification.","View Work Unit Statistics."),retryable=False)
     if "empty point" in lowered or "empty_point_array" in lowered or "no point data" in lowered or "no points were returned" in lowered:

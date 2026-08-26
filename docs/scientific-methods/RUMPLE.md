@@ -1,5 +1,7 @@
 # Rumple Index
 
+Rumple can reuse or internally calculate a source-local CHM without parsing a CRS. Its `(R-1) x (C-1)` half-cell grid is derived in source coordinates, and both the raster and scalar summary retain explicit source-local provenance without an invented EPSG identifier.
+
 ## What It Measures
 
 Whole-area canopy surface complexity as a scalar value.

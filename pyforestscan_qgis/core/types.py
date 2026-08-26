@@ -147,7 +147,7 @@ class ChmRequest:
     input_path: Path | str
     output_path: Path
     grid_resolution: float
-    crs: str
+    crs: str | None
     interpolation: str | None = "linear"
     interp_valid_region: bool = False
     interp_clean_edges: bool = False
@@ -167,6 +167,7 @@ class ChmRequest:
     diagnostics_path: Path | None = None
     polygon_intersection_area: float = 0.0
     polygon_coverage_percent: float = 0.0
+    source_dimensions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -308,7 +309,7 @@ class RumpleRequest:
     input_path: Path | str
     output_path: Path
     grid_resolution: float
-    crs: str
+    crs: str | None
     min_height: float | None = None
     interpolation: str | None = "linear"
     interp_valid_region: bool = False
@@ -318,6 +319,11 @@ class RumpleRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    hag_method: str = "existing_normalized_height"
+    hag_source_dimension: str = "HeightAboveGround"
+    hag_method_signature: str = ""
+    source_dimensions: tuple[str, ...] = ()
+    diagnostics_path: Path | None = None
 
 
 @dataclass(frozen=True)

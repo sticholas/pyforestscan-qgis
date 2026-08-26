@@ -22,6 +22,8 @@ from .ept_bounds import EptBounds, EptBoundsError, validate_pyforestscan_bounds_
 from .ept_spatial_reference import resolve_ept_spatial_reference
 from .pad_products import pad_band_mapping, pad_metadata_tags
 from .spatial_reference_resolver import SpatialReferenceResolver, SpatialReferenceStatus
+from .point_dimensions import PointDimensionCapabilities, SourceDimensionMismatch
+from .spatial_reference_contract import SpatialReferenceMode
 from .polygon_transport import looks_like_wkt, materialize_polygon_input, polygon_execution_input_from_mapping
 from .ept_subset import EptSubsetRequest, EptSubsetResult, ept_read_lidar_kwargs
 from .types import (
@@ -286,7 +288,9 @@ class PyForestScanAdapter:
         if request.y_resolution is not None and request.y_resolution <= 0:
             raise ProcessingError("CHM Y resolution must be greater than zero.")
         resolution = _resolve_product_spatial_reference(request, source_local_allowed=True)
-        if resolution.resolved_crs and not request.crs:
+        if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
+            request = replace(request, crs=None)
+        elif resolution.resolved_crs and not request.crs:
             request = replace(request, crs=resolution.resolved_crs)
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
@@ -302,8 +306,6 @@ class PyForestScanAdapter:
             if planned_method not in {"existing_normalized_height", "classified_ground_delaunay"}:
                 raise ProcessingError(f"Unsupported planned HAG method for CHM: {planned_method}")
             if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
-                if planned_method != "existing_normalized_height":
-                    raise ProcessingError("Source-local CHM requires existing HeightAboveGround; assign a CRS before ground normalization.")
                 point_cloud = _read_source_local_lidar(request)
             else:
                 point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **_read_lidar_spatial_kwargs(request, hag=planned_method != "existing_normalized_height"))
@@ -311,7 +313,20 @@ class PyForestScanAdapter:
                 raise ProcessingError("PyForestScan returned no point data for CHM generation.")
             self._progress.update(35, "Point cloud loaded")
             point_array = _merge_point_cloud_arrays(point_cloud)
-            names = getattr(point_array.dtype, "names", ()) or ()
+            point_array, capabilities = _canonicalize_hag_dimension(point_array)
+            names = capabilities.names
+            inspected = PointDimensionCapabilities.from_names(getattr(request, "source_dimensions", ()))
+            if planned_method == "existing_normalized_height" and not capabilities.has_existing_hag:
+                raise SourceDimensionMismatch(getattr(request, "hag_source_dimension", "HeightAboveGround"), names)
+            if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
+                if capabilities.has_existing_hag:
+                    planned_method = "existing_normalized_height"
+                    request = replace(request, hag_method=planned_method, hag_source_dimension="HeightAboveGround")
+                elif inspected.has_existing_hag:
+                    raise SourceDimensionMismatch(inspected.hag_dimension_name or "HeightAboveGround", names)
+                else:
+                    raise ProcessingError("Source-local CHM requires an existing normalized-height dimension; the execution read did not contain one.")
+            _write_source_local_adapter_trace(request, "pdal_read", {"dimensions": list(names), "has_existing_hag": capabilities.has_existing_hag})
             if planned_method == "existing_normalized_height":
                 from .chm_work_unit_execution import validate_existing_hag_array
                 validate_existing_hag_array(point_array, request)
@@ -331,6 +346,7 @@ class PyForestScanAdapter:
             self._chm_cache[_chm_cache_key(request)] = (chm, extent)
             if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
                 _write_source_local_geotiff(chm, output_path, extent, product="Canopy Height Model")
+                _write_source_local_adapter_trace(request, "chm_writer", {"source_local": True, "crs": None, "hag_mode": "EXISTING_HAG"})
             else:
                 handlers.create_geotiff(chm, str(output_path), request.crs, extent)
                 _write_crs_provenance(output_path, resolution)
@@ -341,7 +357,7 @@ class PyForestScanAdapter:
                 output_path=output_path,
                 spatial_extent=tuple(float(value) for value in extent),
                 grid_resolution=request.grid_resolution,
-                crs=request.crs,
+                crs=request.crs or "",
             )
         except ProcessingError:
             self._progress.fail("CHM generation failed")
@@ -529,7 +545,9 @@ class PyForestScanAdapter:
         if request.min_height is not None and request.min_height < 0:
             raise ProcessingError("Rumple minimum height must be zero or greater.")
         resolution = _resolve_product_spatial_reference(request, source_local_allowed=True)
-        if resolution.resolved_crs and not request.crs:
+        if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
+            request = replace(request, crs=None)
+        elif resolution.resolved_crs and not request.crs:
             request = replace(request, crs=resolution.resolved_crs)
         output_path = Path(request.output_path)
         if output_path.suffix.lower() not in {".tif", ".tiff", ".csv"}:
@@ -577,6 +595,8 @@ class PyForestScanAdapter:
             else:
                 _write_rumple_geotiff(output_path, surface.values, request.crs, rumple_patch_extent(extent, surface.cell_resolution), request, surface, rumple_index)
                 _write_crs_provenance(output_path, resolution)
+                if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
+                    _write_source_local_adapter_trace(request, "rumple_writer", {"source_local": True, "crs": None, "supporting_chm": chm_source})
                 summary_path = output_path.with_name(f"{output_path.stem}_summary.csv")
             _write_rumple_csv(summary_path, rumple_index, request, extent, chm_source=chm_source, spatial_aggregate=surface.aggregate_rumple, valid_patch_count=surface.valid_patch_count)
             _validate_created_output(output_path)
@@ -587,7 +607,7 @@ class PyForestScanAdapter:
                 rumple_index=rumple_index,
                 spatial_extent=tuple(float(value) for value in extent),
                 grid_resolution=request.grid_resolution,
-                crs=request.crs,
+                crs=request.crs or "",
                 summary_path=summary_path,
                 valid_patch_count=surface.valid_patch_count,
                 spatial_aggregate=surface.aggregate_rumple,
@@ -1056,7 +1076,7 @@ class PyForestScanAdapter:
             backend_result = service.run_product(product.value, request)
         except Exception as exc:  # noqa: BLE001 - convert backend subprocess errors at adapter boundary.
             self._progress.fail(f"PBM backend {product.value} failed")
-            raise ProcessingError(f"PBM backend {product.value} failed: {exc}") from exc
+            raise ProcessingError(_backend_user_error(product, exc)) from exc
         self._progress.complete(f"PBM backend {product.value} complete")
         return _adapter_result_from_backend(product, request, backend_result)
 
@@ -1092,7 +1112,7 @@ class PyForestScanAdapter:
         """Read lidar with HeightAboveGround and return one structured point array."""
         if product_label is None:
             product_label = str(crs or "product")
-            crs = str(getattr(request_or_path, "crs", ""))
+            crs = str(getattr(request_or_path, "crs", "") or "")
         handlers = _import_required("pyforestscan.handlers", ProcessingError)
         input_path = getattr(request_or_path, "input_path", request_or_path)
         if not crs:
@@ -1103,11 +1123,14 @@ class PyForestScanAdapter:
             raise ProcessingError(f"PyForestScan returned no point data for {product_label} generation.")
         self._progress.update(25, "Point cloud loaded")
         point_array = _merge_point_cloud_arrays(point_cloud)
-        names = getattr(point_array.dtype, "names", ()) or ()
+        point_array, capabilities = _canonicalize_hag_dimension(point_array)
+        names = capabilities.names
         required = {"X", "Y", "HeightAboveGround"}
         missing = sorted(required.difference(names))
         if missing:
-            raise ProcessingError(f"{product_label} input is missing required dimensions: {', '.join(missing)}")
+            expected = getattr(request_or_path, "hag_source_dimension", "HeightAboveGround")
+            raise SourceDimensionMismatch(expected, names)
+        _write_source_local_adapter_trace(request_or_path, "pdal_read", {"dimensions": list(names), "has_existing_hag": True})
         return point_array
 
     def clip_dataset(self, *args: object, **kwargs: object) -> None:
@@ -1325,9 +1348,21 @@ def _adapter_result_from_backend(product: ProductType, request: object, backend_
 
 
 def _chm_cache_key(request: object) -> tuple[object, ...]:
+    path = Path(str(getattr(request, "input_path", "")))
+    try:
+        stat = path.stat()
+        fingerprint = (stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        fingerprint = (None, None)
+    crs = str(getattr(request, "crs", "") or "").strip()
     return (
-        str(getattr(request, "input_path", "")),
-        str(getattr(request, "crs", "")),
+        str(path),
+        fingerprint,
+        SpatialReferenceMode.RESOLVED.value if crs else SpatialReferenceMode.SOURCE_LOCAL.value,
+        crs or None,
+        str(getattr(request, "hag_method", "existing_normalized_height")),
+        str(getattr(request, "hag_source_dimension", "HeightAboveGround")),
+        str(getattr(request, "hag_method_signature", "")),
         float(getattr(request, "grid_resolution", 0.0)),
         float(getattr(request, "y_resolution", getattr(request, "grid_resolution", 0.0)) or getattr(request, "grid_resolution", 0.0)),
         getattr(request, "interpolation", None),
@@ -1404,7 +1439,8 @@ def _write_rumple_geotiff(output_path, values, crs, extent, request, surface, up
     profile={"driver":"GTiff","height":raster_values.shape[0],"width":raster_values.shape[1],"count":1,"dtype":"float32","crs":crs or None,"transform":from_bounds(xmin,ymin,xmax,ymax,raster_values.shape[1],raster_values.shape[0]),"nodata":nodata,"compress":"deflate","tiled":raster_values.shape[0]>=16 and raster_values.shape[1]>=16}
     with rasterio.open(temporary,"w",**profile) as dst:
         dst.write(numpy.where(numpy.isfinite(raster_values),raster_values,nodata).astype("float32"),1);dst.set_band_description(1,"Rumple Index")
-        dst.update_tags(PRODUCT="Rumple Index",UNITS="dimensionless",METHOD="pyforestscan_qgis_patch_surface_v1",CHM_RESOLUTION=str(surface.cell_resolution),RUMPLE_ANALYSIS_SCALE="2x2 CHM patch",MIN_HEIGHT="None" if request.min_height is None else str(request.min_height),PYFORESTSCAN_SCALAR_COMPATIBLE="true",PYFORESTSCAN_SCALAR=f"{upstream_scalar:.12g}",VALID_PATCH_COUNT=str(surface.valid_patch_count))
+        spatial_tags = _source_local_raster_tags() if not crs else {"PYFORESTSCAN_SPATIAL_REFERENCE_MODE": "RESOLVED", "SOURCE_CRS_RESOLVED": "true", "SOURCE_COORDINATE_UNITS": "crs_defined", "CRS_ASSIGNMENT_REQUIRED_FOR_SPATIAL_ALIGNMENT": "false"}
+        dst.update_tags(PRODUCT="Rumple Index",UNITS="dimensionless",METHOD="pyforestscan_qgis_patch_surface_v1",CHM_RESOLUTION=str(surface.cell_resolution),RUMPLE_ANALYSIS_SCALE="2x2 CHM patch",MIN_HEIGHT="None" if request.min_height is None else str(request.min_height),PYFORESTSCAN_SCALAR_COMPATIBLE="true",PYFORESTSCAN_SCALAR=f"{upstream_scalar:.12g}",VALID_PATCH_COUNT=str(surface.valid_patch_count),**spatial_tags)
     temporary.replace(output_path)
 
 
@@ -1461,7 +1497,67 @@ def _write_source_local_geotiff(values: object, output_path: Path, extent: objec
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(output_path, "w", driver="GTiff", height=raster.shape[0], width=raster.shape[1], count=1, dtype="float32", crs=None, transform=from_bounds(xmin, ymin, xmax, ymax, raster.shape[1], raster.shape[0]), nodata=nodata, compress="deflate") as dataset:
         dataset.write(numpy.where(numpy.isfinite(raster), raster, nodata).astype("float32"), 1)
-        dataset.update_tags(PRODUCT=product, PYFORESTSCAN_SPATIAL_REFERENCE="SOURCE_LOCAL", SOURCE_CRS_RESOLVED="false", SOURCE_CRS_STATUS="SOURCE_LOCAL_ONLY", SOURCE_CRS="", OUTPUT_CRS="", CRS_RESOLUTION_SOURCE="source_local", CRS_CONFIDENCE="NONE", TRANSFORMATION_APPLIED="false")
+        dataset.update_tags(PRODUCT=product, **_source_local_raster_tags())
+
+
+def _source_local_raster_tags() -> dict[str, str]:
+    """Return the single metadata contract for unassigned source-coordinate rasters."""
+    return {
+        "PYFORESTSCAN_SPATIAL_REFERENCE": "SOURCE_LOCAL",
+        "PYFORESTSCAN_SPATIAL_REFERENCE_MODE": "SOURCE_LOCAL",
+        "SOURCE_CRS_RESOLVED": "false",
+        "SOURCE_CRS_STATUS": "SOURCE_LOCAL_ONLY",
+        "SOURCE_CRS": "",
+        "OUTPUT_CRS": "",
+        "CRS_RESOLUTION_SOURCE": "source_local",
+        "CRS_CONFIDENCE": "NONE",
+        "TRANSFORMATION_APPLIED": "false",
+        "SOURCE_COORDINATE_UNITS": "unknown",
+        "CRS_ASSIGNMENT_REQUIRED_FOR_SPATIAL_ALIGNMENT": "true",
+    }
+
+
+def _canonicalize_hag_dimension(point_array: object) -> tuple[object, PointDimensionCapabilities]:
+    """Preserve all fields while exposing a supported HAG alias canonically."""
+    names = getattr(getattr(point_array, "dtype", None), "names", ()) or ()
+    capabilities = PointDimensionCapabilities.from_names(names)
+    if not capabilities.has_existing_hag or capabilities.hag_dimension_name == "HeightAboveGround":
+        return point_array, capabilities
+    numpy = _import_required("numpy", ProcessingError)
+    source = capabilities.hag_dimension_name
+    dtype = [("HeightAboveGround" if name == source else name, point_array.dtype.fields[name][0]) for name in names]
+    normalized = numpy.empty(point_array.shape, dtype=dtype)
+    for name in names:
+        normalized["HeightAboveGround" if name == source else name] = point_array[name]
+    return normalized, PointDimensionCapabilities.from_names(normalized.dtype.names)
+
+
+def _write_source_local_adapter_trace(request: object, stage: str, payload: dict[str, object]) -> None:
+    """Persist compact execution evidence when a diagnostics path is available."""
+    diagnostics = getattr(request, "diagnostics_path", None)
+    if not diagnostics:
+        diagnostics = Path(getattr(request, "output_path")).parent / "diagnostics"
+    path = Path(diagnostics) / "source_local_trace.json"
+    try:
+        trace = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"stages": {}}
+    except (OSError, json.JSONDecodeError):
+        trace = {"stages": {}}
+    trace.setdefault("stages", {})[stage] = payload
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(trace, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _backend_user_error(product: ProductType, exc: Exception) -> str:
+    """Return one actionable message while diagnostics retain the full chain."""
+    text = str(exc)
+    if "SOURCE_DIMENSION_MISMATCH" in text:
+        detail = text[text.index("SOURCE_DIMENSION_MISMATCH"):].split("; The backend", 1)[0]
+        return f"{product.value.upper()} could not be created. The backend did not detect the expected normalized-height field. {detail}"
+    if "Processing backend needs an update" in text or "BACKEND_CONTRACT_MISMATCH" in text:
+        return "Processing backend needs an update. Open Tools & Setup and choose Repair Backend."
+    parts = [part.strip() for part in text.replace("The backend job failed before completion.;", "").split(";") if part.strip()]
+    reason = parts[-1] if parts else text
+    return f"{product.value.upper()} could not be created. Reason: {reason}"
 
 
 def _write_crs_provenance(output_path: Path, resolution: object) -> None:

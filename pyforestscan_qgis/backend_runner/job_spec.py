@@ -9,6 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from pyforestscan_qgis.core.ept_bounds import EptBounds, EptBoundsError
+from pyforestscan_qgis.core.height_normalization import HeightNormalizationDecision
+from pyforestscan_qgis.core.point_dimensions import PointDimensionCapabilities
+from pyforestscan_qgis.core.spatial_reference_contract import SpatialReferenceContract
+
+PBM_PROTOCOL_VERSION = "2"
 
 try:
     from pyforestscan_qgis import __version__
@@ -22,7 +27,7 @@ class BackendJobSpec:
 
     job_id: str
     input_lidar_path: Path
-    crs: str
+    crs: str | None
     run_folder: Path
     product: str
     product_parameters: dict[str, Any]
@@ -31,7 +36,9 @@ class BackendJobSpec:
     hag_options: dict[str, Any] | None = None
     dtm_path: Path | None = None
     plugin_version: str = "unknown"
-    protocol_version: str = "1"
+    protocol_version: str = PBM_PROTOCOL_VERSION
+    spatial_reference: dict[str, Any] | None = None
+    height_normalization: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible values."""
@@ -48,6 +55,8 @@ class BackendJobSpec:
             "dtm_path": str(self.dtm_path) if self.dtm_path is not None else None,
             "plugin_version": self.plugin_version,
             "protocol_version": self.protocol_version,
+            "spatial_reference": _json_ready(self.spatial_reference or SpatialReferenceContract.from_crs(self.crs).to_dict()),
+            "height_normalization": _json_ready(self.height_normalization or {}),
         }
 
     @classmethod
@@ -56,7 +65,7 @@ class BackendJobSpec:
         return cls(
             job_id=str(data["job_id"]),
             input_lidar_path=Path(data["input_lidar_path"]),
-            crs=str(data.get("crs", "")),
+            crs=_optional_crs(data.get("crs")),
             run_folder=Path(data["run_folder"]),
             product=str(data["product"]),
             product_parameters=dict(data.get("product_parameters", {})),
@@ -66,6 +75,8 @@ class BackendJobSpec:
             dtm_path=Path(data["dtm_path"]) if data.get("dtm_path") else None,
             plugin_version=str(data.get("plugin_version", "unknown")),
             protocol_version=str(data.get("protocol_version", "1")),
+            spatial_reference=dict(data.get("spatial_reference", {})) or SpatialReferenceContract.from_crs(data.get("crs")).to_dict(),
+            height_normalization=dict(data.get("height_normalization", {})) or None,
         )
 
     def write(self, path: Path | None = None) -> Path:
@@ -89,7 +100,10 @@ def build_job_spec_from_request(product: str, request: Any, run_folder: Path | N
     _normalize_ept_bounds_parameters(params)
     input_path = Path(str(params.get("input_path", "")))
     output_path = Path(str(params.get("output_path", "")))
-    crs = str(params.get("crs", ""))
+    crs = _optional_crs(params.get("crs"))
+    spatial_reference = SpatialReferenceContract.from_crs(crs)
+    dimensions = PointDimensionCapabilities.from_names(params.get("source_dimensions", ()))
+    height_normalization = HeightNormalizationDecision.from_dimensions(dimensions, str(params.get("hag_method") or ""))
     folder = Path(run_folder) if run_folder is not None else _default_run_folder_for_request(params, output_path)
     identifier = job_id or f"pbm-{product}-{uuid.uuid4().hex[:12]}"
     result_path = folder / ".pbm_jobs" / f"{identifier}.result.json"
@@ -117,7 +131,15 @@ def build_job_spec_from_request(product: str, request: Any, run_folder: Path | N
         hag_options=hag_options or None,
         dtm_path=dtm_path,
         plugin_version=version,
+        spatial_reference=spatial_reference.to_dict(),
+        height_normalization=height_normalization.to_dict(),
     )
+
+
+def _optional_crs(value: object) -> str | None:
+    """Never turn a missing CRS into the invalid identifier ``None``."""
+    text = str(value or "").strip()
+    return None if not text or text.casefold() in {"none", "unknown"} else text
 
 
 def _normalize_ept_bounds_parameters(params: dict[str, Any]) -> None:

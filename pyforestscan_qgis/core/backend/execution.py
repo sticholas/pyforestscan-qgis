@@ -5,12 +5,13 @@ from __future__ import annotations
 import subprocess
 import tempfile
 import time
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 from pyforestscan_qgis.backend_runner.job_result import BackendJobResult
-from pyforestscan_qgis.backend_runner.job_spec import BackendJobSpec, build_job_spec_from_request
+from pyforestscan_qgis.backend_runner.job_spec import BackendJobSpec, PBM_PROTOCOL_VERSION, build_job_spec_from_request
 
 from .logging import backend_log_path, write_backend_log_entry
 from .models import BackendStatus, BackendVerificationResult
@@ -71,6 +72,7 @@ class BackendExecutionService:
         self.timeout_seconds = timeout_seconds
         self.plugin_parent = plugin_parent or Path(__file__).resolve().parents[3]
         self.log_path = backend_log_path("execute", paths.logs_dir)
+        self._runtime_contract: dict[str, Any] | None = None
 
     def can_execute_processing(self) -> BackendExecutionAvailability:
         """Return whether PBM backend processing can run now."""
@@ -129,6 +131,8 @@ class BackendExecutionService:
         availability = self.can_execute_processing()
         if not availability.ready:
             raise RuntimeError(availability.message)
+        if self.runner is subprocess.run:
+            self.verify_runtime_contract()
         path = spec_path or spec.write()
         command = self.runner_command(path)
         write_backend_log_entry(
@@ -198,6 +202,27 @@ class BackendExecutionService:
         if completed.returncode != 0 or not result.success:
             raise BackendJobFailure("; ".join(result.errors) or summarize_subprocess_output(completed.stderr, completed.stdout) or "PBM backend job failed.",result.error_code or "EXECUTION_FAILED",bool(result.retryable))
         return result
+
+    def verify_runtime_contract(self, *, refresh: bool = False) -> dict[str, Any]:
+        """Block science when the managed runner cannot satisfy protocol v2."""
+        if self._runtime_contract is not None and not refresh:
+            return self._runtime_contract
+        command = self.runner_command_for_args(("inspect_runtime_contract",))
+        env = build_clean_subprocess_env(
+            prepend_paths=conda_environment_path_entries(self.paths.environment_path, self.paths.platform.value),
+            extra_env=conda_environment_data_env(self.paths.environment_path, self.paths.platform.value),
+        )
+        completed = self.runner(command, check=False, capture_output=True, text=True, timeout=30, cwd=str(self.plugin_parent), env=env, **hidden_subprocess_kwargs())
+        try:
+            contract = json.loads(completed.stdout or "{}")
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Processing backend needs an update. Repair Backend (runtime identity was unreadable).") from exc
+        if completed.returncode != 0 or str(contract.get("protocol_version", "")) != PBM_PROTOCOL_VERSION:
+            actual = str(contract.get("protocol_version", "unknown"))
+            raise RuntimeError(f"Processing backend needs an update. Repair Backend (required protocol {PBM_PROTOCOL_VERSION}, found {actual}).")
+        self._runtime_contract = contract
+        write_backend_log_entry(self.log_path, "execute", "PBM runtime contract verified.", stage="CONTRACT", details=contract)
+        return contract
 
 
     def _run_monitored(self, command: list[str], spec: BackendJobSpec, kwargs: dict[str, object]) -> subprocess.CompletedProcess[str]:

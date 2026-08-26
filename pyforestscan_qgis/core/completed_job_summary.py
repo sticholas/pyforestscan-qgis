@@ -35,6 +35,12 @@ def completed_job_summary(result, preflight_report=None, *, processing_profile: 
     execution_plan = getattr(preflight_report, "execution_plan", None)
     request = getattr(preflight_report, "request", None)
     products = tuple(str(getattr(item, "value", item)) for item in getattr(request, "products", ()))
+    if not products:
+        products = tuple(dict.fromkeys(
+            str(getattr(product, "value", product))
+            for item in getattr(result, "items", ())
+            for product in getattr(item, "requested_products", ())
+        ))
     repository = str(getattr(request, "lidar_folder", "") or "")
     polygon = getattr(request, "polygon", None)
     area = float(getattr(polygon, "area")) if polygon is not None and getattr(polygon, "area", None) is not None else None

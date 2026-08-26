@@ -1,5 +1,7 @@
 # PBM Runner Protocol
 
+Current processing protocol: **2**. Protocol 2 requires explicit `spatial_reference` and `height_normalization` payloads and exposes `inspect_runtime_contract`. See [PBM Runtime Version Contract](../development/PBM_RUNTIME_VERSION_CONTRACT.md).
+
 The PBM runner is a small Python module packaged with the QGIS plugin and executed by PBM backend Python:
 
 ```bash

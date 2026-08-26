@@ -1,5 +1,7 @@
 # Product Execution Capabilities
 
+Standalone source-local CHM and Rumple are PBM-capable when the execution read contains an existing normalized-height dimension. Other source-local products remain unchanged; polygon processing still requires a resolved CRS.
+
 Phase 30C changes workflow state only. CHM/Rumple dependency reuse, adaptive Rumple mathematics, masking, routing, and output contracts are unchanged. A single LAS request containing CHM and Rumple is normalized through the same immutable Batch launch contract as a multi-file folder request.
 
 `core/product_capabilities.py` is authoritative for output kind, renderer, HAG need, partition/fast-path support, mosaic and mask semantics, QGIS loading, and validation status.

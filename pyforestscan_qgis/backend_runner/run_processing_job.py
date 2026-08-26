@@ -15,11 +15,15 @@ from typing import Any
 
 from .job_result import BackendJobResult
 from .job_spec import BackendJobSpec
+from .job_spec import PBM_PROTOCOL_VERSION
+from .runtime_contract import inspect_runtime_contract, print_runtime_contract
 from .api_contract import print_api_contract
 from .request_validation import RequestValidationError, validate_processing_request
 from pyforestscan_qgis.core.adapter import PyForestScanAdapter
 from pyforestscan_qgis.core.job_diagnostics import classify_exception, create_diagnostics_dir, support_summary, write_failure_bundle, write_json
 from pyforestscan_qgis.core.hag_strategy import HagExecutionDecision, assess_hag_suitability
+from pyforestscan_qgis.core.height_normalization import HeightNormalizationDecision, HeightNormalizationMode
+from pyforestscan_qgis.core.spatial_reference_contract import SpatialReferenceContract
 from pyforestscan_qgis.core.atomic_state import atomic_write_json
 from pyforestscan_qgis.core.config import InspectionOptions
 from pyforestscan_qgis.core.ept_subset import EptSubsetRequest
@@ -61,6 +65,15 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
     heartbeat.start()
     _write_heartbeat(spec, heartbeat_state, heartbeat_started)
     try:
+        _validate_runtime_protocol(spec)
+        diagnostics_dir = create_diagnostics_dir(spec.run_folder)
+        runtime_contract = inspect_runtime_contract()
+        write_json(diagnostics_dir / "backend_module_locations.json", runtime_contract)
+        _update_source_local_trace(spec, "backend_runner_input", {
+            "spatial_reference": spec.spatial_reference,
+            "height_normalization": spec.height_normalization,
+            "source_dimensions": spec.product_parameters.get("source_dimensions", []),
+        })
         adapter = PyForestScanAdapter(execution_mode="qgis_python")
         if spec.product == "dataset_inspection":
             result = _run_dataset_inspection(adapter, spec)
@@ -86,6 +99,7 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
             outputs = {"primary": Path(metrics.get("output_path", spec.output_paths.get("primary", "")))}
         heartbeat_state.update(stage="Finalizing Output", activity="Product calculation completed.", completed_count=heartbeat_state["total_count"])
         _write_heartbeat(spec, heartbeat_state, heartbeat_started)
+        _update_source_local_trace(spec, "terminal", {"status": "success", "outputs": {key: str(value) for key, value in outputs.items()}})
         stop.set()
         return BackendJobResult(
             job_id=spec.job_id,
@@ -99,6 +113,7 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
     except Exception as exc:  # noqa: BLE001 - backend runner must serialize failures.
         diagnostics_dir = create_diagnostics_dir(spec.run_folder)
         structured_error = classify_exception(exc, stage="Request Validation" if isinstance(exc, RequestValidationError) else "Processing")
+        _update_source_local_trace(spec, "terminal", {"status": "failed", "error_code": structured_error.code, "message": structured_error.user_message})
         write_failure_bundle(diagnostics_dir, job_id=spec.job_id, product=spec.product, error=structured_error)
         try:
             contract = json.loads((diagnostics_dir / "backend_contract.json").read_text(encoding="utf-8")) if (diagnostics_dir / "backend_contract.json").exists() else {}
@@ -172,7 +187,13 @@ def _request_from_spec(spec: BackendJobSpec) -> Any:
     request_class, _method = PRODUCT_REQUESTS[spec.product]
     params = dict(spec.product_parameters)
     params["input_path"] = spec.input_lidar_path
-    params["crs"] = spec.crs
+    spatial = SpatialReferenceContract.from_dict(spec.spatial_reference)
+    params["crs"] = spatial.crs
+    if "hag_method" in request_class.__dataclass_fields__:
+        decision = HeightNormalizationDecision.from_dict(spec.height_normalization)
+        params["hag_method"] = decision.adapter_method
+        params["hag_source_dimension"] = decision.source_dimension or "HeightAboveGround"
+        params["hag_method_signature"] = decision.method_signature
     if "primary" in spec.output_paths:
         params["output_path"] = spec.output_paths["primary"]
     if params.get("ept_bounds") and "bounds" in request_class.__dataclass_fields__:
@@ -214,7 +235,7 @@ def _json_ready(value: Any) -> Any:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", nargs="?", choices=("inspect_api_contract","inspect_native_runtime"), help="Run a PBM-side diagnostic command and exit.")
+    parser.add_argument("command", nargs="?", choices=("inspect_api_contract","inspect_native_runtime","inspect_runtime_contract"), help="Run a PBM-side diagnostic command and exit.")
     parser.add_argument("--spec", type=Path, help="Path to a PBM backend job spec JSON file.")
     return parser.parse_args()
 
@@ -226,6 +247,8 @@ def main() -> int:
         return 0
     if args.command == "inspect_native_runtime":
         return print_native_runtime()
+    if args.command == "inspect_runtime_contract":
+        return print_runtime_contract()
     if args.spec is None:
         raise SystemExit("--spec is required unless a diagnostic command is supplied.")
     spec = BackendJobSpec.read(args.spec)
@@ -236,6 +259,36 @@ def main() -> int:
         return 0
     print(f"PBM backend job {result.job_id} failed: {'; '.join(result.errors)}")
     return 1
+
+
+def _validate_runtime_protocol(spec: BackendJobSpec) -> None:
+    if spec.protocol_version != PBM_PROTOCOL_VERSION:
+        raise RuntimeError(
+            f"BACKEND_CONTRACT_MISMATCH: processing backend needs an update; "
+            f"request protocol {spec.protocol_version}, backend protocol {PBM_PROTOCOL_VERSION}. Repair Backend."
+        )
+    spatial = SpatialReferenceContract.from_dict(spec.spatial_reference)
+    if spatial.source_local and spatial.crs is not None:
+        raise RuntimeError("BACKEND_CONTRACT_MISMATCH: source-local requests cannot carry a named CRS.")
+    decision = HeightNormalizationDecision.from_dict(spec.height_normalization)
+    if spec.product in {"chm", "rumple"} and decision.mode is HeightNormalizationMode.UNAVAILABLE:
+        raise RuntimeError("BACKEND_CONTRACT_MISMATCH: CHM/Rumple request has no height-normalization decision.")
+
+
+def _update_source_local_trace(spec: BackendJobSpec, stage: str, payload: dict[str, Any]) -> None:
+    try:
+        spatial = SpatialReferenceContract.from_dict(spec.spatial_reference)
+    except (TypeError, ValueError):
+        return
+    if not spatial.source_local:
+        return
+    path = create_diagnostics_dir(spec.run_folder) / "source_local_trace.json"
+    try:
+        trace = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"job_id": spec.job_id, "product": spec.product, "stages": {}}
+    except (OSError, json.JSONDecodeError):
+        trace = {"job_id": spec.job_id, "product": spec.product, "stages": {}}
+    trace.setdefault("stages", {})[stage] = payload
+    write_json(path, trace)
 
 
 if __name__ == "__main__":

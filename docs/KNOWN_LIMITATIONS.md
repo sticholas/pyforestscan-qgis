@@ -1,5 +1,8 @@
 # Known Limitations
 
+- Source-local CHM and Rumple require an existing normalized-height dimension. Source-local polygon processing remains blocked because spatial alignment cannot be proven without a CRS.
+- The real scientific subprocess regression is skipped on development hosts without the managed geospatial dependency stack; clean Windows/QGIS evidence must record the managed-backend run separately.
+
 The spatial Rumple raster is mathematically regression-tested against upstream scalar behavior and synthetic tiling, and adaptive work-unit execution now shares durable CHM support with verified plan/grid/checksum mosaicking. A fresh real LAS/EPT adaptive run, visual seam inspection, runtime/memory benchmarking, and interactive QGIS loading remain release checks. QGIS 3.44.9's local runtime launcher was unavailable; 3.44.13 failed before plugin import due to a local Qt DLL error. Rumple is scale-sensitive: CHM resolution, interpolation, and minimum-height settings must match for comparison.
 
 Phase 30C automated coverage validates immutable single-file/folder requests and 100 semantic UI transitions. Live expandable geometry and consecutive QGIS jobs still require a working QGIS Qt runtime.

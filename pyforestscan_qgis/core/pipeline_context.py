@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+from .point_dimensions import PointDimensionCapabilities
+
 
 class PipelineContextError(ValueError):
     """Raised when a pipeline context cannot be created."""
@@ -138,17 +140,17 @@ class PipelineContext:
     @property
     def hag_method(self) -> str:
         """Prefer an existing normalized-height dimension when reported."""
-        if self.dataset_report is None:
-            return "classified_ground_delaunay"
-        raw = self.dataset_report.get("dimensions", ())
-        names: set[str] = set()
+        return "existing_normalized_height" if self.point_dimensions.has_existing_hag else "classified_ground_delaunay"
+
+    @property
+    def point_dimensions(self) -> PointDimensionCapabilities:
+        """Return normalized source capabilities from Dataset Explorer."""
+        raw = self.dataset_report.get("dimensions", ()) if self.dataset_report else ()
+        names: list[str] = []
         if isinstance(raw, (list, tuple)):
             for item in raw:
-                if isinstance(item, str):
-                    names.add(item.casefold())
-                elif isinstance(item, Mapping):
-                    names.add(str(item.get("name", "")).casefold())
-        return "existing_normalized_height" if "heightaboveground" in names else "classified_ground_delaunay"
+                names.append(item if isinstance(item, str) else str(item.get("name", "")) if isinstance(item, Mapping) else "")
+        return PointDimensionCapabilities.from_names(names)
 
 
 def load_pipeline_contexts(product_plan_path: Path | str, output_folder: Path | str) -> tuple[PipelineContext, ...]:

@@ -1,5 +1,12 @@
 # Changelog
 
+## Phase 30F
+
+- Added PBM protocol 2 contracts for source-local coordinates and authoritative height normalization.
+- Fixed missing CRS serialization so Rumple never receives the invalid CRS string `"None"`.
+- Preserved and validated `HeightAboveGround` through PBM reads, with explicit mismatch diagnostics and no silent HAG fallback.
+- Added runtime identity, module-location evidence, source-local traces, source-local GeoTIFF metadata, and requested-product failure retention.
+
 ## Phase 30C - Processing workflow state stabilization
 
 - Replaced mutable preflight-dependent standard Batch launch with an immutable validated execution request, fixing the one-LAS CHM + Rumple `files_to_skip` crash.
