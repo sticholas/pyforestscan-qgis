@@ -267,3 +267,6 @@ Processing controls are restored after every terminal outcome. A hidden-by-defau
 # Phase 30D Process workspace
 
 The Process workspace uses automatic scheduling and automatic current-job output loading. Normal Prerun Check shows inputs, output, storage, blockers, and warnings without scheduler internals. Advanced retains processing profile, conflict/recovery controls, and applicable polygon finalization controls; no global warning acknowledgement is shown.
+# Phase 30E CRS presentation
+
+Resolved CRS remains quiet. Source-local standalone processing may show **Source coordinates**. Spatial ambiguity presents one compact assignment action; technical evidence stays in diagnostics.

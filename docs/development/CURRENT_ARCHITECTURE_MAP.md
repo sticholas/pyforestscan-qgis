@@ -37,3 +37,9 @@ flowchart LR
 - `core.automatic_execution`: source-level automatic scheduling policy.
 - `core.batch_preflight`: fresh-job manifest isolation.
 - `core.batch_runner`: requested-product persistence and scientific-output filtering.
+# Phase 30E additions
+
+- `core.spatial_reference_resolver`: authoritative evidence, normalization, consensus, assignments, and source-local decisions.
+- `core.product_crs_capabilities`: product-specific named/source-local CRS policy.
+- `core.adapter`: PDAL source-local read and unassigned GeoTIFF provenance for CHM/Rumple.
+- `core.crs_alignment`: retained exact polygon transformation once source and target CRS resolve.

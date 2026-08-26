@@ -27,3 +27,6 @@ Check CRS, extent, height range, ground normalization, and interpolation artifac
 ## Reproducibility
 
 Record the input dataset, CRS, grid or voxel resolution, height thresholds, PyForestScan version, QGIS version, and plugin version when using this product in analysis.
+# Source-local CRS behavior
+
+CHM mathematics may run in native source X/Y coordinates when valid `HeightAboveGround` already exists. The output remains unassigned and explicitly tagged source-local. Polygon alignment and new HAG normalization still require resolved spatial context.

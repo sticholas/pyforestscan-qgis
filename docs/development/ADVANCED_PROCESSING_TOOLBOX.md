@@ -257,3 +257,6 @@ Adapter call: `normalize_heights(HagNormalizationRequest(...))`. If an output pa
 - HAG point-cloud rewriting depends on PyForestScan/PDAL preserving expected dimensions and metadata.
 - Full SMRF and filter parameters are exposed for experts; users should document scientific rationale for non-default settings in project notes or reports.
 - Advanced algorithms do not provide tiling, multiprocessing, or external workers.
+# Phase 30E CRS behavior
+
+Advanced algorithms should consume `SpatialReferenceResolver` rather than add new blanket CRS assertions. Spatial comparison/reprojection tools remain blocking when source CRS is unknown; standalone source-local enablement is product-specific and must be validated before activation.

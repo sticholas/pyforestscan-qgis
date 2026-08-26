@@ -16,3 +16,6 @@ The current-job controller is authoritative. UI fields are projections. A callba
 # Phase 30D batch identity
 
 The immutable current request owns its new batch folder, requested products, and product outputs. Diagnostic artifacts are separate. Historical manifests cannot become current state through output-root proximity.
+# Phase 30E spatial-reference ownership
+
+Embedded source metadata is immutable evidence. Explicit assignments belong to the file/repository fingerprint store, not the LAS header. Current job output owns a serialized provenance snapshot; QGIS project context is evidence, never silent source truth.

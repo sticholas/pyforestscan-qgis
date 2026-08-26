@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib
 import json
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable as TypingCallable
 from urllib.parse import urlparse
@@ -20,6 +21,7 @@ from .exceptions import AdapterError, DatasetError, EnvironmentError, Processing
 from .ept_bounds import EptBounds, EptBoundsError, validate_pyforestscan_bounds_value
 from .ept_spatial_reference import resolve_ept_spatial_reference
 from .pad_products import pad_band_mapping, pad_metadata_tags
+from .spatial_reference_resolver import SpatialReferenceResolver, SpatialReferenceStatus
 from .polygon_transport import looks_like_wkt, materialize_polygon_input, polygon_execution_input_from_mapping
 from .ept_subset import EptSubsetRequest, EptSubsetResult, ept_read_lidar_kwargs
 from .types import (
@@ -283,8 +285,9 @@ class PyForestScanAdapter:
             raise ProcessingError("CHM X resolution must be greater than zero.")
         if request.y_resolution is not None and request.y_resolution <= 0:
             raise ProcessingError("CHM Y resolution must be greater than zero.")
-        if not request.crs:
-            raise ProcessingError("CHM generation requires a dataset CRS.")
+        resolution = _resolve_product_spatial_reference(request, source_local_allowed=True)
+        if resolution.resolved_crs and not request.crs:
+            request = replace(request, crs=resolution.resolved_crs)
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
         pbm_result = self._run_pbm_product_if_selected(ProductType.CHM, request)
@@ -298,7 +301,12 @@ class PyForestScanAdapter:
             planned_method = getattr(request, "hag_method", "classified_ground_delaunay")
             if planned_method not in {"existing_normalized_height", "classified_ground_delaunay"}:
                 raise ProcessingError(f"Unsupported planned HAG method for CHM: {planned_method}")
-            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **_read_lidar_spatial_kwargs(request, hag=planned_method != "existing_normalized_height"))
+            if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
+                if planned_method != "existing_normalized_height":
+                    raise ProcessingError("Source-local CHM requires existing HeightAboveGround; assign a CRS before ground normalization.")
+                point_cloud = _read_source_local_lidar(request)
+            else:
+                point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **_read_lidar_spatial_kwargs(request, hag=planned_method != "existing_normalized_height"))
             if point_cloud is None:
                 raise ProcessingError("PyForestScan returned no point data for CHM generation.")
             self._progress.update(35, "Point cloud loaded")
@@ -321,7 +329,11 @@ class PyForestScanAdapter:
             )
             self._progress.update(70, "CHM array calculated")
             self._chm_cache[_chm_cache_key(request)] = (chm, extent)
-            handlers.create_geotiff(chm, str(output_path), request.crs, extent)
+            if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
+                _write_source_local_geotiff(chm, output_path, extent, product="Canopy Height Model")
+            else:
+                handlers.create_geotiff(chm, str(output_path), request.crs, extent)
+                _write_crs_provenance(output_path, resolution)
             _validate_created_output(output_path)
             self._progress.complete("CHM GeoTIFF created")
             self._log(LogLevel.INFO, "CHM generation complete", output=str(output_path))
@@ -516,8 +528,9 @@ class PyForestScanAdapter:
             raise ProcessingError("Rumple Y resolution must be greater than zero.")
         if request.min_height is not None and request.min_height < 0:
             raise ProcessingError("Rumple minimum height must be zero or greater.")
-        if not request.crs:
-            raise ProcessingError("Rumple generation requires a dataset CRS.")
+        resolution = _resolve_product_spatial_reference(request, source_local_allowed=True)
+        if resolution.resolved_crs and not request.crs:
+            request = replace(request, crs=resolution.resolved_crs)
         output_path = Path(request.output_path)
         if output_path.suffix.lower() not in {".tif", ".tiff", ".csv"}:
             raise ProcessingError("Rumple output must be a GeoTIFF, or CSV for legacy scalar compatibility.")
@@ -563,6 +576,7 @@ class PyForestScanAdapter:
                 summary_path = output_path
             else:
                 _write_rumple_geotiff(output_path, surface.values, request.crs, rumple_patch_extent(extent, surface.cell_resolution), request, surface, rumple_index)
+                _write_crs_provenance(output_path, resolution)
                 summary_path = output_path.with_name(f"{output_path.stem}_summary.csv")
             _write_rumple_csv(summary_path, rumple_index, request, extent, chm_source=chm_source, spatial_aggregate=surface.aggregate_rumple, valid_patch_count=surface.valid_patch_count)
             _validate_created_output(output_path)
@@ -1081,7 +1095,10 @@ class PyForestScanAdapter:
             crs = str(getattr(request_or_path, "crs", ""))
         handlers = _import_required("pyforestscan.handlers", ProcessingError)
         input_path = getattr(request_or_path, "input_path", request_or_path)
-        point_cloud = handlers.read_lidar(str(input_path), str(crs or ""), **_read_lidar_spatial_kwargs(request_or_path, hag=True))
+        if not crs:
+            point_cloud = _read_source_local_lidar(request_or_path)
+        else:
+            point_cloud = handlers.read_lidar(str(input_path), str(crs), **_read_lidar_spatial_kwargs(request_or_path, hag=True))
         if point_cloud is None:
             raise ProcessingError(f"PyForestScan returned no point data for {product_label} generation.")
         self._progress.update(25, "Point cloud loaded")
@@ -1384,11 +1401,79 @@ def _write_rumple_geotiff(output_path, values, crs, extent, request, surface, up
     from rasterio.transform import from_bounds
     if values.ndim != 2 or not values.size: raise ProcessingError("Rumple raster has invalid dimensions.")
     xmin,xmax,ymin,ymax=extent;output_path.parent.mkdir(parents=True,exist_ok=True);temporary=output_path.with_suffix(".partial.tif");raster_values=values.T
-    profile={"driver":"GTiff","height":raster_values.shape[0],"width":raster_values.shape[1],"count":1,"dtype":"float32","crs":crs,"transform":from_bounds(xmin,ymin,xmax,ymax,raster_values.shape[1],raster_values.shape[0]),"nodata":nodata,"compress":"deflate","tiled":raster_values.shape[0]>=16 and raster_values.shape[1]>=16}
+    profile={"driver":"GTiff","height":raster_values.shape[0],"width":raster_values.shape[1],"count":1,"dtype":"float32","crs":crs or None,"transform":from_bounds(xmin,ymin,xmax,ymax,raster_values.shape[1],raster_values.shape[0]),"nodata":nodata,"compress":"deflate","tiled":raster_values.shape[0]>=16 and raster_values.shape[1]>=16}
     with rasterio.open(temporary,"w",**profile) as dst:
         dst.write(numpy.where(numpy.isfinite(raster_values),raster_values,nodata).astype("float32"),1);dst.set_band_description(1,"Rumple Index")
         dst.update_tags(PRODUCT="Rumple Index",UNITS="dimensionless",METHOD="pyforestscan_qgis_patch_surface_v1",CHM_RESOLUTION=str(surface.cell_resolution),RUMPLE_ANALYSIS_SCALE="2x2 CHM patch",MIN_HEIGHT="None" if request.min_height is None else str(request.min_height),PYFORESTSCAN_SCALAR_COMPATIBLE="true",PYFORESTSCAN_SCALAR=f"{upstream_scalar:.12g}",VALID_PATCH_COUNT=str(surface.valid_patch_count))
     temporary.replace(output_path)
+
+
+def _resolve_product_spatial_reference(request: object, *, source_local_allowed: bool):
+    """Resolve request CRS and block source-local use for spatial comparisons."""
+    polygon_required = bool(
+        getattr(request, "crop_polygon", None)
+        or getattr(request, "crop_polygon_path", None)
+        or getattr(request, "polygon_execution_input", None)
+        or getattr(request, "reproject", False)
+    )
+    resolution = SpatialReferenceResolver().resolve(
+        Path(getattr(request, "input_path")),
+        embedded_crs=str(getattr(request, "crs", "") or ""),
+        spatial_alignment_required=polygon_required,
+        source_local_allowed=source_local_allowed,
+    )
+    if polygon_required and not resolution.safe_for_spatial_alignment:
+        raise ProcessingError(
+            "PyForestScan cannot align this LiDAR with the selected polygon because the LiDAR coordinate system is unknown. "
+            "Assign the source or repository CRS, then run Prerun Check again."
+        )
+    if not resolution.resolved and resolution.status is not SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
+        raise ProcessingError("The LiDAR coordinate system could not be resolved for this operation.")
+    return resolution
+
+
+def _read_source_local_lidar(request: object) -> object:
+    """Read LAS/LAZ/COPC coordinates without injecting a false spatial reference."""
+    if any(getattr(request, name, None) for name in ("bounds", "crop_polygon", "crop_polygon_path", "polygon_execution_input")):
+        raise ProcessingError("Source-local reads cannot perform polygon alignment or transformed bounded selection.")
+    path = Path(getattr(request, "input_path"))
+    lowered = str(path).lower()
+    reader_type = "readers.ept" if lowered.endswith("ept.json") else ("readers.copc" if lowered.endswith((".copc.laz", ".copc")) else "readers.las")
+    pdal = _import_required("pdal", ProcessingError)
+    pipeline = pdal.Pipeline(json.dumps({"pipeline": [{"type": reader_type, "filename": str(path)}]}))
+    pipeline.execute()
+    arrays = tuple(pipeline.arrays or ())
+    if not arrays:
+        raise ProcessingError("PDAL returned no point data for source-local processing.")
+    return arrays
+
+
+def _write_source_local_geotiff(values: object, output_path: Path, extent: object, *, product: str, nodata: float = -9999.0) -> None:
+    """Write an explicitly unassigned source-coordinate GeoTIFF."""
+    rasterio = _import_required("rasterio", ProcessingError)
+    numpy = _import_required("numpy", ProcessingError)
+    from rasterio.transform import from_bounds
+    array = numpy.asarray(values)
+    if array.ndim != 2 or not array.size:
+        raise ProcessingError(f"{product} source-local raster has invalid dimensions.")
+    xmin, xmax, ymin, ymax = extent
+    raster = array.T
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(output_path, "w", driver="GTiff", height=raster.shape[0], width=raster.shape[1], count=1, dtype="float32", crs=None, transform=from_bounds(xmin, ymin, xmax, ymax, raster.shape[1], raster.shape[0]), nodata=nodata, compress="deflate") as dataset:
+        dataset.write(numpy.where(numpy.isfinite(raster), raster, nodata).astype("float32"), 1)
+        dataset.update_tags(PRODUCT=product, PYFORESTSCAN_SPATIAL_REFERENCE="SOURCE_LOCAL", SOURCE_CRS_RESOLVED="false", SOURCE_CRS_STATUS="SOURCE_LOCAL_ONLY", SOURCE_CRS="", OUTPUT_CRS="", CRS_RESOLUTION_SOURCE="source_local", CRS_CONFIDENCE="NONE", TRANSFORMATION_APPLIED="false")
+
+
+def _write_crs_provenance(output_path: Path, resolution: object) -> None:
+    """Attach resolution provenance without changing raster coordinates."""
+    if output_path.suffix.lower() not in {".tif", ".tiff"} or not output_path.exists():
+        return
+    try:
+        rasterio = _import_required("rasterio", ProcessingError)
+        with rasterio.open(output_path, "r+") as dataset:
+            dataset.update_tags(PYFORESTSCAN_SPATIAL_REFERENCE="SOURCE_LOCAL" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "RESOLVED", SOURCE_CRS_RESOLVED="false" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "true", SOURCE_CRS_STATUS=resolution.status.value, SOURCE_CRS=resolution.resolved_crs, OUTPUT_CRS=resolution.resolved_crs, CRS_RESOLUTION_SOURCE=resolution.source, CRS_CONFIDENCE=resolution.confidence.value, TRANSFORMATION_APPLIED="true" if resolution.transformation_required else "false")
+    except Exception:
+        return
 
 
 def _write_multiband_geotiff(layer: object, output_path: Path, crs: str, spatial_extent: object, nodata: float = -9999.0, *, voxel_height: float = 1.0, beer_lambert_constant: float = 1.0, drop_ground: bool = True) -> None:

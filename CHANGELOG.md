@@ -247,3 +247,8 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 - Added product validation severity and actionable blocker reporting.
 - Automated source scheduling with a default ceiling of five, forced current-job output loading, and removed global warning acknowledgement.
 - Isolated new batch manifests, preserved requested products on failure, and excluded diagnostics from product output counts.
+# Phase 30E
+
+- Added evidence-driven CRS resolution, normalization, sidecars, exact QGIS datasource evidence, repository consensus, conflict detection, and persisted assignments.
+- Enabled source-local CHM and Rumple for unknown-CRS LAS/LAZ/COPC with existing HAG, without fake EPSG metadata.
+- Added explicit source/output CRS provenance tags and preserved automatic exact polygon transformation once CRS is known.

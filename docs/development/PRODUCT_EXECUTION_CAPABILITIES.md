@@ -11,3 +11,6 @@ Rumple is partitionable through the durable coordinator for EPT/COPC adaptive jo
 # Phase 30D prerequisite clarification
 
 CHM and Rumple may execute from usable height-above-ground data without vegetation classes 3/4/5. Unknown CRS is informational for standalone source-coordinate science and blocking only when transformation or polygon alignment requires it.
+# Phase 30E CRS capability
+
+Standalone CHM, Rumple, PAD, PAI, FHD, Canopy Cover, Point Density, Voxel Statistic, and DTM calculations are classified as source-local capable when their scientific inputs and source units are valid. Phase 30E production integration enables CHM/Rumple first. Polygon alignment, reprojection, and multi-source mosaicking require a named source CRS.

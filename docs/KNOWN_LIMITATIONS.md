@@ -121,3 +121,9 @@ Adaptive Rumple coordinator integration is synthetically validated, but medium a
 - Standalone unknown-CRS processing preserves source coordinates and does not assign a guessed CRS. Polygon alignment and reprojection still require a resolved CRS.
 - Automatic source concurrency is bounded at five by default; EPT internal work-unit scheduling is governed separately.
 - Recovery only reads an explicitly selected batch folder. Complete metadata/signature compatibility enforcement remains planned.
+# Phase 30E notes
+
+- Source-local outputs intentionally have no named CRS and cannot be overlaid safely until a CRS is assigned.
+- Repository consensus is bounded and conservative; any sampled known-CRS conflict prevents inheritance.
+- Automatic file-header discovery continues through Dataset Explorer/PDAL. The resolver's standalone API accepts discovered embedded metadata rather than duplicating every native reader.
+- Live QGIS/PBM validation of the original unknown-CRS LAS remains outstanding.

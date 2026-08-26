@@ -135,6 +135,21 @@ class PipelineContext:
         value = geometry.get("crs")
         return str(value) if value else None
 
+    @property
+    def hag_method(self) -> str:
+        """Prefer an existing normalized-height dimension when reported."""
+        if self.dataset_report is None:
+            return "classified_ground_delaunay"
+        raw = self.dataset_report.get("dimensions", ())
+        names: set[str] = set()
+        if isinstance(raw, (list, tuple)):
+            for item in raw:
+                if isinstance(item, str):
+                    names.add(item.casefold())
+                elif isinstance(item, Mapping):
+                    names.add(str(item.get("name", "")).casefold())
+        return "existing_normalized_height" if "heightaboveground" in names else "classified_ground_delaunay"
+
 
 def load_pipeline_contexts(product_plan_path: Path | str, output_folder: Path | str) -> tuple[PipelineContext, ...]:
     """Load one pipeline context per requested product from Product Planner JSON."""

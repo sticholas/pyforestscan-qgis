@@ -15,3 +15,6 @@ An authority string alone is not a CRS. Values such as `EPSG`, `EPSG:`, `:6635`,
 The typed `ResolvedSpatialReference` result records the normalized CRS text, source, horizontal and vertical codes, raw SRS object, parser warnings, and parser errors. Technical details expose this evidence; Guided mode only reports whether spatial alignment is ready or whether the user must choose a LiDAR coordinate system.
 
 Use `python3 scripts/inspect_ept_spatial_reference.py <path-to-ept.json>` for support diagnostics without reading point data.
+# Phase 30E integration
+
+EPT authority, WKT/WKT2, PROJJSON, compound-horizontal, and PDAL probe results feed the unified resolver as authoritative evidence. Existing semantic comparison and exact polygon transformation remain unchanged.

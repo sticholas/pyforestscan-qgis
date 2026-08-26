@@ -71,3 +71,6 @@ Local LAS/LAZ/COPC footprint extraction currently uses the LAS public header whe
 Raster products are passed through best-effort exact polygon masking when rasterio and shapely are available in the execution environment. Users should still visually QA polygon-edge raster cells before scientific interpretation.
 
 Folder mosaicking, catalog products, folder monitoring, per-polygon split outputs, and project files remain deferred.
+# Phase 30E alignment policy
+
+Polygon processing requires resolved source and polygon CRS. Existing exact-geometry transformation converts the polygon to the LiDAR read CRS before envelope derivation and bounded reads. Source-local fallback is prohibited for polygon selection.

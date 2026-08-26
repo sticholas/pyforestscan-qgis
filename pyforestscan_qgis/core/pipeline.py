@@ -132,6 +132,7 @@ def _execute_chm_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 interpolation=context.chm_interpolation,
                 interp_valid_region=context.chm_interpolate_valid_region,
                 interp_clean_edges=context.chm_clean_edges,
+                hag_method=context.hag_method,
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.

@@ -439,3 +439,6 @@ For normal work, remain on **Process**: choose LiDAR data and area, select produ
 # Phase 30D processing behavior
 
 Prerun warnings describe conditions that deserve attention but do not require a blanket acknowledgement. A blocker names the failed product requirement and the next action. Scheduling and loading of current primary raster outputs are automatic; Custom processing exposes only an upper worker limit. Unknown-CRS standalone outputs retain an undefined CRS and must not be spatially combined until the CRS is resolved.
+# Automatic coordinate systems
+
+PyForestScan checks embedded metadata, trusted sidecars, saved assignments, repository consensus, and an exact matching QGIS layer. Usually no CRS control appears. Standalone CHM/Rumple can process valid existing-HAG data as **Source coordinates** when no real CRS is known. Polygon workflows instead ask for one coordinate-system assignment because alignment cannot be guessed safely.

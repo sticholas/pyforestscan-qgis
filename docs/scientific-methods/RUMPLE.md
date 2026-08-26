@@ -33,3 +33,6 @@ Rumple is sensitive to CHM resolution, minimum canopy height, analysis extent, a
 ## Reproducibility
 
 Record the input dataset, CRS, grid resolution, CHM interpolation settings, minimum height, PyForestScan version, QGIS version, and plugin version when using this product in analysis.
+# Source-local CRS behavior
+
+Rumple may derive from a compatible source-local CHM without a named CRS. Rumple mathematics is unchanged. The raster and scalar summary retain unresolved/source-local provenance; spatial alignment still requires a resolved CRS.
