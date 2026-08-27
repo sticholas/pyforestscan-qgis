@@ -14,7 +14,8 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
     def test_install_button_uses_internal_beta_availability(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 
-        self.assertIn('self.install_backend_button = QPushButton("Set Up")', source)
+        self.assertIn('self.install_backend_button = QPushButton("Set Up Processing Engine")', source)
+        self.assertIn('"Repair / Reload Processing Engine"', source)
         self.assertIn("processing_engine_setup_action", source)
         self.assertIn("self.install_backend_button.clicked.connect(self.install_backend_internal_beta)", source)
         self.assertIn("This will set up all PyForestScan processing components in your user-local PyForestScan folder", source)

@@ -13,6 +13,7 @@ from pyforestscan_qgis.core.backend.processing_engine import (
     ProcessingEngineVerifier,
     REQUIRED_PYFORESTSCAN_MODULES,
     current_plugin_build_id,
+    current_runner_hash,
 )
 
 
@@ -37,6 +38,8 @@ class ProcessingEngineTests(unittest.TestCase):
                 "protocol_compatible": True,
                 "failed_required_components": [],
                 "plugin_build_id": current_plugin_build_id(),
+                "runner_sha256": current_runner_hash(),
+                "protocol_version": "2",
             }
             report = ProcessingEngineVerifier(paths, self._runner(payload), Path(folder)).verify()
             self.assertEqual(report.state, ProcessingEngineState.READY)
@@ -77,9 +80,11 @@ class ProcessingEngineTests(unittest.TestCase):
                 "protocol_compatible": True,
                 "failed_required_components": [],
                 "plugin_build_id": current_plugin_build_id(),
+                "runner_sha256": current_runner_hash(),
+                "protocol_version": "2",
             }
             verifier = ProcessingEngineVerifier(paths, self._runner(payload), Path(folder))
-            verifier.verify()
+            verifier.verify(setup_completed=True)
             quick = ProcessingEngineVerifier(paths, lambda *a, **k: self.fail("subprocess used"), Path(folder)).quick()
             self.assertTrue(quick.ready)
             self.assertTrue(quick.from_cache)

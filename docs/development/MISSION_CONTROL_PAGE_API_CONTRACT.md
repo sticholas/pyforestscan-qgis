@@ -1,5 +1,9 @@
 # Mission Control Page API Contract
 
+## Phase 32C semantic updates
+
+`SettingsPage.set_processing_engine_state(...)` owns the persistent setup/recovery action. `BatchPage.set_processing_engine_state(...)` owns the compact Process-page setup intervention, and `BatchPage.set_spatial_intervention(...)` owns source-specific CRS/units intervention. Mission Control propagates completed engine state through signals; pages do not reach into one another's child widgets.
+
 ## Rule
 
 Controllers update pages through semantic methods. They do not write another page's private labels or depend on a particular card layout.

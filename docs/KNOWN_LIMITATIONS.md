@@ -1,5 +1,11 @@
 # Known Limitations
 
+## Processing Engine setup scope
+
+- Startup intentionally performs no full managed-runtime verification. A stale, missing, or corrupt setup record is shown as Setup/Repair required until the user runs the explicit action.
+- Repair / Reload reconciles the managed environment and current plugin contract; it does not attach to or terminate unrelated external processes.
+- Automatic spatial metadata remains best effort. Ambiguous CRS or units require a contextual Process-page assignment before processing can start.
+
 ## Phase 32B runtime coverage
 
 Packaged startup and lifecycle testing passed in QGIS 3.44.13 LTR. QGIS 3.44.9 is present on the test host but does not expose a usable Python-QGIS launcher, so the automated packaged-profile smoke could not be repeated there. No network-offline setup attempt was made; startup was verified to perform no network operation.

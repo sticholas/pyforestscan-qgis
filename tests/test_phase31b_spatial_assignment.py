@@ -152,9 +152,12 @@ class DatasetAssignmentTests(unittest.TestCase):
 class UiContractTests(unittest.TestCase):
     def test_compact_intervention_and_tools_labels_exist(self):
         source = (Path(__file__).parents[1] / "pyforestscan_qgis" / "ui" / "pages.py").read_text(encoding="utf-8")
-        for label in ("Preparation needs one detail", "Use Project CRS", "Choose Coordinate System", "LiDAR Spatial Reference", "Save Trusted Units"):
+        for label in ("Spatial reference needed", "Use Project CRS", "Choose Coordinate System", "LiDAR units needed", "Coordinate system needed"):
             self.assertIn(label, source)
         self.assertIn("self.spatial_assignment_frame.setVisible(False)", source)
+        settings = source[source.index("class SettingsPage"):source.index("def _processing_lifecycle_stage")]
+        self.assertNotIn('add_section("LiDAR Spatial Reference', settings)
+        self.assertNotIn("Save Trusted Units", settings)
 
     def test_preflight_surfaces_units_as_resolvable_setup(self):
         adapter = SimpleNamespace(inspect_dataset=lambda _path: object())

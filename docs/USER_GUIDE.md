@@ -1,5 +1,11 @@
 # PyForestScan QGIS User Guide
 
+## Set up or reload the Processing Engine
+
+Open **Tools & Setup** and select **Set Up Processing Engine**. When the status is Ready, the same location provides **Repair / Reload Processing Engine** for deliberate reconciliation after an update or failure. The action manages only the user-local isolated environment and does not load PyForestScan, PDAL, or GDAL into QGIS Python. A valid existing environment is verified and reused instead of needlessly reinstalled.
+
+If Process reports unknown LiDAR units or coordinate system, use the compact controls shown beside that job. Mission Control saves the assignment and reruns the check automatically. No spatial-reference setting is shown when automation resolved the source safely.
+
 Mission Control opens even when the Processing Engine has not been installed or needs repair. You can review settings, diagnostics, and existing results before setup. Processing remains disabled until the engine reports Ready; your selected LiDAR, area, products, and output folder remain available while setup completes.
 
 ## Tools & Setup

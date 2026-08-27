@@ -1,5 +1,11 @@
 # Mission Control
 
+## Processing Engine setup
+
+Tools & Setup always offers one engine action: **Set Up Processing Engine**, or **Repair / Reload Processing Engine** after setup or when recovery is needed. Ready means the complete managed runtime contract was established for this plugin build. Startup only reads that local state; setup occurs only after confirmation.
+
+The Process page keeps its selections when setup is needed and enables processing after the successful state refresh. CRS and units controls appear inline only when preflight cannot safely resolve the current source, then disappear after assignment and automatic recheck.
+
 Mission Control opens independently of Processing Engine readiness. It first constructs the complete interface, then resolves lightweight engine status. Missing or damaged engine files show setup or repair guidance and disable processing; they do not block navigation, settings, diagnostics, or existing results.
 
 ## Tools & Setup

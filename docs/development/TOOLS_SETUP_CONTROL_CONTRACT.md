@@ -1,5 +1,9 @@
 # Tools & Setup Control Contract
 
+## Phase 32C setup action
+
+The Processing Engine action is always present. It reads **Set Up Processing Engine** before current-build setup and **Repair / Reload Processing Engine** when the engine is usable or needs recovery. Both labels call the same authoritative `ensure_processing_engine_ready()` transaction. A separate normal Recheck button is intentionally absent; **Open Diagnostics** owns technical inspection. LiDAR spatial-reference controls are contextual to the Process page, not permanent Tools & Setup content.
+
 ## Purpose
 
 Tools & Setup answers two normal-user questions: **Is the Processing Engine ready?** and **Where should outputs go?** Specialist spatial-reference repair and technical evidence remain available without competing with that path.

@@ -13,6 +13,8 @@ from pyforestscan_qgis.core.backend.processing_engine import (
     ProcessingEngineState,
     ProcessingEngineStateModel,
     ProcessingEngineVerifier,
+    current_plugin_build_id,
+    current_runner_hash,
     environment_fingerprint,
 )
 from pyforestscan_qgis.core.backend.runtime_manifest import PRODUCT_CAPABILITIES
@@ -36,8 +38,8 @@ class AuthoritativeProcessingEngineTests(unittest.TestCase):
             "required_function_signatures": {"pyforestscan.handlers": {"read_lidar": "(path, crs)"}},
             "product_capabilities": PRODUCT_CAPABILITIES,
             "capability_smoke_results": {name: True for name in PRODUCT_CAPABILITIES},
-            "runner_sha256": "runner",
-            "plugin_build_id": "plugin-build",
+            "runner_sha256": current_runner_hash(),
+            "plugin_build_id": current_plugin_build_id(),
             "versions": {"pyforestscan": "0.4.1"},
             "module_locations": {"pyforestscan.handlers": "managed/handlers.py"},
         }
@@ -51,14 +53,14 @@ class AuthoritativeProcessingEngineTests(unittest.TestCase):
                 calls.append(command)
                 return subprocess.CompletedProcess(command, 0, json.dumps(self._payload(paths)), "")
 
-            service = ProcessingEngineService(paths)
+            service = ProcessingEngineService(paths, setup_callback=lambda **kwargs: None)
             service.verifier = ProcessingEngineVerifier(paths, runner, Path(folder))
-            state = service.recheck()
+            state = service.ensure_processing_engine_ready()
             first = service.runtime_token_for(("chm", "rumple"))
             second = service.runtime_token_for(("chm", "rumple"))
             self.assertTrue(state.ready_for_processing)
             self.assertEqual(first, second)
-            self.assertEqual(len(calls), 1)
+            self.assertEqual(len(calls), 2)
             self.assertEqual(first.engine_id, state.engine_id)
             self.assertEqual(first.contract_hash, state.contract_hash)
 
@@ -104,12 +106,14 @@ class AuthoritativeProcessingEngineTests(unittest.TestCase):
         self.assertIn("engine_service=self.processing_engine_service()", service)
         self.assertIn("self.engine_service.runtime_token_for", execution)
         self.assertNotIn("ProcessingEngineVerifier(self.paths, runner=self.runner, plugin_parent=self.plugin_parent).assert_ready_for", execution)
-        self.assertIn("self.service.setup_processing_engine", pages)
+        self.assertIn("self.service.ensure_processing_engine_ready", pages)
         self.assertNotIn("self.service.install_backend(progress_callback", pages)
 
-    def test_normal_ui_has_one_click_setup_and_troubleshooting_recheck(self):
+    def test_normal_ui_has_one_authoritative_setup_action(self):
         source = (Path(__file__).parents[1] / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
-        self.assertIn('QPushButton("Recheck Processing Engine")', source)
+        self.assertIn('QPushButton("Set Up Processing Engine")', source)
+        self.assertIn('"Repair / Reload Processing Engine"', source)
+        self.assertNotIn('QPushButton("Recheck Processing Engine")', source)
         self.assertIn("processingEngineStateChanged", source)
         self.assertIn("ready_for_processing", source)
         self.assertNotIn("Verify Backend until status is Ready", source)

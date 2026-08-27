@@ -108,7 +108,7 @@ from ..core.product_plan import (
 from ..core.types import ProductType
 from ..core.spatial_assignment import AssignmentScope, LinearUnit
 from ..core.spatial_reference_resolver import default_spatial_assignment_store
-from ..core.processing_spatial_context import PolygonAlignmentFallbackChoice, SourceLocalFallbackChoice, SourceLocalFallbackPolicy, default_source_local_policy_store
+from ..core.processing_spatial_context import default_source_local_policy_store
 from ..core.processing_ui_state import ProcessingUiState, control_policy, reconcile_ui_state, terminal_state_from_result
 from ..core.durable_errors import DurableErrorRecord, read_recent_error, write_recent_error
 from ..core.completed_job_summary import CompletedJobSummary, completed_job_summary, format_completed_job_summary
@@ -1960,7 +1960,7 @@ class _BackendInstallWorker(QObject):
     def run(self) -> None:
         """Run backend installation and emit progress/result signals."""
         try:
-            result = self.service.setup_processing_engine(progress_callback=self.progressUpdated.emit)
+            result = self.service.ensure_processing_engine_ready(progress_callback=self.progressUpdated.emit)
         except Exception as exc:  # noqa: BLE001 - worker must never crash QGIS UI.
             self.failed.emit(f"Unexpected backend installation failure: {exc}")
             return
@@ -2090,9 +2090,10 @@ class BatchPage(MissionPage):
         self.spatial_assignment_frame = QFrame()
         assignment_layout = QVBoxLayout(self.spatial_assignment_frame)
         assignment_layout.setContentsMargins(0, SECTION_SPACING, 0, SECTION_SPACING)
-        self.spatial_assignment_title = _body_label("Preparation needs one detail")
+        self.spatial_assignment_title = _body_label("Spatial reference needed")
         assignment_layout.addWidget(self.spatial_assignment_title)
-        assignment_layout.addWidget(_details_label("PyForestScan found usable ground data and can prepare this LiDAR. Choose the coordinate units to continue."))
+        self.spatial_assignment_help = _details_label("Choose only the missing spatial information. Source coordinates are not modified.")
+        assignment_layout.addWidget(self.spatial_assignment_help)
         assignment_row = QHBoxLayout()
         self.source_units_combo = QComboBox()
         self.source_units_combo.addItem("Meters", LinearUnit.METERS.value)
@@ -2695,7 +2696,7 @@ class BatchPage(MissionPage):
         """Show one compact setup action without discarding current selections."""
         ready = bool(getattr(engine, "ready_for_processing", False))
         repair = bool(getattr(engine, "repair_needed", False))
-        self.engine_setup_button.setText("Repair Processing Engine" if repair else "Set Up Processing Engine")
+        self.engine_setup_button.setText("Repair / Reload Processing Engine" if repair else "Set Up Processing Engine")
         self.engine_setup_button.setVisible(not ready)
         if not ready:
             self.run_button.setEnabled(False)
@@ -3564,6 +3565,28 @@ class BatchPage(MissionPage):
         """Expose the compact resolver only when missing spatial meaning blocks preparation."""
         self.spatial_assignment_frame.setVisible(bool(visible))
 
+    def set_spatial_intervention(self, blockers: object = ()) -> None:
+        """Show only the source-specific spatial controls required by preflight."""
+        text = " ".join(str(item) for item in (blockers or ())).upper()
+        units_needed = "SOURCE_UNITS_UNKNOWN" in text
+        crs_needed = any(token in text for token in ("CRS_UNKNOWN", "POLYGON_CRS_UNKNOWN", "COORDINATE", "ALIGNMENT", "AMBIGU"))
+        visible = units_needed or crs_needed
+        self.spatial_assignment_frame.setVisible(visible)
+        self.source_units_combo.setVisible(units_needed)
+        self.confirm_source_units_button.setVisible(units_needed)
+        self.choose_source_crs_button.setVisible(crs_needed)
+        self.use_project_crs_button.setVisible(crs_needed)
+        self.assignment_scope_combo.setVisible(visible)
+        if units_needed and crs_needed:
+            self.spatial_assignment_title.setText("LiDAR spatial reference needed")
+            self.spatial_assignment_help.setText("Choose the source units and coordinate system to continue. Coordinates are not transformed.")
+        elif units_needed:
+            self.spatial_assignment_title.setText("LiDAR units needed")
+            self.spatial_assignment_help.setText("Choose meters, international feet, or US survey feet to continue.")
+        elif crs_needed:
+            self.spatial_assignment_title.setText("Coordinate system needed")
+            self.spatial_assignment_help.setText("Use the project CRS only when it truly matches the LiDAR, or choose the correct CRS.")
+
     def _assignment_target(self) -> tuple[Path, AssignmentScope]:
         scope = AssignmentScope(str(self.assignment_scope_combo.currentData() or AssignmentScope.FILE.value))
         selected = self._selected_paths()
@@ -3681,6 +3704,7 @@ class BatchPage(MissionPage):
             finally:
                 self.preflight_button.setEnabled(True)
             self.preflight_report = report
+            self.set_spatial_intervention(report.blockers)
             self.preflight_text.setPlainText(self._polygon_guided_review_text(report))
             self.preflight_summary_label.setText("Ready to process." if not report.blockers else f"{len(report.blockers)} item(s) need attention.")
             self.polygon_guided_step_label.setText(guided_step_indicator("review"))
@@ -3712,8 +3736,7 @@ class BatchPage(MissionPage):
         self.preflight_report = report
         self.preflight_text.setPlainText(_format_preflight_report(report))
         self.preflight_summary_label.setText("Ready to process." if not report.blockers else f"{len(report.blockers)} item(s) need attention.")
-        blocker_text = " ".join(str(item) for item in report.blockers).upper()
-        self.show_spatial_assignment_prompt("SOURCE_UNITS_UNKNOWN" in blocker_text)
+        self.set_spatial_intervention(report.blockers)
         self._update_run_button_enabled()
         self._publish_session_state(plan_status="ready")
 
@@ -4635,54 +4658,6 @@ class SettingsPage(MissionPage):
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create the settings page."""
         super().__init__("Tools & Setup", parent)
-        spatial_group, spatial_tools = _collapsible_section(self.content_layout, "LiDAR Spatial Reference - Automatic", checked=False)
-        spatial_tools.addWidget(_details_label("Most LiDAR is resolved automatically. Expand only to assign trusted units when source metadata is missing."))
-        spatial_form = QFormLayout()
-        self.spatial_target_edit = QLineEdit()
-        self.spatial_target_edit.setPlaceholderText("LiDAR file or coherent repository path")
-        self.spatial_scope_combo = QComboBox()
-        self.spatial_scope_combo.addItem("This file", AssignmentScope.FILE.value)
-        self.spatial_scope_combo.addItem("This repository", AssignmentScope.REPOSITORY.value)
-        self.spatial_units_combo = QComboBox()
-        self.spatial_units_combo.addItem("Meters", LinearUnit.METERS.value)
-        self.spatial_units_combo.addItem("International feet", LinearUnit.INTERNATIONAL_FEET.value)
-        self.spatial_units_combo.addItem("US survey feet", LinearUnit.US_SURVEY_FEET.value)
-        self.source_local_fallback_combo = QComboBox()
-        self.source_local_fallback_combo.addItem("Meters", SourceLocalFallbackChoice.METERS.value)
-        self.source_local_fallback_combo.addItem("International feet", SourceLocalFallbackChoice.INTERNATIONAL_FEET.value)
-        self.source_local_fallback_combo.addItem("US survey feet", SourceLocalFallbackChoice.US_SURVEY_FEET.value)
-        self.source_local_fallback_combo.addItem("Require explicit assignment", SourceLocalFallbackChoice.REQUIRE_EXPLICIT_ASSIGNMENT.value)
-        self.polygon_alignment_fallback_combo = QComboBox()
-        self.polygon_alignment_fallback_combo.addItem("Automatic when coordinates are compatible", PolygonAlignmentFallbackChoice.AUTOMATIC_WHEN_COMPATIBLE.value)
-        self.polygon_alignment_fallback_combo.addItem("Ask", PolygonAlignmentFallbackChoice.ASK.value)
-        self.polygon_alignment_fallback_combo.addItem("Require explicit CRS", PolygonAlignmentFallbackChoice.REQUIRE_EXPLICIT_CRS.value)
-        fallback_policy = default_source_local_policy_store().read()
-        fallback_index = self.source_local_fallback_combo.findData(fallback_policy.default_units.value)
-        self.source_local_fallback_combo.setCurrentIndex(max(0, fallback_index))
-        self.source_local_fallback_combo.currentIndexChanged.connect(self.save_source_local_fallback_policy)
-        polygon_fallback_index = self.polygon_alignment_fallback_combo.findData(fallback_policy.polygon_alignment.value)
-        self.polygon_alignment_fallback_combo.setCurrentIndex(max(0, polygon_fallback_index))
-        self.polygon_alignment_fallback_combo.currentIndexChanged.connect(self.save_polygon_alignment_fallback_policy)
-        spatial_form.addRow("Source", self.spatial_target_edit)
-        spatial_form.addRow("Scope", self.spatial_scope_combo)
-        spatial_form.addRow("Coordinate units", self.spatial_units_combo)
-        spatial_form.addRow("Default units for unreferenced standalone LiDAR", self.source_local_fallback_combo)
-        spatial_form.addRow("Unreferenced polygon LiDAR alignment", self.polygon_alignment_fallback_combo)
-        spatial_tools.addLayout(spatial_form)
-        spatial_actions = QHBoxLayout()
-        self.save_spatial_units_button = QPushButton("Save Trusted Units")
-        self.save_spatial_units_button.clicked.connect(self.save_managed_spatial_units)
-        _apply_button_role(self.save_spatial_units_button, "secondary")
-        self.clear_spatial_assignment_button = QPushButton("Clear Assignment")
-        self.clear_spatial_assignment_button.clicked.connect(self.clear_managed_spatial_assignment)
-        _apply_button_role(self.clear_spatial_assignment_button, "danger")
-        spatial_actions.addWidget(self.save_spatial_units_button)
-        spatial_actions.addWidget(self.clear_spatial_assignment_button)
-        spatial_actions.addStretch(1)
-        spatial_tools.addLayout(spatial_actions)
-        self.spatial_assignment_status_label = _details_label("No source selected.")
-        spatial_tools.addWidget(self.spatial_assignment_status_label)
-        _wire_collapsible_group(spatial_group)
         defaults = self.add_section("Advanced Settings")
         form = QFormLayout()
         self.default_output_folder = QLineEdit()
@@ -4776,10 +4751,7 @@ class SettingsPage(MissionPage):
         self._set_backend_progress_visible(False)
 
         install_availability = self.backend_service.install_availability()
-        self.verify_backend_button = QPushButton("Recheck Processing Engine")
-        self.verify_backend_button.clicked.connect(self.verify_backend)
-        _apply_button_role(self.verify_backend_button, "secondary")
-        self.install_backend_button = QPushButton("Set Up")
+        self.install_backend_button = QPushButton("Set Up Processing Engine")
         self.install_backend_button.setEnabled(install_availability.enabled)
         _apply_button_role(self.install_backend_button, "primary" if install_availability.enabled else "neutral")
         if install_availability.enabled:
@@ -4795,7 +4767,6 @@ class SettingsPage(MissionPage):
         backend.addLayout(self.backend_primary_buttons)
 
         backend_troubleshooting_actions = QHBoxLayout()
-        backend_troubleshooting_actions.addWidget(self.verify_backend_button)
         backend_troubleshooting_actions.addWidget(self.open_diagnostics_button)
         backend_troubleshooting_actions.addStretch(1)
         backend_detail_layout.addLayout(backend_troubleshooting_actions)
@@ -4854,9 +4825,9 @@ class SettingsPage(MissionPage):
         }.get(status, status.title())
         _set_status_badge(self.backend_status_label, status, f"Processing Engine: {display}")
         if ready:
-            summary = "Everything required for LiDAR processing is installed."
+            summary = "Processing Engine is configured for this PyForestScan version."
         elif repair:
-            summary = "The Processing Engine needs repair. Open Diagnostics for details, then choose Repair."
+            summary = "The Processing Engine needs attention. Open Diagnostics for details, then choose Repair / Reload."
         elif status in {"FAILED", "INCOMPATIBLE"}:
             summary = message
         elif status == "CHECKING":
@@ -4866,9 +4837,9 @@ class SettingsPage(MissionPage):
         self.manual_dependency_setup_label.setText(summary)
         if not self.backend_install_running:
             action_visible, action_label = processing_engine_setup_action(status)
-            self.install_backend_button.setVisible(action_visible and status != "CHECKING")
+            self.install_backend_button.setVisible(action_visible)
             self.install_backend_button.setText(action_label)
-            self.install_backend_button.setEnabled(action_visible and status != "CHECKING" and self.backend_service.install_availability().enabled)
+            self.install_backend_button.setEnabled(action_visible and self.backend_service.install_availability().enabled)
 
     def workspace_session_preferences(self, session: WorkspaceSession) -> WorkspaceSession:
         """Return session with settings-page workspace preferences applied."""
@@ -4896,53 +4867,6 @@ class SettingsPage(MissionPage):
         if path:
             self.default_output_folder.setText(path)
             self.emit_default_output_folder()
-
-    def save_managed_spatial_units(self) -> None:
-        target = Path(self.spatial_target_edit.text().strip())
-        if not str(target) or str(target) == ".":
-            self.spatial_assignment_status_label.setText("Choose a LiDAR file or repository path.")
-            return
-        try:
-            scope = AssignmentScope(str(self.spatial_scope_combo.currentData()))
-            assignment = default_spatial_assignment_store().assign_units(target, self.spatial_units_combo.currentData(), scope=scope, notes="Managed in Tools & Setup.")
-        except (ValueError, OSError) as exc:
-            self.spatial_assignment_status_label.setText(str(exc))
-            return
-        self.spatial_assignment_status_label.setText(f"Source units assigned - {assignment.linear_units.value.replace('_', ' ').title()}. Coordinate system not assigned; coordinates remain source-local.")
-
-    def clear_managed_spatial_assignment(self) -> None:
-        target = Path(self.spatial_target_edit.text().strip())
-        store = default_spatial_assignment_store()
-        try:
-            if AssignmentScope(str(self.spatial_scope_combo.currentData())) is AssignmentScope.REPOSITORY:
-                store.clear_repository(target)
-            else:
-                store.clear_file(target)
-        except OSError as exc:
-            self.spatial_assignment_status_label.setText(str(exc))
-            return
-        self.spatial_assignment_status_label.setText("Spatial assignment cleared. Embedded/sidecar evidence remains unchanged.")
-
-    def save_source_local_fallback_policy(self) -> None:
-        try:
-            choice = SourceLocalFallbackChoice(str(self.source_local_fallback_combo.currentData()))
-            current = default_source_local_policy_store().read()
-            default_source_local_policy_store().write(SourceLocalFallbackPolicy(choice, current.version, current.polygon_alignment))
-        except (ValueError, OSError) as exc:
-            self.spatial_assignment_status_label.setText(f"Fallback preference could not be saved: {exc}")
-            return
-        label = self.source_local_fallback_combo.currentText()
-        self.spatial_assignment_status_label.setText(f"Standalone source-local fallback: {label}. This preference never assigns a CRS or permits polygon alignment.")
-
-    def save_polygon_alignment_fallback_policy(self) -> None:
-        try:
-            choice = PolygonAlignmentFallbackChoice(str(self.polygon_alignment_fallback_combo.currentData()))
-            current = default_source_local_policy_store().read()
-            default_source_local_policy_store().write(SourceLocalFallbackPolicy(current.default_units, current.version, choice))
-        except (ValueError, OSError) as exc:
-            self.spatial_assignment_status_label.setText(f"Polygon alignment preference could not be saved: {exc}")
-            return
-        self.spatial_assignment_status_label.setText(f"Unreferenced polygon LiDAR alignment: {self.polygon_alignment_fallback_combo.currentText()}.")
 
     def emit_default_output_folder(self) -> None:
         """Emit the configured default output folder."""
@@ -4982,25 +4906,6 @@ class SettingsPage(MissionPage):
             "Compatibility, setup details, paths, and logs are collected here automatically."
         )
 
-    def verify_backend(self) -> None:
-        """Recheck the authoritative engine state for troubleshooting."""
-        self.verify_backend_button.setEnabled(False)
-        _set_status_badge(self.backend_status_label, "RUNNING", "Processing Engine: Checking")
-        QApplication.processEvents()
-        try:
-            engine = self.backend_service.processing_engine_service().recheck()
-        finally:
-            self.verify_backend_button.setEnabled(True)
-        self.refresh_backend_summary()
-        self.backend_dependency_label.setText("Verification: complete" if engine.ready_for_processing else engine.message)
-        self.backend_details.setPlainText(
-            f"Processing Engine Recheck\n\nStatus: {engine.status.value}\nExecutable: {engine.executable}\n"
-            f"Engine ID: {engine.engine_id}\nContract: {engine.contract_hash}\nProtocol: {engine.protocol_version}\n"
-            f"Plugin build: {engine.plugin_build_id}\nFailure: {engine.failure_code or 'None'}"
-        )
-        self.processingEngineStateChanged.emit(engine)
-        self.backendStateChanged.emit(engine.status.value, engine.message)
-
     def verify_qgis_compatibility(self) -> None:
         """Display defensive QGIS compatibility details."""
         report = build_qgis_compatibility_report()
@@ -5026,9 +4931,11 @@ class SettingsPage(MissionPage):
             f"Backend folder: {self.backend_service.paths.backend_root}\n"
             "The installer downloads Micromamba, creates the backend, verifies it, and writes settings only under that folder."
         )
+        current = self.current_processing_engine_state()
+        action = "Repair / Reload Processing Engine" if current.status.value != "SETUP_REQUIRED" else "Set Up Processing Engine"
         reply = QMessageBox.question(
             self,
-            "Set Up Processing Engine",
+            action,
             message,
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -5104,7 +5011,6 @@ class SettingsPage(MissionPage):
     def _backend_install_action_buttons(self) -> tuple[QPushButton, ...]:
         """Return controls disabled while install is running."""
         return (
-            self.verify_backend_button,
             self.install_backend_button,
             self.open_diagnostics_button,
         )

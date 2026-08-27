@@ -1,5 +1,9 @@
 # Processing Engine Setup Transaction
 
+## Authoritative ensure operation
+
+Set Up and Repair / Reload both call `ensure_processing_engine_ready()`. It first performs a full managed-runtime reconciliation. A valid runtime is reverified and marked for the current plugin build without reinstalling packages. An invalid runtime enters the existing locked installer transaction, then receives final verification and the current-build setup marker. Successful completion republishes a fresh runtime token; failure remains non-Ready and exposes its concise reason plus diagnostics.
+
 Successful setup writes `processing_engine_snapshot.json`, publishes a new token, and emits the shared state event. Existing Prerun requests are invalidated and rebuilt with that new token while user selections remain intact.
 
 The normal **Set Up** and **Repair** actions call the same `setup_processing_engine()` transaction on a background Qt worker.

@@ -1,5 +1,9 @@
 # UI Startup Resilience
 
+## Deterministic lightweight state
+
+Startup re-reads the persisted Processing Engine manifest on every state request and validates its current-build identity using local hashes only. It does not trust a process singleton or launch managed verification. Missing, corrupt, or stale setup records remain non-Ready until the user explicitly selects Set Up or Repair / Reload.
+
 ## Invariant
 
 Mission Control is available independently from scientific processing. Plugin activation, dock construction, navigation, settings, diagnostics, and prior-result access require only QGIS/PyQt, plugin-local modules, and lightweight persisted state.

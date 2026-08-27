@@ -97,7 +97,11 @@ class BackendService:
 
     def setup_processing_engine(self, progress_callback=None):
         """Idempotently install or repair the managed engine under one process lock."""
-        return self.processing_engine_service().setup_or_repair(progress_callback=progress_callback)
+        return self.ensure_processing_engine_ready(progress_callback=progress_callback)
+
+    def ensure_processing_engine_ready(self, progress_callback=None):
+        """Run the one authoritative setup/reload transaction."""
+        return self.processing_engine_service().ensure_processing_engine_ready(progress_callback=progress_callback)
 
     def verify_runner(self) -> BackendExecutionAvailability:
         """Verify the PBM backend runner module."""

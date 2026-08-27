@@ -211,6 +211,7 @@ def contract_hash(contract: dict[str, Any]) -> str:
             "python_version", "python_executable", "versions", "module_locations",
             "required_functions", "required_function_signatures", "product_capabilities",
             "capability_smoke_results", "dependency_manifest_hash", "product_capability_hash",
+            "setup_completed_at", "setup_plugin_build_id",
         )
     }
     return hashlib.sha256(json.dumps(stable, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
@@ -249,6 +250,15 @@ def current_plugin_build_id() -> str:
         return ""
 
 
+def current_runner_hash() -> str:
+    """Hash the packaged managed-job runner without importing scientific code."""
+    runner = Path(__file__).resolve().parents[2] / "backend_runner" / "run_processing_job.py"
+    try:
+        return hashlib.sha256(runner.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
 class ProcessingEngineVerifier:
     """Verify the same managed interpreter used for scientific execution."""
 
@@ -258,27 +268,50 @@ class ProcessingEngineVerifier:
         self.plugin_parent = plugin_parent or Path(__file__).resolve().parents[3]
 
     def quick(self) -> ProcessingEngineReport:
-        """Use the persisted manifest only when its environment fingerprint is current."""
+        """Read a complete current-build setup marker without running managed code."""
         if not self.paths.python_executable.exists():
             return ProcessingEngineReport(ProcessingEngineState.SETUP_REQUIRED, "Processing setup required.", str(self.paths.python_executable), {})
         path = processing_engine_manifest_path(self.paths)
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            return ProcessingEngineReport(ProcessingEngineState.CHECKING, "Processing Engine needs verification.", str(self.paths.python_executable), {})
+            return ProcessingEngineReport(
+                ProcessingEngineState.REPAIR_REQUIRED,
+                "Processing Engine setup record is missing or unreadable.",
+                str(self.paths.python_executable),
+                {},
+                ("setup_manifest",),
+            )
         packaged_build = current_plugin_build_id()
+        runner_hash = current_runner_hash()
+        required_values = (
+            "plugin_build_id", "runner_sha256", "runner_hash", "contract_hash", "dependency_manifest_hash",
+            "product_capability_hash", "protocol_version", "python_executable",
+            "verified_at", "setup_completed_at",
+        )
         stale = (
             payload.get("contract_version") != PROCESSING_ENGINE_CONTRACT_VERSION
             or payload.get("environment_fingerprint") != environment_fingerprint(self.paths)
             or not packaged_build
             or payload.get("plugin_build_id") != packaged_build
+            or payload.get("setup_plugin_build_id") != packaged_build
+            or not runner_hash
+            or payload.get("runner_sha256") != runner_hash
+            or payload.get("runner_hash") != runner_hash
+            or payload.get("dependency_manifest_hash") != dependency_manifest_hash()
+            or payload.get("product_capability_hash") != product_capability_hash(tuple(PRODUCT_CAPABILITIES))
+            or str(payload.get("protocol_version", "")) != "2"
+            or _normalized_path(str(payload.get("python_executable", ""))) != _normalized_path(str(self.paths.python_executable))
+            or payload.get("contract_hash") != contract_hash(payload)
+            or any(not payload.get(field) for field in required_values)
+            or payload.get("status") != ProcessingEngineState.READY.value
         )
         if stale:
-            return ProcessingEngineReport(ProcessingEngineState.CHECKING, "Processing Engine verification is stale.", str(self.paths.python_executable), payload)
+            return ProcessingEngineReport(ProcessingEngineState.REPAIR_REQUIRED, "Processing Engine setup is not current for this plugin build.", str(self.paths.python_executable), payload, ("current_build_setup",))
         state = ProcessingEngineState(payload.get("status", ProcessingEngineState.CHECKING.value))
         return ProcessingEngineReport(state, _summary_for_state(state), str(self.paths.python_executable), payload, tuple(payload.get("failed_components", ())), True)
 
-    def verify(self, *, persist: bool = True) -> ProcessingEngineReport:
+    def verify(self, *, persist: bool = True, require_setup_marker: bool = False, setup_completed: bool = False) -> ProcessingEngineReport:
         if not self.paths.python_executable.exists():
             return ProcessingEngineReport(ProcessingEngineState.SETUP_REQUIRED, "Processing setup required.", str(self.paths.python_executable), {})
         command = [str(self.paths.python_executable), "-m", "pyforestscan_qgis.backend_runner", "inspect_runtime_contract"]
@@ -293,12 +326,35 @@ class ProcessingEngineVerifier:
         if actual and Path(actual).resolve() != self.paths.python_executable.resolve():
             failures += ("runtime_identity",)
         protocol_ok = bool(contract.get("protocol_compatible", False))
+        previous: dict[str, Any] = {}
+        try:
+            previous = json.loads(processing_engine_manifest_path(self.paths).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        packaged_build = current_plugin_build_id()
+        setup_marker_current = bool(
+            previous.get("setup_completed_at")
+            and previous.get("setup_plugin_build_id") == packaged_build
+        )
         if not protocol_ok:
             state = ProcessingEngineState.INCOMPATIBLE
         elif failures or completed.returncode != 0:
             state = ProcessingEngineState.REPAIR_REQUIRED
+        elif require_setup_marker and not (setup_marker_current or setup_completed):
+            failures += ("current_build_setup",)
+            state = ProcessingEngineState.REPAIR_REQUIRED
         else:
             state = ProcessingEngineState.READY
+        setup_completed_at = (
+            datetime.now(timezone.utc).isoformat()
+            if setup_completed and state is ProcessingEngineState.READY
+            else str(previous.get("setup_completed_at", ""))
+        )
+        setup_plugin_build_id = (
+            packaged_build
+            if setup_completed and state is ProcessingEngineState.READY
+            else str(previous.get("setup_plugin_build_id", ""))
+        )
         payload = {
             **contract,
             "contract_version": PROCESSING_ENGINE_CONTRACT_VERSION,
@@ -309,7 +365,11 @@ class ProcessingEngineVerifier:
             "engine_id": engine_id(self.paths),
             "dependency_manifest_hash": dependency_manifest_hash(),
             "product_capability_hash": product_capability_hash(tuple(PRODUCT_CAPABILITIES)),
+            "setup_completed_at": setup_completed_at,
+            "setup_plugin_build_id": setup_plugin_build_id,
+            "runner_hash": str(contract.get("runner_sha256", "")),
         }
+        payload["contract_hash"] = contract_hash(payload)
         if persist:
             path = processing_engine_manifest_path(self.paths)
             try:
@@ -360,9 +420,9 @@ class ProcessingEngineService:
         self._listeners: list[Callable[[ProcessingEngineStateModel], None]] = []
 
     def state(self, *, quick: bool = True) -> ProcessingEngineStateModel:
-        if quick and self._state is not None:
-            return self._state
-        report = self.verifier.quick() if quick else self.verifier.verify()
+        # Quick state is deliberately re-read: a singleton cache must not outlive a
+        # plugin build, manifest replacement, or external engine repair.
+        report = self.verifier.quick() if quick else self.verifier.verify(require_setup_marker=True)
         return self._publish(report)
 
     def assert_ready_for(self, products: tuple[str, ...]) -> ProcessingRuntimeToken:
@@ -459,26 +519,31 @@ class ProcessingEngineService:
     def environment(self) -> dict[str, str]:
         return build_processing_engine_environment(self.paths.environment_path, self.paths.platform.value)
 
-    def setup_or_repair(self, progress_callback=None) -> ProcessingEngineStateModel:
-        current = self.verifier.verify(persist=False)
+    def ensure_processing_engine_ready(self, progress_callback=None) -> ProcessingEngineStateModel:
+        """Reconcile, verify, and mark setup complete for the current plugin build."""
+        current = self.verifier.verify(persist=False, require_setup_marker=False)
         if current.ready:
-            return self._publish(self.verifier.verify())
+            return self._publish(self.verifier.verify(require_setup_marker=True, setup_completed=True))
         if self.setup_callback is None:
             raise ProcessingEngineError("ENGINE_SETUP_REQUIRED", "Processing Engine setup is not available.")
         with ProcessingEngineSetupLock(self.paths):
             self.setup_callback(progress_callback=progress_callback)
-            final = self.verifier.verify()
+            final = self.verifier.verify(require_setup_marker=True, setup_completed=True)
             state = self._publish(final)
             if not state.ready_for_processing:
                 raise ProcessingEngineError(state.failure_code or "ENGINE_REPAIR_REQUIRED", state.message, ", ".join(final.failed_components))
             return state
+
+    def setup_or_repair(self, progress_callback=None) -> ProcessingEngineStateModel:
+        """Compatibility wrapper for the authoritative ensure transaction."""
+        return self.ensure_processing_engine_ready(progress_callback=progress_callback)
 
     def subscribe(self, listener: Callable[[ProcessingEngineStateModel], None]) -> None:
         if listener not in self._listeners:
             self._listeners.append(listener)
 
     def recheck(self) -> ProcessingEngineStateModel:
-        return self._publish(self.verifier.verify())
+        return self._publish(self.verifier.verify(require_setup_marker=True))
 
     def _publish(self, report: ProcessingEngineReport) -> ProcessingEngineStateModel:
         state = ProcessingEngineStateModel.from_report(report)

@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,10 +10,16 @@ from pyforestscan_qgis.core.backend.processing_engine import (
     ProcessingEngineReport,
     ProcessingEngineService,
     ProcessingEngineState,
+    PROCESSING_ENGINE_CONTRACT_VERSION,
+    current_plugin_build_id,
+    current_runner_hash,
+    contract_hash,
     dependency_manifest_hash,
     environment_fingerprint,
     product_capability_hash,
+    processing_engine_manifest_path,
 )
+from pyforestscan_qgis.core.backend.runtime_manifest import PRODUCT_CAPABILITIES
 from pyforestscan_qgis.core.lidar_inventory import LidarSourceRecord
 from pyforestscan_qgis.core.polygon_batch import validate_polygon_execution_manifest
 from pyforestscan_qgis.core.source_alternatives import SourceRelationship, canonicalize_source_alternatives
@@ -30,15 +37,22 @@ class RuntimeHandoffTests(unittest.TestCase):
             "python_executable": str(paths.python_executable),
             "environment_fingerprint": environment_fingerprint(paths),
             "protocol_version": "2",
-            "runner_sha256": "runner-a",
-            "plugin_build_id": "plugin-a",
+            "runner_sha256": current_runner_hash(),
+            "plugin_build_id": current_plugin_build_id(),
             "dependency_manifest_hash": dependency_manifest_hash(),
-            "product_capability_hash": product_capability_hash(("chm", "rumple")),
+            "product_capability_hash": product_capability_hash(tuple(PRODUCT_CAPABILITIES)),
             "engine_id": "engine-a",
             "verified_at": "2026-08-27T00:00:00Z",
             "versions": {"pyforestscan": "0.4.1"},
+            "contract_version": PROCESSING_ENGINE_CONTRACT_VERSION,
+            "setup_completed_at": "2026-08-27T00:00:00Z",
+            "setup_plugin_build_id": current_plugin_build_id(),
+            "status": ProcessingEngineState.READY.value,
         }
-        service._publish(ProcessingEngineReport(ProcessingEngineState.READY, "ready", str(paths.python_executable), contract))
+        contract["runner_hash"] = contract["runner_sha256"]
+        contract["contract_hash"] = contract_hash(contract)
+        processing_engine_manifest_path(paths).write_text(json.dumps(contract), encoding="utf-8")
+        service.state(quick=True)
         return service
 
     def test_prerun_token_is_accepted_without_new_verification(self):
@@ -53,12 +67,15 @@ class RuntimeHandoffTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             service = self._service(folder)
             old = service.runtime_token_for(("chm", "rumple"))
-            contract = {**service._state.runtime_token.to_dict(), "python_executable": old.executable, "protocol_version": old.protocol, "runner_sha256": "runner-b", "plugin_build_id": "plugin-b", "versions": {"pyforestscan": "0.4.1"}}
-            service._publish(ProcessingEngineReport(ProcessingEngineState.READY, "ready", old.executable, contract))
+            manifest_path = processing_engine_manifest_path(service.paths)
+            contract = json.loads(manifest_path.read_text(encoding="utf-8"))
+            contract["setup_completed_at"] = "2026-08-27T01:00:00Z"
+            contract["contract_hash"] = contract_hash(contract)
+            manifest_path.write_text(json.dumps(contract), encoding="utf-8")
             with self.assertRaises(ProcessingEngineError) as raised:
                 service.validate_runtime_token_for_launch(old, ("chm", "rumple"))
             self.assertEqual(raised.exception.code, "ENGINE_RUNTIME_TOKEN_MISMATCH")
-            self.assertIn("backend_runner_hash", raised.exception.technical_message)
+            self.assertIn("contract_hash", raised.exception.technical_message)
 
     def test_manifest_requires_frozen_runtime_and_unique_work_units(self):
         payload = {

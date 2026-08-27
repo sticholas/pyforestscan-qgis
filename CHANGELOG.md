@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32C - Deterministic Processing Engine setup
+
+- Made current-build setup completion and the complete runtime contract mandatory for Ready state.
+- Kept Set Up or Repair / Reload visible and routed both through one idempotent ensure transaction.
+- Removed the normal Recheck action and permanent LiDAR Spatial Reference card.
+- Added contextual Process-page CRS/units intervention with automatic preflight rerun.
+- Preserved lightweight, offline Mission Control startup and immediate post-setup UI refresh.
+
 ## Phase 32B - Mission Control startup resilience
 
 - Fixed the live QGIS startup crash caused by the removed `smart_system_status_label` and replaced cross-page label writes with semantic APIs.

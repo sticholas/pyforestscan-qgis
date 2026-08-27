@@ -1,5 +1,9 @@
 # State Ownership Model
 
+## Processing Engine setup generation
+
+The Processing Engine service owns readiness and runtime tokens. Quick state is re-read from disk instead of returned from a long-lived singleton cache. The current setup generation participates in the contract hash, so Repair / Reload invalidates old job tokens without loading scientific libraries into QGIS Python.
+
 `ApplicationAvailability` separates `ui_available` from `processing_available`. Mission Control owns the UI lifecycle (`CREATING`, `READY`, `DESTROYING`) and one cached availability projection. `ProcessingEngineStateModel` remains authoritative for scientific readiness; the UI cache never authorizes a job.
 
 ## Frozen and terminal state

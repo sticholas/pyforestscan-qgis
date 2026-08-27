@@ -253,8 +253,9 @@ class MissionControlUxTests(unittest.TestCase):
 
         primary_snippets = (
             'backend = self.add_section("Processing Engine")',
-            "Everything required for LiDAR processing is installed.",
-            'self.install_backend_button = QPushButton("Set Up")',
+            "Processing Engine is configured for this PyForestScan version.",
+            'self.install_backend_button = QPushButton("Set Up Processing Engine")',
+            '"Repair / Reload Processing Engine"',
             "processing_engine_setup_action(status)",
         )
         for snippet in primary_snippets:
