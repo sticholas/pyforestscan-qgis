@@ -59,6 +59,8 @@ The offscreen QGIS renderer did not paint stylesheet text into screenshots on th
 
 ## Guardrails
 
+Phase 32B removed the stale Mission Control dependency on the deleted `smart_system_status_label`. Tools & Setup now receives engine state only through `set_processing_engine_state()`; the Phase 32A layout and action count are unchanged.
+
 - Setup and Repair still call the same background managed-engine transaction.
 - Recheck does not install or mutate the engine.
 - Diagnostics does not create processing work.

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from qgis.PyQt import uic
-from qgis.PyQt.QtCore import QByteArray, Qt, QUrl
+from qgis.PyQt.QtCore import QByteArray, Qt, QTimer, QUrl
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import QDockWidget, QFileDialog, QSizePolicy, QWidget
 
@@ -32,6 +32,7 @@ from .pages import (
     WorkspacePage,
 )
 from .advisor import completed_products_from_job
+from .availability import ApplicationAvailability, UiInitializationState
 from .raster_styling import apply_generated_raster_renderer, is_raster_result, layer_display_name
 from .state import MissionControlState, ProjectSummary, build_project_summary
 from .session_state import MissionControlSessionState
@@ -63,6 +64,9 @@ class MissionControlDock(QDockWidget):
     def __init__(self, iface: Any, parent: QWidget | None = None) -> None:
         """Create the Mission Control dock and wire page navigation."""
         super().__init__("PyForestScan Mission Control", parent)
+        self._ui_lifecycle = UiInitializationState.CREATING
+        self._pending_engine_state: object | None = None
+        self.application_availability = ApplicationAvailability()
         self.iface = iface
         self.adapter = PyForestScanAdapter(execution_mode="pbm_backend")
         self.knowledge_engine = KnowledgeEngine()
@@ -134,7 +138,6 @@ class MissionControlDock(QDockWidget):
         self.page_by_name = dict(zip(self.INTERNAL_PAGE_NAMES, self.pages))
         self.page_by_name.update({"Process":self.batch_page,"Tools & Setup":self.settings_page})
         self.batch_page.set_job_token_factory(self._begin_current_job)
-        self.batch_page.set_processing_engine_state(self.settings_page.backend_service.processing_engine_state(quick=True))
         self._last_content_navigation_row = 0
 
         self._configure_style()
@@ -143,6 +146,11 @@ class MissionControlDock(QDockWidget):
         self._restore_workspace_session()
         self._refresh_home()
         self._update_status_bar()
+        self._ui_lifecycle = UiInitializationState.READY
+        if self._pending_engine_state is not None:
+            pending, self._pending_engine_state = self._pending_engine_state, None
+            self._set_processing_engine_state(pending)
+        QTimer.singleShot(0, self._resolve_processing_engine_state)
 
     def show_home(self) -> None:
         """Show the primary Mission Control workspace."""
@@ -158,6 +166,36 @@ class MissionControlDock(QDockWidget):
         """Save the Mission Control workspace session when the window closes."""
         self._save_workspace_session()
         super().closeEvent(event)
+
+    def prepare_for_unload(self) -> None:
+        """Reject late state projections before Qt destroys child widgets."""
+        self._ui_lifecycle = UiInitializationState.DESTROYING
+        for timer in (
+            getattr(self.batch_page, "_processing_watchdog", None),
+            getattr(self.settings_page, "backend_install_timer", None),
+        ):
+            if timer is not None:
+                timer.stop()
+        try:
+            self.settings_page.processingEngineStateChanged.disconnect(self._set_processing_engine_state)
+        except (TypeError, RuntimeError):
+            pass
+
+    def _resolve_processing_engine_state(self) -> None:
+        """Resolve optional engine state only after the complete UI is available."""
+        if self._ui_lifecycle is not UiInitializationState.READY:
+            return
+        try:
+            engine = self.settings_page.current_processing_engine_state()
+        except Exception as exc:  # noqa: BLE001 - optional engine state cannot tear down the UI.
+            self.application_availability = ApplicationAvailability.unavailable(
+                f"Processing Engine status unavailable: {exc}"
+            )
+            self.settings_page.set_processing_engine_state(self.application_availability)
+            self.batch_page.set_processing_engine_state(self.application_availability)
+            self._update_status_bar()
+            return
+        self._set_processing_engine_state(engine)
 
     def _load_workspace_session(self) -> WorkspaceSession:
         """Load global Mission Control workspace session state."""
@@ -404,7 +442,8 @@ class MissionControlDock(QDockWidget):
         self.session_state = self.session_state.with_updates(environment_status=status)
         self.session_events.environmentStatusChanged.emit(self.session_state)
         self._record_workspace_event("environment_refreshed", f"Environment verified: {status}")
-        if self._current_primary_page_name() != "Tools & Setup":self.settings_page.refresh_backend_summary()
+        if self._current_primary_page_name() != "Tools & Setup":
+            QTimer.singleShot(0, self._resolve_processing_engine_state)
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
@@ -601,7 +640,10 @@ class MissionControlDock(QDockWidget):
         self.session_state = self.session_state.with_updates(backend_status=status)
         self.session_events.backendStatusChanged.emit(self.session_state)
         self.state = self.state.with_backend(status)
-        self.environment_page.refresh()
+        try:
+            self.environment_page.refresh()
+        except Exception as exc:  # noqa: BLE001 - environment projection is optional to engine state.
+            self._notify(f"Environment details could not be refreshed: {exc}", "warning")
         self._refresh_home()
         self._update_status_bar()
         normalized = status.lower()
@@ -610,14 +652,20 @@ class MissionControlDock(QDockWidget):
 
     def _set_processing_engine_state(self, engine: object) -> None:
         """Project one authoritative Processing Engine state across Mission Control."""
+        if self._ui_lifecycle is UiInitializationState.DESTROYING:
+            return
+        if self._ui_lifecycle is UiInitializationState.CREATING:
+            self._pending_engine_state = engine
+            return
         status = str(getattr(getattr(engine, "status", None), "value", "FAILED"))
         message = str(getattr(engine, "message", "Processing Engine state changed."))
         ready = bool(getattr(engine, "ready_for_processing", False))
+        self.application_availability = ApplicationAvailability.from_engine(engine)
         self.session_state = self.session_state.with_updates(backend_status=status)
         self.session_events.backendStatusChanged.emit(self.session_state)
         self.state = self.state.with_backend(status).with_environment("READY" if ready else "NOT READY")
-        self.environment_page.refresh()
-        self.settings_page.refresh_backend_summary()
+        self.environment_page.set_processing_engine_state(engine)
+        self.settings_page.set_processing_engine_state(engine)
         self.batch_page.set_processing_engine_state(engine)
         self._refresh_home()
         self._update_status_bar()
@@ -997,13 +1045,12 @@ class MissionControlDock(QDockWidget):
         self._go_to_guided_next_step("Home")
 
     def _update_status_bar(self) -> None:
-        engine = self.settings_page.backend_service.processing_engine_state(quick=True)
-        smart=build_smart_status(backend_ready=engine.ready_for_processing,repository_kind=self.session_state.repository_kind,polygon_area=self.session_state.polygon_area,products=self.session_state.selected_products,output_folder=self.session_state.output_folder,processing_state=self.session_state.processing_status,has_outputs=bool(self.active_job_controller.current and self.active_job_controller.current.state=="complete"),error=self.session_state.last_error)
+        availability = self.application_availability
+        smart=build_smart_status(backend_ready=availability.processing_available,repository_kind=self.session_state.repository_kind,polygon_area=self.session_state.polygon_area,products=self.session_state.selected_products,output_folder=self.session_state.output_folder,processing_state=self.session_state.processing_status,has_outputs=bool(self.active_job_controller.current and self.active_job_controller.current.state=="complete"),error=self.session_state.last_error)
         detail=" | ".join(item for item in smart.details if item)
-        self.batch_page.smart_status_label.setText(smart.headline+(f" - {detail}" if detail else ""))
-        self.settings_page.smart_system_status_label.setText(smart.headline+(f"\n{detail}" if detail else ""))
-        engine_text = "Ready" if engine.ready_for_processing else ("Needs repair" if engine.repair_needed else "Setup required")
-        self.ui.environmentStatusLabel.setText(f"{readiness_marker_label(engine.status.value)} Processing Engine: {engine_text}")
+        self.batch_page.set_smart_status(smart.headline, detail)
+        engine_text = "Ready" if availability.processing_available else ("Needs repair" if availability.repair_required else ("Checking" if availability.engine_status == "CHECKING" else "Setup required"))
+        self.ui.environmentStatusLabel.setText(f"{readiness_marker_label(availability.engine_status)} Processing Engine: {engine_text}")
         repo = self.session_state.repository_kind.upper() if self.session_state.repository_path else "Not selected"
         self.ui.datasetStatusLabel.setText(f"LiDAR: {repo}")
         area = f"{self.session_state.polygon_area / 10000:.3g} ha" if self.session_state.polygon_area is not None else "Not selected"

@@ -255,7 +255,7 @@ class MissionControlUxTests(unittest.TestCase):
             'backend = self.add_section("Processing Engine")',
             "Everything required for LiDAR processing is installed.",
             'self.install_backend_button = QPushButton("Set Up")',
-            "processing_engine_setup_action(engine.status.value)",
+            "processing_engine_setup_action(status)",
         )
         for snippet in primary_snippets:
             self.assertIn(snippet, source)

@@ -63,6 +63,7 @@ class PyForestScanPlugin:
                 remove_toolbar_icon(self.mission_control_action)
             self.mission_control_action = None
         if self.mission_control is not None:
+            self.mission_control.prepare_for_unload()
             save_session = getattr(self.mission_control, "_save_workspace_session", None)
             if callable(save_session):
                 save_session()

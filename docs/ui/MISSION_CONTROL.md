@@ -1,5 +1,7 @@
 # Mission Control
 
+Mission Control opens independently of Processing Engine readiness. It first constructs the complete interface, then resolves lightweight engine status. Missing or damaged engine files show setup or repair guidance and disable processing; they do not block navigation, settings, diagnostics, or existing results.
+
 ## Tools & Setup
 
 Tools & Setup uses a single Processing Engine card. Ready engines show status only; setup-required engines show **Set Up**; repair-required engines show **Repair**. **Advanced Settings** is always visible and contains only the default output folder and startup preference. **Troubleshooting** is collapsed and contains **Recheck Processing Engine** plus **Open Diagnostics**. Technical paths, package details, compatibility evidence, and logs are hidden until diagnostics is opened.

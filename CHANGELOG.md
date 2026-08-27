@@ -1,5 +1,12 @@
 # Changelog
 
+## Phase 32B - Mission Control startup resilience
+
+- Fixed the live QGIS startup crash caused by the removed `smart_system_status_label` and replaced cross-page label writes with semantic APIs.
+- Separated UI availability from Processing Engine readiness and deferred optional engine-state resolution until the dock is fully constructed.
+- Removed full Environment Check execution from ordinary engine-state projection and footer refresh.
+- Added lifecycle teardown guards, packaged QGIS startup/state/width tests, and 100-cycle open-close and navigation soaks.
+
 ## Phase 32A - Tools & Setup productization
 
 - Reduced Tools & Setup to one contextual Processing Engine action, always-visible Advanced Settings, and two collapsed troubleshooting actions.

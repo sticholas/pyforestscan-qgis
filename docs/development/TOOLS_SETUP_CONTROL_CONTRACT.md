@@ -30,3 +30,5 @@ The internal recent-item value bounds recent workspace display. It must not be r
 ## Compatibility
 
 Legacy helper methods may remain callable for compatibility and tests, but they must not create duplicate visible controls. New setup or support actions must be added to this contract before appearing on the normal page.
+
+Mission Control may call `current_processing_engine_state()` after its lifecycle reaches Ready and may project state through `set_processing_engine_state()`. It must not mutate labels or other child widgets directly.

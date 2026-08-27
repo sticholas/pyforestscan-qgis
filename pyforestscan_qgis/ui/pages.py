@@ -609,6 +609,21 @@ class EnvironmentPage(MissionPage):
         finally:
             self.refresh_button.setEnabled(True)
 
+    def set_processing_engine_state(self, engine: object) -> None:
+        """Project engine readiness without running the full environment check."""
+        status = str(getattr(getattr(engine, "status", None), "value", getattr(engine, "engine_status", "FAILED")))
+        ready = bool(getattr(engine, "ready_for_processing", getattr(engine, "processing_available", False)))
+        repair = bool(getattr(engine, "repair_needed", getattr(engine, "repair_required", False)))
+        display = "Ready" if ready else ("Needs repair" if repair else ("Checking" if status == "CHECKING" else "Setup required"))
+        _set_status_badge(self.status_label, status, f"Processing Engine: {display}")
+        self.pbm_status_label.setText(f"Processing Engine: {display}")
+        self.execution_label.setText("Execution backend: Processing Engine" if ready else "Execution backend: unavailable until setup completes")
+        self.next_step_label.setText(
+            "Recommended next step: continue processing."
+            if ready
+            else "Recommended next step: open Tools & Setup."
+        )
+
     def set_report(self, report: EnvironmentReport) -> None:
         """Display an environment report."""
         _set_status_badge(self.status_label, report.readiness.value, readiness_status_text(report.readiness.value, environment_headline(report.readiness.value)))
@@ -2671,6 +2686,10 @@ class BatchPage(MissionPage):
 
     def set_job_token_factory(self,factory) -> None:
         self._job_token_factory=factory
+
+    def set_smart_status(self, headline: str, detail: str = "") -> None:
+        """Project the shared workflow summary without exposing child widgets."""
+        self.smart_status_label.setText(headline + (f" - {detail}" if detail else ""))
 
     def set_processing_engine_state(self, engine: object) -> None:
         """Show one compact setup action without discarding current selections."""
@@ -4798,7 +4817,7 @@ class SettingsPage(MissionPage):
         technical_layout.addWidget(self.backend_technical_log)
         self.backend_technical_log_group.setLayout(technical_layout)
         backend_detail_layout.addWidget(self.backend_technical_log_group)
-        self.refresh_backend_summary()
+        self.set_processing_engine_state(None)
 
     def set_workspace_session(self, session: WorkspaceSession) -> None:
         """Display persisted workspace session preferences."""
@@ -4812,6 +4831,44 @@ class SettingsPage(MissionPage):
     def recent_item_display_limit(self) -> int:
         """Return the internal recent-workspace display bound, never a job limit."""
         return self._maximum_recent_items
+
+    def current_processing_engine_state(self) -> object:
+        """Return the lightweight cached/quick engine verification projection."""
+        return self.backend_service.processing_engine_state(quick=True)
+
+    def set_processing_engine_state(self, engine: object | None) -> None:
+        """Project engine state without requiring callers to know page widgets."""
+        if engine is None:
+            status = "CHECKING"
+            ready = False
+            repair = False
+            message = "Processing Engine status is being checked."
+        else:
+            status = str(getattr(getattr(engine, "status", None), "value", getattr(engine, "engine_status", "FAILED")))
+            ready = bool(getattr(engine, "ready_for_processing", getattr(engine, "processing_available", False)))
+            repair = bool(getattr(engine, "repair_needed", getattr(engine, "repair_required", False)))
+            message = str(getattr(engine, "message", "Processing Engine status unavailable."))
+        display = {
+            "READY": "Ready", "CHECKING": "Checking", "SETUP_REQUIRED": "Setup required",
+            "REPAIR_REQUIRED": "Needs repair", "INCOMPATIBLE": "Update required", "FAILED": "Unavailable",
+        }.get(status, status.title())
+        _set_status_badge(self.backend_status_label, status, f"Processing Engine: {display}")
+        if ready:
+            summary = "Everything required for LiDAR processing is installed."
+        elif repair:
+            summary = "The Processing Engine needs repair. Open Diagnostics for details, then choose Repair."
+        elif status in {"FAILED", "INCOMPATIBLE"}:
+            summary = message
+        elif status == "CHECKING":
+            summary = "Mission Control is ready while Processing Engine status is checked."
+        else:
+            summary = "Set up the Processing Engine to install everything required for LiDAR processing."
+        self.manual_dependency_setup_label.setText(summary)
+        if not self.backend_install_running:
+            action_visible, action_label = processing_engine_setup_action(status)
+            self.install_backend_button.setVisible(action_visible and status != "CHECKING")
+            self.install_backend_button.setText(action_label)
+            self.install_backend_button.setEnabled(action_visible and status != "CHECKING" and self.backend_service.install_availability().enabled)
 
     def workspace_session_preferences(self, session: WorkspaceSession) -> WorkspaceSession:
         """Return session with settings-page workspace preferences applied."""
@@ -4896,17 +4953,13 @@ class SettingsPage(MissionPage):
         """Display backend path, install-plan readiness, and detected state."""
         state = self.backend_service.detect_backend()
         engine = self.backend_service.processing_engine_state(quick=True)
+        self.set_processing_engine_state(engine)
         paths = self.backend_service.paths
         registry = self.backend_service.get_registry()
         manifest = self.backend_service.backend_manifest()
         version = self.backend_service.version_compatibility()
         compatibility = build_qgis_compatibility_report()
         availability = self.backend_service.install_availability()
-        display = {
-            "READY": "Ready", "CHECKING": "Checking", "SETUP_REQUIRED": "Setup required",
-            "REPAIR_REQUIRED": "Needs repair", "INCOMPATIBLE": "Update required", "FAILED": "Failed",
-        }.get(engine.status.value, engine.status.value.title())
-        _set_status_badge(self.backend_status_label, engine.status.value, f"Processing Engine: {display}")
         self.backend_location_label.setText(f"Storage Location: {paths.backend_root}")
         self.backend_environment_label.setText(f"Environment Location: {paths.environment_path}")
         self.backend_installed_version_label.setText(f"Installed Version: {'configured' if state.config_exists else 'Not installed'}")
@@ -4918,23 +4971,9 @@ class SettingsPage(MissionPage):
         self.zip_install_ready_label.setText("Plugin ZIP: ready for QGIS Plugin Manager installs")
         auto_ready = "available on Windows beta builds" if availability.enabled else f"not available; {availability.reason}"
         self.backend_auto_install_ready_label.setText(f"Backend installer: {auto_ready}")
-        if engine.runtime_available:
-            manual_text = "Everything required for LiDAR processing is installed."
-        elif engine.status.value == "REPAIR_REQUIRED":
-            manual_text = "The Processing Engine needs repair. Open Diagnostics for details, then choose Repair."
-        elif engine.status.value in {"FAILED", "INCOMPATIBLE"}:
-            manual_text = "Processing Engine setup cannot continue in its current state. Open Diagnostics for details."
-        else:
-            manual_text = "Set up the Processing Engine to install everything required for LiDAR processing."
-        self.manual_dependency_setup_label.setText(manual_text)
         compat_text = version.message if version else "Backend recipe unavailable"
         self.qgis_compatibility_label.setText(f"QGIS compatibility: {compatibility.summary()}; backend {compat_text}")
         self.backend_install_readiness_label.setText(engine.message)
-        if not self.backend_install_running:
-            action_visible, action_label = processing_engine_setup_action(engine.status.value)
-            self.install_backend_button.setVisible(action_visible)
-            self.install_backend_button.setText(action_label)
-            self.install_backend_button.setEnabled(action_visible and availability.enabled)
         if self.backend_install_running:
             return
         self.backend_details.setPlainText(
@@ -5176,6 +5215,7 @@ class SettingsPage(MissionPage):
         version = self.backend_service.version_compatibility()
         lines = [
             "Processing Engine Diagnostics",
+            f"Plugin build: {self.backend_service.plugin_version}",
             f"Installer availability: {'enabled' if self.backend_service.backend_install_enabled() else 'off'}",
             f"Manifest backend version: {manifest.backend_version if manifest else 'Unavailable'}",
             f"Manifest environment version: {manifest.environment_version if manifest else 'Unavailable'}",

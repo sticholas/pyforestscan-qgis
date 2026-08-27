@@ -1,5 +1,9 @@
 # Processing Engine Architecture
 
+## UI isolation
+
+The managed engine is optional during plugin and Mission Control startup. UI construction does not run verification, setup, scientific imports, or managed subprocesses. A deferred quick state read updates semantic page APIs after construction. Full verification occurs only for Recheck, explicit Environment Check, setup/repair, diagnostics, or processing readiness gates.
+
 ## Phase 31H authority
 
 One shared `ProcessingEngineService` per engine root owns setup, state publication, token issuance, and execution environment. `processing_engine.json` is authoritative; `backend.json` is installation metadata. See [Authoritative Processing Engine State](AUTHORITATIVE_PROCESSING_ENGINE_STATE.md).

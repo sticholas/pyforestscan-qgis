@@ -1,5 +1,7 @@
 # PyForestScan QGIS User Guide
 
+Mission Control opens even when the Processing Engine has not been installed or needs repair. You can review settings, diagnostics, and existing results before setup. Processing remains disabled until the engine reports Ready; your selected LiDAR, area, products, and output folder remain available while setup completes.
+
 ## Tools & Setup
 
 The Processing Engine card is the normal setup entry point. It shows **Set Up** only when the managed engine is missing and **Repair** when attention is required; no action is shown when the engine is Ready. Advanced Settings keeps the output-folder and startup preferences visible. Troubleshooting is collapsed by default and provides a read-only recheck and consolidated diagnostics.
