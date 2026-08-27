@@ -8,6 +8,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from pyforestscan_qgis.core.backend.process_env import hidden_subprocess_kwargs
 from typing import Any
 
 from pyforestscan_qgis.core.ept_bounds import ADAPTER_CONTRACT_VERSION
@@ -68,7 +69,7 @@ def _gdal_version() -> str:
     except Exception:
         pass
     try:
-        completed = subprocess.run(["gdalinfo", "--version"], check=False, capture_output=True, text=True, timeout=10)
+        completed = subprocess.run(["gdalinfo", "--version"], check=False, capture_output=True, text=True, timeout=10, **hidden_subprocess_kwargs())
         return (completed.stdout or completed.stderr).strip() or "unknown"
     except Exception as exc:  # noqa: BLE001
         return f"unavailable: {exc}"

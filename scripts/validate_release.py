@@ -26,6 +26,7 @@ try:
         versioned_zip_path,
     )
     from validate_plugin_package import validate_zip
+    from validate_packaged_import_graph import validate_zip_import_graph
 except ModuleNotFoundError:  # pragma: no cover - used when imported as scripts.validate_release.
     from scripts.package_plugin import (
         BACKEND_MANIFEST_FILE_NAME,
@@ -40,6 +41,7 @@ except ModuleNotFoundError:  # pragma: no cover - used when imported as scripts.
         versioned_zip_path,
     )
     from scripts.validate_plugin_package import validate_zip
+    from scripts.validate_packaged_import_graph import validate_zip_import_graph
 
 
 FORBIDDEN_ZIP_PARTS = {".git", "__pycache__", "tests", "scripts", ".agents", ".codex"}
@@ -68,6 +70,7 @@ def validate_release(dist_dir: Path | None = None, update_manifest: bool = True)
     errors.extend(_validate_zip_manifest(release_zip, manifest))
     errors.extend(_validate_backend_manifest_hash(release_zip, manifest))
     errors.extend(_validate_package(release_zip))
+    errors.extend(validate_zip_import_graph(release_zip))
     errors.extend(_validate_forbidden_members(release_zip))
     errors.extend(_validate_changelog(version.plugin_version))
     errors.extend(_validate_external_worker_disabled())

@@ -1,5 +1,9 @@
 # Processing Engine Convergence
 
+## Phase 31K
+
+Coordinator children and capability probes use the centralized hidden Windows subprocess policy. Finalization consumes the launch plan, terminal heartbeat state is explicitly closed, and a persistent user-local service remains deferred pending measured need.
+
 The convergence boundary now includes immutable Prerun-to-launch identity. Polygon execution no longer runs a second verifier or asks the launcher for "whatever engine is current."
 
 Phase 31H removes the remaining state split: setup, UI, Process precheck, launcher, and worker now share one persisted READY state and runtime token. Legacy backend verification remains troubleshooting-only and cannot authorize execution.

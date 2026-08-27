@@ -310,7 +310,9 @@ class PyForestScanAdapter:
             planned_method = getattr(request, "hag_method", "classified_ground_delaunay")
             if planned_method not in {"existing_normalized_height", "classified_ground_delaunay"}:
                 raise ProcessingError(f"Unsupported planned HAG method for CHM: {planned_method}")
-            if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
+            if _requires_local_bounded_read(request):
+                point_cloud = _read_bounded_local_lidar(request)
+            elif resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
                 point_cloud = _read_source_local_lidar(request)
             else:
                 point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **_read_lidar_spatial_kwargs(request, hag=planned_method != "existing_normalized_height"))
@@ -1290,6 +1292,42 @@ def _read_lidar_spatial_kwargs(request: object, *, hag: bool) -> dict[str, objec
         kwargs["crop_poly"] = True
         kwargs["poly"] = str(crop_polygon)
     return kwargs
+
+
+def _requires_local_bounded_read(request: object) -> bool:
+    """Return whether PyForestScan would ignore bounds for this local source."""
+    if getattr(request, "bounds", None) is None:
+        return False
+    source = str(getattr(request, "input_path", "")).lower()
+    return source.endswith((".las", ".laz", ".copc", ".copc.laz"))
+
+
+def _read_bounded_local_lidar(request: object) -> object:
+    """Read one local LAS/LAZ/COPC window with PDAL before PyForestScan science.
+
+    PyForestScan 0.1.x forwards ``bounds`` only to ``readers.ept``.  Using its
+    reader for a prepared local LAZ would therefore load the complete source for
+    every area.  This adapter-owned pipeline enforces the frozen work-unit bounds.
+    """
+    path = Path(getattr(request, "input_path"))
+    bounds = prepare_ept_bounds(getattr(request, "bounds"), crs=str(getattr(request, "crs", "")))
+    expression = bounds.to_pdal_range_string()
+    lowered = str(path).lower()
+    reader_type = "readers.copc" if lowered.endswith((".copc", ".copc.laz")) else "readers.las"
+    reader: dict[str, object] = {"type": reader_type, "filename": str(path)}
+    stages: list[dict[str, object]] = [reader]
+    if reader_type == "readers.copc":
+        reader["bounds"] = expression
+    else:
+        stages.append({"type": "filters.crop", "bounds": expression})
+    pdal = _import_required("pdal", ProcessingError)
+    pipeline = pdal.Pipeline(json.dumps({"pipeline": stages}))
+    count = pipeline.execute()
+    arrays = tuple(pipeline.arrays or ())
+    _write_source_local_adapter_trace(request, "bounded_pdal_read", {"reader": reader_type, "bounds": expression, "points_read": count, "source_size_bytes": path.stat().st_size if path.is_file() else None})
+    if not arrays:
+        raise ProcessingError("PDAL returned no points for the required bounded local read.")
+    return arrays
 
 
 def prepare_ept_bounds(bounds: object, *, crs: str, source: str = "polygon_envelope", transformed: bool = True) -> EptBounds:

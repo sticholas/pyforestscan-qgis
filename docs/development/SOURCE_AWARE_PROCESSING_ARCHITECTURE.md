@@ -1,5 +1,9 @@
 # Source-aware processing architecture
 
+## Bounded local prepared sources
+
+For local LAS/LAZ, each frozen area is read with `readers.las` plus `filters.crop`; for COPC the reader receives native bounds. This adapter boundary is required because PyForestScan 0.1.x applies its `bounds` argument only to EPT. Rumple consumes the buffered CHM and performs no second point-cloud read.
+
 Large local CHM/Rumple execution now has a source-preparation dependency before canary and tiled work. Work units read a single validated local `prepared_hag.laz`, while retaining original/prepared paths in diagnostics. EPT remains on its logical bounded-work-unit path and is not fully materialized.
 
 Local LAS CHM/Rumple plans now enter the durable PBM coordinator directly instead of first clipping through QGIS Python. Work-unit identity is described in [Global Work Unit Identity](GLOBAL_WORK_UNIT_IDENTITY.md), and alternative source representations in [Source Alternative Detection](SOURCE_ALTERNATIVE_DETECTION.md).

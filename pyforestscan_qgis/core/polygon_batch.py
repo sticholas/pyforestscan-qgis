@@ -599,6 +599,7 @@ def write_polygon_batch_manifest(
     *,
     batch_folder: Path | None = None,
     mask_records: list[dict[str, str]] | None = None,
+    source_aware_plan=None,
 ) -> Path:
     """Write polygon-specific metadata beside the normal batch manifest."""
     folder = batch_folder or report.batch_folder
@@ -616,8 +617,8 @@ def write_polygon_batch_manifest(
         "concurrency": requested_effective_concurrency(_shared_options(report), source_types=_source_types(report), product_count=len(report.request.products)),
         "execution_plan": None if report.execution_plan is None else report.execution_plan.to_dict(),
         "processing_runtime": None if report.request.runtime_token is None else report.request.runtime_token.to_dict(),
-        "source_aware_raster_plan": _source_aware_chm_plan_dict(report),
-        "source_aware_chm_plan": _source_aware_chm_plan_dict(report),
+        "source_aware_raster_plan": _source_aware_chm_plan_dict(report, source_aware_plan),
+        "source_aware_chm_plan": _source_aware_chm_plan_dict(report, source_aware_plan),
         "spatial_provenance": _spatial_provenance(report),
         "plan_signature": report.plan_signature,
         "repository_identity": None if report.repository is None else report.repository.to_dict(),
@@ -858,8 +859,10 @@ def build_source_aware_chm_plan(report: PolygonBatchPreflightReport):
         polygon_wkt=report.query_geometry.exact_polygon_wkt,
     )
 
-def _source_aware_chm_plan_dict(report: PolygonBatchPreflightReport):
-    plan = build_source_aware_chm_plan(report)
+def _source_aware_chm_plan_dict(report: PolygonBatchPreflightReport, plan=None):
+    """Serialize the supplied frozen plan, building only during preflight."""
+    if plan is None:
+        plan = build_source_aware_chm_plan(report)
     return None if plan is None else plan.to_dict()
 
 def selected_source_paths(report: PolygonBatchPreflightReport) -> tuple[Path, ...]:
@@ -1019,8 +1022,18 @@ def _submit_and_observe_source_aware_chm(report,adapter,batch_folder,context,sou
     runtime_token=report.request.runtime_token
     if runtime_token is None:raise RuntimeError("ENGINE_RUNTIME_TOKEN_MISSING: Runtime token missing from polygon request.")
     products=tuple(product.value for product in report.request.products)
-    pid,_command=service.submit_polygon_coordinator(payload_path,job_dir,runtime_token,products)
     from .atomic_state import atomic_write_json
+    atomic_write_json(job_dir/"frozen_execution_plan.json", {
+        "schema": "pyforestscan-frozen-polygon-plan-v1",
+        "job_id": job_id,
+        "attempt_id": attempt_id,
+        "plan_signature": plan.plan_signature,
+        "source_plan": plan.to_dict(),
+        "processing_runtime": runtime_token.to_dict(),
+        "products": list(products),
+        "polygon_wkt": report.query_geometry.exact_polygon_wkt,
+    })
+    pid,_command=service.submit_polygon_coordinator(payload_path,job_dir,runtime_token,products)
     atomic_write_json(job_dir/"submission.json",{"job_id":job_id,"attempt_id":attempt_id,"coordinator_pid":pid,"payload":str(payload_path),"submitted_at":datetime.now(timezone.utc).isoformat()})
     terminal=job_dir/"terminal_result.json";last_stage=""
     while not terminal.exists():
@@ -1033,7 +1046,24 @@ def _submit_and_observe_source_aware_chm(report,adapter,batch_folder,context,sou
             except (OSError,ValueError):pass
         time.sleep(1)
     state=json.loads(terminal.read_text(encoding="utf-8"))
-    if state.get("state")!="complete":raise RuntimeError(state.get("error") or "Durable polygon coordinator failed.")
+    if state.get("state")!="complete":
+        from .finalization_recovery import recover_completed_polygon_job
+        recovery = recover_completed_polygon_job(
+            context.run_folder,
+            batch_folder=batch_folder,
+            job_id=job_id,
+            attempt_id=attempt_id,
+            required_work_unit_ids=(unit.work_unit_id for unit in plan.work_units),
+            requested_products=products,
+            plan_signature=plan.plan_signature,
+        )
+        if recovery.recovered:
+            now=datetime.now(timezone.utc).isoformat()
+            item=BatchItemResult(Path(source.path),context,"completed",recovery.message,recovery.outputs,_requested_extent_summary(report))
+            result=BatchResult("polygon-source-aware-chm",report.request.title,now,now,Path(batch_folder),(item,),Path(batch_folder)/"batch_summary.json",Path(batch_folder)/"batch_summary.csv",Path(batch_folder)/"batch_summary.html",load_outputs_after_completion=_shared_options(report).load_outputs_after_completion,output_registry_path=recovery.registry_path)
+            if item_callback is not None:_emit_polygon_stage(item_callback,source,context,"Complete with warning",recovery.message)
+            return write_batch_summaries(result)
+        raise RuntimeError(state.get("error") or recovery.message or "Durable polygon coordinator failed.")
     result_path=Path(state["result_path"])
     with result_path.open("rb") as stream:return pickle.load(stream)
 
@@ -1059,6 +1089,7 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
     _assert_source_preparation_complete(preparation_status, prepared_input)
 
     def execute_unit(unit, attempt):
+        unit_started=time.monotonic();timing={"schema":"pyforestscan-work-unit-timing-v1","work_unit_id":unit.work_unit_id,"attempt":attempt,"source_format":Path(prepared_input).suffix.lower(),"prepared_source":str(prepared_input),"prepared_source_size_bytes":Path(prepared_input).stat().st_size if Path(prepared_input).is_file() else None}
         unit_folder = context.run_folder / "work_units" / unit.work_unit_id
         buffered_path = unit_folder / "outputs" / "chm_buffered.tif"
         core_path = unit_folder / "outputs" / "chm_core.tif"
@@ -1077,9 +1108,12 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         reusable=_load_reusable_chm(product_checkpoint,plan.plan_signature,unit.work_unit_id)
         if reusable:
             buffered_path,core_path=reusable
+            timing["checkpoint_reuse_seconds"]=time.monotonic()-unit_started
         else:
             try:
+                backend_started=time.monotonic()
                 result = _run_logical_product(adapter, ProductType.CHM, request)
+                timing["bounded_read_and_chm_seconds"]=time.monotonic()-backend_started
             except Exception as exc:
                 if "empty point" not in str(exc).lower() and "no point" not in str(exc).lower():raise
                 from .empty_spatial_read import classify_empty_spatial_read
@@ -1089,11 +1123,14 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
                     write_work_unit_diagnostic(request.diagnostics_path,"result.json",{"status":"CompleteNoData","reason_code":decision.reason_code,"message":decision.message})
                     return WorkUnitResult(unit.work_unit_id,"CompleteNoData",attempt_count=attempt,message=decision.message,metrics={"reason_code":decision.reason_code,"polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"output_required":False,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature})
                 error=RuntimeError(decision.message);error.code="FAILED_EMPTY_READ";raise error
-            buffered_path=Path(result.output_path);_extract_core_raster(buffered_path,core_path,unit.core_extent)
+            buffered_path=Path(result.output_path);core_started=time.monotonic();_extract_core_raster(buffered_path,core_path,unit.core_extent);timing["chm_core_extraction_seconds"]=time.monotonic()-core_started
+            checksum_started=time.monotonic()
             _write_product_checkpoint(product_checkpoint,{"job_signature":plan.plan_signature,"work_unit_id":unit.work_unit_id,"products":{"chm":{"role":"requested" if ProductType.CHM in requested else "supporting","status":"Complete","buffered_path":str(buffered_path),"buffered_checksum":_file_checksum(buffered_path),"core_path":str(core_path),"core_checksum":_file_checksum(core_path),"grid_signature":plan.grid.grid_signature,"hag_method_signature":request.hag_method_signature}}})
+            timing["chm_checksum_and_checkpoint_seconds"]=time.monotonic()-checksum_started
         metrics={"core_extent":unit.core_extent.__dict__,"read_extent":unit.read_extent.__dict__,"chm_core":str(core_path),"chm_checksum":_file_checksum(core_path),"hag_method":request.hag_method,"hag_source_dimension":request.hag_source_dimension,"hag_method_signature":request.hag_method_signature,"point_crop_policy":"buffered_rectangle_then_final_mask","polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature,"product_states":{"chm":"requested_complete" if ProductType.CHM in requested else "supporting_complete"}}
         primary_path=core_path;rumple_path=None
         if rumple_requested:
+            rumple_started=time.monotonic()
             rumple_buffered=unit_folder/"outputs"/"rumple_buffered.tif";rumple_path=unit_folder/"outputs"/"rumple_core.tif"
             create_rumple_raster_from_chm(buffered_path,rumple_buffered,min_height=getattr(report.request.settings,"rumple_min_height",None))
             extent=rumple_core_extent(unit.core_extent,rumple_grid)
@@ -1101,6 +1138,16 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
                 _extract_core_raster(rumple_buffered,rumple_path,extent);totals=raster_totals(rumple_path)
                 metrics.update({"rumple_core":str(rumple_path),"rumple_checksum":_file_checksum(rumple_path),"rumple_grid_signature":rumple_grid.grid_signature,"rumple_method":"pyforestscan_qgis_patch_surface_v1","min_height":getattr(report.request.settings,"rumple_min_height",None),"surface_area_sum":totals.surface_area_sum,"planar_area_sum":totals.planar_area_sum,"valid_patch_count":totals.valid_patch_count,"product_states":{**metrics["product_states"],"rumple":"requested_complete"}});primary_path=rumple_path
                 _merge_product_checkpoint(product_checkpoint,"rumple",{"role":"requested","status":"Complete","core_path":str(rumple_path),"core_checksum":metrics["rumple_checksum"],"grid_signature":rumple_grid.grid_signature,"method":metrics["rumple_method"],"min_height":metrics["min_height"],"resolution":rumple_grid.resolution,"surface_area_sum":totals.surface_area_sum,"planar_area_sum":totals.planar_area_sum,"valid_patch_count":totals.valid_patch_count})
+            timing["rumple_from_chm_seconds"]=time.monotonic()-rumple_started
+        timing["total_seconds"]=time.monotonic()-unit_started
+        timing["rumple_lidar_reads"]=0
+        bounded_read_result=request.diagnostics_path/"bounded_read_result.json"
+        if bounded_read_result.is_file():
+            try:timing["points_read"]=int(json.loads(bounded_read_result.read_text(encoding="utf-8")).get("point_count",0))
+            except (OSError,ValueError,TypeError):pass
+        if timing.get("points_read") and timing["total_seconds"]>0:timing["points_per_second"]=timing["points_read"]/timing["total_seconds"]
+        metrics["timing"]=dict(timing)
+        write_work_unit_diagnostic(request.diagnostics_path,"work_unit_timing.json",timing)
         write_work_unit_diagnostic(request.diagnostics_path,"result.json",{"status":"Complete","buffered_output":str(buffered_path),"chm_core":str(core_path),"rumple_core":str(rumple_path) if rumple_path else "","executed_method":request.hag_method,"metrics":metrics})
         return WorkUnitResult(unit.work_unit_id,"Complete",primary_path,attempt_count=attempt,metrics=metrics)
 
@@ -1116,7 +1163,8 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         canary = PolygonProductWorkScheduler((plan.work_units[0],), execute_unit, checkpoint, concurrency=1, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress)
         canary_results = canary.run()
         from .atomic_state import atomic_write_json
-        atomic_write_json(context.run_folder / "canary_result.json", {"work_unit_id": plan.work_units[0].work_unit_id, "status": canary_results[0].status, "message": canary_results[0].message, "continues_automatically": canary_results[0].status in {"Complete", "CompleteNoData"}})
+        canary_timing=dict(canary_results[0].metrics.get("timing",{}))
+        atomic_write_json(context.run_folder / "canary_result.json", {"work_unit_id": plan.work_units[0].work_unit_id, "status": canary_results[0].status, "message": canary_results[0].message, "continues_automatically": canary_results[0].status in {"Complete", "CompleteNoData"}, "timing": canary_timing, "adaptive_recommendation": {"remaining_unit_strategy": "retain_frozen_grid", "concurrency": plan.concurrency_limit, "reason": "The pilot passed; timing is persisted for future source-signature planning without mutating the active frozen plan."}})
         if canary_results[0].status not in {"Complete", "CompleteNoData"}:
             scheduler = canary
             results = (*canary_results, *(WorkUnitResult(unit.work_unit_id, "Pending", message="Canary validation did not pass; full execution was not started.") for unit in plan.work_units[1:]))
@@ -1165,7 +1213,7 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
     item = BatchItemResult(Path(source.path), context, status, message, tuple(outputs), _requested_extent_summary(report))
     result = BatchResult("polygon-source-aware-chm", report.request.title, started_at, datetime.now(timezone.utc).isoformat(), batch_folder, (item,), batch_folder / "batch_summary.json", batch_folder / "batch_summary.csv", batch_folder / "batch_summary.html", load_outputs_after_completion=_shared_options(report).load_outputs_after_completion)
     result = _register_polygon_outputs_recoverably(result, report, mask_results, context.run_folder)
-    write_polygon_batch_manifest(report, [{"source": str(source.path), "strategy": "bounded_work_units", "work_units": str(len(plan.work_units)), "job_folder": str(context.run_folder)}], batch_folder=batch_folder, mask_records=[_mask_record(x) for x in mask_results])
+    write_polygon_batch_manifest(report, [{"source": str(source.path), "strategy": "bounded_work_units", "work_units": str(len(plan.work_units)), "job_folder": str(context.run_folder)}], batch_folder=batch_folder, mask_records=[_mask_record(x) for x in mask_results], source_aware_plan=plan)
     if item_callback is not None: item_callback(item)
     return write_batch_summaries(result)
 

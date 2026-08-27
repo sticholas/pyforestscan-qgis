@@ -1,5 +1,9 @@
 # State Ownership Model
 
+## Frozen and terminal state
+
+The frozen execution plan owns scientific intent for an attempt. Work-unit statuses own area completion. Final rasters plus `generated_outputs.json` own presentable results. `terminal_result.json` owns outcome, while `heartbeat.json` owns liveness only until terminal and then records `active: false` with `stopped_at`.
+
 Source-preparation state is owned by the durable managed coordinator under `source_preparation/<source-id>/status.json`. The coordinator lock owns artifact creation; product workers are read-only consumers and may start only after `COMPLETE`.
 
 `ProcessingEngineService` owns verification and publication. `PolygonBatchRequest.runtime_token` owns the frozen execution identity after Prerun. The coordinator consumes that identity but cannot replace it.

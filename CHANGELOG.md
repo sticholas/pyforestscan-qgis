@@ -1,5 +1,14 @@
 # Changelog
 
+## Phase 31K - Finalization reliability and bounded large-source execution
+
+- Added extracted-ZIP internal import-graph validation, including the adaptive planner and polygon coordinator runtime.
+- Finalization now serializes the frozen execution plan instead of replanning after science completes.
+- Added completed-science recovery, terminal heartbeat closure, per-area stage timing, and registry-backed processing history foundations.
+- Fixed local LAS/LAZ/COPC area reads so frozen bounds are enforced directly by PDAL; Rumple continues to derive from CHM without rereading LiDAR.
+- Centralized hidden Windows subprocess flags for coordinator children and capability checks.
+- Recorded the real Olaa recovery and LAZ/COPC performance investigation, plus a GeoLibre architecture and UX review.
+
 ## Phase 31J - Durable large-source preparation
 
 - Added automatic source-level preparation before Polygon CHM/Rumple canary and tiled execution.

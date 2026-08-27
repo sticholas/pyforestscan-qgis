@@ -1,5 +1,12 @@
 # Known Limitations
 
+## Phase 31K notes
+
+- COPC is measurably faster for the tested 11.4M-point bounded window, but automatic conversion is not enabled because the dimension-preserving conversion was not yet validated. Native COPC inputs remain supported.
+- The new bounded local read removes the full-cloud-per-area defect. A complete optimized eight-area Windows/QGIS rerun is still required to establish end-to-end timing and memory behavior.
+- Processing History currently provides the durable local registry foundation; richer Mission Control history and Re-run controls are deferred.
+- A persistent processing service is an ADR-level future option. Current production execution remains one hidden durable coordinator per job.
+
 - Phase 31J uses exact support-extent signatures for preparation reuse. A later smaller polygon inside a prior prepared extent is conservatively rebuilt unless its support extent matches exactly.
 - The Olaa `_Norm` source is eligible for normalized-Z inspection from its observed range, but its live bounded statistical validation remains pending because the UNC source was unavailable during the final automated run.
 - A bounded preparation artifact avoids full-source local duplication, but ordinary LAS/LAZ readers may still scan the network source because those formats lack COPC-style spatial seeking.

@@ -1,5 +1,9 @@
 # Mission Control User Workflow
 
+## Durable completion
+
+Choose Input, Area, Products, and Output, then select **Process LiDAR**. Long polygon runs continue in the hidden Processing Engine. Completed areas are checkpointed, and a finalization-only failure can be repaired from validated CHM/Rumple outputs without recalculating LiDAR science.
+
 For normal Batch work: choose LiDAR data, choose products, choose output, and select Process LiDAR. PyForestScan validates current inputs automatically and either starts from a frozen request or shows an actionable blocker. Advanced Processing is optional.
 
 Mission Control uses a run-folder workflow so users do not need to manually pass

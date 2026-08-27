@@ -5,6 +5,7 @@ from dataclasses import dataclass,asdict
 from datetime import datetime,timezone
 from pathlib import Path
 from pyforestscan_qgis.core.atomic_state import atomic_write_json,remove_invalid_temporaries
+from pyforestscan_qgis.core.backend.process_env import hidden_subprocess_kwargs
 
 def utc_now():return datetime.now(timezone.utc).isoformat()
 
@@ -35,6 +36,11 @@ class DurableJobCoordinator:
         atomic_write_json(self.job_dir/"coordinator_identity.json",{"job_id":job_id,"attempt_id":attempt_id,"pid":os.getpid(),"executable":str(Path(os.sys.executable)),"command":list(command),"started_at":utc_now()})
     def write_snapshot(self,snapshot):
         payload=asdict(snapshot);payload["last_heartbeat"]=utc_now();atomic_write_json(self.job_dir/"progress_snapshot.json",payload);atomic_write_json(self.job_dir/"heartbeat.json",{"job_id":snapshot.job_id,"attempt_id":snapshot.attempt_id,"pid":os.getpid(),"timestamp":payload["last_heartbeat"],"state":snapshot.state})
+    def write_terminal_snapshot(self,snapshot):
+        """Publish terminal progress and close the heartbeat lifecycle."""
+        payload=asdict(snapshot);stopped=utc_now();payload["last_heartbeat"]=stopped
+        atomic_write_json(self.job_dir/"progress_snapshot.json",payload)
+        atomic_write_json(self.job_dir/"heartbeat.json",{"job_id":snapshot.job_id,"attempt_id":snapshot.attempt_id,"pid":os.getpid(),"timestamp":stopped,"stopped_at":stopped,"state":snapshot.state,"active":False})
     def command(self,job_id,attempt_id,name,expected_state,requester="qgis"):
         command_id=str(uuid.uuid4());payload={"job_id":job_id,"attempt_id":attempt_id,"command_id":command_id,"command":name,"timestamp":utc_now(),"requester":requester,"expected_current_state":expected_state};atomic_write_json(self.commands/f"{command_id}.json",payload);return command_id
     def acknowledge_commands(self,job_id,attempt_id,state):
@@ -56,8 +62,8 @@ def main():
     for index,spec in enumerate(args.work_unit_spec):
         coordinator.acknowledge_commands(args.job_id,args.attempt_id,"running")
         snapshot=ProcessingProgressSnapshot(args.job_id,args.attempt_id,"running",total,completed,failed,total-index-1,1,index,str(index+1),"Generating CHM",str(spec),time.monotonic()-started,utc_now(),"passed","closed","pending");coordinator.write_snapshot(snapshot)
-        completed_process=subprocess.run([os.sys.executable,"-m","pyforestscan_qgis.backend_runner.run_processing_job","--spec",str(spec)],check=False)
+        completed_process=subprocess.run([os.sys.executable,"-m","pyforestscan_qgis.backend_runner.run_processing_job","--spec",str(spec)],check=False,**hidden_subprocess_kwargs())
         result_path=spec.parent/"result.json";results.append({"spec":str(spec),"returncode":completed_process.returncode,"result":str(result_path)});completed+=completed_process.returncode==0;failed+=completed_process.returncode!=0
         coordinator.write_snapshot(ProcessingProgressSnapshot(args.job_id,args.attempt_id,"running",total,completed,failed,total-completed-failed,0,completed+failed,"", "Writing Area Result",str(result_path),time.monotonic()-started,utc_now(),"passed","closed","pending"))
-    state="complete" if failed==0 else "scientific_blocker";terminal={"job_id":args.job_id,"attempt_id":args.attempt_id,"state":state,"completed":completed,"failed":failed,"results":results,"finished_at":utc_now()};atomic_write_json(args.job_dir/"terminal_result.json",terminal);coordinator.write_snapshot(ProcessingProgressSnapshot(args.job_id,args.attempt_id,state,total,completed,failed,0,0,total,"","Complete" if state=="complete" else "Scientific Blocker","",time.monotonic()-started,utc_now(),"passed","closed","complete" if state=="complete" else "blocked"));return 0 if state=="complete" else 1
+    state="complete" if failed==0 else "scientific_blocker";terminal={"job_id":args.job_id,"attempt_id":args.attempt_id,"state":state,"completed":completed,"failed":failed,"results":results,"finished_at":utc_now()};atomic_write_json(args.job_dir/"terminal_result.json",terminal);coordinator.write_terminal_snapshot(ProcessingProgressSnapshot(args.job_id,args.attempt_id,state,total,completed,failed,0,0,total,"","Complete" if state=="complete" else "Scientific Blocker","",time.monotonic()-started,utc_now(),"passed","closed","complete" if state=="complete" else "blocked"));return 0 if state=="complete" else 1
 if __name__=="__main__":raise SystemExit(main())

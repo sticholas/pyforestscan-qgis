@@ -1,5 +1,9 @@
 # Mission Control
 
+## Long processing runs
+
+Standard wording presents the managed runtime as the **Processing Engine**, work units as **areas**, and source preparation as **Preparing LiDAR**. Progress separates area processing from finalization. Technical scheduler, runtime-token, and contract details remain in troubleshooting views.
+
 After Processing Engine Setup or Repair, Mission Control refreshes all status surfaces and automatically rebuilds an existing Prerun with the new runtime identity. Repository, polygon, and product selections are preserved.
 
 Normal Tools & Setup shows one Processing Engine card and one Set Up/Repair action. Recheck and technical backend information are collapsed under Troubleshooting. Process shows a compact Set Up/Repair action in place, preserves selections, and refreshes automatically through `processingEngineStateChanged`.

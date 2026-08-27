@@ -1,5 +1,9 @@
 # Current Architecture Map
 
+## Phase 31K reliability boundary
+
+Polygon launch persists an immutable execution plan. The managed coordinator executes that plan, writes area timing/checkpoints, finalizes outputs, and closes heartbeat state. QGIS receives terminal results and loads registered final products on its main thread. Recovery may repair registration and terminal presentation from validated outputs, but cannot invoke scientific execution.
+
 ## Phase 31H execution authority
 
 Mission Control and Advanced Toolbox explicitly select the managed adapter. BackendService shares one engine service. Process obtains its token before job creation; BackendExecutionService consumes that state/token and launches managed Python. Legacy backend checks are diagnostic only.

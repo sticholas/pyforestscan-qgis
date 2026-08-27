@@ -18,6 +18,7 @@ from .output_registry import generated_output_for_path, write_output_registry
 from .batch_manifest import MANIFEST_NAME, create_manifest, load_manifest, update_manifest_item, write_manifest
 from .batch_runner import BatchControlCallback, BatchExecutionError, BatchJobCallback, BatchProgressCallback, BatchRunner
 from .automatic_execution import choose_automatic_execution
+from .backend.process_env import hidden_subprocess_kwargs
 from .external_worker import (
     EXTERNAL_WORKER_DISABLED_MESSAGE,
     EXTERNAL_WORKER_MODE,
@@ -177,7 +178,7 @@ class BatchExecutor:
                 job_id = manifest_item.job_id if manifest_item is not None and manifest_item.job_id else f"pfs-file-{uuid.uuid4().hex[:10]}"
                 spec = build_worker_job_spec(job_id, dataset, batch_folder, request.settings)
                 spec_path = write_worker_job_spec(spec)
-                process = subprocess.Popen(worker_run_command(spec_path), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                process = subprocess.Popen(worker_run_command(spec_path), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, **hidden_subprocess_kwargs())
                 running[process] = (dataset, spec.result_path)
             if not running:
                 break
