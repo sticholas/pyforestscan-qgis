@@ -1,5 +1,11 @@
 # Mission Control
 
+## Tools & Setup
+
+Tools & Setup uses a single Processing Engine card. Ready engines show status only; setup-required engines show **Set Up**; repair-required engines show **Repair**. **Advanced Settings** is always visible and contains only the default output folder and startup preference. **Troubleshooting** is collapsed and contains **Recheck Processing Engine** plus **Open Diagnostics**. Technical paths, package details, compatibility evidence, and logs are hidden until diagnostics is opened.
+
+The separate LiDAR spatial-reference section is collapsed by default. The removed Recent Item Limit affected only recent-workspace display and never controlled processing scale.
+
 ## Long processing runs
 
 Standard wording presents the managed runtime as the **Processing Engine**, work units as **areas**, and source preparation as **Preparing LiDAR**. Progress separates area processing from finalization. Technical scheduler, runtime-token, and contract details remain in troubleshooting views.

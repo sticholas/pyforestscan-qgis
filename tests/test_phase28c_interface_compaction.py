@@ -28,8 +28,9 @@ class Phase28CInterfaceCompactionTests(unittest.TestCase):
         self.assertNotIn('_collapsible_section(self.content_layout, "Batch Footprint Estimate"', PAGES)
 
     def test_specialist_controls_are_collapsed(self):
-        for title in ("Repository Tools", "Map and Spatial Tools", "Advanced Product Settings", "Advanced Batch Options", "Additional Tools"):
+        for title in ("Repository Tools", "Map and Spatial Tools", "Advanced Product Settings", "Advanced Batch Options"):
             self.assertIn(f'"{title}", checked=False', PAGES)
+        self.assertNotIn('"Additional Tools", checked=False', PAGES)
 
     def test_key_summary_widgets_are_content_bounded(self):
         self.assertIn("_size_text_edit_to_content(self.preflight_text)", PAGES)
@@ -54,7 +55,8 @@ class Phase28CInterfaceCompactionTests(unittest.TestCase):
     def test_environment_and_settings_use_progressive_disclosure(self):
         self.assertIn('"QGIS Python fallback environment", checked=False', PAGES)
         self.assertIn('"Technical dependency details", checked=False', PAGES)
-        self.assertIn('"Advanced Settings", checked=False', PAGES)
+        self.assertIn('self.add_section("Advanced Settings")', PAGES)
+        self.assertNotIn('"Advanced Settings", checked=False', PAGES)
         self.assertIn('"Troubleshooting", checked=False', PAGES)
 
     def test_primary_action_and_toolbox_contract(self):

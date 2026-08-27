@@ -15,28 +15,28 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 
         self.assertIn('self.install_backend_button = QPushButton("Set Up")', source)
-        self.assertIn('self.install_backend_button.setText("Ready" if state.ready_for_processing else ("Repair" if state.repair_needed else "Set Up"))', source)
+        self.assertIn("processing_engine_setup_action", source)
         self.assertIn("self.install_backend_button.clicked.connect(self.install_backend_internal_beta)", source)
         self.assertIn("This will set up all PyForestScan processing components in your user-local PyForestScan folder", source)
         self.assertIn("It will not modify QGIS or system Python", source)
 
-    def test_phase_22b_preview_and_compatibility_buttons_are_present(self) -> None:
+    def test_install_plan_and_compatibility_are_consolidated_into_diagnostics(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 
-        self.assertIn('QPushButton("Preview Install Plan")', source)
-        self.assertIn('QPushButton("Verify QGIS Compatibility")', source)
+        self.assertNotIn('QPushButton("Preview Install Plan")', source)
+        self.assertNotIn('QPushButton("Verify QGIS Compatibility")', source)
         self.assertIn("preview_install_plan", source)
         self.assertIn("verify_qgis_compatibility", source)
-        self.assertIn("PyForestScan uses an isolated processing environment", source)
+        self.assertIn('QPushButton("Open Diagnostics")', source)
 
     def test_release_readiness_and_manual_setup_guidance_are_present(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 
-        self.assertIn('QPushButton("Manual Setup Instructions")', source)
+        self.assertNotIn('QPushButton("Manual Setup Instructions")', source)
         self.assertIn("Plugin ZIP", source)
         self.assertIn("Backend installer", source)
         self.assertIn("Manual setup", source)
-        self.assertIn("Backend installer: available on Windows beta builds after confirmation", source)
+        self.assertIn("open_processing_engine_diagnostics", source)
 
     def test_backend_install_progress_ui_and_worker_are_present(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
@@ -49,7 +49,7 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
         self.assertIn("Elapsed time:", source)
         self.assertIn("Latest message:", source)
         self.assertIn("Step progress is estimated.", source)
-        self.assertIn("Troubleshooting: technical log", source)
+        self.assertIn('QGroupBox("Technical log")', source)
 
     def test_install_running_state_disables_backend_action_buttons(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")

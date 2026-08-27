@@ -1,5 +1,9 @@
 # Known Limitations
 
+## Tools & Setup QA
+
+Phase 32A runtime state and responsive geometry were validated offscreen with QGIS 3.44.13 LTR. That renderer did not paint stylesheet text into captured images, so final typography and color remain subject to live in-application release QA. This does not affect widget behavior, setup transactions, or processing.
+
 ## Phase 31K notes
 
 - COPC is measurably faster for the tested 11.4M-point bounded window, but automatic conversion is not enabled because the dimension-preserving conversion was not yet validated. Native COPC inputs remain supported.

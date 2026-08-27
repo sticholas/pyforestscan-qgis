@@ -32,8 +32,9 @@ class Phase29AProductizationUiTests(unittest.TestCase):
         self.assertNotIn('_collapsible_section(prerun_layout, "Technical Report"', PAGES)
 
     def test_secondary_tools_and_backend_actions_are_progressively_disclosed(self):
-        self.assertIn('"Additional Tools", checked=False', PAGES)
-        self.assertIn('backend_detail_layout.addLayout(self.backend_secondary_buttons)', PAGES)
+        self.assertNotIn('"Additional Tools", checked=False', PAGES)
+        self.assertIn('QPushButton("Open Diagnostics")', PAGES)
+        self.assertIn('backend_detail_layout.addLayout(backend_troubleshooting_actions)', PAGES)
         self.assertIn('backend_detail_layout.addWidget(self.backend_technical_log_group)', PAGES)
 
     def test_live_status_strip_is_responsive_and_textual(self):

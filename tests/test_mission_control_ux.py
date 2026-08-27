@@ -238,13 +238,13 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertNotIn('_collapsible_section(self.content_layout, "Batch Footprint Estimate"', source)
         self.assertIn('Technical Report', source)
         self.assertIn('_collapsible_section(self.content_layout, "Troubleshooting", checked=False)', source)
-        self.assertIn('Troubleshooting: technical log', source)
+        self.assertIn('QGroupBox("Technical log")', source)
         self.assertIn('self.recommendations_card.setVisible(bool(report.suggested_next_actions))', source)
         self.assertIn('self.warnings_card.setVisible(bool(report.warnings))', source)
         self.assertIn('self.jobs_section.setVisible(False)', source)
         self.assertIn('self.reset_section = reset_group', source)
         self.assertIn('self.dataset_technical_text', source)
-        self.assertIn('self.developer_mode_button.setVisible(False)', source)
+        self.assertNotIn('self.developer_mode_button', source)
         self.assertIn('self._set_backend_progress_visible(False)', source)
 
 
@@ -252,10 +252,10 @@ class MissionControlUxTests(unittest.TestCase):
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 
         primary_snippets = (
-            "Processing Engine Setup",
-            "PyForestScan uses an isolated processing environment",
+            'backend = self.add_section("Processing Engine")',
+            "Everything required for LiDAR processing is installed.",
             'self.install_backend_button = QPushButton("Set Up")',
-            'self.install_backend_button.setText("Ready" if state.ready_for_processing else ("Repair" if state.repair_needed else "Set Up"))',
+            "processing_engine_setup_action(engine.status.value)",
         )
         for snippet in primary_snippets:
             self.assertIn(snippet, source)

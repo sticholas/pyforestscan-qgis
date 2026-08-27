@@ -17,3 +17,7 @@ The normal **Set Up** and **Repair** actions call the same `setup_processing_eng
 Failure never publishes Ready and does not create a LiDAR job. The normal UI requires no second Verify action. **Recheck Processing Engine** remains collapsed under Troubleshooting.
 
 Setup remains user-local, hidden-window, non-admin, and isolated from QGIS/system Python and global environment variables.
+
+## Phase 32A UI contract
+
+The normal Tools & Setup page exposes one contextual engine-changing action. **Set Up** and **Repair** are two labels for the same authoritative transaction, selected from verified engine state. Ready hides the action. **Recheck Processing Engine** is read-only and **Open Diagnostics** consolidates compatibility, dependency, path, version, and log evidence. Standalone preview, compatibility verification, manual setup, backend-folder, and log buttons are intentionally absent.

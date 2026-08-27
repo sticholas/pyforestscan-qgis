@@ -1,5 +1,9 @@
 # Mission Control User Workflow
 
+## Setup workflow
+
+Open **Tools & Setup** and read the Processing Engine status. Choose **Set Up** when setup is required or **Repair** when the verified engine needs repair. Successful setup refreshes status automatically; no separate verification step is required. Use **Recheck Processing Engine** only to refresh existing evidence, and **Open Diagnostics** when support details are needed.
+
 ## Durable completion
 
 Choose Input, Area, Products, and Output, then select **Process LiDAR**. Long polygon runs continue in the hidden Processing Engine. Completed areas are checkpointed, and a finalization-only failure can be repaired from validated CHM/Rumple outputs without recalculating LiDAR science.

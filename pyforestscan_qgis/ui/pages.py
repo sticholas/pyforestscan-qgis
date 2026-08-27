@@ -130,7 +130,7 @@ from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_
 from .qgis_spatial_actions import add_repository_coverage_to_qgis, add_selected_lidar_to_qgis, combine_bounds, preview_spatial_alignment_in_qgis, preview_spatial_selection_in_qgis, remove_spatial_preview_layers, zoom_canvas_to_bounds
 from .polygon_source_selector import normalize_qgis_layer_selection, normalize_vector_file_selection, polygon_layer_items, vector_file_layer_options
 from .raster_styling import apply_generated_raster_renderer, layer_display_name
-from .ux_summary import action_icon_intent, backend_summary_from_environment, button_role_for_label, design_spacing_tokens, empty_state_message, environment_headline, home_environment_action_label, home_environment_readiness, primary_action_label, qgis_fallback_summary, readiness_status_text, routed_products_summary, status_badge_label, status_badge_tone, status_display_word, workflow_action_labels
+from .ux_summary import action_icon_intent, backend_summary_from_environment, button_role_for_label, design_spacing_tokens, empty_state_message, environment_headline, home_environment_action_label, home_environment_readiness, primary_action_label, processing_engine_setup_action, qgis_fallback_summary, readiness_status_text, routed_products_summary, status_badge_label, status_badge_tone, status_display_word, workflow_action_labels
 
 ActivityCallback = Callable[[str, str], None]
 
@@ -4616,24 +4616,8 @@ class SettingsPage(MissionPage):
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create the settings page."""
         super().__init__("Tools & Setup", parent)
-        system = self.add_section("Processing Engine")
-        system.parentWidget().setVisible(False)  # Replaced by the authoritative engine card below.
-        self.smart_system_status_label = _body_label("Checking processing readiness.")
-        system.addWidget(self.smart_system_status_label)
-        system_actions=QHBoxLayout()
-        self.verify_environment_button=QPushButton("Check");self.verify_environment_button.clicked.connect(self.verifyEnvironmentRequested.emit);_apply_button_role(self.verify_environment_button,"secondary")
-        self.open_toolbox_button=QPushButton("Open Processing Toolbox");self.open_toolbox_button.clicked.connect(self.openToolboxRequested.emit);_apply_button_role(self.open_toolbox_button,"secondary")
-        self.guidance_details_button=QPushButton("Guidance Details");self.guidance_details_button.clicked.connect(self.guidanceDetailsRequested.emit);_apply_button_role(self.guidance_details_button,"neutral")
-        system_actions.addWidget(self.verify_environment_button)
-        system_actions.addStretch(1);system.addLayout(system_actions)
-        additional_tools_group, additional_tools = _collapsible_section(self.content_layout, "Additional Tools", checked=False)
-        additional_row = QHBoxLayout()
-        additional_row.addWidget(self.open_toolbox_button)
-        additional_row.addWidget(self.guidance_details_button)
-        additional_row.addStretch(1)
-        additional_tools.addLayout(additional_row)
-        spatial_group, spatial_tools = _collapsible_section(additional_tools, "LiDAR Spatial Reference", checked=False)
-        spatial_tools.addWidget(_details_label("Assign missing spatial meaning without changing LiDAR coordinates. Polygon matching requires a coordinate system; standalone preparation may use trusted units only."))
+        spatial_group, spatial_tools = _collapsible_section(self.content_layout, "LiDAR Spatial Reference - Automatic", checked=False)
+        spatial_tools.addWidget(_details_label("Most LiDAR is resolved automatically. Expand only to assign trusted units when source metadata is missing."))
         spatial_form = QFormLayout()
         self.spatial_target_edit = QLineEdit()
         self.spatial_target_edit.setPlaceholderText("LiDAR file or coherent repository path")
@@ -4680,8 +4664,7 @@ class SettingsPage(MissionPage):
         self.spatial_assignment_status_label = _details_label("No source selected.")
         spatial_tools.addWidget(self.spatial_assignment_status_label)
         _wire_collapsible_group(spatial_group)
-        _wire_collapsible_group(additional_tools_group)
-        defaults = self.add_section("Preferences")
+        defaults = self.add_section("Advanced Settings")
         form = QFormLayout()
         self.default_output_folder = QLineEdit()
         self.default_output_folder.editingFinished.connect(self.emit_default_output_folder)
@@ -4691,12 +4674,14 @@ class SettingsPage(MissionPage):
         browse.clicked.connect(self.browse_default_output_folder)
         folder_row.addWidget(browse)
         form.addRow("Default output folder", folder_row)
+        self.open_on_startup_check = QCheckBox("Open Mission Control when QGIS starts")
+        self.open_on_startup_check.setChecked(False)
+        form.addRow("Startup", self.open_on_startup_check)
         defaults.addLayout(form)
-        self.default_output_preview_label = _details_label("The selected folder is used for new outputs. Changes apply when editing finishes.")
+        self.default_output_preview_label = _details_label("Global preferences apply to new runs. Job-specific scientific settings stay on Process.")
         defaults.addWidget(self.default_output_preview_label)
 
-        workspace_group, workspace = _collapsible_section(self.content_layout, "Advanced Settings", checked=False)
-        workspace_form = QFormLayout()
+        # Session continuity remains an internal default, not a settings wall.
         self.remember_workspace_check = QCheckBox("Remember last workspace")
         self.remember_workspace_check.setChecked(True)
         self.remember_dataset_check = QCheckBox("Remember last dataset")
@@ -4705,23 +4690,9 @@ class SettingsPage(MissionPage):
         self.remember_output_folder_check.setChecked(True)
         self.auto_save_workspace_check = QCheckBox("Auto-save workspace state")
         self.auto_save_workspace_check.setChecked(True)
-        self.open_on_startup_check = QCheckBox("Open Mission Control when QGIS starts")
-        self.open_on_startup_check.setChecked(False)
-        self.maximum_recent_items_spin = QSpinBox()
-        self.maximum_recent_items_spin.setMinimum(1)
-        self.maximum_recent_items_spin.setMaximum(50)
-        self.maximum_recent_items_spin.setValue(10)
-        workspace_form.addRow("Workspace", self.remember_workspace_check)
-        workspace_form.addRow("Dataset", self.remember_dataset_check)
-        workspace_form.addRow("Output folder", self.remember_output_folder_check)
-        workspace_form.addRow("Auto-save", self.auto_save_workspace_check)
-        workspace_form.addRow("Startup", self.open_on_startup_check)
-        workspace_form.addRow("Recent item limit", self.maximum_recent_items_spin)
-        workspace.addLayout(workspace_form)
-        _wire_collapsible_group(workspace_group)
+        self._maximum_recent_items = 10
 
-        backend = self.add_section("Processing Engine Setup")
-        backend.addWidget(_body_label("PyForestScan uses an isolated processing environment so point-cloud and raster libraries do not interfere with QGIS Python."))
+        backend = self.add_section("Processing Engine")
         self.backend_service = BackendService()
         self.backend_install_running = False
         self.backend_install_thread: QThread | None = None
@@ -4745,19 +4716,16 @@ class SettingsPage(MissionPage):
         self.manual_dependency_setup_label = _body_label("Manual setup: Required until the backend is ready")
         self.qgis_compatibility_label = _body_label("QGIS compatibility: Not checked")
         self.backend_install_readiness_label = _body_label("Processing setup: Not checked")
-        for label in (
-            self.backend_status_label,
-            self.backend_dependency_label,
-            self.qgis_compatibility_label,
-            self.backend_install_readiness_label,
-        ):
-            backend.addWidget(label)
+        backend.addWidget(self.backend_status_label)
+        backend.addWidget(self.manual_dependency_setup_label)
 
         backend_detail_group, backend_detail_layout = _collapsible_section(self.content_layout, "Troubleshooting", checked=False)
         for label in (
+            self.backend_dependency_label,
+            self.qgis_compatibility_label,
+            self.backend_install_readiness_label,
             self.zip_install_ready_label,
             self.backend_auto_install_ready_label,
-            self.manual_dependency_setup_label,
             self.backend_location_label,
             self.backend_environment_label,
             self.backend_installed_version_label,
@@ -4791,37 +4759,15 @@ class SettingsPage(MissionPage):
         install_availability = self.backend_service.install_availability()
         self.verify_backend_button = QPushButton("Recheck Processing Engine")
         self.verify_backend_button.clicked.connect(self.verify_backend)
-        _apply_button_role(self.verify_backend_button, "primary")
+        _apply_button_role(self.verify_backend_button, "secondary")
         self.install_backend_button = QPushButton("Set Up")
         self.install_backend_button.setEnabled(install_availability.enabled)
         _apply_button_role(self.install_backend_button, "primary" if install_availability.enabled else "neutral")
         if install_availability.enabled:
             self.install_backend_button.clicked.connect(self.install_backend_internal_beta)
-        self.repair_backend_button = QPushButton("Repair")
-        self.repair_backend_button.clicked.connect(self.install_backend_internal_beta)
-        _apply_button_role(self.repair_backend_button, "secondary")
-        self.preview_install_plan_button = QPushButton("Preview Install Plan")
-        self.preview_install_plan_button.clicked.connect(self.preview_install_plan)
-        _apply_button_role(self.preview_install_plan_button, "secondary")
-        self.verify_qgis_button = QPushButton("Verify QGIS Compatibility")
-        self.verify_qgis_button.clicked.connect(self.verify_qgis_compatibility)
-        _apply_button_role(self.verify_qgis_button, "neutral")
-        self.manual_setup_button = QPushButton("Manual Setup Instructions")
-        self.manual_setup_button.clicked.connect(self.show_manual_setup_instructions)
-        _apply_button_role(self.manual_setup_button, "secondary")
-        self.open_backend_folder_button = QPushButton("Open Backend Folder")
-        self.open_backend_folder_button.clicked.connect(self.open_backend_folder)
-        _apply_button_role(self.open_backend_folder_button, "secondary")
-        self.view_backend_logs_button = QPushButton("View Logs")
-        self.view_backend_logs_button.clicked.connect(self.view_backend_logs)
-        _apply_button_role(self.view_backend_logs_button, "secondary")
-        self.advanced_backend_button = QPushButton("Advanced")
-        self.advanced_backend_button.clicked.connect(self.show_backend_advanced)
-        _apply_button_role(self.advanced_backend_button, "secondary")
-        self.developer_mode_button = QPushButton("Internal Beta Install: On" if install_availability.enabled else "Internal Beta Install: Off")
-        self.developer_mode_button.setEnabled(False)
-        self.developer_mode_button.setVisible(False)
-        _apply_button_role(self.developer_mode_button, "neutral")
+        self.open_diagnostics_button = QPushButton("Open Diagnostics")
+        self.open_diagnostics_button.clicked.connect(self.open_processing_engine_diagnostics)
+        _apply_button_role(self.open_diagnostics_button, "neutral")
 
         self.backend_primary_buttons = QHBoxLayout()
         self.backend_primary_buttons.setSpacing(ACTION_ROW_SPACING)
@@ -4831,32 +4777,17 @@ class SettingsPage(MissionPage):
 
         backend_troubleshooting_actions = QHBoxLayout()
         backend_troubleshooting_actions.addWidget(self.verify_backend_button)
-        backend_troubleshooting_actions.addWidget(self.repair_backend_button)
+        backend_troubleshooting_actions.addWidget(self.open_diagnostics_button)
         backend_troubleshooting_actions.addStretch(1)
         backend_detail_layout.addLayout(backend_troubleshooting_actions)
-
-        self.backend_secondary_buttons = QHBoxLayout()
-        self.backend_secondary_buttons.setSpacing(ACTION_ROW_SPACING)
-        for button in (
-            self.preview_install_plan_button,
-            self.verify_qgis_button,
-            self.manual_setup_button,
-            self.open_backend_folder_button,
-            self.view_backend_logs_button,
-            self.advanced_backend_button,
-            self.developer_mode_button,
-        ):
-            self.backend_secondary_buttons.addWidget(button)
-        self.backend_secondary_buttons.addStretch(1)
-        backend_detail_layout.addLayout(self.backend_secondary_buttons)
 
         self.backend_details = QTextEdit()
         self.backend_details.setReadOnly(True)
         self.backend_details.setMinimumHeight(TECHNICAL_DETAIL_HEIGHT)
         self.backend_details.setMaximumHeight(140)
-        self.backend_details.setPlainText("Verify or install the user-local backend from this page. Technical reports and logs stay under Advanced / Troubleshooting.")
+        self.backend_details.setPlainText("Processing Engine diagnostics appear here after Recheck or Open Diagnostics.")
         backend_detail_layout.addWidget(self.backend_details)
-        self.backend_technical_log_group = QGroupBox("Troubleshooting: technical log")
+        self.backend_technical_log_group = QGroupBox("Technical log")
         self.backend_technical_log_group.setCheckable(True)
         self.backend_technical_log_group.setChecked(False)
         technical_layout = QVBoxLayout()
@@ -4875,8 +4806,12 @@ class SettingsPage(MissionPage):
         self.remember_dataset_check.setChecked(session.remember_last_dataset)
         self.remember_output_folder_check.setChecked(session.remember_last_output_folder)
         self.auto_save_workspace_check.setChecked(session.auto_save_enabled)
-        self.maximum_recent_items_spin.setValue(session.maximum_recent_items)
+        self._maximum_recent_items = session.maximum_recent_items
         self.open_on_startup_check.setChecked(session.open_mission_control_on_startup)
+
+    def recent_item_display_limit(self) -> int:
+        """Return the internal recent-workspace display bound, never a job limit."""
+        return self._maximum_recent_items
 
     def workspace_session_preferences(self, session: WorkspaceSession) -> WorkspaceSession:
         """Return session with settings-page workspace preferences applied."""
@@ -4893,7 +4828,7 @@ class SettingsPage(MissionPage):
             remember_last_workspace=self.remember_workspace_check.isChecked(),
             remember_last_dataset=self.remember_dataset_check.isChecked(),
             remember_last_output_folder=self.remember_output_folder_check.isChecked(),
-            maximum_recent_items=self.maximum_recent_items_spin.value(),
+            maximum_recent_items=self._maximum_recent_items,
             auto_save_enabled=self.auto_save_workspace_check.isChecked(),
             open_mission_control_on_startup=self.open_on_startup_check.isChecked(),
         )
@@ -4963,7 +4898,6 @@ class SettingsPage(MissionPage):
         engine = self.backend_service.processing_engine_state(quick=True)
         paths = self.backend_service.paths
         registry = self.backend_service.get_registry()
-        plan = self.backend_service.preview_install_plan()
         manifest = self.backend_service.backend_manifest()
         version = self.backend_service.version_compatibility()
         compatibility = build_qgis_compatibility_report()
@@ -4986,27 +4920,27 @@ class SettingsPage(MissionPage):
         self.backend_auto_install_ready_label.setText(f"Backend installer: {auto_ready}")
         if engine.runtime_available:
             manual_text = "Everything required for LiDAR processing is installed."
+        elif engine.status.value == "REPAIR_REQUIRED":
+            manual_text = "The Processing Engine needs repair. Open Diagnostics for details, then choose Repair."
+        elif engine.status.value in {"FAILED", "INCOMPATIBLE"}:
+            manual_text = "Processing Engine setup cannot continue in its current state. Open Diagnostics for details."
         else:
-            manual_text = "Manual setup: not required after PBM is ready; QGIS-Python-only tools still show their own requirements"
+            manual_text = "Set up the Processing Engine to install everything required for LiDAR processing."
         self.manual_dependency_setup_label.setText(manual_text)
         compat_text = version.message if version else "Backend recipe unavailable"
         self.qgis_compatibility_label.setText(f"QGIS compatibility: {compatibility.summary()}; backend {compat_text}")
         self.backend_install_readiness_label.setText(engine.message)
         if not self.backend_install_running:
-            if engine.runtime_available:
-                self.install_backend_button.setText("Ready")
-                self.install_backend_button.setEnabled(False)
-            else:
-                self.install_backend_button.setText("Repair" if engine.repair_needed else "Set Up")
-                self.install_backend_button.setEnabled(availability.enabled)
-        self.developer_mode_button.setText("Internal Beta Install: On" if availability.enabled else "Internal Beta Install: Off")
+            action_visible, action_label = processing_engine_setup_action(engine.status.value)
+            self.install_backend_button.setVisible(action_visible)
+            self.install_backend_button.setText(action_label)
+            self.install_backend_button.setEnabled(action_visible and availability.enabled)
         if self.backend_install_running:
             return
         self.backend_details.setPlainText(
             f"{state.message}\n\n"
-            "Normal beta path: install or verify PBM, then run Environment Check. "
-            "PBM writes only to the user-local PyForestScan backend folder and does not modify QGIS Python, system Python, PATH, shell profiles, or QGIS folders. "
-            "Technical plans and logs are available from Preview Install, Advanced, or View Logs."
+            "The managed Processing Engine is user-local and does not modify QGIS Python, system Python, PATH, shell profiles, or QGIS folders. "
+            "Compatibility, setup details, paths, and logs are collected here automatically."
         )
 
     def verify_backend(self) -> None:
@@ -5111,8 +5045,10 @@ class SettingsPage(MissionPage):
             button.setEnabled(not running)
         if not running:
             state = self.backend_service.processing_engine_state(quick=True)
-            self.install_backend_button.setText("Ready" if state.ready_for_processing else ("Repair" if state.repair_needed else "Set Up"))
-            self.install_backend_button.setEnabled(availability.enabled and not state.ready_for_processing)
+            action_visible, action_label = processing_engine_setup_action(state.status.value)
+            self.install_backend_button.setVisible(action_visible)
+            self.install_backend_button.setText(action_label)
+            self.install_backend_button.setEnabled(availability.enabled and action_visible)
 
     def _set_backend_progress_visible(self, visible: bool) -> None:
         """Show PBM progress UI only while it is useful."""
@@ -5130,11 +5066,8 @@ class SettingsPage(MissionPage):
         """Return controls disabled while install is running."""
         return (
             self.verify_backend_button,
-            self.verify_qgis_button,
-            self.preview_install_plan_button,
             self.install_backend_button,
-            self.repair_backend_button,
-            self.manual_setup_button,
+            self.open_diagnostics_button,
         )
 
     def _on_backend_install_progress(self, update: object) -> None:
@@ -5194,7 +5127,7 @@ class SettingsPage(MissionPage):
             "Processing Engine Setup Result\n\n"
             "Final state: Install Failed\n"
             f"Message: {message}\n\n"
-            "Use View Logs for details. Technical logs are hidden under Troubleshooting."
+            "Open Diagnostics under Troubleshooting for technical details."
         )
         self._refresh_backend_technical_log()
         self.processingEngineStateChanged.emit(self.backend_service.processing_engine_state(quick=True))
@@ -5227,13 +5160,22 @@ class SettingsPage(MissionPage):
         """Compatibility wrapper: repair uses the same setup transaction."""
         self.install_backend_internal_beta()
 
+    def open_processing_engine_diagnostics(self) -> None:
+        """Show the one consolidated Processing Engine diagnostic report."""
+        self.show_backend_advanced()
+        logs = self.backend_service.get_logs()
+        log_count = sum(len(entries) for entries in logs.values())
+        self.backend_details.append(f"\nRecent technical log entries: {log_count}")
+        self.backend_details.append(f"Processing Engine folder: {self.backend_service.paths.backend_root}")
+        self._refresh_backend_technical_log()
+
     def show_backend_advanced(self) -> None:
         """Display advanced PBM architecture details."""
         modules = self.backend_service.module_registry()
         manifest = self.backend_service.backend_manifest()
         version = self.backend_service.version_compatibility()
         lines = [
-            "Backend Technical Details",
+            "Processing Engine Diagnostics",
             f"Installer availability: {'enabled' if self.backend_service.backend_install_enabled() else 'off'}",
             f"Manifest backend version: {manifest.backend_version if manifest else 'Unavailable'}",
             f"Manifest environment version: {manifest.environment_version if manifest else 'Unavailable'}",

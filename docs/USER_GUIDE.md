@@ -1,5 +1,9 @@
 # PyForestScan QGIS User Guide
 
+## Tools & Setup
+
+The Processing Engine card is the normal setup entry point. It shows **Set Up** only when the managed engine is missing and **Repair** when attention is required; no action is shown when the engine is Ready. Advanced Settings keeps the output-folder and startup preferences visible. Troubleshooting is collapsed by default and provides a read-only recheck and consolidated diagnostics.
+
 Click **Set Up** once when prompted. The plugin installs or repairs all supported processing components, verifies them, and changes the Processing Engine to **Ready** automatically. A separate Verify step is not required. If setup is needed from Process, use the inline action; your selected LiDAR, area, products, and output folder remain selected.
 
 When **Processing Engine: Ready** is shown, normal Folder and Polygon products run in the isolated user-local engine, not QGIS Python. **Set Up** installs the complete supported product environment; **Repair** restores a failed contract. If the engine changes after selection, processing stops before job creation and keeps the current LiDAR, area, and product choices.

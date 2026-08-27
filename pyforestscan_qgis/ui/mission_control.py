@@ -627,7 +627,7 @@ class MissionControlDock(QDockWidget):
     def _ensure_workspace_for_context(self, context: RunContext) -> None:
         """Load or create the workspace for a run context output root."""
         try:
-            self.workspace_manager.recent_limit = self.settings_page.maximum_recent_items_spin.value()
+            self.workspace_manager.recent_limit = self.settings_page.recent_item_display_limit()
             self.workspace_manager.auto_save = self.settings_page.auto_save_workspace_check.isChecked()
             self.workspace = self.workspace_manager.load_workspace(context.output_root)
             session = self.workspace.session
@@ -645,7 +645,7 @@ class MissionControlDock(QDockWidget):
                     remember_last_workspace=self.settings_page.remember_workspace_check.isChecked(),
                     remember_last_dataset=self.settings_page.remember_dataset_check.isChecked(),
                     remember_last_output_folder=self.settings_page.remember_output_folder_check.isChecked(),
-                    maximum_recent_items=self.settings_page.maximum_recent_items_spin.value(),
+                    maximum_recent_items=self.settings_page.recent_item_display_limit(),
                     auto_save_enabled=self.settings_page.auto_save_workspace_check.isChecked(),
                     open_mission_control_on_startup=self.settings_page.open_on_startup_check.isChecked(),
                 )
@@ -735,7 +735,7 @@ class MissionControlDock(QDockWidget):
             remember_last_workspace=self.settings_page.remember_workspace_check.isChecked(),
             remember_last_dataset=self.settings_page.remember_dataset_check.isChecked(),
             remember_last_output_folder=self.settings_page.remember_output_folder_check.isChecked(),
-            maximum_recent_items=self.settings_page.maximum_recent_items_spin.value(),
+            maximum_recent_items=self.settings_page.recent_item_display_limit(),
             auto_save_enabled=self.settings_page.auto_save_workspace_check.isChecked(),
             open_mission_control_on_startup=self.settings_page.open_on_startup_check.isChecked(),
         )

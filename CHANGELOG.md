@@ -1,5 +1,12 @@
 # Changelog
 
+## Phase 32A - Tools & Setup productization
+
+- Reduced Tools & Setup to one contextual Processing Engine action, always-visible Advanced Settings, and two collapsed troubleshooting actions.
+- Consolidated engine compatibility, dependency, path, version, and log evidence under Open Diagnostics.
+- Removed Additional Tools and the normal Recent Item Limit control without introducing any processing limit.
+- Preserved the authoritative background setup/repair transaction, spatial assignment controls, processing behavior, PBM behavior, Advanced Toolbox, and disabled External Worker policy.
+
 ## Phase 31K - Finalization reliability and bounded large-source execution
 
 - Added extracted-ZIP internal import-graph validation, including the adaptive planner and polygon coordinator runtime.
