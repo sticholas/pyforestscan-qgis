@@ -1,5 +1,7 @@
 # Canopy Height Model (CHM)
 
+For large local sources without explicit HAG, CHM begins only after one durable source preparation has completed and passed quality checks. Tiled reads use the local prepared source on the existing aligned grid; exact polygon masking remains finalization-only.
+
 Folder and polygon modes use the same HAG preparation and CHM method. Polygon mode adds buffered spatial preparation and an exact final polygon mask while retaining the effective source/output CRS.
 
 When HAG is absent, PBM may prepare it from a compatible DTM, observed class-2 ground, or validated automatic SMRF ground. CHM metadata records HAG method and preparation signature. Vegetation classes 3/4/5 are not required.

@@ -1,5 +1,7 @@
 # Folder and Polygon Processing Parity
 
+Folder and Polygon CHM/Rumple use the same `pbm_lidar_preparation` planner, PDAL methods, checkpoint rules, and prepared-request contract. Polygon adds a bounded support extent and coordinator dependency; it does not introduce a second scientific implementation.
+
 Polygon CHM/Rumple requests freeze the managed runtime at Prerun and use it for coordinator launch. Standard Folder processing remains explicitly PBM-routed; immutable token persistence across its complete preflight request is still tracked as a post-31I parity improvement.
 
 Folder and Polygon now use the same shared engine service, managed adapter mode, token authority, environment builder, and failure-before-job rule. Their only intentional difference is source selection/coordinator planning.

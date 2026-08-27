@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 31J - Durable large-source preparation
+
+- Added automatic source-level preparation before Polygon CHM/Rumple canary and tiled execution.
+- Added bounded local prepared-source artifacts, durable status/checksum/provenance, process locks, crash-lock recovery, and checkpoint reuse.
+- Added evidence-driven normalized-Z validation and explicit Z-to-`HeightAboveGround` materialization.
+- Changed preparation failures from repeated tile errors to one structured `source_preparation` scientific blocker.
+- Preserved aligned CHM grids, Rumple halos, exact final polygon masks, output registration, and EPT behavior.
+
 ## Phase 31I - Verified runtime handoff and Polygon execution identity
 
 - Froze Processing Engine identity during Polygon Prerun and carried it through the manifest, launcher, and coordinator.

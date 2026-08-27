@@ -33,6 +33,7 @@ class PreparationRecoveryDecision(str, Enum):
 
 class HeightNormalizationPlanMode(str, Enum):
     USE_EXISTING_HAG = "USE_EXISTING_HAG"
+    EXISTING_NORMALIZED_Z = "EXISTING_NORMALIZED_Z"
     DTM_EXISTING = "DTM_EXISTING"
     DELAUNAY_FROM_EXISTING_GROUND = "DELAUNAY_FROM_EXISTING_GROUND"
     AUTO_CLASSIFY_GROUND_THEN_DELAUNAY = "AUTO_CLASSIFY_GROUND_THEN_DELAUNAY"
@@ -52,6 +53,7 @@ class LidarPreparationAssessment:
     dtm_path: Path | None
     requested_products: tuple[str, ...]
     point_count: int | None = None
+    normalized_z_validated: bool = False
 
 
 @dataclass(frozen=True)
@@ -134,6 +136,8 @@ class HeightNormalizationPlanner:
             return _plan(assessment, PreparationReadiness.READY, PreparationRecoveryDecision.AUTOMATICALLY_RECOVERED, HeightNormalizationPlanMode.USE_EXISTING_HAG, (), (), checkpoint_root)
         if not {"X", "Y", "Z"}.issubset(assessment.dimensions.names):
             return _plan(assessment, PreparationReadiness.BLOCKED, PreparationRecoveryDecision.SCIENTIFICALLY_BLOCKED, HeightNormalizationPlanMode.UNAVAILABLE, (), ("Valid X, Y, and Z dimensions are required.",), checkpoint_root)
+        if assessment.normalized_z_validated:
+            return _plan(assessment, PreparationReadiness.READY_AFTER_PREPARATION, PreparationRecoveryDecision.AUTOMATICALLY_RECOVERED, HeightNormalizationPlanMode.EXISTING_NORMALIZED_Z, (LidarPreparationStep("materialize_normalized_z", "Materializing Validated Heights", "PDAL Z to explicit HeightAboveGround", True),), ("Source Z passed the normalized-height quality contract and will be preserved explicitly as HeightAboveGround.",), checkpoint_root)
         if assessment.dtm_path:
             return _plan(assessment, PreparationReadiness.READY_AFTER_PREPARATION, PreparationRecoveryDecision.AUTOMATICALLY_RECOVERED, HeightNormalizationPlanMode.DTM_EXISTING, (LidarPreparationStep("hag_dtm", "Generating Height Above Ground", "PyForestScan/PDAL DTM HAG", True),), (), checkpoint_root)
         if not assessment.coordinate_units.distance_operations_safe:
@@ -152,9 +156,9 @@ class HeightNormalizationPlanner:
         return _plan(assessment, PreparationReadiness.BLOCKED, PreparationRecoveryDecision.SCIENTIFICALLY_BLOCKED, HeightNormalizationPlanMode.UNAVAILABLE, (), ("GROUND_CLASS_UNAVAILABLE: no classification dimension, compatible DTM, or validated automatic path is available.",), checkpoint_root)
 
 
-def build_preparation_assessment(*, source: Path | str, spatial_reference_mode: str, coordinate_units: SourceCoordinateUnitAssessment, dimensions: Iterable[object], classification: ClassificationAssessment | None, dtm_path: Path | None, requested_products: Iterable[object], point_count: int | None = None, crs: str | None = None) -> LidarPreparationAssessment:
+def build_preparation_assessment(*, source: Path | str, spatial_reference_mode: str, coordinate_units: SourceCoordinateUnitAssessment, dimensions: Iterable[object], classification: ClassificationAssessment | None, dtm_path: Path | None, requested_products: Iterable[object], point_count: int | None = None, crs: str | None = None, normalized_z_validated: bool = False) -> LidarPreparationAssessment:
     path = Path(source)
-    return LidarPreparationAssessment(path, source_fingerprint(path), spatial_reference_mode, crs, coordinate_units, PointDimensionCapabilities.from_names(dimensions), classification, dtm_path, tuple(str(getattr(item, "value", item)) for item in requested_products), point_count)
+    return LidarPreparationAssessment(path, source_fingerprint(path), spatial_reference_mode, crs, coordinate_units, PointDimensionCapabilities.from_names(dimensions), classification, dtm_path, tuple(str(getattr(item, "value", item)) for item in requested_products), point_count, normalized_z_validated)
 
 
 def source_fingerprint(path: Path) -> str:
@@ -167,7 +171,7 @@ def source_fingerprint(path: Path) -> str:
 
 
 def _plan(assessment, readiness, recovery, mode, steps, messages, checkpoint_root):
-    basis = {"source": assessment.source_fingerprint, "spatial_mode": assessment.spatial_reference_mode, "crs": assessment.crs or "", "units": assessment.coordinate_units.units.value, "unit_basis": assessment.coordinate_units.unit_basis, "units_authoritative": assessment.coordinate_units.authoritative, "height_mode": mode.value, "steps": [asdict(step) for step in steps], "dtm": str(assessment.dtm_path or ""), "version": "phase31c-v1"}
+    basis = {"source": assessment.source_fingerprint, "spatial_mode": assessment.spatial_reference_mode, "crs": assessment.crs or "", "units": assessment.coordinate_units.units.value, "unit_basis": assessment.coordinate_units.unit_basis, "units_authoritative": assessment.coordinate_units.authoritative, "height_mode": mode.value, "steps": [asdict(step) for step in steps], "dtm": str(assessment.dtm_path or ""), "normalized_z_validated": assessment.normalized_z_validated, "version": "phase31j-v1"}
     signature = hashlib.sha256(json.dumps(basis, sort_keys=True).encode()).hexdigest()
     artifact = (checkpoint_root / signature / "prepared_hag.laz") if checkpoint_root and mode is not HeightNormalizationPlanMode.USE_EXISTING_HAG else None
     return LidarPreparationPlan(readiness, recovery, mode, tuple(steps), tuple(messages) if readiness is not PreparationReadiness.BLOCKED else (), tuple(messages) if readiness in {PreparationReadiness.BLOCKED, PreparationReadiness.NEEDS_USER_INPUT} else (), signature, artifact, bool((assessment.point_count or 0) >= 20_000_000))

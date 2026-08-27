@@ -36,8 +36,11 @@ def run_payload(payload_path):
         coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,state,plan.candidate_count,completed=counts["completed"]+counts["complete_nodata"],failed=counts["failed"],pending=counts["pending"],running=counts["running"],attempted=counts["attempted"],current_stage="Scientific Blocker" if failed else "Complete",current_activity="Completed work was preserved." if failed else "",circuit_breaker_state="open" if failed else "closed",finalization_state="blocked" if failed else "complete",elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now(),candidate_work_units=plan.candidate_count,required_work_units=plan.required_count,skipped_outside_polygon=counts["skipped_outside_polygon"],complete_nodata=counts["complete_nodata"],stop_reason="One or more required work areas failed." if failed else ""))
         return 1 if failed else 0
     except Exception as exc:
-        atomic_write_json(job_dir/"terminal_result.json",{"job_id":job_id,"attempt_id":attempt_id,"state":"failed","error":str(exc),"traceback":traceback.format_exc(),"finished_at":utc_now()})
-        coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,"scientific_blocker",len(payload["plan"].work_units),current_stage="Scientific Blocker",current_activity=str(exc),finalization_state="blocked",elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now()))
+        preparation_failure="SOURCE_PREPARATION" in str(exc) or "NORMALIZED_Z_VALIDATION" in str(exc) or "PREPARED_SOURCE" in str(exc)
+        stage="source_preparation" if preparation_failure else "processing"
+        user_error="PyForestScan could not prepare normalized tree heights for this LiDAR source." if preparation_failure else str(exc)
+        atomic_write_json(job_dir/"terminal_result.json",{"job_id":job_id,"attempt_id":attempt_id,"state":"scientific_blocker" if preparation_failure else "failed","stage":stage,"error":user_error,"technical_error":str(exc),"traceback":traceback.format_exc(),"finished_at":utc_now()})
+        coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,"scientific_blocker",len(payload["plan"].work_units),current_stage="Source Preparation" if preparation_failure else "Scientific Blocker",current_activity=user_error,finalization_state="blocked",elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now(),stop_reason=str(exc)))
         return 1
 
 def main():

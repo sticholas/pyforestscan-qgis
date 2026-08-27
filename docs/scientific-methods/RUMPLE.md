@@ -1,5 +1,7 @@
 # Rumple Index
 
+Rumple reuses the same prepared source and buffered CHM tiles as requested CHM. Preparation is never repeated per Rumple tile, and the established one-cell halo, core ownership, mosaic, exact mask, and scalar aggregation remain unchanged.
+
 Folder and polygon modes use the same spatial Rumple raster contract. When CHM and Rumple are selected together, compatible prepared HAG/CHM intermediates are shared; polygon outputs receive the exact final mask.
 
 Rumple uses the same signed prepared-HAG checkpoint as CHM and records the preparation method. It does not independently reclassify or normalize a compatible source again.

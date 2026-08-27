@@ -1,5 +1,7 @@
 # Source-aware processing architecture
 
+Large local CHM/Rumple execution now has a source-preparation dependency before canary and tiled work. Work units read a single validated local `prepared_hag.laz`, while retaining original/prepared paths in diagnostics. EPT remains on its logical bounded-work-unit path and is not fully materialized.
+
 Local LAS CHM/Rumple plans now enter the durable PBM coordinator directly instead of first clipping through QGIS Python. Work-unit identity is described in [Global Work Unit Identity](GLOBAL_WORK_UNIT_IDENTITY.md), and alternative source representations in [Source Alternative Detection](SOURCE_ALTERNATIVE_DETECTION.md).
 
 ## Phase 29D performance contract

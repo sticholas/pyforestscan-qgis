@@ -1055,18 +1055,23 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
     for skipped in plan.skipped_work_units:
         checkpoint.save_state(skipped.work_unit_id,"SkippedOutsidePolygon",{"reason_code":"OUTSIDE_EXACT_POLYGON","polygon_intersection_area":skipped.polygon_intersection_area,"polygon_coverage_percent":skipped.polygon_coverage_percent,"buffered_polygon_intersects":skipped.buffered_polygon_intersects,"source_coverage_expectation":skipped.source_coverage_expectation,"output_required":False,"work_unit":{"core_extent":skipped.core_extent.__dict__,"read_extent":skipped.read_extent.__dict__}})
 
+    prepared_input, prepared_dimensions, preparation_status = _prepare_source_dependency(report, source, plan, context, item_callback)
+    _assert_source_preparation_complete(preparation_status, prepared_input)
+
     def execute_unit(unit, attempt):
         unit_folder = context.run_folder / "work_units" / unit.work_unit_id
         buffered_path = unit_folder / "outputs" / "chm_buffered.tif"
         core_path = unit_folder / "outputs" / "chm_core.tif"
         buffered_path.parent.mkdir(parents=True, exist_ok=True)
-        request = _logical_product_request(ProductType.CHM, source.path, buffered_path, report)
+        _assert_source_preparation_complete(preparation_status, prepared_input)
+        request = _logical_product_request(ProductType.CHM, prepared_input, buffered_path, report)
         read = unit.read_extent
         request = replace(request, bounds=EptBounds.from_value(((read.xmin, read.xmax), (read.ymin, read.ymax)), crs=report.query_geometry.catalog_crs).to_json())
-        request = replace(request,crop_polygon=None,crop_polygon_path=None,polygon_execution_input=None,work_unit_id=unit.work_unit_id,attempt_id=f"attempt-{attempt}",completed_count=max(0,unit.execution_order-1),total_count=len(plan.work_units),inspect_hag_suitability=True,hag_method="existing_normalized_height",hag_source_dimension="HeightAboveGround",hag_method_signature=hag_method_signature("existing_normalized_height","HeightAboveGround"),diagnostics_path=unit_folder/"diagnostics",polygon_intersection_area=unit.polygon_intersection_area,polygon_coverage_percent=unit.polygon_coverage_percent)
+        request = replace(request,crop_polygon=None,crop_polygon_path=None,polygon_execution_input=None,source_dimensions=prepared_dimensions,source_point_count=None,work_unit_id=unit.work_unit_id,attempt_id=f"attempt-{attempt}",completed_count=max(0,unit.execution_order-1),total_count=len(plan.work_units),inspect_hag_suitability=True,hag_method="existing_normalized_height",hag_source_dimension="HeightAboveGround",hag_method_signature=hag_method_signature("existing_normalized_height","HeightAboveGround"),diagnostics_path=unit_folder/"diagnostics",polygon_intersection_area=unit.polygon_intersection_area,polygon_coverage_percent=unit.polygon_coverage_percent)
         from dataclasses import asdict
         from .chm_work_unit_execution import write_work_unit_diagnostic
-        write_work_unit_diagnostic(request.diagnostics_path,"request.json",asdict(request))
+        request_payload=asdict(request);request_payload.update({"original_source_path":str(source.path),"prepared_source_path":str(prepared_input),"preparation_status_path":str(preparation_status)})
+        write_work_unit_diagnostic(request.diagnostics_path,"request.json",request_payload)
         write_work_unit_diagnostic(request.diagnostics_path,"geometry.json",{"work_unit_id":unit.work_unit_id,"core_extent":unit.core_extent.__dict__,"read_extent":unit.read_extent.__dict__,"polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature})
         product_checkpoint=request.diagnostics_path/"product_checkpoint.json"
         reusable=_load_reusable_chm(product_checkpoint,plan.plan_signature,unit.work_unit_id)
@@ -1163,6 +1168,87 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
     write_polygon_batch_manifest(report, [{"source": str(source.path), "strategy": "bounded_work_units", "work_units": str(len(plan.work_units)), "job_folder": str(context.run_folder)}], batch_folder=batch_folder, mask_records=[_mask_record(x) for x in mask_results])
     if item_callback is not None: item_callback(item)
     return write_batch_summaries(result)
+
+
+def _prepare_source_dependency(report, source, plan, context, item_callback):
+    """Resolve one durable prepared source before the tiled scheduler is created."""
+    from types import SimpleNamespace
+    from pyforestscan_qgis.backend_runner.pbm_lidar_preparation import prepare_durable_source
+    from .source_coordinate_units import assess_processing_coordinate_units
+
+    extents = [unit.read_extent for unit in plan.work_units]
+    if not extents:
+        raise RuntimeError("SOURCE_PREPARATION_FAILED: no required work-unit support extent exists.")
+    support = {
+        "xmin": min(item.xmin for item in extents),
+        "ymin": min(item.ymin for item in extents),
+        "xmax": max(item.xmax for item in extents),
+        "ymax": max(item.ymax for item in extents),
+    }
+    source_id = hashlib.sha256(str(source.path).encode("utf-8")).hexdigest()[:12]
+    status_root = context.run_folder / "source_preparation" / source_id
+    base_request = _logical_product_request(ProductType.CHM, source.path, status_root / "supporting_chm.tif", report)
+    crs = report.query_geometry.catalog_crs or report.request.polygon.processing_crs
+    units = assess_processing_coordinate_units(crs, "", "EFFECTIVE_CRS")
+    base_request = replace(
+        base_request,
+        bounds=None,
+        crop_polygon=None,
+        crop_polygon_path=None,
+        polygon_execution_input=None,
+        source_point_count=source.point_count,
+        source_coordinate_units=units.units.value,
+        source_units_basis=units.unit_basis,
+        source_units_authoritative=units.authoritative,
+    )
+    token = report.request.runtime_token
+    runtime_contract = {} if token is None else {
+        "engine_id": token.engine_id,
+        "contract_hash": token.contract_hash,
+        "protocol": token.protocol,
+        "backend_runner_hash": token.backend_runner_hash,
+        "plugin_build_id": token.plugin_build_id,
+        "dependency_manifest_hash": token.dependency_manifest_hash,
+    }
+    spec = SimpleNamespace(product="chm", requested_products=tuple(product.value for product in report.request.products), run_folder=status_root, job_id=f"{context.run_folder.name}:{source_id}")
+
+    def preparation_progress(message):
+        stage = "Validating Preparation" if "Validating" in message else "Assessing Source" if "Assess" in message or "Inspect" in message else "Resolving Height Data" if "Ground" in message else "Preparing Heights"
+        _emit_polygon_stage(item_callback, source, context, stage, message)
+
+    normalized_z_candidate = source.zmin is not None and source.zmax is not None and -100.0 <= float(source.zmin) < float(source.zmax) <= 150.0 and float(source.zmax) - float(source.zmin) >= 2.0
+    result = prepare_durable_source(
+        spec,
+        base_request,
+        status_root=status_root,
+        preparation_bounds=support,
+        normalized_z_candidate=normalized_z_candidate,
+        runtime_contract=runtime_contract,
+        progress=preparation_progress,
+    )
+    status_path = status_root / "status.json"
+    if result is None:
+        prepared_path = Path(source.path)
+        dimensions = ("X", "Y", "Z", "HeightAboveGround")
+    else:
+        prepared_path = Path(result.request.input_path)
+        dimensions = tuple(result.request.source_dimensions)
+    _emit_polygon_stage(item_callback, source, context, "Preparation Complete", f"Prepared source is ready for {len(plan.work_units)} required work areas.")
+    return prepared_path, dimensions, status_path
+
+
+def _assert_source_preparation_complete(status_path: Path, prepared_path: Path) -> None:
+    try:
+        payload = json.loads(Path(status_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("SOURCE_PREPARATION_ARTIFACT_MISSING: durable source preparation status is unavailable.") from exc
+    if payload.get("state") != "COMPLETE":
+        raise RuntimeError(f"SOURCE_PREPARATION_FAILED: expected COMPLETE, observed {payload.get('state', 'MISSING')}.")
+    if not Path(prepared_path).is_file():
+        raise RuntimeError(f"SOURCE_PREPARATION_ARTIFACT_MISSING: {prepared_path}")
+    expected = str(payload.get("preparation_artifact_path") or "")
+    if expected and Path(expected) != Path(prepared_path):
+        raise RuntimeError(f"SOURCE_PREPARATION_SIGNATURE_MISMATCH: status references {expected}; worker received {prepared_path}.")
 
 def _extract_core_raster(source_path: Path, output_path: Path, extent: SpatialExtent) -> None:
     try:

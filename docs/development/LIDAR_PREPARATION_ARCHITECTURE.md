@@ -1,5 +1,9 @@
 # LiDAR Preparation Architecture
 
+## Durable large-source execution
+
+Large Polygon CHM/Rumple jobs now run the existing managed file-to-file preparation engine as a source-level coordinator dependency. The union of buffered required read extents is prepared once into a local artifact, validated, checkpointed, and then supplied to every tiled worker. See [Durable Source Preparation](DURABLE_SOURCE_PREPARATION.md).
+
 Folder and polygon requests enter this same preparation engine after source selection. Polygon mode may select members with different preparation methods; existing HAG, class-2 Delaunay, and SMRF work can coexist when final product validity is preserved.
 
 An assumed polygon CRS supplies CRS-derived units to the existing preparation plan. Classification evidence may be reused; unit-dependent HAG parameters and signatures are rebuilt for the new spatial interpretation.

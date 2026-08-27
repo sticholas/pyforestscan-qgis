@@ -1,5 +1,9 @@
 # Known Limitations
 
+- Phase 31J uses exact support-extent signatures for preparation reuse. A later smaller polygon inside a prior prepared extent is conservatively rebuilt unless its support extent matches exactly.
+- The Olaa `_Norm` source is eligible for normalized-Z inspection from its observed range, but its live bounded statistical validation remains pending because the UNC source was unavailable during the final automated run.
+- A bounded preparation artifact avoids full-source local duplication, but ordinary LAS/LAZ readers may still scan the network source because those formats lack COPC-style spatial seeking.
+
 - Phase 31I validates Polygon coordinator launch and automatic canary policy, but the full 104.8-million-point Olaa CHM/Rumple run remains live manual QA.
 - Alternative-source recommendation uses catalog point count, XY bounds, byte size, filename relationship, and Z ranges. Repositories lacking enough evidence remain ambiguous rather than silently double processed.
 - Standard Folder processing is PBM-routed, but its runtime token is not yet serialized through the same durable preflight manifest contract used by Polygon processing.
