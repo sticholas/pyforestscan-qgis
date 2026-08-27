@@ -1,5 +1,7 @@
 # Processing Engine Setup Transaction
 
+Successful setup writes `processing_engine_snapshot.json`, publishes a new token, and emits the shared state event. Existing Prerun requests are invalidated and rebuilt with that new token while user selections remain intact.
+
 The normal **Set Up** and **Repair** actions call the same `setup_processing_engine()` transaction on a background Qt worker.
 
 1. Inspect the existing engine contract.

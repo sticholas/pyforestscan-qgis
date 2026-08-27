@@ -1,5 +1,7 @@
 # State Ownership Model
 
+`ProcessingEngineService` owns verification and publication. `PolygonBatchRequest.runtime_token` owns the frozen execution identity after Prerun. The coordinator consumes that identity but cannot replace it.
+
 Phase 31H makes `ProcessingEngineStateModel` execution-authoritative. Mission Control backend/environment strings are derived UI/session compatibility fields. They must never authorize a job or supersede `processing_engine.json`.
 
 `ProcessingEngineStateModel` is the only supported Processing Engine projection. Its status, verification time, contract hash, version, setup/repair flags, availability, and message drive the engine card and footer. Setup and repair refresh this model automatically.

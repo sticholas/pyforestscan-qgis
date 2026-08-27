@@ -78,7 +78,15 @@ def inspect_runtime_contract() -> dict[str, Any]:
         f"product_capability:{product}" for product, passed in capability_smoke.items() if not passed
     )
     protocol_compatible = str(PBM_PROTOCOL_VERSION) == "2"
-    build_inputs = tuple(Path(path) for path in (runner, Path(adapter.__file__).resolve(), Path(pipeline.__file__).resolve()))
+    package_root = Path(__file__).resolve().parents[1]
+    build_inputs = (
+        runner,
+        Path(__file__).with_name("polygon_job_coordinator.py"),
+        Path(adapter.__file__).resolve(),
+        Path(pipeline.__file__).resolve(),
+        package_root / "core" / "backend" / "execution.py",
+        package_root / "core" / "polygon_batch.py",
+    )
     build_id = hashlib.sha256(b"".join(path.read_bytes() for path in build_inputs)).hexdigest()
     return {
         "backend_api_version": "2",

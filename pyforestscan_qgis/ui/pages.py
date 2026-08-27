@@ -1856,9 +1856,12 @@ class _BatchExecutionWorker(QObject):
         """Execute the batch and emit a final result or error message."""
         try:
             from ..core.backend import BackendService
-            from ..core.backend.processing_engine import ProcessingEngineVerifier
-
-            ProcessingEngineVerifier(BackendService().paths).require_ready()
+            token = self.request.runtime_token
+            BackendService().processing_engine_service().validate_runtime_token_for_launch(
+                token,
+                tuple(product.value for product in self.request.settings.products),
+                self.request.batch_folder,
+            )
             result = BatchExecutor(adapter_factory=lambda: PyForestScanAdapter(execution_mode="pbm_backend")).run(
                 self.request,
                 item_callback=self.itemReady.emit,
@@ -2679,7 +2682,11 @@ class BatchPage(MissionPage):
             self.run_button.setEnabled(False)
             _set_status_badge(self.status_label, getattr(getattr(engine, "status", None), "value", "SETUP_REQUIRED"), getattr(engine, "message", "Processing Engine setup required."))
         elif hasattr(self, "preflight_report"):
+            had_preflight = self.preflight_report is not None
+            self.preflight_report = None
             self._update_run_button_enabled()
+            if had_preflight:
+                QTimer.singleShot(0, self.run_preflight)
 
     def _begin_logical_job(self):
         if self._job_token_factory is None:return None
@@ -3671,6 +3678,15 @@ class BatchPage(MissionPage):
             self.preflight_button.setEnabled(True)
             return
         try:
+            runtime_token = BackendService().processing_engine_service().runtime_token_for(tuple(product.value for product in request.settings.products))
+            request = replace(request, runtime_token=runtime_token)
+        except Exception as exc:
+            self.preflight_text.setPlainText(f"BLOCKER: Processing Engine could not publish a runtime identity: {exc}")
+            self.preflight_report = None
+            self._update_run_button_enabled()
+            self.preflight_button.setEnabled(True)
+            return
+        try:
             report = run_batch_preflight(request, adapter=self.adapter)
         finally:
             self.preflight_button.setEnabled(True)
@@ -3700,11 +3716,6 @@ class BatchPage(MissionPage):
             request = execution.request
         except BatchExecutionError as exc:
             _set_status_badge(self.status_label, "FAILED", f"Status: Failed - batch could not start: {exc}")
-            return
-        try:
-            BackendService().processing_engine_service().assert_ready_for(tuple(product.value for product in request.settings.products))
-        except Exception:
-            _set_status_badge(self.status_label, "REPAIR_REQUIRED", "Processing Engine needs repair before this job can start.")
             return
         token=self._begin_logical_job()
         if token is False:return
@@ -3773,9 +3784,16 @@ class BatchPage(MissionPage):
             _set_status_badge(self.status_label, "FAILED", "Status: Failed - polygon Prerun Check issues must be resolved before processing.")
             return
         try:
-            BackendService().processing_engine_service().assert_ready_for(tuple(product.value for product in report.request.products))
-        except Exception:
-            _set_status_badge(self.status_label, "REPAIR_REQUIRED", "Processing Engine needs repair before this job can start.")
+            BackendService().processing_engine_service().validate_runtime_token_for_launch(
+                report.request.runtime_token,
+                tuple(product.value for product in report.request.products),
+                report.batch_folder,
+            )
+        except Exception as exc:
+            technical = getattr(exc, "technical_message", str(exc))
+            code = getattr(exc, "code", "ENGINE_RUNTIME_TOKEN_MISMATCH")
+            _set_status_badge(self.status_label, "REPAIR_REQUIRED", f"Processing Engine changed before launch: {technical}")
+            self._retain_recent_error(technical, code=code, category="ENGINE", recommended_action="Run Prerun Check again; no scientific attempt started.", stage="runtime_prelaunch")
             return
         token=self._begin_logical_job()
         if token is False:return
@@ -3976,8 +3994,14 @@ class BatchPage(MissionPage):
         """Display an executor-level batch failure."""
         self._last_durable_state = "failed"
         try:
-            self._retain_recent_error(message)
-            _set_status_badge(self.status_label, "FAILED", f"Status: Failed - batch could not start: {message}")
+            runtime_prelaunch = "ENGINE_RUNTIME_" in message or "runtime token" in message.lower()
+            if runtime_prelaunch:
+                code = next((item.rstrip(":") for item in message.split() if item.startswith("ENGINE_RUNTIME_")), "ENGINE_RUNTIME_TOKEN_MISMATCH")
+                self._retain_recent_error(message, code=code, category="ENGINE", recommended_action="Run Prerun Check again; no scientific attempt started.", stage="runtime_prelaunch")
+                _set_status_badge(self.status_label, "REPAIR_REQUIRED", f"Status: Processing Engine changed before launch - no scientific attempt started. {message}")
+            else:
+                self._retain_recent_error(message)
+                _set_status_badge(self.status_label, "FAILED", f"Status: Failed - batch could not start: {message}")
         finally:
             self._finish_batch_run(ProcessingUiState.FAILED)
 
@@ -4021,14 +4045,14 @@ class BatchPage(MissionPage):
                 self._retain_recent_error(f"Current-job projection could not be rebuilt: {exc}",code="PROJECTION_RECOVERY_FAILED",category="RECOVERY")
         self._reconcile_processing_ui()
 
-    def _retain_recent_error(self, message: str, *, code: str = "EXECUTION_FAILED", category: str = "PROCESS", recommended_action: str = "Review job diagnostics and retry when appropriate.") -> None:
+    def _retain_recent_error(self, message: str, *, code: str = "EXECUTION_FAILED", category: str = "PROCESS", recommended_action: str = "Review job diagnostics and retry when appropriate.", stage: str = "batch_terminal") -> None:
         folder = getattr(self.latest_result, "batch_folder", None)
         if folder is None and self.preflight_report is not None:
             folder = getattr(self.preflight_report, "batch_folder", None)
         if folder is None:
             return
         try:
-            self._recent_error_path=write_recent_error(folder, DurableErrorRecord(code, category, "Processing needs attention.", str(message), "batch_terminal", job_id=str(getattr(self._current_job_token, "logical_job_id", "")), recommended_action=recommended_action))
+            self._recent_error_path=write_recent_error(folder, DurableErrorRecord(code, category, "Processing needs attention.", str(message), stage, job_id=str(getattr(self._current_job_token, "logical_job_id", "")) if stage == "batch_terminal" else "", recommended_action=recommended_action))
             self.recent_error_label.setText(f"{code}: {message}")
             self.recent_error_group.setVisible(True)
         except OSError:

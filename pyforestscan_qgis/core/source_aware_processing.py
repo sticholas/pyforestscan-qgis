@@ -146,6 +146,7 @@ class SourceAwareWorkPlanner:
         return SourceAwareWorkPlan(repository_kind,product,grid,tuple(units),effective_concurrency,workload,memory,policy.merge_rule,'transient failures: 2; deterministic input/HAG failures: 0','verify and persist every completed core tile',tuple(assumptions),location,False,candidates,skipped,polygon_signature,f"buffer={sizing.buffer_distance:g}",hag_signature,sizing.strategy,sizing.target_width,sizing.target_height,sizing.estimated_point_range,sizing.expected_memory_range,sizing.pilot_required,native_reused,subdivisions)
     def _windows(self,grid,sources,kind,sizing):
         cols=max(1,round(sizing.target_width/grid.resolution));rows=max(1,round(sizing.target_height/grid.resolution));out=[];n=0
+        source_id=hashlib.sha256("\n".join(sorted(str(item.path) for item in sources)).encode()).hexdigest()[:10]
         for r0 in range(0,grid.rows,rows):
             for c0 in range(0,grid.columns,cols):
                 core=grid.cell_extent(r0,min(grid.rows,r0+rows),c0,min(grid.columns,c0+cols));n+=1
@@ -153,7 +154,7 @@ class SourceAwareWorkPlanner:
                 density=20.0 if kind is WorkUnitType.EPT_WINDOW else 8.0
                 from .resource_estimation import estimate_work_unit_resources
                 estimate=estimate_work_unit_resources(int(read.width*read.height*density),hag_method="existing_normalized_height",raster_cells=int(read.width*read.height/grid.resolution**2),core_width=sizing.target_width,product=sizing.product)
-                out.append(WorkUnit(f"wu-{n:04d}",kind,tuple(x.path for x in sources),core,read,r0,min(grid.rows,r0+rows),c0,min(grid.columns,c0+cols),n,estimate.estimated_memory))
+                out.append(WorkUnit(f"wu-{source_id}-{n:04d}",kind,tuple(x.path for x in sources),core,read,r0,min(grid.rows,r0+rows),c0,min(grid.columns,c0+cols),n,estimate.estimated_memory))
         return out
     def _copc(self,grid,sources,sizing):
         if len(sources)==1 and (sources[0].size_bytes>2*1024**3 or grid.rows*grid.columns>5_000_000): return self._windows(grid,sources,WorkUnitType.COPC_WINDOW,sizing)

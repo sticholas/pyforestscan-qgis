@@ -88,6 +88,7 @@ def prepare_batch_execution(
         title=request.title,
         batch_folder=report.batch_folder,
         processing_spatial_contexts=report.processing_spatial_contexts,
+        runtime_token=report.runtime_token,
     )
     return BatchExecutionRequest(approved, readiness, len(selected), len(selected), len(skipped))
 

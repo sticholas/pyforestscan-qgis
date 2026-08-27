@@ -44,6 +44,8 @@ from .durable_errors import DurableErrorRecord, write_recent_error
 from .work_unit_scheduler import CheckpointStore, PolygonProductWorkScheduler, WorkUnitResult
 from .hag_strategy import hag_method_signature
 from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, HagNormalizationRequest, PadRequest, PaiRequest, PointDensityRequest, ProductType, RumpleRequest, VoxelStatRequest
+from .backend.processing_engine import ProcessingRuntimeToken
+from .source_alternatives import SourceRelationship, canonicalize_source_alternatives
 
 POLYGON_MANIFEST_NAME = "polygon_batch_manifest.json"
 DEFAULT_POLYGON_SOURCE_WARNING = 25
@@ -72,6 +74,7 @@ class PolygonBatchRequest:
     direct_header_fallback: bool = True
     repository_crs_override: str | None = None
     spatial_policy: SourceLocalFallbackPolicy | None = None
+    runtime_token: ProcessingRuntimeToken | None = None
 
 
 @dataclass(frozen=True)
@@ -107,6 +110,7 @@ class PolygonBatchPreflightReport:
     selection_method: str = "catalog"
     direct_selection: PolygonLidarSelectionResult | None = None
     selection_comparison: SelectionMethodComparison | None = None
+    source_alternative_detections: tuple[object, ...] = ()
 
     @property
     def has_warnings(self) -> bool:
@@ -133,7 +137,9 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
     empty_inventory = LidarInventory(repository.normalized_path, ())
     blockers: list[str] = []
     warnings: list[str] = list(query_geometry.warnings)
-    backend_ready, backend_message = _probe_pbm_backend(backend_probe)
+    backend_ready, backend_message, runtime_token = _probe_pbm_backend(backend_probe, tuple(product.value for product in request.products))
+    if runtime_token is not None:
+        request = replace(request, runtime_token=runtime_token)
     if not backend_ready:
         blockers.append("Managed processing backend cannot import PyForestScan. Repair or rebuild the backend from Environment.")
     if not request.products:
@@ -223,8 +229,23 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
             selection_method = "direct_header_scan"
             warnings.append("Catalog selection found no files. Direct Header Scan selected real source files; repair or rebuild the catalog when convenient.")
             selection = _selection_from_direct(repository, request, query_geometry, direct_selection, service)
+    selected, alternative_detections = canonicalize_source_alternatives(tuple(selected))
+    if any(getattr(context, "mode", None) is EffectiveSpatialMode.ASSUMED_MATCHING_COORDINATE_SPACE for context in getattr(selection, "spatial_contexts", ())):
+        warnings = [item for item in warnings if "cannot yet be compared" not in str(item).lower()]
+    alternatives = tuple(item for item in alternative_detections if item.relationship in {SourceRelationship.POTENTIAL_ALTERNATIVE_REPRESENTATION, SourceRelationship.DUPLICATE})
+    ambiguous_alternatives = tuple(item for item in alternative_detections if item.relationship is SourceRelationship.UNKNOWN)
+    if alternatives:
+        warnings.append("Two LiDAR files appear to represent the same area. The recommended prepared source was selected; use Advanced source selection to override.")
+        selection = replace(selection, selected_sources=selected)
+        if selection.workload_estimate is not None:
+            count = _estimated_points_for_sources(selected)
+            selection = replace(selection, workload_estimate=replace(selection.workload_estimate, point_estimate=count, lower_bound=count, upper_bound=count, method="Canonical source-point sum after alternative-representation detection", assumptions=("Duplicate-like source representations are counted once.",)))
+    if ambiguous_alternatives:
+        blockers.append("Two LiDAR files have overlapping source identity but no safe canonical representation could be selected. Choose one source explicitly in Advanced source selection.")
     inventory = LidarInventory(repository.normalized_path, selected, cache_path=Path(catalog_path))
     warnings.extend(message.to_text() for message in selection.warnings)
+    if any(getattr(context, "mode", None) is EffectiveSpatialMode.ASSUMED_MATCHING_COORDINATE_SPACE for context in getattr(selection, "spatial_contexts", ())):
+        warnings = [item for item in warnings if "cannot yet be compared" not in str(item).lower()]
     blockers.extend(message.to_text() for message in selection.blockers)
     try:
         plan = build_polygon_processing_plan(
@@ -242,8 +263,8 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         blockers.extend(selected_path_invariant(selected, ordinary=True))
     if not selected and not any("No LiDAR coverage" in item or "Catalog" in item or "spatial bounds" in item for item in blockers):
         blockers.append("No LiDAR coverage was found for this area.")
-    point_count = selection.workload_estimate.point_estimate if selection.workload_estimate is not None else (None if query is None else query.estimated_point_count)
-    source_bytes = 0 if query is None else query.estimated_bytes
+    point_count = _estimated_points_for_sources(selected) if alternatives else (selection.workload_estimate.point_estimate if selection.workload_estimate is not None else (None if query is None else query.estimated_point_count))
+    source_bytes = sum(source.size_bytes for source in selected) if alternatives else (0 if query is None else query.estimated_bytes)
     if repository.repository_kind not in {"ept", "copc"}:
         if selection_method == "direct_header_scan":
             warnings.extend(direct_selection.warnings if direct_selection is not None else ())
@@ -300,6 +321,7 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         selection_method=selection_method,
         direct_selection=direct_selection,
         selection_comparison=comparison,
+        source_alternative_detections=alternative_detections,
     )
 
 
@@ -505,23 +527,28 @@ def execute_polygon_batch(
     """Clip intersecting sources to the exact polygon, then execute the normal Batch runner."""
     if report.blockers:
         raise ValueError("Polygon batch preflight blockers must be resolved before execution.")
-    # Normal Polygon execution is PBM-owned. Never silently fall back to QGIS Python
-    # when a managed-engine check fails between preflight and launch.
     adapter = adapter or PyForestScanAdapter(execution_mode="pbm_backend")
-    # Recheck the exact managed execution interpreter before creating any real PBM batch attempt.
-    # Injected adapters remain available to QGIS-free tests and supported adapter integrations.
     if isinstance(adapter, PyForestScanAdapter) and adapter.execution_mode != "qgis_python":
         from .backend import BackendService
-        from .backend.processing_engine import ProcessingEngineError, ProcessingEngineVerifier
-        try:
-            ProcessingEngineVerifier(BackendService().paths).require_ready()
-        except ProcessingEngineError as exc:
-            raise RuntimeError(str(exc)) from exc
+        BackendService().processing_engine_service().validate_runtime_token_for_launch(
+            report.request.runtime_token,
+            tuple(product.value for product in report.request.products),
+            report.batch_folder,
+        )
     if not _is_logical_spatial_report(report):
         path_blockers = selected_path_invariant(report.selected_sources, ordinary=True)
         if path_blockers:
             raise ValueError("; ".join(path_blockers))
     batch_folder = report.batch_folder if report.batch_folder.exists() else create_batch_folder(report.request.output_folder)
+    scalable_plan = build_source_aware_chm_plan(report)
+    scalable_products = set(report.request.products)
+    if report.selected_sources and scalable_products and scalable_products <= {ProductType.CHM, ProductType.RUMPLE} and scalable_plan is not None and len(scalable_plan.work_units) > 1:
+        source = report.selected_sources[0]
+        job_folder = batch_folder / "polygon_jobs" / unique_polygon_job_id(source.source_type)
+        context = batch_run_context(Path(source.path), job_folder, reuse_existing=True).ensure_directories()
+        for child in ("inputs", "staging", "outputs", "logs", "diagnostics"):
+            (job_folder / child).mkdir(parents=True, exist_ok=True)
+        return _execute_source_aware_chm(report, adapter, batch_folder, context, source, scalable_plan, item_callback=item_callback)
     if _is_logical_spatial_report(report):
         return _execute_logical_spatial_batch(report, adapter, batch_folder, item_callback=item_callback)
     clipped_folder = batch_folder / "polygon_clipped_sources"
@@ -588,6 +615,8 @@ def write_polygon_batch_manifest(
         "option_applicability": [item.to_dict() for item in _option_applicability(report)],
         "concurrency": requested_effective_concurrency(_shared_options(report), source_types=_source_types(report), product_count=len(report.request.products)),
         "execution_plan": None if report.execution_plan is None else report.execution_plan.to_dict(),
+        "processing_runtime": None if report.request.runtime_token is None else report.request.runtime_token.to_dict(),
+        "source_aware_raster_plan": _source_aware_chm_plan_dict(report),
         "source_aware_chm_plan": _source_aware_chm_plan_dict(report),
         "spatial_provenance": _spatial_provenance(report),
         "plan_signature": report.plan_signature,
@@ -595,6 +624,7 @@ def write_polygon_batch_manifest(
         "source_selection": None if report.source_selection is None else report.source_selection.to_dict(),
         "selection_method": report.selection_method,
         "selected_source_paths": [str(source.path) for source in report.selected_sources],
+        "source_alternative_detections": [item.to_dict() for item in report.source_alternative_detections],
         "selected_path_invariant": {"ordinary": not _is_logical_spatial_report(report), "readable_path_count": sum(1 for source in report.selected_sources if Path(source.path).is_file()), "selected_source_count": len(report.selected_sources)},
         "direct_selection": None if report.direct_selection is None else {
             "discovered_file_count": report.direct_selection.discovered_file_count,
@@ -649,6 +679,8 @@ def write_polygon_batch_manifest(
                 "source_type": source.source_type,
                 "crs": source.crs,
                 "point_count": source.point_count,
+                "zmin": source.zmin,
+                "zmax": source.zmax,
                 "bounds": None if source.bounds is None else source.bounds.__dict__,
                 "size_bytes": source.size_bytes,
                 "modified_ns": source.modified_ns,
@@ -660,10 +692,42 @@ def write_polygon_batch_manifest(
         "clip_records": clip_records or [],
         "mask_records": mask_records or [],
     }
+    if report.request.runtime_token is not None:
+        validate_polygon_execution_manifest(payload)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     _write_polygon_source_resolution(report, folder)
     _write_effective_spatial_trace(report, folder)
     return path
+
+
+def validate_polygon_execution_manifest(payload: dict[str, object]) -> None:
+    """Reject manifests that cannot bind execution to runtime and spatial identity."""
+    missing: list[str] = []
+    runtime = payload.get("processing_runtime")
+    required_runtime = ("engine_id", "executable", "environment_fingerprint", "contract_hash", "protocol", "backend_runner_hash", "dependency_manifest_hash", "product_capability_hash", "plugin_build_id")
+    if not isinstance(runtime, dict):
+        missing.append("processing_runtime")
+    else:
+        missing.extend(f"processing_runtime.{field}" for field in required_runtime if not runtime.get(field))
+    if not payload.get("selected_source_paths"):
+        missing.append("selected_source_paths")
+    if not payload.get("plan_signature"):
+        missing.append("plan_signature")
+    execution_plan = payload.get("execution_plan")
+    if not isinstance(execution_plan, dict) or not execution_plan.get("products"):
+        missing.append("execution_plan.products")
+    polygon_context = None if not isinstance(execution_plan, dict) else execution_plan.get("polygon_context")
+    if not isinstance(polygon_context, dict) or not polygon_context.get("processing_geometry"):
+        missing.append("execution_plan.polygon_context.processing_geometry")
+    source_plan = payload.get("source_aware_raster_plan")
+    if isinstance(source_plan, dict):
+        ids = [str(item.get("work_unit_id", "")) for item in source_plan.get("work_units", ()) if isinstance(item, dict)]
+        if not ids or any(not item for item in ids):
+            missing.append("source_aware_raster_plan.work_unit_id")
+        elif len(ids) != len(set(ids)):
+            missing.append("source_aware_raster_plan.unique_work_unit_id")
+    if missing:
+        raise ValueError("POLYGON_EXECUTION_MANIFEST_INVALID: missing or invalid " + ", ".join(missing))
 
 
 def _report_spatial_contexts(report: PolygonBatchPreflightReport):
@@ -786,7 +850,7 @@ def build_source_aware_chm_plan(report: PolygonBatchPreflightReport):
         sources=tuple(native),
         polygon_envelope=envelope,
         processing_crs=report.query_geometry.catalog_crs or report.request.polygon.processing_crs,
-        product="rumple" if ProductType.RUMPLE in report.request.products else "chm",
+        product="chm",
         resolution=report.request.settings.grid_resolution,
         available_memory_bytes=__import__("pyforestscan_qgis.core.adaptive_processing",fromlist=["available_memory_bytes"]).available_memory_bytes(),
         cpu_count=max(1, os.cpu_count() or _shared_options(report).worker_count),
@@ -858,21 +922,22 @@ def _fallback_polygon_context(polygon, query_geometry):
     )
 
 
-def _probe_pbm_backend(probe: Callable[[], tuple[bool, str]] | None) -> tuple[bool, str]:
+def _probe_pbm_backend(probe: Callable[[], tuple[bool, str]] | None, products: tuple[str, ...]) -> tuple[bool, str, ProcessingRuntimeToken | None]:
     if probe is not None:
         try:
-            ready, message = probe()
-            return bool(ready), str(message)
+            result = probe()
+            ready, message = result[:2]
+            token = result[2] if len(result) > 2 else None
+            return bool(ready), str(message), token
         except Exception as exc:  # noqa: BLE001 - preflight should explain probe failure.
-            return False, f"PBM backend check failed: {exc}"
+            return False, f"PBM backend check failed: {exc}", None
     try:
         from .backend import BackendService
-
-        from .backend.processing_engine import ProcessingEngineVerifier
-        report = ProcessingEngineVerifier(BackendService().paths).verify()
-        return report.ready, report.summary
+        service = BackendService().processing_engine_service()
+        token = service.runtime_token_for(products)
+        return True, "Processing Engine is ready.", token
     except Exception as exc:  # noqa: BLE001
-        return False, f"PBM backend check failed: {exc}"
+        return False, f"Processing Engine check failed: {exc}", None
 
 
 def _is_logical_spatial_report(report: PolygonBatchPreflightReport) -> bool:
@@ -951,7 +1016,10 @@ def _submit_and_observe_source_aware_chm(report,adapter,batch_folder,context,sou
     with temporary.open("wb") as stream:pickle.dump(payload,stream);stream.flush();os.fsync(stream.fileno())
     os.replace(temporary,payload_path)
     service=adapter._backend_service()
-    pid,_command=service.submit_polygon_coordinator(payload_path,job_dir)
+    runtime_token=report.request.runtime_token
+    if runtime_token is None:raise RuntimeError("ENGINE_RUNTIME_TOKEN_MISSING: Runtime token missing from polygon request.")
+    products=tuple(product.value for product in report.request.products)
+    pid,_command=service.submit_polygon_coordinator(payload_path,job_dir,runtime_token,products)
     from .atomic_state import atomic_write_json
     atomic_write_json(job_dir/"submission.json",{"job_id":job_id,"attempt_id":attempt_id,"coordinator_pid":pid,"payload":str(payload_path),"submitted_at":datetime.now(timezone.utc).isoformat()})
     terminal=job_dir/"terminal_result.json";last_stage=""
@@ -1038,8 +1106,22 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         if event.stop_reason:message += f" {event.stop_reason}"
         _emit_polygon_stage(item_callback, source, context, event.stage, message)
 
-    scheduler = PolygonProductWorkScheduler(plan.work_units, execute_unit, checkpoint, concurrency=plan.concurrency_limit, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress)
-    results = scheduler.run()
+    if plan.pilot_required and plan.work_units:
+        _emit_polygon_stage(item_callback, source, context, "Canary Validation", f"Validating Processing Engine and source access on {plan.work_units[0].work_unit_id} before automatic continuation.")
+        canary = PolygonProductWorkScheduler((plan.work_units[0],), execute_unit, checkpoint, concurrency=1, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress)
+        canary_results = canary.run()
+        from .atomic_state import atomic_write_json
+        atomic_write_json(context.run_folder / "canary_result.json", {"work_unit_id": plan.work_units[0].work_unit_id, "status": canary_results[0].status, "message": canary_results[0].message, "continues_automatically": canary_results[0].status in {"Complete", "CompleteNoData"}})
+        if canary_results[0].status not in {"Complete", "CompleteNoData"}:
+            scheduler = canary
+            results = (*canary_results, *(WorkUnitResult(unit.work_unit_id, "Pending", message="Canary validation did not pass; full execution was not started.") for unit in plan.work_units[1:]))
+        else:
+            _emit_polygon_stage(item_callback, source, context, "Processing remaining areas", "Canary passed; continuing the full job automatically.")
+            scheduler = PolygonProductWorkScheduler(plan.work_units, execute_unit, checkpoint, concurrency=plan.concurrency_limit, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress)
+            results = scheduler.run()
+    else:
+        scheduler = PolygonProductWorkScheduler(plan.work_units, execute_unit, checkpoint, concurrency=plan.concurrency_limit, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress)
+        results = scheduler.run()
     failed = tuple(item for item in results if item.status == "Failed")
     pending = tuple(item for item in results if item.status == "Pending")
     final_unmasked = context.run_folder / "mosaics" / "chm.tif"

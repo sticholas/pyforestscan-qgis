@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 31I - Verified runtime handoff and Polygon execution identity
+
+- Froze Processing Engine identity during Polygon Prerun and carried it through the manifest, launcher, and coordinator.
+- Removed independent Polygon verifier/token resolution and added field-level runtime comparison snapshots.
+- Routed local LAS CHM/Rumple plans directly through the durable PBM coordinator.
+- Added deterministic global work-unit IDs, conservative raw/prepared source detection, canonical workload estimates, and automatic large-job canary continuation.
+- Classified engine rejection before coordinator launch as `runtime_prelaunch`, not a failed scientific batch.
+
 ## Phase 31H - Authoritative one-click Processing Engine setup
 
 - Unified setup, repair, final verification, persisted state, runtime token, and launch readiness under one shared Processing Engine service.

@@ -1,5 +1,7 @@
 # Authoritative Processing Engine State
 
+Phase 31I extends this ownership through launch: Prerun freezes the published token and [Runtime Token Handoff](RUNTIME_TOKEN_HANDOFF.md) carries it into the coordinator. Launch never resolves a replacement engine.
+
 Phase 31H defines `ProcessingEngineService` as the sole execution-critical readiness owner. `BackendService` returns one shared service per resolved engine root. Legacy backend detection and verification remain diagnostic inputs only; they cannot publish execution readiness.
 
 ## State

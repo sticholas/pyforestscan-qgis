@@ -18,7 +18,8 @@ def _atomic_pickle(path,value):
 def run_payload(payload_path):
     with Path(payload_path).open("rb") as stream:payload=pickle.load(stream)
     job_dir=Path(payload["job_dir"]);job_id=payload["job_id"];attempt_id=payload["attempt_id"];coordinator=DurableJobCoordinator(job_dir);coordinator.recover();coordinator.write_identity(job_id,attempt_id,os.sys.argv);started=time.monotonic()
-    _validate_and_trace_runtime(job_dir,job_id)
+    products=tuple(product.value for product in payload["report"].request.products)
+    _validate_and_trace_runtime(job_dir,job_id,products)
     def progress(item):
         stage=getattr(item,"status","Processing");message=getattr(item,"message","");plan=payload["plan"];counts=aggregate_work_unit_statuses(payload["context"].run_folder/"work_units",plan.candidate_count,plan.required_count)
         coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,"running",plan.candidate_count,completed=counts["completed"]+counts["complete_nodata"],failed=counts["failed"],pending=counts["pending"],running=counts["running"],attempted=counts["attempted"],current_stage=str(stage),current_activity=str(message),elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now(),candidate_work_units=plan.candidate_count,required_work_units=plan.required_count,skipped_outside_polygon=counts["skipped_outside_polygon"],complete_nodata=counts["complete_nodata"]))
@@ -41,7 +42,7 @@ def run_payload(payload_path):
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument("--payload",type=Path,required=True);args=parser.parse_args();return run_payload(args.payload)
-def _validate_and_trace_runtime(job_dir,job_id):
+def _validate_and_trace_runtime(job_dir,job_id,products):
     contract=inspect_runtime_contract();token=ProcessingRuntimeToken.from_dict(json.loads(os.environ.get("PYFORESTSCAN_RUNTIME_TOKEN","{}")))
     if token is None:raise RuntimeError("ENGINE_RUNTIME_TOKEN_MISSING: polygon coordinator was not launched by the Processing Engine.")
     identity_matches=(
@@ -50,7 +51,7 @@ def _validate_and_trace_runtime(job_dir,job_id):
         and token.backend_runner_hash==str(contract.get("runner_sha256",""))
         and token.plugin_build_id==str(contract.get("plugin_build_id",""))
         and token.dependency_manifest_hash==str(contract.get("dependency_manifest_hash",""))
-        and token.product_capability_hash==product_capability_hash(("chm",))
+        and token.product_capability_hash==product_capability_hash(tuple(products))
     )
     if not identity_matches:raise RuntimeError("ENGINE_RUNTIME_CHANGED: polygon coordinator runtime differs from the verified Processing Engine.")
     path=Path(job_dir)/"execution_runtime_trace.json"

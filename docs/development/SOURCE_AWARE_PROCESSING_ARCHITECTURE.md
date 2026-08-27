@@ -1,5 +1,7 @@
 # Source-aware processing architecture
 
+Local LAS CHM/Rumple plans now enter the durable PBM coordinator directly instead of first clipping through QGIS Python. Work-unit identity is described in [Global Work Unit Identity](GLOBAL_WORK_UNIT_IDENTITY.md), and alternative source representations in [Source Alternative Detection](SOURCE_ALTERNATIVE_DETECTION.md).
+
 ## Phase 29D performance contract
 
 The adaptive planner and executor share one point-memory model. Direct one-unit requests bypass durable unit/mosaic overhead. Larger EPT CHM jobs launch one PBM coordinator, not one Python process per unit; the coordinator owns bounded scheduling and recovery. Native files remain first partitions and are subdivided only when file size or estimated point/raster memory exceeds the adaptive budget. Plan diagnostics report execution path, output cells, units, concurrency, estimated peak memory, and buffered-read amplification.

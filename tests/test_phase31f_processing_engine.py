@@ -103,7 +103,9 @@ class ProcessingEngineTests(unittest.TestCase):
     def test_folder_batch_requires_same_managed_engine(self):
         source = (Path(__file__).parents[1] / "pyforestscan_qgis" / "ui" / "pages.py").read_text(encoding="utf-8")
         worker = source[source.index("class _BatchExecutionWorker"):source.index("class _CatalogBuildWorker")]
-        self.assertIn("ProcessingEngineVerifier(BackendService().paths).require_ready()", worker)
+        self.assertIn("validate_runtime_token_for_launch", worker)
+        self.assertIn("self.request.runtime_token", worker)
+        self.assertNotIn("ProcessingEngineVerifier", worker)
         self.assertIn('PyForestScanAdapter(execution_mode="pbm_backend")', worker)
 
 

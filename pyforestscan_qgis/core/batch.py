@@ -57,6 +57,7 @@ class BatchRequest:
     title: str = "PyForestScan Batch"
     batch_folder: Path | None = None
     processing_spatial_contexts: tuple[tuple[str, dict[str, object]], ...] = ()
+    runtime_token: object | None = None
 
 
 @dataclass(frozen=True)

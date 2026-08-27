@@ -1,5 +1,9 @@
 # Known Limitations
 
+- Phase 31I validates Polygon coordinator launch and automatic canary policy, but the full 104.8-million-point Olaa CHM/Rumple run remains live manual QA.
+- Alternative-source recommendation uses catalog point count, XY bounds, byte size, filename relationship, and Z ranges. Repositories lacking enough evidence remain ambiguous rather than silently double processed.
+- Standard Folder processing is PBM-routed, but its runtime token is not yet serialized through the same durable preflight manifest contract used by Polygon processing.
+
 ## Phase 31H live gates
 
 Authoritative state/token behavior, stale-handler detection, 100-transition soak, product API smoke, and production-route guards are automated. Clean Windows downloads, two simultaneous live QGIS instances, no-console observation, corrupted-package repair, and a fresh Polygon CHM/Rumple completion still require manual release evidence.

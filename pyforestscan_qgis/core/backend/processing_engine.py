@@ -237,8 +237,11 @@ def current_plugin_build_id() -> str:
     package_root = Path(__file__).resolve().parents[2]
     inputs = (
         package_root / "backend_runner" / "run_processing_job.py",
+        package_root / "backend_runner" / "polygon_job_coordinator.py",
         package_root / "core" / "adapter.py",
         package_root / "core" / "pipeline.py",
+        package_root / "core" / "backend" / "execution.py",
+        package_root / "core" / "polygon_batch.py",
     )
     try:
         return hashlib.sha256(b"".join(path.read_bytes() for path in inputs)).hexdigest()
@@ -399,6 +402,60 @@ class ProcessingEngineService:
             dependency_manifest_hash=token.dependency_manifest_hash,
         )
 
+    def validate_runtime_token_for_launch(
+        self,
+        token: ProcessingRuntimeToken | None,
+        products: tuple[str, ...],
+        snapshot_folder: Path | None = None,
+    ) -> dict[str, dict[str, str]]:
+        """Validate one frozen token without selecting or verifying another runtime."""
+        if token is None:
+            raise ProcessingEngineError(
+                "ENGINE_RUNTIME_TOKEN_MISSING",
+                "Processing runtime identity is missing from the request.",
+                "Runtime token missing from polygon request.",
+            )
+        state = self.state(quick=True)
+        observed = state.runtime_token
+        if not state.ready_for_processing or observed is None:
+            raise ProcessingEngineError(
+                "ENGINE_RUNTIME_STATE_CHANGED",
+                "Processing Engine changed before launch. No scientific attempt started.",
+                f"Expected READY engine {token.engine_id}; observed {state.status.value} from {processing_engine_manifest_path(self.paths)}.",
+            )
+        expected = token.to_dict()
+        actual = observed.to_dict()
+        actual["product_capability_hash"] = product_capability_hash(products)
+        actual["environment_fingerprint"] = environment_fingerprint(self.paths)
+        comparison: dict[str, dict[str, str]] = {}
+        for field in expected:
+            expected_value = str(expected.get(field, ""))
+            actual_value = str(actual.get(field, ""))
+            comparison[field] = {
+                "status": "MATCH" if expected_value and expected_value == actual_value else ("MISSING" if not expected_value or not actual_value else "MISMATCH"),
+                "expected": expected_value,
+                "observed": actual_value,
+            }
+        comparison["normalized_executable"] = {
+            "status": "MATCH" if _normalized_path(token.executable) == _normalized_path(observed.executable) else "MISMATCH",
+            "expected": _normalized_path(token.executable),
+            "observed": _normalized_path(observed.executable),
+        }
+        comparison["manifest_path"] = {"status": "MATCH", "expected": str(processing_engine_manifest_path(self.paths)), "observed": str(processing_engine_manifest_path(self.paths))}
+        failures = {field: values for field, values in comparison.items() if values["status"] != "MATCH"}
+        if snapshot_folder is not None:
+            _write_runtime_snapshot(
+                Path(snapshot_folder) / "processing_engine_launch_snapshot.json",
+                token,
+                comparison,
+                manifest_path=processing_engine_manifest_path(self.paths),
+            )
+            _write_runtime_comparison(Path(snapshot_folder) / "runtime_token_comparison.json", comparison)
+        if failures:
+            details = "; ".join(f"{field}: expected {values['expected']!r}, observed {values['observed']!r}" for field, values in failures.items())
+            raise ProcessingEngineError("ENGINE_RUNTIME_TOKEN_MISMATCH", "Processing Engine changed before launch. No scientific attempt started.", details)
+        return comparison
+
     def environment(self) -> dict[str, str]:
         return build_processing_engine_environment(self.paths.environment_path, self.paths.platform.value)
 
@@ -426,9 +483,51 @@ class ProcessingEngineService:
     def _publish(self, report: ProcessingEngineReport) -> ProcessingEngineStateModel:
         state = ProcessingEngineStateModel.from_report(report)
         self._state = state
+        if state.ready_for_processing and state.runtime_token is not None:
+            _write_runtime_snapshot(
+                self.paths.backend_root / "processing_engine_snapshot.json",
+                state.runtime_token,
+                manifest_path=processing_engine_manifest_path(self.paths),
+            )
         for listener in tuple(self._listeners):
             listener(state)
         return state
+
+
+def _normalized_path(value: str) -> str:
+    return os.path.normcase(os.path.abspath(value)) if value else ""
+
+
+def _write_runtime_snapshot(
+    path: Path,
+    token: ProcessingRuntimeToken,
+    comparison: dict[str, dict[str, str]] | None = None,
+    manifest_path: Path | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "processing_runtime": token.to_dict(),
+        "manifest_path": str(manifest_path or path.parent / "processing_engine.json"),
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if comparison is not None:
+        payload["comparison"] = comparison
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        os.replace(temporary, path)
+    except OSError:
+        pass
+
+
+def _write_runtime_comparison(path: Path, comparison: dict[str, dict[str, str]]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps({"fields": comparison}, indent=2, sort_keys=True), encoding="utf-8")
+        os.replace(temporary, path)
+    except OSError:
+        pass
 
 
 def _token_from_contract(contract: dict[str, Any], products: tuple[str, ...] | None = None) -> ProcessingRuntimeToken:

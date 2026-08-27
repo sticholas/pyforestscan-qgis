@@ -41,6 +41,7 @@ class BatchPreflightReport:
     max_workers: int
     recommended_workers: int
     processing_spatial_contexts: tuple[tuple[str, dict[str, object]], ...] = ()
+    runtime_token: object | None = None
 
     @property
     def has_warnings(self) -> bool:
@@ -155,6 +156,7 @@ def run_batch_preflight(
         max_workers=request.settings.max_workers,
         recommended_workers=recommend_batch_workers(len(files_to_process), workload_score, request.settings.execution_mode),
         processing_spatial_contexts=spatial_contexts,
+        runtime_token=request.runtime_token,
     )
 
 

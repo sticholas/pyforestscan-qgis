@@ -34,6 +34,8 @@ class LidarSourceRecord:
     bounds: Bounds2D | None = None
     crs: str | None = None
     point_count: int | None = None
+    zmin: float | None = None
+    zmax: float | None = None
 
 
 @dataclass(frozen=True)
@@ -107,6 +109,8 @@ def write_inventory_cache(cache_path: Path, inventory: LidarInventory) -> Path:
                 "modified_ns": item.modified_ns,
                 "crs": item.crs,
                 "point_count": item.point_count,
+                "zmin": item.zmin,
+                "zmax": item.zmax,
                 "bounds": None if item.bounds is None else item.bounds.__dict__,
             }
             for item in inventory.sources

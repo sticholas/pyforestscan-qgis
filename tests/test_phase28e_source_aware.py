@@ -65,7 +65,7 @@ class SchedulerTests(unittest.TestCase):
     if unit.work_unit_id.endswith('1') and attempt==1:raise Transient('network')
     if unit.work_unit_id.endswith('2'):raise ValueError('All points collinear')
     p=Path(d)/f'{unit.work_unit_id}.tif';p.write_bytes(b'x');return WorkUnitResult(unit.work_unit_id,'Complete',p)
-   out=PolygonProductWorkScheduler(self._units(),execute,CheckpointStore(Path(d)/'cp','sig'),concurrency=2,retry_count=2,transient=lambda e:isinstance(e,Transient)).run();self.assertEqual(seen['wu-0001'],2);self.assertEqual(seen['wu-0002'],1);self.assertEqual(out[1].status,'Failed')
+   units=self._units();out=PolygonProductWorkScheduler(units,execute,CheckpointStore(Path(d)/'cp','sig'),concurrency=2,retry_count=2,transient=lambda e:isinstance(e,Transient)).run();self.assertEqual(seen[units[0].work_unit_id],2);self.assertEqual(seen[units[1].work_unit_id],1);self.assertEqual(out[1].status,'Failed')
  def test_progress_has_real_counts_and_eta_is_conditional(self):
   with tempfile.TemporaryDirectory() as d:
    events=[]

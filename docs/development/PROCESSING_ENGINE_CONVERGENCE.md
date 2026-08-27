@@ -1,5 +1,7 @@
 # Processing Engine Convergence
 
+The convergence boundary now includes immutable Prerun-to-launch identity. Polygon execution no longer runs a second verifier or asks the launcher for "whatever engine is current."
+
 Phase 31H removes the remaining state split: setup, UI, Process precheck, launcher, and worker now share one persisted READY state and runtime token. Legacy backend verification remains troubleshooting-only and cannot authorize execution.
 
 Phase 31G makes the managed Processing Engine the sole owner of production scientific execution. QGIS Python owns UI, QGIS integration, request construction, and result loading; it must not import PyForestScan, PDAL, Rasterio, or GDAL to execute science.

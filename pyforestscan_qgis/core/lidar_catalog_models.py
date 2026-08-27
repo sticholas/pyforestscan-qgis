@@ -78,6 +78,8 @@ class LidarCatalogRecord:
             bounds=self.bounds,
             crs=self.source_crs,
             point_count=self.point_count,
+            zmin=self.zmin,
+            zmax=self.zmax,
         )
 
 

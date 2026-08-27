@@ -1,5 +1,7 @@
 # Folder and Polygon Processing Parity
 
+Polygon CHM/Rumple requests freeze the managed runtime at Prerun and use it for coordinator launch. Standard Folder processing remains explicitly PBM-routed; immutable token persistence across its complete preflight request is still tracked as a post-31I parity improvement.
+
 Folder and Polygon now use the same shared engine service, managed adapter mode, token authority, environment builder, and failure-before-job rule. Their only intentional difference is source selection/coordinator planning.
 
 Both normal modes now assert the same managed runtime, use `build_processing_engine_environment()`, and record the same runtime token and identity trace. Neither mode may fall back to QGIS Python science. Polygon adds a durable coordinator boundary, which validates the same frozen token before scheduling work.

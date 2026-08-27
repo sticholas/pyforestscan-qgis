@@ -115,9 +115,9 @@ class BackendService:
         """Run one PBM backend processing job spec."""
         return self.execution_service().run_processing_job(spec, spec_path)
 
-    def submit_polygon_coordinator(self,payload_path:Path,job_dir:Path):
+    def submit_polygon_coordinator(self,payload_path:Path,job_dir:Path,runtime_token,products):
         """Launch the durable source-aware polygon coordinator."""
-        return self.execution_service().submit_polygon_coordinator(payload_path,job_dir)
+        return self.execution_service().submit_polygon_coordinator(payload_path,job_dir,runtime_token,products)
 
     def run_product(self, product: str, request):
         """Run one product through the PBM backend execution service."""

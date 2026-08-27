@@ -84,7 +84,7 @@ class LidarSourceMetadata:
         )
 
     def to_source_record(self) -> LidarSourceRecord:
-        return LidarSourceRecord(self.path, self.source_type, self.file_size, self.modified_time_ns, bounds=self.bounds, crs=self.effective_crs, point_count=self.point_count)
+        return LidarSourceRecord(self.path, self.source_type, self.file_size, self.modified_time_ns, bounds=self.bounds, crs=self.effective_crs, point_count=self.point_count, zmin=self.zmin, zmax=self.zmax)
 
     def to_dict(self) -> dict[str, object]:
         return {

@@ -386,6 +386,7 @@ class PolygonSourceSelectionService:
             blockers = (_message("SOURCE_CRS_REQUIRED", "blocker", "Coordinate system needed", "The selected LiDAR cannot be aligned safely with this polygon.", "Raw coordinate overlap is reported separately from spatial alignment.", "Use Project CRS or Choose CRS"),)
         assumed = [item for item in contexts if item.mode is EffectiveSpatialMode.ASSUMED_MATCHING_COORDINATE_SPACE]
         if assumed:
+            warnings = tuple(item for item in warnings if "cannot yet be compared" not in item.message.lower())
             warnings = (*warnings, _message("ASSUMED_MATCHING_COORDINATE_SPACE", "warning", "Spatial reference assumed", f"Using polygon coordinate system {assumed[0].effective_crs} for unreferenced LiDAR. Coordinates are unchanged."))
         return PolygonSourceSelectionResult(
             repository_kind=repository.repository_kind,
@@ -649,6 +650,8 @@ def _source_to_dict(source: LidarSourceRecord) -> dict[str, object]:
         "bounds": None if source.bounds is None else source.bounds.__dict__,
         "crs": source.crs,
         "point_count": source.point_count,
+        "zmin": source.zmin,
+        "zmax": source.zmax,
     }
 
 
