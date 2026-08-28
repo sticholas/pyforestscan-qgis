@@ -47,7 +47,7 @@ from qgis.PyQt.QtWidgets import (
 from ..core.adapter import PyForestScanAdapter
 from ..core.backend import BackendService
 from ..core.build_identity import PLUGIN_CORRUPT, PLUGIN_MIXED_INSTALL, verify_session_files_unchanged
-from ..core.launch_attempt import LaunchAttempt, append_attempt_stage, create_launch_attempt
+from ..core.launch_attempt import LaunchAttempt, append_attempt_stage, create_launch_attempt, read_attempt_status
 from ..core.qgis_compat import build_qgis_compatibility_report, format_qgis_compatibility_report
 from ..core.qgis_processing_toolbox import QgisProcessingToolboxService
 from .session_state import MissionControlSessionState, ScientificAdvisorSummary, build_scientific_advisor_summary, workflow_input_signature
@@ -92,7 +92,7 @@ from ..core.lidar_catalog_integrity import inspect_catalog_integrity, repair_cat
 from ..core.repository_actions import repository_action_states, repository_setup_recommendation
 from ..core.repository_coverage import build_repository_coverage_model
 from ..core.repository_diagnostics import export_repository_diagnostic_report
-from ..core.polygon_batch import PolygonBatchRequest, catalog_status_text, execute_polygon_batch, polygon_preflight_text, run_polygon_batch_preflight, write_polygon_batch_manifest
+from ..core.polygon_batch import PolygonBatchRequest, catalog_status_text, execute_polygon_batch, polygon_preflight_text, record_polygon_dispatch_validation, run_polygon_batch_preflight, write_polygon_batch_manifest
 from ..core.job_manager import JobExecutionError, JobManager
 from ..core.knowledge import RecommendationReport
 from ..core.jobs import JobRecord, JobStatus
@@ -1934,8 +1934,8 @@ class _PolygonBatchExecutionWorker(QObject):
         self.launch_attempt = launch_attempt
 
     def run(self) -> None:
-        append_attempt_stage(self.launch_attempt, "WORKER_STARTED")
         try:
+            append_attempt_stage(self.launch_attempt, "WORKER_STARTED", operation="Background polygon orchestration owns the request.")
             result = execute_polygon_batch(
                 self.report,
                 adapter=PyForestScanAdapter(execution_mode="pbm_backend"),
@@ -1943,11 +1943,14 @@ class _PolygonBatchExecutionWorker(QObject):
                 job_callback=self.jobReady.emit,
                 control_callback=self.control_callback,
                 attempt_folder=None if self.launch_attempt is None else self.launch_attempt.folder,
+                stage_callback=lambda stage, details: append_attempt_stage(self.launch_attempt, stage, **details),
             )
         except Exception as exc:  # noqa: BLE001 - worker must report failures to UI.
-            append_attempt_stage(self.launch_attempt, "FAILED", reason=str(exc))
+            terminal_stage = "CANCELLED" if "cancelled" in str(exc).lower() else "FAILED"
+            append_attempt_stage(self.launch_attempt, terminal_stage, reason=str(exc))
             self.failed.emit(f"Unexpected polygon batch failure: {exc}")
             return
+        append_attempt_stage(self.launch_attempt, "FINALIZING")
         append_attempt_stage(self.launch_attempt, "COMPLETED")
         self.completed.emit(result)
 
@@ -2068,6 +2071,8 @@ class BatchPage(MissionPage):
         self._recent_error_path: Path | None = None
         self._completed_job_summary: CompletedJobSummary | None = None
         self._active_processing_profile = "Automatic (Recommended)"
+        self._active_launch_attempt: LaunchAttempt | None = None
+        self._last_launch_heartbeat_ms = 0
 
         self.mode_section, mode_layout = self.create_section("Processing Mode")
         self.batch_mode_combo = QComboBox()
@@ -2645,6 +2650,8 @@ class BatchPage(MissionPage):
         self.status_label = QLabel()
         _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: Needs Attention - choose data and run the Prerun Check.")
         process_layout.addWidget(self.status_label)
+        self.engine_status_label = _body_label("Processing Engine: Checking")
+        process_layout.addWidget(self.engine_status_label)
         self.worker_status_label = _body_label("Active workers: 0")
         process_layout.addWidget(self.worker_status_label)
         filter_row = QHBoxLayout()
@@ -2705,6 +2712,7 @@ class BatchPage(MissionPage):
         repair = bool(getattr(engine, "repair_needed", False))
         self.engine_setup_button.setText("Repair / Reload Processing Engine" if repair else "Set Up Processing Engine")
         self.engine_setup_button.setVisible(not ready)
+        self.engine_status_label.setText("Processing Engine: Ready" if ready else ("Processing Engine: Needs repair" if repair else "Processing Engine: Setup required"))
         if not ready:
             self.run_button.setEnabled(False)
             _set_status_badge(self.status_label, getattr(getattr(engine, "status", None), "value", "SETUP_REQUIRED"), getattr(engine, "message", "Processing Engine setup required."))
@@ -3828,6 +3836,8 @@ class BatchPage(MissionPage):
             products,
             str(getattr(report, "plan_signature", "")),
         )
+        self._active_launch_attempt = launch_attempt
+        self._last_launch_heartbeat_ms = 0
         installation = verify_session_files_unchanged()
         if installation.status in {PLUGIN_MIXED_INSTALL, PLUGIN_CORRUPT}:
             append_attempt_stage(launch_attempt, "FAILED", reason=installation.message, failure_domain="PLUGIN_INSTALLATION")
@@ -3866,7 +3876,8 @@ class BatchPage(MissionPage):
             self._retain_recent_error(technical, code=code, category="ENGINE", recommended_action="Run Prerun Check again; no scientific attempt started.", stage="runtime_prelaunch")
             append_attempt_stage(launch_attempt, "FAILED", reason=technical, code=code, failure_domain="PROCESSING_ENGINE")
             return
-        append_attempt_stage(launch_attempt, "TOKEN_VALIDATED")
+        append_attempt_stage(launch_attempt, "TOKEN_VALIDATED", runtime_generation_id=getattr(report.request.runtime_token, "runtime_generation_id", ""))
+        record_polygon_dispatch_validation(report, runtime_comparison, attempt_folder=launch_attempt.folder)
         token=self._begin_logical_job()
         if token is False:
             append_attempt_stage(launch_attempt, "FAILED", reason="Logical job admission was denied.")
@@ -3891,8 +3902,8 @@ class BatchPage(MissionPage):
         self.retry_failed_button.setVisible(False)
         self._processed_items = 0
         self._total_items = max(1, len(selected))
-        _set_status_badge(self.status_label, "RUNNING", f"Status: Running - clipping and processing {len(selected)} intersecting source(s).")
-        self.worker_status_label.setText("Active workers: 1 (polygon clipping, then batch execution)")
+        _set_status_badge(self.status_label, "RUNNING", f"Status: Starting - preparing {len(selected)} intersecting source(s) for background processing.")
+        self.worker_status_label.setText("Background ownership: launching (step progress is estimated)")
         self.batch_thread = QThread(self)
         self.batch_worker = _PolygonBatchExecutionWorker(report, self._batch_control_state, launch_attempt)
         self.batch_worker.moveToThread(self.batch_thread)
@@ -3906,8 +3917,8 @@ class BatchPage(MissionPage):
         self.batch_thread.finished.connect(self.batch_worker.deleteLater)
         self.batch_thread.finished.connect(self.batch_thread.deleteLater)
         self.batch_thread.finished.connect(self._clear_batch_thread)
+        append_attempt_stage(launch_attempt, "DISPATCH_STARTED", operation="Starting background Qt worker.")
         self.batch_thread.start()
-        append_attempt_stage(launch_attempt, "DISPATCH_STARTED")
         self._transition_processing_ui_state(ProcessingUiState.RUNNING)
 
     def _build_batch_request(self, batch_folder: Path | None = None, datasets: tuple[Path, ...] | None = None) -> BatchRequest:
@@ -4068,7 +4079,12 @@ class BatchPage(MissionPage):
     def _on_batch_failed(self, message: str) -> None:
         """Display an executor-level batch failure."""
         self._last_durable_state = "failed"
+        cancelled = "cancelled" in message.lower()
         try:
+            if cancelled:
+                self._last_durable_state = "interrupted"
+                _set_status_badge(self.status_label, "WARNING", "Status: Cancelled - completed outputs were preserved.")
+                return
             runtime_prelaunch = "ENGINE_RUNTIME_" in message or "runtime token" in message.lower()
             if runtime_prelaunch:
                 code = next((item.rstrip(":") for item in message.split() if item.startswith("ENGINE_RUNTIME_")), "ENGINE_RUNTIME_TOKEN_MISMATCH")
@@ -4078,7 +4094,7 @@ class BatchPage(MissionPage):
                 self._retain_recent_error(message)
                 _set_status_badge(self.status_label, "FAILED", f"Status: Failed - batch could not start: {message}")
         finally:
-            self._finish_batch_run(ProcessingUiState.FAILED)
+            self._finish_batch_run(ProcessingUiState.INTERRUPTED if cancelled else ProcessingUiState.FAILED)
 
     def _finish_batch_run(self, terminal_state: ProcessingUiState = ProcessingUiState.FAILED) -> None:
         """Restore controls after a batch worker exits."""
@@ -4104,6 +4120,27 @@ class BatchPage(MissionPage):
         self.refresh_processing_status_button.setVisible(state in {ProcessingUiState.INTERRUPTED, ProcessingUiState.RECOVERABLE})
 
     def _reconcile_processing_ui(self) -> None:
+        launch = read_attempt_status(self._active_launch_attempt)
+        if self.batch_thread is not None and self.batch_thread.isRunning() and launch["stage"]:
+            elapsed_seconds = int(launch["elapsed_ms"] / 1000)
+            labels = {
+                "DISPATCH_STARTED": "Starting background processing",
+                "WORKER_STARTED": "Background worker owns the request",
+                "REQUEST_SERIALIZATION_STARTED": "Preparing processing request",
+                "SOURCE_PREPARATION_CHECK_STARTED": "Checking LiDAR source",
+                "POLYGON_INPUT_PREPARATION_STARTED": "Preparing bounded LiDAR input",
+                "FIRST_WORKER_STARTED": "Computing selected products",
+                "FINALIZING": "Finalizing outputs",
+            }
+            current = labels.get(launch["stage"], launch["operation"] or launch["stage"].replace("_", " ").title())
+            if launch["stalled"]:
+                _set_status_badge(self.status_label, "WARNING", "Processing appears stalled before background ownership. Open Diagnostics or cancel the run.")
+                self.worker_status_label.setText(f"Launch stalled - {elapsed_seconds} s without background ownership")
+            else:
+                self.worker_status_label.setText(f"{current} - {elapsed_seconds} s; background heartbeat active")
+                if launch["elapsed_ms"] - self._last_launch_heartbeat_ms >= 5000:
+                    append_attempt_stage(self._active_launch_attempt, "HEARTBEAT", active_stage=launch["stage"], elapsed_seconds=elapsed_seconds)
+                    self._last_launch_heartbeat_ms = launch["elapsed_ms"]
         active = self.batch_thread is not None and self.batch_thread.isRunning()
         repaired = reconcile_ui_state(self.processing_ui_state, self._last_durable_state, coordinator_active=active)
         if repaired is not self.processing_ui_state:
@@ -4277,6 +4314,7 @@ class BatchPage(MissionPage):
     def cancel_remaining(self) -> None:
         """Cancel files that have not started yet."""
         self.cancel_requested = True
+        append_attempt_stage(self._active_launch_attempt, "CANCEL_REQUESTED", operation="Cancellation will stop before the next safe operation boundary.")
         self.pause_requested = False
         self.pause_button.setText("Pause After Current File")
         _set_status_badge(self.status_label, "RUNNING", "Status: Running - cancelling remaining files after the current file.")

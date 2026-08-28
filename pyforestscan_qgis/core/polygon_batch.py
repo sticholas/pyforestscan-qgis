@@ -524,12 +524,19 @@ def execute_polygon_batch(
     job_callback=None,
     control_callback=None,
     attempt_folder: Path | None = None,
+    stage_callback=None,
 ) -> BatchResult:
     """Clip intersecting sources to the exact polygon, then execute the normal Batch runner."""
+    def stage(name: str, **details) -> None:
+        if stage_callback is not None:
+            stage_callback(name, details)
+
+    stage("REQUEST_SERIALIZATION_STARTED", operation="Validating frozen polygon request.")
     if report.blockers:
         raise ValueError("Polygon batch preflight blockers must be resolved before execution.")
     adapter = adapter or PyForestScanAdapter(execution_mode="pbm_backend")
     batch_folder = report.batch_folder if report.batch_folder.exists() else create_batch_folder(report.request.output_folder)
+    stage("REQUEST_SERIALIZATION_FINISHED", batch_folder=str(batch_folder))
     if isinstance(adapter, PyForestScanAdapter) and adapter.execution_mode != "qgis_python":
         from .backend import BackendService
         service = BackendService().processing_engine_service()
@@ -541,10 +548,12 @@ def execute_polygon_batch(
             raise
         _write_engine_decision_trace(report, batch_folder, service, adapter, dispatch_status="VALID", comparison=comparison, attempt_folder=attempt_folder)
         adapter.bind_processing_runtime(report.request.runtime_token, products)
+    stage("SOURCE_PREPARATION_CHECK_STARTED", selected_source_count=len(report.selected_sources))
     if not _is_logical_spatial_report(report):
         path_blockers = selected_path_invariant(report.selected_sources, ordinary=True)
         if path_blockers:
             raise ValueError("; ".join(path_blockers))
+    stage("SOURCE_PREPARATION_CHECK_FINISHED", selected_source_count=len(report.selected_sources))
     scalable_plan = build_source_aware_chm_plan(report)
     scalable_products = set(report.request.products)
     if report.selected_sources and scalable_products and scalable_products <= {ProductType.CHM, ProductType.RUMPLE} and scalable_plan is not None and len(scalable_plan.work_units) > 1:
@@ -556,11 +565,21 @@ def execute_polygon_batch(
         return _execute_source_aware_chm(report, adapter, batch_folder, context, source, scalable_plan, item_callback=item_callback)
     if _is_logical_spatial_report(report):
         return _execute_logical_spatial_batch(report, adapter, batch_folder, item_callback=item_callback)
+    if isinstance(adapter, PyForestScanAdapter) and os.environ.get("PYFORESTSCAN_GENERIC_POLYGON_COORDINATOR") != "1" and adapter.selected_execution_backend() == "pbm_backend":
+        return _submit_and_observe_generic_polygon(
+            report, adapter, batch_folder, item_callback=item_callback,
+            stage_callback=stage_callback, control_callback=control_callback,
+        )
     clipped_folder = batch_folder / "polygon_clipped_sources"
+    stage("JOB_DIRECTORY_STARTED", path=str(clipped_folder))
     clipped_folder.mkdir(parents=True, exist_ok=True)
+    stage("JOB_DIRECTORY_FINISHED", path=str(clipped_folder))
     clipped_sources: list[Path] = []
     clip_records: list[dict[str, str]] = []
     for source in report.selected_sources:
+        if control_callback is not None and control_callback() == "cancel":
+            raise RuntimeError("Polygon processing cancelled before source preparation.")
+        stage("POLYGON_INPUT_PREPARATION_STARTED", source=str(source.path), operation="Preparing bounded polygon LiDAR input in PBM.")
         output = clipped_folder / f"{_safe_stem(source.path)}_polygon_clip.laz"
         bounds = report.query_geometry.ept_bounds if source.source_type == "ept" else None
         result = adapter.normalize_heights(
@@ -577,6 +596,7 @@ def execute_polygon_batch(
         if result.output_path is not None:
             clipped_sources.append(Path(result.output_path))
             clip_records.append({"source": str(source.path), "clipped": str(result.output_path), "points": str(result.point_count or "unknown"), "bounds_used": str(bounds)})
+        stage("POLYGON_INPUT_PREPARATION_FINISHED", source=str(source.path), output=str(result.output_path or ""), bounded_points=result.point_count)
     if not clipped_sources:
         raise ValueError("Polygon clipping produced no runnable clipped sources.")
     batch_request = BatchRequest(
@@ -589,13 +609,81 @@ def execute_polygon_batch(
         batch_folder=batch_folder,
     )
     write_polygon_batch_manifest(report, clip_records, batch_folder=batch_folder)
-    runner = executor or BatchExecutor()
+    stage("FIRST_WORKER_LAUNCH_REQUESTED", operation="Starting PBM product execution.")
+    if executor is not None:
+        runner = executor
+    elif os.environ.get("PYFORESTSCAN_GENERIC_POLYGON_COORDINATOR") == "1":
+        runner = BatchExecutor(adapter_factory=lambda: PyForestScanAdapter(execution_mode="qgis_python"))
+    else:
+        runner = BatchExecutor()
+    stage("FIRST_WORKER_STARTED", operation="Batch executor owns prepared inputs.")
     result = runner.run(batch_request, item_callback=item_callback, job_callback=job_callback, control_callback=control_callback)
     mask_results = _mask_result_outputs(result, report)
     result = _apply_mask_failures(result, mask_results, report)
     result = _register_polygon_outputs(result, report, mask_results)
     write_polygon_batch_manifest(report, clip_records, batch_folder=batch_folder, mask_records=[_mask_record(item) for item in mask_results])
     return result
+
+
+def _submit_and_observe_generic_polygon(report, adapter, batch_folder, *, item_callback=None, stage_callback=None, control_callback=None):
+    """Launch generic polygon preparation and science in the managed PBM process."""
+    from .atomic_state import atomic_write_json
+
+    job_id = report.plan_signature or f"generic-{int(time.time())}"
+    attempt_id = f"attempt-{int(time.time())}"
+    job_dir = Path(batch_folder) / "polygon_jobs" / f"generic-{job_id[:12]}" / "coordinator"
+    job_dir.mkdir(parents=True, exist_ok=True)
+    if stage_callback is not None:
+        stage_callback("COORDINATOR_CONSTRUCTION_STARTED", {"job_directory": str(job_dir)})
+    payload = {"job_id": job_id, "attempt_id": attempt_id, "job_dir": str(job_dir), "report": report, "batch_folder": str(batch_folder)}
+    payload_path = job_dir / "generic_polygon_payload.pkl"
+    temporary = payload_path.with_suffix(".partial")
+    with temporary.open("wb") as stream:
+        pickle.dump(payload, stream)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, payload_path)
+    if stage_callback is not None:
+        stage_callback("COORDINATOR_CONSTRUCTION_FINISHED", {"request_path": str(payload_path)})
+        stage_callback("COORDINATOR_LAUNCH_REQUESTED", {"runtime_executable": report.request.runtime_token.executable})
+    products = tuple(product.value for product in report.request.products)
+    pid, _command = adapter._backend_service().submit_polygon_coordinator(
+        payload_path, job_dir, report.request.runtime_token, products, generic=True,
+    )
+    atomic_write_json(job_dir / "submission.json", {"job_id": job_id, "attempt_id": attempt_id, "coordinator_pid": pid, "request_path": str(payload_path), "submitted_at": datetime.now(timezone.utc).isoformat()})
+    if stage_callback is not None:
+        stage_callback("COORDINATOR_PROCESS_CREATED", {"coordinator_pid": pid, "request_path": str(payload_path), "runtime_executable": report.request.runtime_token.executable})
+    terminal = job_dir / "terminal_result.json"
+    identity = job_dir / "coordinator_identity.json"
+    progress = job_dir / "progress_snapshot.json"
+    coordinator_seen = False
+    last_sequence = -1
+    while not terminal.exists():
+        if control_callback is not None and control_callback() == "cancel":
+            atomic_write_json(job_dir / "cancel_requested.json", {"requested_at": datetime.now(timezone.utc).isoformat(), "coordinator_pid": pid})
+        if identity.exists() and not coordinator_seen:
+            coordinator_seen = True
+            if stage_callback is not None:
+                stage_callback("COORDINATOR_STARTED", {"coordinator_pid": pid})
+        try:
+            snapshot = json.loads(progress.read_text(encoding="utf-8")) if progress.exists() else {}
+        except (OSError, ValueError):
+            snapshot = {}
+        sequence = int(snapshot.get("sequence", -1))
+        if sequence != last_sequence:
+            last_sequence = sequence
+            if stage_callback is not None and snapshot.get("stage_code"):
+                stage_callback(str(snapshot["stage_code"]), {"operation": str(snapshot.get("message", "Background processing continues.")), "coordinator_pid": pid, "coordinator_elapsed_seconds": snapshot.get("elapsed_seconds", 0)})
+            if item_callback is not None:
+                _emit_polygon_stage(item_callback, report.selected_sources[0], batch_run_context(report.selected_sources[0].path, job_dir.parent, reuse_existing=True), str(snapshot.get("stage", "Processing")), str(snapshot.get("message", "Background processing continues.")))
+        time.sleep(1)
+    state = json.loads(terminal.read_text(encoding="utf-8"))
+    if state.get("state") == "cancelled":
+        raise RuntimeError("Polygon processing cancelled.")
+    if state.get("state") != "complete":
+        raise RuntimeError(state.get("error") or "Managed polygon coordinator failed.")
+    with Path(state["result_path"]).open("rb") as stream:
+        return pickle.load(stream)
 
 
 def write_polygon_batch_manifest(
@@ -781,6 +869,24 @@ def _write_engine_decision_trace(
     if attempt_folder is not None:
         atomic_write_json(Path(attempt_folder) / "engine_decision_trace.json", payload)
     return path
+
+
+def record_polygon_dispatch_validation(
+    report: PolygonBatchPreflightReport,
+    comparison: dict[str, dict[str, str]],
+    *,
+    attempt_folder: Path | None = None,
+) -> Path:
+    """Bind the current manifest to the runtime validated for this click."""
+    from .backend import BackendService
+
+    adapter = PyForestScanAdapter(execution_mode="pbm_backend")
+    service = BackendService().processing_engine_service()
+    _write_engine_decision_trace(
+        report, report.batch_folder, service, adapter,
+        dispatch_status="VALID", comparison=comparison, attempt_folder=attempt_folder,
+    )
+    return write_polygon_batch_manifest(report, batch_folder=report.batch_folder)
 
 
 def validate_polygon_execution_manifest(payload: dict[str, object]) -> None:

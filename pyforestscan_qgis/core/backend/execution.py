@@ -117,10 +117,11 @@ class BackendExecutionService:
         """Read a backend job result JSON file."""
         return BackendJobResult.read(result_path)
 
-    def submit_polygon_coordinator(self, payload_path: Path, job_dir: Path, runtime_token: ProcessingRuntimeToken, products: tuple[str, ...]):
+    def submit_polygon_coordinator(self, payload_path: Path, job_dir: Path, runtime_token: ProcessingRuntimeToken, products: tuple[str, ...], *, generic: bool = False):
         """Launch a coordinator with the immutable token frozen during Prerun."""
         self.engine_service.validate_runtime_token_for_launch(runtime_token, products, job_dir)
-        command=[runtime_token.executable,"-m","pyforestscan_qgis.backend_runner.polygon_job_coordinator","--payload",str(payload_path)]
+        module = "pyforestscan_qgis.backend_runner.generic_polygon_coordinator" if generic else "pyforestscan_qgis.backend_runner.polygon_job_coordinator"
+        command=[runtime_token.executable,"-m",module,"--payload",str(payload_path)]
         env=build_processing_engine_environment(self.paths.environment_path,self.paths.platform.value)
         env["PYFORESTSCAN_RUNTIME_TOKEN"] = json.dumps(runtime_token.to_dict(), sort_keys=True)
         kwargs=dict(cwd=str(self.plugin_parent),env=env,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)

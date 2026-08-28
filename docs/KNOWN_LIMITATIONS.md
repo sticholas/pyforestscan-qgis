@@ -1,5 +1,10 @@
 # Known Limitations
 
+## Large polygon runtime QA
+
+- Generic polygon preparation now runs in a detached PBM coordinator and reports durable five-second heartbeats. The 104.8-million-point UNC PAI/FHD scenario still requires a real default-profile Windows QGIS launch test and bounded completed pilot; repository validation does not substitute for measured network, point-count, memory, and output evidence.
+- Cancellation is cooperative. A cancellation request is recorded immediately, but an individual native geospatial operation may finish its current safe operation before stopping.
+
 ## Packaged Build And Setup Integrity
 
 - Packaged builds detect missing or mixed critical plugin files through `build_info.json`. Development source copies without package metadata report plugin installation status as Unknown.

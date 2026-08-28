@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32F - Polygon dispatch and background progress
+
+- Fixed a concurrent launch-attempt writer race that could terminate the Qt worker before polygon execution while leaving Mission Control appearing to run.
+- Moved generic local LAS/LAZ polygon preparation and PAI/FHD execution into a detached, runtime-validated PBM coordinator.
+- Added truthful launch, coordinator, worker, finalization, heartbeat, PID, thread, and elapsed-time diagnostics with launch-stall detection.
+- Rewrote dispatch validation at click time so the polygon manifest and attempt trace use the same Processing Engine generation.
+- Separated Processing Engine readiness from polygon job readiness on the Process page.
+
 ## Phase 32E - Installed build identity and deployment integrity
 
 - Embedded immutable `build_info.json` metadata in every packaged ZIP with commit, build identity, Processing Engine build hash, timestamp, and critical module hashes.
