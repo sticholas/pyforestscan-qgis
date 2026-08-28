@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 import time
+import traceback
 from html import escape
 from pathlib import Path
 from typing import Callable
@@ -46,7 +47,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ..core.adapter import PyForestScanAdapter
 from ..core.backend import BackendService
-from ..core.build_identity import PLUGIN_CORRUPT, PLUGIN_MIXED_INSTALL, verify_session_files_unchanged
+from ..core.build_identity import PLUGIN_CORRUPT, PLUGIN_MIXED_INSTALL, plugin_root, verify_session_files_unchanged
 from ..core.launch_attempt import LaunchAttempt, append_attempt_stage, create_launch_attempt, read_attempt_status
 from ..core.qgis_compat import build_qgis_compatibility_report, format_qgis_compatibility_report
 from ..core.qgis_processing_toolbox import QgisProcessingToolboxService
@@ -3827,6 +3828,31 @@ class BatchPage(MissionPage):
         self._transition_processing_ui_state(ProcessingUiState.RUNNING)
 
     def _run_polygon_batch(self) -> None:
+        """Launch polygon work and terminate synchronous controller failures."""
+        self._active_launch_attempt = None
+        try:
+            self._dispatch_polygon_batch()
+        except Exception as exc:  # noqa: BLE001 - controller boundary preserves diagnostics and UI state.
+            diagnostic = traceback.format_exc()
+            append_attempt_stage(
+                self._active_launch_attempt, "DISPATCH_FAILED",
+                failure_domain="PLUGIN", code="DISPATCH_INTERNAL_ERROR",
+                exception_type=type(exc).__name__, reason=str(exc), traceback=diagnostic,
+            )
+            append_attempt_stage(
+                self._active_launch_attempt, "FAILED",
+                failure_domain="PLUGIN", code="DISPATCH_INTERNAL_ERROR",
+                exception_type=type(exc).__name__, reason=str(exc), traceback=diagnostic,
+            )
+            self._retain_recent_error(
+                diagnostic, code="DISPATCH_INTERNAL_ERROR", category="PLUGIN",
+                recommended_action="Open Diagnostics and report this internal launch error. Processing Engine repair is not required.",
+                stage="plugin_dispatch",
+            )
+            _set_status_badge(self.status_label, "FAILED", "PyForestScan could not start this job because the plugin encountered an internal launch error.")
+            self._finish_batch_run(ProcessingUiState.FAILED)
+
+    def _dispatch_polygon_batch(self) -> None:
         report = self.preflight_report
         if report is None:
             return
@@ -3864,7 +3890,7 @@ class BatchPage(MissionPage):
             _set_status_badge(self.status_label, "FAILED", "Status: Failed - polygon Prerun Check issues must be resolved before processing.")
             return
         try:
-            BackendService().processing_engine_service().validate_runtime_token_for_launch(
+            runtime_validation: dict[str, dict[str, str]] = BackendService().processing_engine_service().validate_runtime_token_for_launch(
                 report.request.runtime_token,
                 tuple(product.value for product in report.request.products),
                 report.batch_folder,
@@ -3877,7 +3903,9 @@ class BatchPage(MissionPage):
             append_attempt_stage(launch_attempt, "FAILED", reason=technical, code=code, failure_domain="PROCESSING_ENGINE")
             return
         append_attempt_stage(launch_attempt, "TOKEN_VALIDATED", runtime_generation_id=getattr(report.request.runtime_token, "runtime_generation_id", ""))
-        record_polygon_dispatch_validation(report, runtime_comparison, attempt_folder=launch_attempt.folder)
+        append_attempt_stage(launch_attempt, "DISPATCH_VALIDATION_STARTED")
+        record_polygon_dispatch_validation(report, runtime_validation, attempt_folder=launch_attempt.folder)
+        append_attempt_stage(launch_attempt, "DISPATCH_VALIDATION_RECORDED", runtime_generation_id=getattr(report.request.runtime_token, "runtime_generation_id", ""))
         token=self._begin_logical_job()
         if token is False:
             append_attempt_stage(launch_attempt, "FAILED", reason="Logical job admission was denied.")
@@ -5129,7 +5157,7 @@ class SettingsPage(MissionPage):
         )
         self._refresh_backend_technical_log()
         notice = "Processing Engine is ready." if success else "Processing Engine setup needs review."
-        self.processingEngineStateChanged.emit(result)
+        self.processingEngineStateChanged.emit(self.backend_service.processing_engine_state(quick=True))
         self.backendStateChanged.emit(status_value, notice)
 
     def _on_backend_install_failed(self, message: str) -> None:
@@ -5208,7 +5236,7 @@ class SettingsPage(MissionPage):
             "PLUGIN",
             f"Version: {identity.version}",
             f"Commit: {identity.git_commit}",
-            f"Build ID: {identity.build_id}",
+            f"Package build ID: {identity.build_id}",
             f"Package identity: {identity.package_identity}",
             f"Installed location: {identity.plugin_root}",
             f"Plugin installation: {installation_label}",
@@ -5218,7 +5246,7 @@ class SettingsPage(MissionPage):
             f"Status: {getattr(getattr(engine, 'status', None), 'value', 'Unknown')}",
             f"Engine ID: {getattr(token, 'engine_id', 'Unavailable')}",
             f"Runtime generation: {getattr(token, 'runtime_generation_id', 'Unavailable')}",
-            f"Verified build ID: {getattr(token, 'plugin_build_id', 'Unavailable')}",
+            f"Plugin contract fingerprint: {getattr(token, 'plugin_build_id', 'Unavailable')}",
             f"Executable: {getattr(token, 'executable', self.backend_service.paths.python_executable)}",
             f"Installer availability: {'enabled' if self.backend_service.backend_install_enabled() else 'off'}",
             f"Manifest backend version: {manifest.backend_version if manifest else 'Unavailable'}",
@@ -5231,7 +5259,7 @@ class SettingsPage(MissionPage):
             "LATEST PROCESSING ATTEMPT",
             f"Attempt ID: {latest_attempt.get('attempt_id', 'No attempt in this session')}",
             f"Clicked at: {latest_attempt.get('clicked_at', 'Unavailable')}",
-            f"Plugin build: {latest_attempt.get('plugin_build_id', 'Unavailable')}",
+            f"Package build ID: {latest_attempt.get('plugin_build_id', 'Unavailable')}",
             f"Outcome: {latest_attempt.get('outcome', 'Unavailable')}",
             f"Trace: {latest_attempt.get('attempt_path', 'Unavailable')}",
             "",
@@ -5244,8 +5272,12 @@ class SettingsPage(MissionPage):
             "REQUIRED NOW",
             *[f"- {name}" for name in required],
         ]
-        if token and identity.processing_engine_plugin_build_id not in {"unknown", "development"} and getattr(token, "plugin_build_id", "") != identity.processing_engine_plugin_build_id:
-            lines.extend(("", "BUILD IDENTITY DIFFERENCE", "The running plugin build differs from the build verified by the Processing Engine. Use Repair / Reload after confirming the plugin installation is Current."))
+        if token:
+            compatible = bool(getattr(engine, "ready_for_processing", False))
+            lines.extend((
+                "", "ENGINE COMPATIBILITY", f"Status: {'Compatible' if compatible else 'Needs attention'}",
+                "Compatibility authority: ProcessingEngineService runtime token validation.",
+            ))
         if version and version.warnings:
             lines.extend(("", "SETUP INTEGRITY NOTES"))
             lines.extend(f"- {warning}" for warning in version.warnings)

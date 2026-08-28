@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32G - Polygon dispatch and engine status consistency
+
+- Fixed the live polygon launch `NameError` by preserving the actual runtime-token comparison returned by the canonical Processing Engine service.
+- Added a synchronous dispatch exception boundary that terminates attempts as plugin dispatch failures with traceback diagnostics and never recommends engine repair for programming errors.
+- Projected the canonical post-setup Processing Engine state to both Tools & Setup and Process, removing stale split-readiness messaging.
+- Clarified package build identity versus the Processing Engine plugin-contract fingerprint in diagnostics.
+- Added source and packaged undefined-name validation plus a QGIS-free execution harness for the production polygon click path.
+
 ## Phase 32F - Polygon dispatch and background progress
 
 - Fixed a concurrent launch-attempt writer race that could terminate the Qt worker before polygon execution while leaving Mission Control appearing to run.

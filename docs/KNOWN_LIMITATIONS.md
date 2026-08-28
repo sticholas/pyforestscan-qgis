@@ -1,5 +1,9 @@
 # Known Limitations
 
+## Phase 32G live verification
+
+- Repository and packaged click-path harnesses verify dispatch through `DISPATCH_STARTED`. A clean default-profile QGIS 3.44.13 test must still confirm the packaged build reaches coordinator process creation against the real UNC source after all active QGIS sessions are closed.
+
 ## Large polygon runtime QA
 
 - Generic polygon preparation now runs in a detached PBM coordinator and reports durable five-second heartbeats. The 104.8-million-point UNC PAI/FHD scenario still requires a real default-profile Windows QGIS launch test and bounded completed pilot; repository validation does not substitute for measured network, point-count, memory, and output evidence.

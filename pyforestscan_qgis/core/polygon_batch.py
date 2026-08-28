@@ -898,6 +898,9 @@ def validate_polygon_execution_manifest(payload: dict[str, object]) -> None:
         missing.append("processing_runtime")
     else:
         missing.extend(f"processing_runtime.{field}" for field in required_runtime if not runtime.get(field))
+        dispatch = payload.get("runtime_validation_at_dispatch")
+        if isinstance(dispatch, dict) and runtime.get("runtime_generation_id") != dispatch.get("generation_id"):
+            missing.append("runtime_validation_at_dispatch.generation_id_mismatch")
     if not payload.get("selected_source_paths"):
         missing.append("selected_source_paths")
     if not payload.get("plan_signature"):
