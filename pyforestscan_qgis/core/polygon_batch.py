@@ -48,6 +48,7 @@ from .backend.processing_engine import ProcessingRuntimeToken
 from .source_alternatives import SourceRelationship, canonicalize_source_alternatives
 
 POLYGON_MANIFEST_NAME = "polygon_batch_manifest.json"
+POLYGON_EXECUTION_MANIFEST_NAME = "polygon_execution_manifest.json"
 DEFAULT_POLYGON_SOURCE_WARNING = 25
 DEFAULT_POLYGON_POINT_WARNING = 25_000_000
 DEFAULT_POLYGON_SIZE_WARNING_BYTES = 20 * 1024 * 1024 * 1024
@@ -700,6 +701,8 @@ def write_polygon_batch_manifest(
     path.parent.mkdir(parents=True, exist_ok=True)
     query = report.query_result
     payload = {
+        "lifecycle": "PRERUN_PLAN",
+        "plan_id": report.plan_signature,
         "mode": "polygon_area_processing",
         "lidar_repository": str(report.request.lidar_folder),
         "catalog_path": str(report.catalog_path),
@@ -710,7 +713,8 @@ def write_polygon_batch_manifest(
         "concurrency": requested_effective_concurrency(_shared_options(report), source_types=_source_types(report), product_count=len(report.request.products)),
         "execution_plan": None if report.execution_plan is None else report.execution_plan.to_dict(),
         "processing_runtime": None if report.request.runtime_token is None else report.request.runtime_token.to_dict(),
-        "runtime_validation_at_dispatch": _runtime_dispatch_evidence(folder),
+        "runtime_generation_id": "" if report.request.runtime_token is None else report.request.runtime_token.runtime_generation_id,
+        "runtime_validation_at_dispatch": None,
         "source_aware_raster_plan": _source_aware_chm_plan_dict(report, source_aware_plan),
         "source_aware_chm_plan": _source_aware_chm_plan_dict(report, source_aware_plan),
         "spatial_provenance": _spatial_provenance(report),
@@ -788,27 +792,11 @@ def write_polygon_batch_manifest(
         "mask_records": mask_records or [],
     }
     if report.request.runtime_token is not None:
-        validate_polygon_execution_manifest(payload)
+        validate_polygon_execution_manifest(payload, lifecycle="plan")
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     _write_polygon_source_resolution(report, folder)
     _write_effective_spatial_trace(report, folder)
     return path
-
-
-def _runtime_dispatch_evidence(folder: Path) -> dict[str, object] | None:
-    """Read the immutable launch decision written before scientific dispatch."""
-    path = Path(folder) / "engine_decision_trace.json"
-    try:
-        trace = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    dispatch = dict(trace.get("dispatch_validation", {}))
-    return {
-        "status": dispatch.get("status", "UNKNOWN"),
-        "checked_at": dispatch.get("timestamp", ""),
-        "generation_id": dict(trace.get("runtime_token", {})).get("runtime_generation_id", ""),
-        "matched_fields": list(dispatch.get("matched_fields", ())),
-    }
 
 
 def _write_engine_decision_trace(
@@ -877,20 +865,47 @@ def record_polygon_dispatch_validation(
     *,
     attempt_folder: Path | None = None,
 ) -> Path:
-    """Bind the current manifest to the runtime validated for this click."""
+    """Write attempt-scoped dispatch evidence for the validated plan token."""
     from .backend import BackendService
+    from .atomic_state import atomic_write_json
 
     adapter = PyForestScanAdapter(execution_mode="pbm_backend")
     service = BackendService().processing_engine_service()
-    _write_engine_decision_trace(
+    decision_path = _write_engine_decision_trace(
         report, report.batch_folder, service, adapter,
         dispatch_status="VALID", comparison=comparison, attempt_folder=attempt_folder,
     )
-    return write_polygon_batch_manifest(report, batch_folder=report.batch_folder)
+    token = report.request.runtime_token
+    if token is None:
+        raise ValueError("POLYGON_DISPATCH_RUNTIME_MISSING: Prerun did not freeze a Processing Runtime Token.")
+    matched = [name for name, values in comparison.items() if values.get("status") == "MATCH"]
+    dispatch = {
+        "lifecycle": "DISPATCH_ATTEMPT",
+        "attempt_id": "" if attempt_folder is None else Path(attempt_folder).name,
+        "plan_id": report.plan_signature,
+        "plan_signature": report.plan_signature,
+        "runtime_generation_id": token.runtime_generation_id,
+        "token_generation_id": token.runtime_generation_id,
+        "status": "VALID",
+        "matched_fields": matched,
+        "processing_runtime": token.to_dict(),
+    }
+    execution = {
+        **dispatch,
+        "runtime_validation_at_dispatch": {"status": "VALID", "generation_id": token.runtime_generation_id, "matched_fields": matched},
+        "selected_source_paths": [str(source.path) for source in report.selected_sources],
+        "execution_plan": None if report.execution_plan is None else report.execution_plan.to_dict(),
+        "source_aware_raster_plan": _source_aware_chm_plan_dict(report, None),
+    }
+    validate_polygon_execution_manifest(execution, lifecycle="execution")
+    destination = Path(attempt_folder or report.batch_folder)
+    atomic_write_json(destination / "dispatch_validation.json", dispatch)
+    atomic_write_json(destination / POLYGON_EXECUTION_MANIFEST_NAME, execution)
+    return decision_path
 
 
-def validate_polygon_execution_manifest(payload: dict[str, object]) -> None:
-    """Reject manifests that cannot bind execution to runtime and spatial identity."""
+def validate_polygon_execution_manifest(payload: dict[str, object], *, lifecycle: str = "plan") -> None:
+    """Validate reusable plan state separately from attempt dispatch state."""
     missing: list[str] = []
     runtime = payload.get("processing_runtime")
     required_runtime = ("engine_id", "executable", "environment_fingerprint", "contract_hash", "protocol", "backend_runner_hash", "dependency_manifest_hash", "product_capability_hash", "plugin_build_id")
@@ -899,8 +914,11 @@ def validate_polygon_execution_manifest(payload: dict[str, object]) -> None:
     else:
         missing.extend(f"processing_runtime.{field}" for field in required_runtime if not runtime.get(field))
         dispatch = payload.get("runtime_validation_at_dispatch")
-        if isinstance(dispatch, dict) and runtime.get("runtime_generation_id") != dispatch.get("generation_id"):
-            missing.append("runtime_validation_at_dispatch.generation_id_mismatch")
+        if lifecycle == "execution":
+            if not isinstance(dispatch, dict):
+                missing.append("runtime_validation_at_dispatch")
+            elif runtime.get("runtime_generation_id") != dispatch.get("generation_id"):
+                missing.append("runtime_validation_at_dispatch.generation_id_mismatch")
     if not payload.get("selected_source_paths"):
         missing.append("selected_source_paths")
     if not payload.get("plan_signature"):

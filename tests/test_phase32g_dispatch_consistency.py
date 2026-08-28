@@ -110,7 +110,7 @@ class Phase32GDispatchConsistencyTests(unittest.TestCase):
         self.assertNotEqual(package_build_id, plugin_contract_build_id)
         page = SimpleNamespace(
             engine_setup_button=MagicMock(), engine_status_label=MagicMock(), run_button=MagicMock(),
-            status_label=MagicMock(), preflight_report=None, _update_run_button_enabled=lambda: None,
+            status_label=MagicMock(), preflight_summary_label=MagicMock(), preflight_report=None, _update_run_button_enabled=lambda: None,
         )
         engine = SimpleNamespace(
             ready_for_processing=True, repair_needed=False,
@@ -148,7 +148,7 @@ class Phase32GDispatchConsistencyTests(unittest.TestCase):
             "source_aware_raster_plan": None,
         }
         with self.assertRaisesRegex(ValueError, "generation_id_mismatch"):
-            validate_polygon_execution_manifest(payload)
+            validate_polygon_execution_manifest(payload, lifecycle="execution")
 
 
 def _import_pages_with_qt_stubs():

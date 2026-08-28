@@ -1,5 +1,9 @@
 # Known Limitations
 
+## Phase 32H live gate
+
+- Automated plan/attempt lifecycle tests and the packaged click-path harness are complete. The exact default-profile QGIS 3.44.13 flow must still confirm Detailed Check has zero blockers and reaches the first managed worker after active QGIS sessions are saved and closed.
+
 ## Phase 32G live verification
 
 - Repository and packaged click-path harnesses verify dispatch through `DISPATCH_STARTED`. A clean default-profile QGIS 3.44.13 test must still confirm the packaged build reaches coordinator process creation against the real UNC source after all active QGIS sessions are closed.

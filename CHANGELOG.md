@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32H - Processing plan and dispatch runtime state
+
+- Separated reusable polygon Prerun plans from attempt-scoped dispatch validation and execution manifests.
+- Prevented historical dispatch generations from blocking a new Detailed Check or downgrading a READY Processing Engine.
+- Added explicit Engine, Plan, Spatial, Products, and non-blocking Dispatch sections to polygon Detailed Check output.
+- Added automatic plan invalidation and Prerun refresh after a READY engine generation update while preserving selections.
+- Added lifecycle, generation-linkage, fresh-attempt, and Windows path round-trip regression coverage.
+
 ## Phase 32G - Polygon dispatch and engine status consistency
 
 - Fixed the live polygon launch `NameError` by preserving the actual runtime-token comparison returned by the canonical Processing Engine service.

@@ -2720,6 +2720,8 @@ class BatchPage(MissionPage):
         elif hasattr(self, "preflight_report"):
             had_preflight = self.preflight_report is not None
             self.preflight_report = None
+            self.preflight_summary_label.setText("Processing plan: Refreshing for the current Processing Engine..." if had_preflight else "Processing plan: Needs Prerun.")
+            _set_status_badge(self.status_label, "READY", "Processing Engine: Ready. Processing plan: Refreshing..." if had_preflight else "Processing Engine: Ready. Processing plan needs Prerun.")
             self._update_run_button_enabled()
             if had_preflight:
                 QTimer.singleShot(0, self.run_preflight)
@@ -2916,7 +2918,16 @@ class BatchPage(MissionPage):
 
     def _polygon_guided_review_text(self, report: object) -> str:
         plan = getattr(report, "execution_plan", None)
-        lines = ["Polygon Processing Review", *guided_review_summary(plan), ""]
+        products = tuple(getattr(getattr(report, "request", None), "products", ()))
+        lines = [
+            "Polygon Processing Review",
+            "", "ENGINE", "READY" if getattr(report, "backend_ready", False) else "BLOCKED",
+            "", "PLAN", "READY" if not getattr(report, "blockers", ()) else "BLOCKED",
+            "", "SPATIAL", str(getattr(report, "spatial_alignment_status", "Unknown")).upper(),
+            "", "PRODUCTS", f"READY - {len(products)} selected" if products else "BLOCKED - none selected",
+            "", "DISPATCH", "Not started - dispatch validation begins only after Process LiDAR is clicked.",
+            "", *guided_review_summary(plan), "",
+        ]
         lines.append("Warnings:")
         warnings = getattr(report, "warnings", ())
         lines.extend(f"- {item}" for item in warnings[:5])
