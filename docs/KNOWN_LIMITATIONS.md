@@ -1,5 +1,12 @@
 # Known Limitations
 
+## Packaged Build And Setup Integrity
+
+- Packaged builds detect missing or mixed critical plugin files through `build_info.json`. Development source copies without package metadata report plugin installation status as Unknown.
+- QGIS must be restarted after manually replacing plugin files. PyForestScan blocks processing if files change beneath a running session; it does not attempt unsafe wholesale `sys.modules` mutation.
+- Internal beta Setup records the downloaded Micromamba SHA-256, but the manifest still uses the official `latest` endpoint without a release-pinned digest. Pinning a tested artifact digest remains a public-release gate. This does not make an already installed and verified Processing Engine unready.
+- Future CloudCompare, Potree, PyTorch, SAM, and WhiteboxTools placeholders are not required for current PyForestScan processing and are no longer displayed as normal Processing Engine requirements.
+
 ## Runtime changes after Prerun
 
 - Repair / Reload intentionally invalidates an older Prerun token. Mission Control reruns validation when active selections are available; otherwise the user must run Prerun again.

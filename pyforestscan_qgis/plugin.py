@@ -12,6 +12,7 @@ from .processing_provider import PyForestScanProvider
 from .resources import plugin_icon
 from .ui.mission_control import MissionControlDock
 from .core.workspace import WorkspaceManager
+from .core.build_identity import PLUGIN_MIXED_INSTALL, PLUGIN_CORRUPT, session_identity, write_plugin_session_identity
 
 
 class PyForestScanPlugin:
@@ -29,6 +30,13 @@ class PyForestScanPlugin:
         self.provider: PyForestScanProvider | None = None
         self.mission_control: MissionControlDock | None = None
         self.mission_control_action: QAction | None = None
+        try:
+            identity = session_identity()
+            write_plugin_session_identity()
+            if identity.status in {PLUGIN_MIXED_INSTALL, PLUGIN_CORRUPT}:
+                report_message(identity.message, level="CRITICAL")
+        except Exception as exc:  # noqa: BLE001 - identity diagnostics must not prevent plugin loading.
+            report_message(f"PyForestScan could not write plugin session identity: {exc}", level="WARNING")
 
     def initGui(self) -> None:
         """Register Processing provider and open Mission Control."""

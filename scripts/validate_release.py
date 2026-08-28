@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
+import tempfile
 import zipfile
 from dataclasses import asdict
 from pathlib import Path
@@ -20,6 +22,8 @@ try:
         RELEASE_MANIFEST_FILE_NAME,
         REPOSITORY_ROOT,
         build_release_manifest,
+        BUILD_INFO_FILE_NAME,
+        CRITICAL_PLUGIN_MODULES,
         read_metadata_version,
         read_version_info,
         sha256_file,
@@ -27,6 +31,7 @@ try:
     )
     from validate_plugin_package import validate_zip
     from validate_packaged_import_graph import validate_zip_import_graph
+    from install_qgis_plugin import compare_zip_to_install, install_plugin
 except ModuleNotFoundError:  # pragma: no cover - used when imported as scripts.validate_release.
     from scripts.package_plugin import (
         BACKEND_MANIFEST_FILE_NAME,
@@ -35,6 +40,8 @@ except ModuleNotFoundError:  # pragma: no cover - used when imported as scripts.
         RELEASE_MANIFEST_FILE_NAME,
         REPOSITORY_ROOT,
         build_release_manifest,
+        BUILD_INFO_FILE_NAME,
+        CRITICAL_PLUGIN_MODULES,
         read_metadata_version,
         read_version_info,
         sha256_file,
@@ -42,6 +49,7 @@ except ModuleNotFoundError:  # pragma: no cover - used when imported as scripts.
     )
     from scripts.validate_plugin_package import validate_zip
     from scripts.validate_packaged_import_graph import validate_zip_import_graph
+    from scripts.install_qgis_plugin import compare_zip_to_install, install_plugin
 
 
 FORBIDDEN_ZIP_PARTS = {".git", "__pycache__", "tests", "scripts", ".agents", ".codex"}
@@ -72,6 +80,9 @@ def validate_release(dist_dir: Path | None = None, update_manifest: bool = True)
     errors.extend(_validate_package(release_zip))
     errors.extend(validate_zip_import_graph(release_zip))
     errors.extend(_validate_forbidden_members(release_zip))
+    errors.extend(_validate_build_info(release_zip))
+    errors.extend(_validate_retired_error_strings(release_zip))
+    errors.extend(_validate_clean_profile_replacement(release_zip))
     errors.extend(_validate_changelog(version.plugin_version))
     errors.extend(_validate_external_worker_disabled())
     errors.extend(_validate_pbm_internal_beta_guard())
@@ -131,6 +142,62 @@ def _validate_forbidden_members(release_zip: Path) -> list[str]:
         if path.suffix in FORBIDDEN_ZIP_SUFFIXES:
             errors.append(f"Forbidden bytecode member included: {name}")
     return errors
+
+
+def _validate_build_info(release_zip: Path) -> list[str]:
+    errors: list[str] = []
+    with zipfile.ZipFile(release_zip) as archive:
+        member = f"{PLUGIN_DIR_NAME}/{BUILD_INFO_FILE_NAME}"
+        if member not in archive.namelist():
+            return [f"ZIP is missing immutable build metadata: {member}"]
+        try:
+            info = json.loads(archive.read(member))
+        except (ValueError, KeyError, TypeError) as exc:
+            return [f"ZIP build metadata is invalid: {exc}"]
+        expected = dict(info.get("critical_module_hashes", {}))
+        for relative in CRITICAL_PLUGIN_MODULES:
+            path = f"{PLUGIN_DIR_NAME}/{relative}"
+            if path not in archive.namelist():
+                errors.append(f"Critical plugin module is missing: {path}")
+                continue
+            actual = hashlib.sha256(archive.read(path)).hexdigest()
+            if expected.get(relative) != actual:
+                errors.append(f"Critical plugin module hash does not match build_info: {relative}")
+        if str(info.get("git_commit", "")) in {"", "unknown"}:
+            errors.append("ZIP build metadata does not contain a Git commit.")
+        if not str(info.get("build_id", "")):
+            errors.append("ZIP build metadata does not contain a build ID.")
+    return errors
+
+
+def _validate_retired_error_strings(release_zip: Path) -> list[str]:
+    retired = b"Processing Engine needs repair before this job can start."
+    errors: list[str] = []
+    with zipfile.ZipFile(release_zip) as archive:
+        for member in archive.namelist():
+            if member.startswith(f"{PLUGIN_DIR_NAME}/") and member.endswith(".py") and retired in archive.read(member):
+                errors.append(f"Retired generic engine-repair string remains in launch module: {member}")
+    return errors
+
+
+def _validate_clean_profile_replacement(release_zip: Path) -> list[str]:
+    """Simulate replacement install and require byte-for-byte package parity."""
+    with tempfile.TemporaryDirectory(prefix="pyforestscan-release-profile-") as folder:
+        destination = Path(folder) / "default/python/plugins" / PLUGIN_DIR_NAME
+        destination.mkdir(parents=True)
+        (destination / "obsolete_module.py").write_text("retired", encoding="utf-8")
+        try:
+            installed = install_plugin(release_zip, destination)
+            comparison = compare_zip_to_install(release_zip, destination)
+        except Exception as exc:  # noqa: BLE001 - validation reports installer failures.
+            return [f"Clean profile replacement simulation failed: {exc}"]
+        errors: list[str] = []
+        if installed.get("status") != "PLUGIN_VALID":
+            errors.append("Clean profile replacement did not produce PLUGIN_VALID.")
+        for field in ("missing_files", "extra_files", "differing_files"):
+            if comparison.get(field):
+                errors.append(f"Clean profile replacement has {field}: {comparison[field]}")
+        return errors
 
 
 def _validate_changelog(version: str) -> list[str]:

@@ -46,6 +46,8 @@ from qgis.PyQt.QtWidgets import (
 
 from ..core.adapter import PyForestScanAdapter
 from ..core.backend import BackendService
+from ..core.build_identity import PLUGIN_CORRUPT, PLUGIN_MIXED_INSTALL, verify_session_files_unchanged
+from ..core.launch_attempt import LaunchAttempt, append_attempt_stage, create_launch_attempt
 from ..core.qgis_compat import build_qgis_compatibility_report, format_qgis_compatibility_report
 from ..core.qgis_processing_toolbox import QgisProcessingToolboxService
 from .session_state import MissionControlSessionState, ScientificAdvisorSummary, build_scientific_advisor_summary, workflow_input_signature
@@ -1925,12 +1927,14 @@ class _PolygonBatchExecutionWorker(QObject):
     completed = pyqtSignal(object)
     failed = pyqtSignal(str)
 
-    def __init__(self, report: object, control_callback: Callable[[], str | None]) -> None:
+    def __init__(self, report: object, control_callback: Callable[[], str | None], launch_attempt: LaunchAttempt | None = None) -> None:
         super().__init__()
         self.report = report
         self.control_callback = control_callback
+        self.launch_attempt = launch_attempt
 
     def run(self) -> None:
+        append_attempt_stage(self.launch_attempt, "WORKER_STARTED")
         try:
             result = execute_polygon_batch(
                 self.report,
@@ -1938,10 +1942,13 @@ class _PolygonBatchExecutionWorker(QObject):
                 item_callback=self.itemReady.emit,
                 job_callback=self.jobReady.emit,
                 control_callback=self.control_callback,
+                attempt_folder=None if self.launch_attempt is None else self.launch_attempt.folder,
             )
         except Exception as exc:  # noqa: BLE001 - worker must report failures to UI.
+            append_attempt_stage(self.launch_attempt, "FAILED", reason=str(exc))
             self.failed.emit(f"Unexpected polygon batch failure: {exc}")
             return
+        append_attempt_stage(self.launch_attempt, "COMPLETED")
         self.completed.emit(result)
 
 
@@ -3815,14 +3822,35 @@ class BatchPage(MissionPage):
         report = self.preflight_report
         if report is None:
             return
+        products = tuple(product.value for product in report.request.products)
+        launch_attempt = create_launch_attempt(
+            report.batch_folder,
+            products,
+            str(getattr(report, "plan_signature", "")),
+        )
+        installation = verify_session_files_unchanged()
+        if installation.status in {PLUGIN_MIXED_INSTALL, PLUGIN_CORRUPT}:
+            append_attempt_stage(launch_attempt, "FAILED", reason=installation.message, failure_domain="PLUGIN_INSTALLATION")
+            _set_status_badge(self.status_label, "FAILED", installation.message)
+            self._retain_recent_error(
+                installation.message,
+                code=installation.status,
+                category="PLUGIN_INSTALLATION",
+                recommended_action="Reinstall the PyForestScan plugin ZIP and restart QGIS. Do not repair the Processing Engine.",
+                stage="plugin_integrity",
+            )
+            return
+        append_attempt_stage(launch_attempt, "TOKEN_RECEIVED", runtime_generation_id=getattr(report.request.runtime_token, "runtime_generation_id", ""))
         current_policy = default_source_local_policy_store().read()
         if getattr(getattr(report, "request", None), "spatial_policy", None) != current_policy:
             self.preflight_report = None
             self.run_preflight()
             report = self.preflight_report
             if report is None:
+                append_attempt_stage(launch_attempt, "FAILED", reason="Prerun did not produce a report.")
                 return
         if getattr(report, "blockers", ()):
+            append_attempt_stage(launch_attempt, "FAILED", reason="Polygon Prerun Check has blockers.")
             _set_status_badge(self.status_label, "FAILED", "Status: Failed - polygon Prerun Check issues must be resolved before processing.")
             return
         try:
@@ -3836,9 +3864,13 @@ class BatchPage(MissionPage):
             code = getattr(exc, "code", "ENGINE_RUNTIME_TOKEN_MISMATCH")
             _set_status_badge(self.status_label, "REPAIR_REQUIRED", f"Processing Engine changed before launch: {technical}")
             self._retain_recent_error(technical, code=code, category="ENGINE", recommended_action="Run Prerun Check again; no scientific attempt started.", stage="runtime_prelaunch")
+            append_attempt_stage(launch_attempt, "FAILED", reason=technical, code=code, failure_domain="PROCESSING_ENGINE")
             return
+        append_attempt_stage(launch_attempt, "TOKEN_VALIDATED")
         token=self._begin_logical_job()
-        if token is False:return
+        if token is False:
+            append_attempt_stage(launch_attempt, "FAILED", reason="Logical job admission was denied.")
+            return
         self._completed_job_summary=None
         self._active_processing_profile=str(self.processing_profile_combo.currentText())
         self._transition_processing_ui_state(ProcessingUiState.STARTING)
@@ -3862,7 +3894,7 @@ class BatchPage(MissionPage):
         _set_status_badge(self.status_label, "RUNNING", f"Status: Running - clipping and processing {len(selected)} intersecting source(s).")
         self.worker_status_label.setText("Active workers: 1 (polygon clipping, then batch execution)")
         self.batch_thread = QThread(self)
-        self.batch_worker = _PolygonBatchExecutionWorker(report, self._batch_control_state)
+        self.batch_worker = _PolygonBatchExecutionWorker(report, self._batch_control_state, launch_attempt)
         self.batch_worker.moveToThread(self.batch_thread)
         self.batch_thread.started.connect(self.batch_worker.run)
         self.batch_worker.itemReady.connect(self._on_batch_item)
@@ -3875,6 +3907,7 @@ class BatchPage(MissionPage):
         self.batch_thread.finished.connect(self.batch_thread.deleteLater)
         self.batch_thread.finished.connect(self._clear_batch_thread)
         self.batch_thread.start()
+        append_attempt_stage(launch_attempt, "DISPATCH_STARTED")
         self._transition_processing_ui_state(ProcessingUiState.RUNNING)
 
     def _build_batch_request(self, batch_folder: Path | None = None, datasets: tuple[Path, ...] | None = None) -> BatchRequest:
@@ -5108,36 +5141,75 @@ class SettingsPage(MissionPage):
     def open_processing_engine_diagnostics(self) -> None:
         """Show the one consolidated Processing Engine diagnostic report."""
         self.show_backend_advanced()
-        logs = self.backend_service.get_logs()
-        log_count = sum(len(entries) for entries in logs.values())
-        self.backend_details.append(f"\nRecent technical log entries: {log_count}")
-        self.backend_details.append(f"Processing Engine folder: {self.backend_service.paths.backend_root}")
         self._refresh_backend_technical_log()
 
     def show_backend_advanced(self) -> None:
         """Display advanced PBM architecture details."""
-        modules = self.backend_service.module_registry()
+        from ..core.build_identity import inspect_plugin_installation
+
+        identity = inspect_plugin_installation()
         manifest = self.backend_service.backend_manifest()
         version = self.backend_service.version_compatibility()
+        engine = self.backend_service.processing_engine_state(quick=True)
+        token = getattr(engine, "runtime_token", None)
+        required = [item.display_name for item in self.backend_service.registry.required_dependencies()]
+        latest_attempt_path = self.backend_service.paths.backend_root / "diagnostics" / "latest_processing_attempt.json"
+        try:
+            latest_attempt = json.loads(latest_attempt_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            latest_attempt = {}
+        installation_label = {
+            "PLUGIN_VALID": "Current",
+            "PLUGIN_MIXED_INSTALL": "Mixed",
+            "PLUGIN_CORRUPT": "Corrupt",
+            "PLUGIN_UNKNOWN": "Unknown",
+        }.get(identity.status, identity.status)
         lines = [
             "Processing Engine Diagnostics",
-            f"Plugin build: {self.backend_service.plugin_version}",
+            "",
+            "PLUGIN",
+            f"Version: {identity.version}",
+            f"Commit: {identity.git_commit}",
+            f"Build ID: {identity.build_id}",
+            f"Package identity: {identity.package_identity}",
+            f"Installed location: {identity.plugin_root}",
+            f"Plugin installation: {installation_label}",
+            identity.message,
+            "",
+            "PROCESSING ENGINE",
+            f"Status: {getattr(getattr(engine, 'status', None), 'value', 'Unknown')}",
+            f"Engine ID: {getattr(token, 'engine_id', 'Unavailable')}",
+            f"Runtime generation: {getattr(token, 'runtime_generation_id', 'Unavailable')}",
+            f"Verified build ID: {getattr(token, 'plugin_build_id', 'Unavailable')}",
+            f"Executable: {getattr(token, 'executable', self.backend_service.paths.python_executable)}",
             f"Installer availability: {'enabled' if self.backend_service.backend_install_enabled() else 'off'}",
             f"Manifest backend version: {manifest.backend_version if manifest else 'Unavailable'}",
             f"Manifest environment version: {manifest.environment_version if manifest else 'Unavailable'}",
             f"Version compatibility: {version.message if version else 'Unavailable'}",
             "",
-            "Logs:",
+            "CURRENT SESSION",
+            f"Session identity: {self.backend_service.paths.backend_root / 'diagnostics' / 'plugin_session_identity.json'}",
+            "",
+            "LATEST PROCESSING ATTEMPT",
+            f"Attempt ID: {latest_attempt.get('attempt_id', 'No attempt in this session')}",
+            f"Clicked at: {latest_attempt.get('clicked_at', 'Unavailable')}",
+            f"Plugin build: {latest_attempt.get('plugin_build_id', 'Unavailable')}",
+            f"Outcome: {latest_attempt.get('outcome', 'Unavailable')}",
+            f"Trace: {latest_attempt.get('attempt_path', 'Unavailable')}",
+            "",
+            "SETUP LOGS",
             f"- Install: {self.backend_service.paths.install_log}",
             f"- Download: {self.backend_service.paths.download_log}",
             f"- Verify: {self.backend_service.paths.verify_log}",
             f"- Repair: {self.backend_service.paths.repair_log}",
             "",
-            "Planned modules:",
-            *[f"- {name}" for name in modules.names()],
+            "REQUIRED NOW",
+            *[f"- {name}" for name in required],
         ]
+        if token and identity.processing_engine_plugin_build_id not in {"unknown", "development"} and getattr(token, "plugin_build_id", "") != identity.processing_engine_plugin_build_id:
+            lines.extend(("", "BUILD IDENTITY DIFFERENCE", "The running plugin build differs from the build verified by the Processing Engine. Use Repair / Reload after confirming the plugin installation is Current."))
         if version and version.warnings:
-            lines.extend(("", "Warnings:"))
+            lines.extend(("", "SETUP INTEGRITY NOTES"))
             lines.extend(f"- {warning}" for warning in version.warnings)
         self.backend_details.setPlainText("\n".join(lines))
 

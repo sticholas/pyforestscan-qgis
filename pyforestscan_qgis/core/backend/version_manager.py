@@ -50,7 +50,10 @@ class BackendVersionManager:
         if manifest.future_migration_version and self.compare_versions(manifest.backend_version, manifest.future_migration_version) >= 0:
             warnings.append("Backend manifest declares a future migration boundary; upgrade handling must run before activation.")
         if not manifest.micromamba_artifact().sha256_for_platforms_present():
-            warnings.append("Micromamba checksums are not fully pinned; public installation should remain disabled.")
+            warnings.append(
+                "Internal beta setup records the downloaded Micromamba SHA-256, but the manifest does not yet pin that digest. "
+                "Checksum pinning remains a public-release gate and does not invalidate an already verified Processing Engine."
+            )
         compatible = not errors
         message = "Backend manifest is compatible with this plugin." if compatible else "Backend manifest is not compatible with this plugin."
         return VersionCompatibilityResult(compatible, self.plugin_version, manifest.backend_version, message, tuple(warnings), tuple(errors))

@@ -26,6 +26,25 @@ DEFAULT_DIST_DIR = REPOSITORY_ROOT / "dist"
 DEFAULT_LATEST_ZIP_PATH = DEFAULT_DIST_DIR / f"{PLUGIN_DIR_NAME}.zip"
 DEFAULT_ZIP_PATH = DEFAULT_LATEST_ZIP_PATH
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+BUILD_INFO_FILE_NAME = "build_info.json"
+CRITICAL_PLUGIN_MODULES = (
+    "plugin.py",
+    "ui/mission_control.py",
+    "core/polygon_batch.py",
+    "core/backend/processing_engine.py",
+    "core/adapter.py",
+    "core/backend/execution.py",
+    "backend_runner/run_processing_job.py",
+    "backend_runner/polygon_job_coordinator.py",
+)
+PROCESSING_ENGINE_BUILD_MODULES = (
+    "backend_runner/run_processing_job.py",
+    "backend_runner/polygon_job_coordinator.py",
+    "core/adapter.py",
+    "core/pipeline.py",
+    "core/backend/execution.py",
+    "core/polygon_batch.py",
+)
 
 EXCLUDED_DIR_NAMES = {
     "__pycache__",
@@ -193,6 +212,7 @@ def _build_plugin_zip(output_path: Path) -> None:
     plugin_root = REPOSITORY_ROOT / PLUGIN_DIR_NAME
     with zipfile.ZipFile(output_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
         _write_tree_to_archive(archive, plugin_root, Path(PLUGIN_DIR_NAME))
+        _write_json_to_archive(archive, build_package_info(plugin_root), Path(PLUGIN_DIR_NAME) / BUILD_INFO_FILE_NAME)
         specs_root = REPOSITORY_ROOT / BACKEND_SPECS_DIR_NAME
         if specs_root.is_dir():
             _write_tree_to_archive(archive, specs_root, Path(PLUGIN_DIR_NAME) / BACKEND_SPECS_DIR_NAME)
@@ -216,6 +236,42 @@ def _write_file_to_archive(archive: zipfile.ZipFile, path: Path, archive_name: P
     info.compress_type = zipfile.ZIP_DEFLATED
     info.external_attr = 0o644 << 16
     archive.writestr(info, path.read_bytes())
+
+
+def _write_json_to_archive(archive: zipfile.ZipFile, payload: dict[str, Any], archive_name: Path) -> None:
+    """Write deterministic JSON metadata generated for this package build."""
+    info = zipfile.ZipInfo(archive_name.as_posix(), FIXED_ZIP_TIMESTAMP)
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.external_attr = 0o644 << 16
+    archive.writestr(info, json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n")
+
+
+def build_package_info(plugin_root: Path | None = None) -> dict[str, Any]:
+    """Build immutable identity metadata embedded inside the plugin ZIP."""
+    root = plugin_root or REPOSITORY_ROOT / PLUGIN_DIR_NAME
+    hashes = {
+        relative: sha256_file(root / relative)
+        for relative in CRITICAL_PLUGIN_MODULES
+        if (root / relative).is_file()
+    }
+    identity_payload = {
+        "version": read_version_info().plugin_version,
+        "git_commit": _git_value("rev-parse", "HEAD"),
+        "critical_module_hashes": hashes,
+    }
+    package_identity = hashlib.sha256(
+        json.dumps(identity_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return {
+        **identity_payload,
+        "build_id": package_identity[:20],
+        "package_identity": package_identity,
+        "processing_engine_plugin_build_id": hashlib.sha256(
+            b"".join((root / relative).read_bytes() for relative in PROCESSING_ENGINE_BUILD_MODULES)
+        ).hexdigest(),
+        "package_sha256": "See dist/release_manifest.json; the ZIP cannot contain its own final digest.",
+        "built_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+    }
 
 
 def qgis_plugin_directory(profile: str = "default") -> Path:

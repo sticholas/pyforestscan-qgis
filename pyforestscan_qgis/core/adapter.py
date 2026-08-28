@@ -1024,13 +1024,13 @@ class PyForestScanAdapter:
             if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
                 raise ProcessingError(f"PBM backend is not available for EPT subset extraction: {exc}") from exc
             if qgis_runtime_active():
-                raise ProcessingError("Processing Engine needs repair before this job can start.") from exc
+                raise ProcessingError(f"EPT subset extraction could not resolve the managed Processing Engine: {exc}") from exc
             return None
         if not availability.ready:
             if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
                 raise ProcessingError(availability.message)
             if qgis_runtime_active():
-                raise ProcessingError("Processing Engine needs repair before this job can start.")
+                raise ProcessingError(f"EPT subset extraction is unavailable: {availability.message}")
             return None
         self._progress.start("Running EPT subset extraction through PyForestScan Backend Manager")
         self._log(LogLevel.INFO, "Running EPT subset through PBM backend", backend_python=str(availability.backend_python))
@@ -1122,13 +1122,13 @@ class PyForestScanAdapter:
             if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
                 raise DatasetError(f"PBM backend is not available for Dataset Explorer: {exc}") from exc
             if qgis_runtime_active():
-                raise DatasetError("Processing Engine needs repair before this job can start.") from exc
+                raise DatasetError(f"Dataset Explorer could not resolve the managed Processing Engine: {exc}") from exc
             return None
         if not availability.ready:
             if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
                 raise DatasetError(availability.message)
             if qgis_runtime_active():
-                raise DatasetError("Processing Engine needs repair before this job can start.")
+                raise DatasetError(f"Dataset Explorer is unavailable: {availability.message}")
             return None
         self._log(LogLevel.INFO, "Inspecting dataset through PBM backend", backend_python=str(availability.backend_python), path=str(source.path))
         result = service.run_dataset_inspection(
@@ -2012,7 +2012,9 @@ def _import_required(module_name: str, error_type: type[AdapterError]) -> Any:
     try:
         assert_scientific_import_allowed(module_name)
     except RuntimeError as exc:
-        raise error_type("Processing Engine needs repair before this job can start.") from exc
+        raise error_type(
+            f"Scientific module {module_name} cannot run inside QGIS Python. Use a managed Processing Engine route for this operation."
+        ) from exc
     try:
         return importlib.import_module(module_name)
     except Exception as exc:  # noqa: BLE001 - dependency errors become adapter errors.

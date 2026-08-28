@@ -20,6 +20,6 @@ def assert_scientific_import_allowed(module_name: str) -> None:
     """Reject accidental QGIS-Python science while allowing managed runner imports."""
     if module_name.startswith(SCIENTIFIC_MODULE_PREFIXES) and qgis_runtime_active() and not managed_engine_active():
         raise RuntimeError(
-            "SCIENTIFIC_RUNTIME_BOUNDARY: Processing Engine needs repair before this job can start. "
+            "SCIENTIFIC_RUNTIME_BOUNDARY: scientific packages cannot execute inside QGIS Python. "
             f"QGIS Python attempted scientific import {module_name}."
         )

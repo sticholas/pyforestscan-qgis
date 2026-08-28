@@ -523,6 +523,7 @@ def execute_polygon_batch(
     item_callback=None,
     job_callback=None,
     control_callback=None,
+    attempt_folder: Path | None = None,
 ) -> BatchResult:
     """Clip intersecting sources to the exact polygon, then execute the normal Batch runner."""
     if report.blockers:
@@ -536,9 +537,9 @@ def execute_polygon_batch(
         try:
             comparison = service.validate_runtime_token_for_launch(report.request.runtime_token, products, batch_folder)
         except Exception as exc:
-            _write_engine_decision_trace(report, batch_folder, service, adapter, dispatch_status="INVALID", reason=str(exc))
+            _write_engine_decision_trace(report, batch_folder, service, adapter, dispatch_status="INVALID", reason=str(exc), attempt_folder=attempt_folder)
             raise
-        _write_engine_decision_trace(report, batch_folder, service, adapter, dispatch_status="VALID", comparison=comparison)
+        _write_engine_decision_trace(report, batch_folder, service, adapter, dispatch_status="VALID", comparison=comparison, attempt_folder=attempt_folder)
         adapter.bind_processing_runtime(report.request.runtime_token, products)
     if not _is_logical_spatial_report(report):
         path_blockers = selected_path_invariant(report.selected_sources, ordinary=True)
@@ -731,12 +732,15 @@ def _write_engine_decision_trace(
     dispatch_status: str,
     comparison: dict[str, dict[str, str]] | None = None,
     reason: str = "",
+    attempt_folder: Path | None = None,
 ) -> Path:
     """Persist the four readiness projections used by one launch attempt."""
     from datetime import datetime, timezone
     from .atomic_state import atomic_write_json
+    from .build_identity import session_identity
 
     token = report.request.runtime_token
+    identity = session_identity()
     matched = [name for name, values in (comparison or {}).items() if values.get("status") == "MATCH"]
     timestamp = datetime.now(timezone.utc).isoformat()
     payload = {
@@ -753,6 +757,10 @@ def _write_engine_decision_trace(
             "timestamp": timestamp,
         },
         "runtime_token": {} if token is None else token.to_dict(),
+        "plugin_session_build_id": identity.build_id,
+        "plugin_session_commit": identity.git_commit,
+        "plugin_root": str(identity.plugin_root),
+        "critical_module_hashes": identity.actual_hashes,
         "dispatch_validation": {
             "status": dispatch_status,
             "state_source": "ProcessingEngineService.validate_runtime_token_for_launch",
@@ -770,6 +778,8 @@ def _write_engine_decision_trace(
     path = Path(folder) / "engine_decision_trace.json"
     atomic_write_json(path, payload)
     atomic_write_json(Path(folder) / "processing_engine_decision_trace.json", payload)
+    if attempt_folder is not None:
+        atomic_write_json(Path(attempt_folder) / "engine_decision_trace.json", payload)
     return path
 
 

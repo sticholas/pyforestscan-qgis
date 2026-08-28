@@ -1,5 +1,14 @@
 # Changelog
 
+## Phase 32E - Installed build identity and deployment integrity
+
+- Embedded immutable `build_info.json` metadata in every packaged ZIP with commit, build identity, Processing Engine build hash, timestamp, and critical module hashes.
+- Added per-session plugin identity and mixed-install detection without conflating plugin corruption with Processing Engine repair.
+- Added attempt-scoped polygon launch diagnostics before all guards, plus current-session and latest-attempt summaries in Open Diagnostics.
+- Added clean QGIS-profile replacement and recursive ZIP/install comparison tooling.
+- Retired the generic Processing Engine repair sentence from production modules and added release validation against its return.
+- Removed legacy future-module clutter from normal diagnostics and clarified the genuine internal-beta Micromamba checksum release gate.
+
 ## Phase 32D - Verified runtime authority at launch
 
 - Removed duplicate backend readiness discovery from frozen-token polygon dispatch.
