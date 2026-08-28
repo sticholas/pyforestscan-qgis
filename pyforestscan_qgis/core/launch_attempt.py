@@ -101,7 +101,17 @@ def append_attempt_stage(attempt: LaunchAttempt | None, stage: str, **details: A
                 "qgis_main_thread": threading.current_thread() is threading.main_thread(),
             }
             entry.update(details)
-            payload.setdefault("stages", []).append(entry)
+            if stage == "HEARTBEAT":
+                payload["heartbeat"] = entry
+            else:
+                stages = payload.setdefault("stages", [])
+                duplicate = bool(stages and stages[-1].get("stage") == stage and stage.endswith(("_STARTED", "_FINISHED")))
+                if duplicate:
+                    stages[-1].update(entry)
+                else:
+                    stages.append(entry)
+                if len(stages) > 256:
+                    payload["stages"] = [stages[0], *stages[-255:]]
             if stage == "FAILED": payload["outcome"] = "FAILED"
             elif stage == "CANCELLED": payload["outcome"] = "CANCELLED"
             elif stage in {"COORDINATOR_PROCESS_CREATED", "COORDINATOR_STARTED", "FIRST_WORKER_STARTED"}: payload["outcome"] = "RUNNING"

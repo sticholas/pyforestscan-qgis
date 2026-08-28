@@ -60,7 +60,7 @@ from ..core.adaptive_lidar_indexing import (
     register_existing_footprint_index,
     register_native_sources,
 )
-from ..core.batch import BatchProductSettings, BatchRequest, discover_lidar_files
+from ..core.batch import BatchItemResult, BatchProductSettings, BatchRequest, batch_run_context, discover_lidar_files
 from ..core.batch_execution_contract import prepare_batch_execution
 from ..core.batch_control_visibility import batch_control_visibility
 from ..core.batch_options import BatchExecutionOptions, PolygonBatchOptions, requested_effective_concurrency
@@ -94,6 +94,7 @@ from ..core.repository_actions import repository_action_states, repository_setup
 from ..core.repository_coverage import build_repository_coverage_model
 from ..core.repository_diagnostics import export_repository_diagnostic_report
 from ..core.polygon_batch import PolygonBatchRequest, catalog_status_text, execute_polygon_batch, polygon_preflight_text, record_polygon_dispatch_validation, run_polygon_batch_preflight, write_polygon_batch_manifest
+from ..core.polygon_progress import PolygonProgressProjection
 from ..core.job_manager import JobExecutionError, JobManager
 from ..core.knowledge import RecommendationReport
 from ..core.jobs import JobRecord, JobStatus
@@ -1927,6 +1928,7 @@ class _PolygonBatchExecutionWorker(QObject):
     jobReady = pyqtSignal(object)
     completed = pyqtSignal(object)
     failed = pyqtSignal(str)
+    progressUpdated = pyqtSignal(object)
 
     def __init__(self, report: object, control_callback: Callable[[], str | None], launch_attempt: LaunchAttempt | None = None) -> None:
         super().__init__()
@@ -1945,6 +1947,7 @@ class _PolygonBatchExecutionWorker(QObject):
                 control_callback=self.control_callback,
                 attempt_folder=None if self.launch_attempt is None else self.launch_attempt.folder,
                 stage_callback=lambda stage, details: append_attempt_stage(self.launch_attempt, stage, **details),
+                progress_callback=self.progressUpdated.emit,
             )
         except Exception as exc:  # noqa: BLE001 - worker must report failures to UI.
             terminal_stage = "CANCELLED" if "cancelled" in str(exc).lower() else "FAILED"
@@ -2624,12 +2627,12 @@ class BatchPage(MissionPage):
         self.resume_button.clicked.connect(self.run_batch)
         _apply_button_role(self.resume_button, "secondary")
         button_row.addWidget(self.resume_button)
-        self.pause_button = QPushButton("Pause After Current File")
+        self.pause_button = QPushButton("Pause After Current Step")
         self.pause_button.setEnabled(False)
         self.pause_button.setVisible(False)
         self.pause_button.clicked.connect(self.toggle_pause)
         _apply_button_role(self.pause_button, "secondary")
-        self.cancel_button = QPushButton("Cancel Remaining")
+        self.cancel_button = QPushButton("Cancel Processing")
         self.cancel_button.setEnabled(False)
         self.cancel_button.setVisible(False)
         self.cancel_button.clicked.connect(self.cancel_remaining)
@@ -3793,6 +3796,7 @@ class BatchPage(MissionPage):
         self._transition_processing_ui_state(ProcessingUiState.STARTING)
         selected = list(request.datasets)
         self.batch_items = []
+        self._batch_items_by_dataset = {}
         self.failed_paths = []
         self.cancel_requested = False
         self.pause_requested = False
@@ -3926,6 +3930,7 @@ class BatchPage(MissionPage):
         self._transition_processing_ui_state(ProcessingUiState.STARTING)
         selected = list(getattr(report, "selected_sources", ()))
         self.batch_items = []
+        self._batch_items_by_dataset = {}
         self.failed_paths = []
         self.cancel_requested = False
         self.pause_requested = False
@@ -3941,6 +3946,10 @@ class BatchPage(MissionPage):
         self.retry_failed_button.setVisible(False)
         self._processed_items = 0
         self._total_items = max(1, len(selected))
+        self._polygon_progress = PolygonProgressProjection(
+            total_datasets=self._total_items,
+            total_products=len(report.request.products),
+        )
         _set_status_badge(self.status_label, "RUNNING", f"Status: Starting - preparing {len(selected)} intersecting source(s) for background processing.")
         self.worker_status_label.setText("Background ownership: launching (step progress is estimated)")
         self.batch_thread = QThread(self)
@@ -3949,6 +3958,7 @@ class BatchPage(MissionPage):
         self.batch_thread.started.connect(self.batch_worker.run)
         self.batch_worker.itemReady.connect(self._on_batch_item)
         self.batch_worker.jobReady.connect(self._on_batch_job_update)
+        self.batch_worker.progressUpdated.connect(getattr(self, "_on_polygon_progress", lambda _event: None))
         self.batch_worker.completed.connect(self._on_batch_complete)
         self.batch_worker.failed.connect(self._on_batch_failed)
         self.batch_worker.completed.connect(self.batch_thread.quit)
@@ -4091,7 +4101,9 @@ class BatchPage(MissionPage):
         try:
             self._completed_job_summary=completed_job_summary(result,self.preflight_report,processing_profile=self._active_processing_profile)
             self.batch_items=list(getattr(result,"items",()))
+            self._batch_items_by_dataset={str(getattr(item, "dataset_path", "")): item for item in self.batch_items}
             self._refresh_batch_results()
+            self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(100 if getattr(result, "items", ()) else 0)
             completion_badge = "READY" if terminal is ProcessingUiState.COMPLETE else "WARNING"
             _set_status_badge(self.status_label, completion_badge, f"Status: {status_display_word(completion_badge)} - batch complete. Completed {getattr(result, 'success_count', 0)}; failed {getattr(result, 'failure_count', 0)}. Summary: {getattr(result, 'summary_html', '')}")
@@ -4139,7 +4151,7 @@ class BatchPage(MissionPage):
         """Restore controls after a batch worker exits."""
         self._transition_processing_ui_state(terminal_state)
         self.pause_requested = False
-        self.pause_button.setText("Pause After Current File")
+        self.pause_button.setText("Pause After Current Step")
         self.active_workers = 0
         self.worker_status_label.setText("Active workers: 0")
 
@@ -4315,21 +4327,55 @@ class BatchPage(MissionPage):
         )
 
     def _on_batch_item(self, item: object) -> None:
-        self._processed_items = getattr(self, "_processed_items", 0) + 1
+        dataset_path = Path(getattr(item, "dataset_path"))
+        status = str(getattr(item, "status"))
+        key = str(dataset_path)
+        self._batch_items_by_dataset = getattr(self, "_batch_items_by_dataset", {})
+        self._batch_items_by_dataset[key] = item
+        self.batch_items = list(self._batch_items_by_dataset.values())
+        terminal = {"completed", "failed", "cancelled", "skipped"}
+        self._processed_items = sum(
+            str(getattr(candidate, "status", "")) in terminal
+            for candidate in self.batch_items
+        )
         total = max(1, getattr(self, "_total_items", 1))
-        self.progress_bar.setValue(int((self._processed_items / total) * 100))
+        if self._processed_items:
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(min(99, int((self._processed_items / total) * 100)))
+        else:
+            self.progress_bar.setRange(0, 0)
         dataset_name = Path(getattr(item, "dataset_path")).name
-        status = getattr(item, "status")
         message = getattr(item, "message")
         run_folder = getattr(getattr(item, "run_context"), "run_folder")
         bounds = getattr(item, "bounds_summary", "Unavailable")
-        self.batch_items.append(item)
         self._update_file_row(Path(getattr(item, "dataset_path")), status, getattr(item, "bounds_summary", "Unavailable"), message)
         if status == "failed":
             self.failed_paths.append(Path(getattr(item, "dataset_path")))
         self._refresh_batch_results()
-        _set_status_badge(self.status_label, "RUNNING", f"Status: Running - {self._processed_items}/{total} dataset(s) processed.")
+        _set_status_badge(self.status_label, "RUNNING", f"Status: Running - Datasets: {self._processed_items} / {total} complete.")
         QApplication.processEvents()
+
+    def _on_polygon_progress(self, event: object) -> None:
+        """Update current progress without creating dataset completion records."""
+        if not isinstance(event, dict):
+            return
+        projection = getattr(self, "_polygon_progress", None)
+        if projection is None or not projection.apply(event):
+            return
+        stage = str(event.get("active_stage") or event.get("stage") or "PROCESSING")
+        message = str(event.get("message") or stage.replace("_", " ").title())
+        elapsed = int(event.get("elapsed_seconds", 0))
+        entity_id = str(event.get("entity_id", ""))
+        if entity_id:
+            source = Path(entity_id)
+            folder = getattr(getattr(self, "preflight_report", None), "batch_folder", source.parent)
+            self._on_batch_item(BatchItemResult(
+                source, batch_run_context(source, folder, reuse_existing=True),
+                "running", message, (), stage,
+            ))
+        self.progress_bar.setRange(0, 0)
+        self.worker_status_label.setText(f"{message} Elapsed: {elapsed} s. Coordinator active.")
+        _set_status_badge(self.status_label, "RUNNING", f"Status: Running - {projection.summary()}.")
 
     def _on_batch_job_update(self, job: JobRecord) -> None:
         self.jobUpdated.emit(job)
@@ -4347,16 +4393,16 @@ class BatchPage(MissionPage):
     def toggle_pause(self) -> None:
         """Pause or resume between batch files."""
         self.pause_requested = not self.pause_requested
-        self.pause_button.setText("Resume Batch" if self.pause_requested else "Pause After Current File")
-        _set_status_badge(self.status_label, "RUNNING", "Status: Running - batch will pause after the current file." if self.pause_requested else "Status: Running - batch resumed.")
+        self.pause_button.setText("Resume" if self.pause_requested else "Pause After Current Step")
+        _set_status_badge(self.status_label, "RUNNING", "Status: Running - current step will finish; products will not start until resumed." if self.pause_requested else "Status: Running - processing resumed.")
 
     def cancel_remaining(self) -> None:
         """Cancel files that have not started yet."""
         self.cancel_requested = True
-        append_attempt_stage(self._active_launch_attempt, "CANCEL_REQUESTED", operation="Cancellation will stop before the next safe operation boundary.")
+        append_attempt_stage(self._active_launch_attempt, "CANCEL_REQUESTED", operation="Stopping active processing and owned child processes.")
         self.pause_requested = False
-        self.pause_button.setText("Pause After Current File")
-        _set_status_badge(self.status_label, "RUNNING", "Status: Running - cancelling remaining files after the current file.")
+        self.pause_button.setText("Pause After Current Step")
+        _set_status_badge(self.status_label, "RUNNING", "Status: Cancelling - stopping active processing.")
 
     def retry_failed_files(self) -> None:
         """Retry failed files from the last batch with current settings."""

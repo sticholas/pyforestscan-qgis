@@ -1,5 +1,7 @@
 # Documentation Index
 
+Polygon execution contracts: [progress](POLYGON_EXECUTION_PROGRESS_CONTRACT.md), [cancellation](POLYGON_CANCELLATION_CONTRACT.md), and [input preparation observability](POLYGON_INPUT_PREPARATION_OBSERVABILITY.md).
+
 Rumple documentation: [user guide](user-guide/rumple-index.md), [method review](research/RUMPLE_RASTER_METHOD_REVIEW.md), [architecture](development/RUMPLE_RASTER_ARCHITECTURE.md), and [scientific equivalence](testing/RUMPLE_SCALAR_EQUIVALENCE.md).
 
 For current engineering architecture, begin with the [Current Architecture Map](development/CURRENT_ARCHITECTURE_MAP.md). Phase reports are historical evidence, not competing specifications. Phase 29E validation records include the [lifecycle soak](testing/PHASE_29E_LIFECYCLE_SOAK_VALIDATION.md) and [clean-machine matrix](testing/PHASE_29E_CLEAN_MACHINE_MATRIX.md).

@@ -6,6 +6,7 @@ import json
 import hashlib
 import os
 import pickle
+import subprocess
 import re
 import time
 from dataclasses import dataclass, replace
@@ -45,6 +46,7 @@ from .work_unit_scheduler import CheckpointStore, PolygonProductWorkScheduler, W
 from .hag_strategy import hag_method_signature
 from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, HagNormalizationRequest, PadRequest, PaiRequest, PointDensityRequest, ProductType, RumpleRequest, VoxelStatRequest
 from .backend.processing_engine import ProcessingRuntimeToken
+from .backend.process_env import hidden_subprocess_kwargs
 from .source_alternatives import SourceRelationship, canonicalize_source_alternatives
 
 POLYGON_MANIFEST_NAME = "polygon_batch_manifest.json"
@@ -526,6 +528,7 @@ def execute_polygon_batch(
     control_callback=None,
     attempt_folder: Path | None = None,
     stage_callback=None,
+    progress_callback=None,
 ) -> BatchResult:
     """Clip intersecting sources to the exact polygon, then execute the normal Batch runner."""
     def stage(name: str, **details) -> None:
@@ -570,6 +573,7 @@ def execute_polygon_batch(
         return _submit_and_observe_generic_polygon(
             report, adapter, batch_folder, item_callback=item_callback,
             stage_callback=stage_callback, control_callback=control_callback,
+            progress_callback=progress_callback,
         )
     clipped_folder = batch_folder / "polygon_clipped_sources"
     stage("JOB_DIRECTORY_STARTED", path=str(clipped_folder))
@@ -580,24 +584,23 @@ def execute_polygon_batch(
     for source in report.selected_sources:
         if control_callback is not None and control_callback() == "cancel":
             raise RuntimeError("Polygon processing cancelled before source preparation.")
-        stage("POLYGON_INPUT_PREPARATION_STARTED", source=str(source.path), operation="Preparing bounded polygon LiDAR input in PBM.")
+        stage("POLYGON_INPUT_PREPARATION_STARTED", source=str(source.path), operation="Preparing LiDAR for selected area.")
         output = clipped_folder / f"{_safe_stem(source.path)}_polygon_clip.laz"
         bounds = report.query_geometry.ept_bounds if source.source_type == "ept" else None
-        result = adapter.normalize_heights(
-            HagNormalizationRequest(
-                input_path=source.path,
-                crs=report.query_geometry.catalog_crs or report.request.polygon.processing_crs,
-                output_path=output,
-                reproject=bool(source.crs and source.crs != report.request.polygon.processing_crs),
-                bounds=bounds,
-                crop_polygon=report.query_geometry.exact_polygon_wkt,
-                compress=True,
-            )
+        request = HagNormalizationRequest(
+            input_path=source.path,
+            crs=report.query_geometry.catalog_crs or report.request.polygon.processing_crs,
+            output_path=output,
+            reproject=bool(source.crs and source.crs != report.request.polygon.processing_crs),
+            bounds=bounds,
+            crop_polygon=report.query_geometry.exact_polygon_wkt,
+            compress=True,
         )
+        result = _prepare_polygon_input(request, source, clipped_folder, stage, control_callback, attempt_folder, adapter)
         if result.output_path is not None:
             clipped_sources.append(Path(result.output_path))
             clip_records.append({"source": str(source.path), "clipped": str(result.output_path), "points": str(result.point_count or "unknown"), "bounds_used": str(bounds)})
-        stage("POLYGON_INPUT_PREPARATION_FINISHED", source=str(source.path), output=str(result.output_path or ""), bounded_points=result.point_count)
+        stage("POLYGON_INPUT_PREPARATION_COMPLETED", source=str(source.path), output=str(result.output_path or ""), bounded_points=result.point_count)
     if not clipped_sources:
         raise ValueError("Polygon clipping produced no runnable clipped sources.")
     batch_request = BatchRequest(
@@ -617,7 +620,12 @@ def execute_polygon_batch(
         runner = BatchExecutor(adapter_factory=lambda: PyForestScanAdapter(execution_mode="qgis_python"))
     else:
         runner = BatchExecutor()
-    stage("FIRST_WORKER_STARTED", operation="Batch executor owns prepared inputs.")
+    while control_callback is not None and control_callback() == "pause":
+        stage("PAUSED_AFTER_PREPARATION", operation="Paused after input preparation. Product processing has not started.")
+        time.sleep(1)
+    if control_callback is not None and control_callback() == "cancel":
+        raise RuntimeError("Polygon processing cancelled before product execution.")
+    stage("PRODUCT_EXECUTION_STARTED", operation="Computing selected products.")
     result = runner.run(batch_request, item_callback=item_callback, job_callback=job_callback, control_callback=control_callback)
     mask_results = _mask_result_outputs(result, report)
     result = _apply_mask_failures(result, mask_results, report)
@@ -626,7 +634,113 @@ def execute_polygon_batch(
     return result
 
 
-def _submit_and_observe_generic_polygon(report, adapter, batch_folder, *, item_callback=None, stage_callback=None, control_callback=None):
+def _prepare_polygon_input(request, source, clipped_folder, stage, control_callback, attempt_folder, adapter):
+    """Prepare once in an owned child so active cancellation is enforceable."""
+    from .atomic_state import atomic_write_json
+
+    if os.environ.get("PYFORESTSCAN_GENERIC_POLYGON_COORDINATOR") != "1":
+        return adapter.normalize_heights(request)
+
+    output = Path(request.output_path)
+    checkpoint = output.with_suffix(output.suffix + ".prepared.json")
+    source_path = Path(source.path)
+    fingerprint = {
+        "path": str(source_path),
+        "size": source_path.stat().st_size if source_path.exists() else None,
+        "mtime_ns": source_path.stat().st_mtime_ns if source_path.exists() else None,
+        "polygon_sha256": hashlib.sha256(str(request.crop_polygon or "").encode("utf-8")).hexdigest(),
+        "bounds": str(request.bounds),
+        "crs": str(request.crs),
+        "method": "pyforestscan.handlers.read_lidar_hag_then_write_las",
+    }
+    try:
+        saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        saved = {}
+    if saved.get("source_fingerprint") == fingerprint and output.exists() and output.stat().st_size == saved.get("output_size_bytes"):
+        from .types import HagNormalizationResult
+        stage("POLYGON_INPUT_PREPARATION_REUSED", operation="Reusing validated prepared LiDAR input.", output=str(output))
+        return HagNormalizationResult(output_path=output, point_count=saved.get("points_retained"), crs=request.crs, written=True)
+
+    work = Path(attempt_folder or clipped_folder) / "preparation"
+    work.mkdir(parents=True, exist_ok=True)
+    for stale in (work / "terminal.json", work / "result.pkl"):
+        stale.unlink(missing_ok=True)
+    payload_path = work / "request.pkl"
+    terminal_path = work / "terminal.json"
+    result_path = work / "result.pkl"
+    with payload_path.open("wb") as stream:
+        pickle.dump({"request": request, "terminal_path": str(terminal_path), "result_path": str(result_path)}, stream)
+        stream.flush()
+        os.fsync(stream.fileno())
+    started_at = datetime.now(timezone.utc)
+    stage("PREPARATION_OPEN_SOURCE", operation="Opening source LiDAR.", source_size_bytes=fingerprint["size"])
+    stage("PREPARATION_WRITE_BOUNDED_INPUT", operation="Reading and writing bounded LiDAR input.", source_size_bytes=fingerprint["size"])
+    command = [os.sys.executable, "-m", "pyforestscan_qgis.backend_runner.polygon_preparation_worker", "--payload", str(payload_path)]
+    kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, **hidden_subprocess_kwargs()}
+    if os.name != "nt":
+        kwargs["start_new_session"] = True
+    process = subprocess.Popen(command, **kwargs)
+    last_size = -1
+    while process.poll() is None and not terminal_path.exists():
+        if control_callback is not None and control_callback() == "cancel":
+            stage("CANCELLING", operation="Stopping active LiDAR preparation.", child_pid=process.pid)
+            _terminate_owned_process(process)
+            output.unlink(missing_ok=True)
+            stage("POLYGON_INPUT_PREPARATION_CANCELLED", operation="LiDAR preparation cancelled.", state="CANCELLED")
+            raise RuntimeError("Polygon processing cancelled during source preparation.")
+        size = output.stat().st_size if output.exists() else 0
+        if size != last_size:
+            last_size = size
+            stage("PREPARATION_WORK_PROGRESS", operation="Writing bounded LiDAR input.", output_size_bytes=size, child_pid=process.pid)
+        time.sleep(1)
+    process.wait(timeout=10)
+    try:
+        terminal = json.loads(terminal_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(f"Polygon preparation child exited without a valid result: {exc}") from exc
+    if terminal.get("state") != "complete":
+        raise RuntimeError(terminal.get("error") or "Polygon preparation failed.")
+    with result_path.open("rb") as stream:
+        result = pickle.load(stream)
+    stage("PREPARATION_VALIDATE_OUTPUT", operation="Validating prepared LiDAR output.", output=str(output))
+    if not output.exists() or output.stat().st_size <= 0:
+        raise RuntimeError("Prepared polygon LiDAR output is missing or empty.")
+    finished_at = datetime.now(timezone.utc)
+    timing = {
+        "reader": "pyforestscan.handlers.read_lidar",
+        "source_path": str(source_path), "source_size_bytes": fingerprint["size"],
+        "bounds": str(request.bounds), "polygon_filter": bool(request.crop_polygon),
+        "started_at": started_at.isoformat(), "finished_at": finished_at.isoformat(),
+        "elapsed_seconds": (finished_at - started_at).total_seconds(),
+        "points_read": None, "points_retained": result.point_count,
+        "output_path": str(output), "output_size_bytes": output.stat().st_size,
+        "method": fingerprint["method"], "child_pid": process.pid,
+    }
+    atomic_write_json(work / "preparation_timing.json", timing)
+    atomic_write_json(checkpoint, {
+        "state": "PREPARED", "artifact_path": str(output),
+        "output_size_bytes": output.stat().st_size, "points_retained": result.point_count,
+        "source_fingerprint": fingerprint, "created_at": finished_at.isoformat(),
+    })
+    return result
+
+
+def _terminate_owned_process(process) -> None:
+    """Stop only the preparation process tree owned by this coordinator."""
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], check=False, capture_output=True, **hidden_subprocess_kwargs())
+    else:
+        process.terminate()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
+def _submit_and_observe_generic_polygon(report, adapter, batch_folder, *, item_callback=None, stage_callback=None, control_callback=None, progress_callback=None):
     """Launch generic polygon preparation and science in the managed PBM process."""
     from .atomic_state import atomic_write_json
 
@@ -659,9 +773,15 @@ def _submit_and_observe_generic_polygon(report, adapter, batch_folder, *, item_c
     progress = job_dir / "progress_snapshot.json"
     coordinator_seen = False
     last_sequence = -1
+    pause_path = job_dir / "pause_requested.json"
     while not terminal.exists():
-        if control_callback is not None and control_callback() == "cancel":
+        control = control_callback() if control_callback is not None else None
+        if control == "cancel":
             atomic_write_json(job_dir / "cancel_requested.json", {"requested_at": datetime.now(timezone.utc).isoformat(), "coordinator_pid": pid})
+        if control == "pause":
+            atomic_write_json(pause_path, {"requested_at": datetime.now(timezone.utc).isoformat()})
+        elif pause_path.exists():
+            pause_path.unlink()
         if identity.exists() and not coordinator_seen:
             coordinator_seen = True
             if stage_callback is not None:
@@ -673,10 +793,10 @@ def _submit_and_observe_generic_polygon(report, adapter, batch_folder, *, item_c
         sequence = int(snapshot.get("sequence", -1))
         if sequence != last_sequence:
             last_sequence = sequence
-            if stage_callback is not None and snapshot.get("stage_code"):
-                stage_callback(str(snapshot["stage_code"]), {"operation": str(snapshot.get("message", "Background processing continues.")), "coordinator_pid": pid, "coordinator_elapsed_seconds": snapshot.get("elapsed_seconds", 0)})
-            if item_callback is not None:
-                _emit_polygon_stage(item_callback, report.selected_sources[0], batch_run_context(report.selected_sources[0].path, job_dir.parent, reuse_existing=True), str(snapshot.get("stage", "Processing")), str(snapshot.get("message", "Background processing continues.")))
+            if stage_callback is not None and snapshot.get("event_type") == "STAGE_TRANSITION":
+                stage_callback(str(snapshot.get("stage", "PROCESSING")), {"operation": str(snapshot.get("message", "Background processing continues.")), "coordinator_pid": pid, "coordinator_elapsed_seconds": snapshot.get("elapsed_seconds", 0)})
+        if progress_callback is not None and snapshot:
+            progress_callback(snapshot)
         time.sleep(1)
     state = json.loads(terminal.read_text(encoding="utf-8"))
     if state.get("state") == "cancelled":

@@ -1,5 +1,11 @@
 # Changelog
 
+## Phase 32I - Polygon progress and execution control
+
+- Corrected polygon progress so heartbeats update one dataset record without incrementing completion counters or repeating `STARTED` transitions.
+- Added observable, checkpointed bounded-input preparation in an owned Processing Engine child with active cancellation and truthful pause-after-step semantics.
+- Bounded launch trace growth and separated current heartbeat state from durable transition history.
+
 ## Phase 32H - Processing plan and dispatch runtime state
 
 - Separated reusable polygon Prerun plans from attempt-scoped dispatch validation and execution manifests.
