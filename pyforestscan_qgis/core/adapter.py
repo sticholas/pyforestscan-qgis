@@ -177,15 +177,24 @@ class PyForestScanAdapter:
         log_sink: LogSink | None = None,
         execution_mode: str = EXECUTION_MODE_AUTO,
         backend_service_factory: TypingCallable[[], object] | None = None,
+        runtime_token: object | None = None,
+        runtime_products: tuple[str, ...] = (),
     ) -> None:
         """Create an adapter with immutable configuration and optional logging."""
         self.config = config or AdapterConfig()
         self._log_sink = log_sink
         self.execution_mode = execution_mode
         self._backend_service_factory = backend_service_factory
+        self._runtime_token = runtime_token
+        self._runtime_products = tuple(runtime_products)
         self._progress = AdapterProgress()
         self._open_dataset: DatasetSource | None = None
         self._chm_cache: dict[tuple[object, ...], tuple[object, object]] = {}
+
+    def bind_processing_runtime(self, runtime_token: object, products: tuple[str, ...] = ()) -> None:
+        """Bind the immutable Prerun runtime identity to subsequent PBM jobs."""
+        self._runtime_token = runtime_token
+        self._runtime_products = tuple(products)
 
     def check_environment(self) -> EnvironmentReport:
         """Return the existing structured dependency environment report."""
@@ -1071,24 +1080,31 @@ class PyForestScanAdapter:
         if product not in PBM_ROUTED_PRODUCTS or self.execution_mode == EXECUTION_MODE_QGIS_PYTHON:
             return None
         service = self._backend_service()
-        try:
-            availability = service.can_execute_processing()
-        except Exception as exc:  # noqa: BLE001 - fall back in auto, fail in forced PBM.
-            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
-                raise ProcessingError(f"PBM backend is not available for {product.value}: {exc}") from exc
-            if qgis_runtime_active():
-                raise ProcessingError("Processing Engine needs repair before this job can start.") from exc
-            return None
-        if not availability.ready:
-            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
-                raise ProcessingError(availability.message)
-            if qgis_runtime_active():
-                raise ProcessingError("Processing Engine needs repair before this job can start.")
-            return None
+        availability = None
+        if self._runtime_token is None:
+            try:
+                availability = service.can_execute_processing()
+            except Exception as exc:  # noqa: BLE001 - discovery is allowed before token freeze.
+                if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
+                    raise ProcessingError(f"PBM backend is not available for {product.value}: {exc}") from exc
+                return None
+            if not availability.ready:
+                if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
+                    raise ProcessingError(availability.message)
+                return None
         self._progress.start(f"Running {product.value} through PyForestScan Backend Manager")
-        self._log(LogLevel.INFO, "Running product through PBM backend", product=product.value, backend_python=str(availability.backend_python))
+        backend_python = getattr(self._runtime_token, "executable", None) or getattr(availability, "backend_python", "")
+        self._log(LogLevel.INFO, "Running product through PBM backend", product=product.value, backend_python=str(backend_python))
         try:
-            backend_result = service.run_product(product.value, request)
+            if self._runtime_token is None:
+                backend_result = service.run_product(product.value, request)
+            else:
+                backend_result = service.run_product(
+                    product.value,
+                    request,
+                    runtime_token=self._runtime_token,
+                    runtime_products=self._runtime_products,
+                )
         except Exception as exc:  # noqa: BLE001 - convert backend subprocess errors at adapter boundary.
             self._progress.fail(f"PBM backend {product.value} failed")
             raise ProcessingError(_backend_user_error(product, exc)) from exc

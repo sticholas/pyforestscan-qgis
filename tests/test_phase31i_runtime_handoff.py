@@ -48,6 +48,7 @@ class RuntimeHandoffTests(unittest.TestCase):
             "setup_completed_at": "2026-08-27T00:00:00Z",
             "setup_plugin_build_id": current_plugin_build_id(),
             "status": ProcessingEngineState.READY.value,
+            "runtime_generation_id": "generation-a",
         }
         contract["runner_hash"] = contract["runner_sha256"]
         contract["contract_hash"] = contract_hash(contract)
@@ -70,12 +71,13 @@ class RuntimeHandoffTests(unittest.TestCase):
             manifest_path = processing_engine_manifest_path(service.paths)
             contract = json.loads(manifest_path.read_text(encoding="utf-8"))
             contract["setup_completed_at"] = "2026-08-27T01:00:00Z"
+            contract["runtime_generation_id"] = "generation-b"
             contract["contract_hash"] = contract_hash(contract)
             manifest_path.write_text(json.dumps(contract), encoding="utf-8")
             with self.assertRaises(ProcessingEngineError) as raised:
                 service.validate_runtime_token_for_launch(old, ("chm", "rumple"))
-            self.assertEqual(raised.exception.code, "ENGINE_RUNTIME_TOKEN_MISMATCH")
-            self.assertIn("contract_hash", raised.exception.technical_message)
+            self.assertEqual(raised.exception.code, "ENGINE_RUNTIME_TOKEN_STALE")
+            self.assertIn("runtime_generation_id", raised.exception.technical_message)
 
     def test_manifest_requires_frozen_runtime_and_unique_work_units(self):
         payload = {

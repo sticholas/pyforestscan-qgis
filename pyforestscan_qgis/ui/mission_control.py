@@ -32,7 +32,7 @@ from .pages import (
     WorkspacePage,
 )
 from .advisor import completed_products_from_job
-from .availability import ApplicationAvailability, UiInitializationState
+from .availability import ApplicationAvailability, UiInitializationState, engine_state_update_is_current
 from .raster_styling import apply_generated_raster_renderer, is_raster_result, layer_display_name
 from .state import MissionControlState, ProjectSummary, build_project_summary
 from .session_state import MissionControlSessionState
@@ -657,6 +657,12 @@ class MissionControlDock(QDockWidget):
         if self._ui_lifecycle is UiInitializationState.CREATING:
             self._pending_engine_state = engine
             return
+        verified_at = str(getattr(engine, "last_verified", "") or "")
+        accepted_at = str(getattr(self, "_accepted_engine_verified_at", "") or "")
+        if not engine_state_update_is_current(accepted_at, verified_at):
+            return
+        if verified_at:
+            self._accepted_engine_verified_at = verified_at
         status = str(getattr(getattr(engine, "status", None), "value", "FAILED"))
         message = str(getattr(engine, "message", "Processing Engine state changed."))
         ready = bool(getattr(engine, "ready_for_processing", False))

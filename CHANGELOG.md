@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32D - Verified runtime authority at launch
+
+- Removed duplicate backend readiness discovery from frozen-token polygon dispatch.
+- Unified PAI, PAD, FHD, Canopy Cover, CHM, Rumple, and other routed products on the managed runtime token.
+- Added runtime generation identity, precise launch mismatch codes, and engine decision traces.
+- Prevented delayed startup state from overwriting a newer Repair / Reload result.
+- Corrected managed-worker validation so setup-generation metadata is not incorrectly recomputed from a runtime-only probe.
+
 ## Phase 32C - Deterministic Processing Engine setup
 
 - Made current-build setup completion and the complete runtime contract mandatory for Ready state.

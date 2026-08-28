@@ -1,5 +1,9 @@
 # Source-aware processing architecture
 
+## Unified managed runtime
+
+Source-aware CHM/Rumple and logical polygon products such as PAI, PAD, FHD, and Canopy Cover now share the same frozen-token launch contract. The route is recorded as `polygon_managed_engine`; there is no product-specific QGIS-Python or legacy backend fallback after Prerun.
+
 ## Bounded local prepared sources
 
 For local LAS/LAZ, each frozen area is read with `readers.las` plus `filters.crop`; for COPC the reader receives native bounds. This adapter boundary is required because PyForestScan 0.1.x applies its `bounds` argument only to EPT. Rumple consumes the buffered CHM and performs no second point-cloud read.

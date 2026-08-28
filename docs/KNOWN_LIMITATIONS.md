@@ -1,5 +1,10 @@
 # Known Limitations
 
+## Runtime changes after Prerun
+
+- Repair / Reload intentionally invalidates an older Prerun token. Mission Control reruns validation when active selections are available; otherwise the user must run Prerun again.
+- A real executable, plugin-build, runner, dependency, protocol, capability, or environment change blocks launch with a precise diagnostic. These objective failures may still require Repair / Reload.
+
 ## Processing Engine setup scope
 
 - Startup intentionally performs no full managed-runtime verification. A stale, missing, or corrupt setup record is shown as Setup/Repair required until the user runs the explicit action.

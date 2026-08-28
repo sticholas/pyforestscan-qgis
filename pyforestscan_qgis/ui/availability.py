@@ -14,6 +14,13 @@ class UiInitializationState(str, Enum):
     DESTROYING = "DESTROYING"
 
 
+def engine_state_update_is_current(accepted_verified_at: str, incoming_verified_at: str) -> bool:
+    """Reject a delayed discovery result after a newer verified state was published."""
+    accepted = str(accepted_verified_at or "")
+    incoming = str(incoming_verified_at or "")
+    return not accepted or bool(incoming and incoming >= accepted)
+
+
 @dataclass(frozen=True)
 class ApplicationAvailability:
     """Keep UI availability independent from scientific processing readiness."""

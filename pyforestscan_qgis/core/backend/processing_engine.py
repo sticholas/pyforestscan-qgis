@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import subprocess
+import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -72,6 +73,7 @@ class ProcessingRuntimeToken:
     backend_runner_hash: str = ""
     plugin_build_id: str = ""
     dependency_manifest_hash: str = ""
+    runtime_generation_id: str = ""
 
     def to_dict(self) -> dict[str, str]:
         return asdict(self)
@@ -104,6 +106,7 @@ class ProcessingEngineStateModel:
     ready_for_processing: bool = False
     failure_code: str = ""
     runtime_token: ProcessingRuntimeToken | None = None
+    runtime_generation_id: str = ""
 
     @classmethod
     def from_report(cls, report: ProcessingEngineReport) -> "ProcessingEngineStateModel":
@@ -129,6 +132,7 @@ class ProcessingEngineStateModel:
             report.ready,
             "" if report.ready else _failure_code(report.state),
             token,
+            str(contract.get("runtime_generation_id", "")),
         )
 
 
@@ -212,6 +216,7 @@ def contract_hash(contract: dict[str, Any]) -> str:
             "required_functions", "required_function_signatures", "product_capabilities",
             "capability_smoke_results", "dependency_manifest_hash", "product_capability_hash",
             "setup_completed_at", "setup_plugin_build_id",
+            "runtime_generation_id",
         )
     }
     return hashlib.sha256(json.dumps(stable, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
@@ -287,7 +292,7 @@ class ProcessingEngineVerifier:
         required_values = (
             "plugin_build_id", "runner_sha256", "runner_hash", "contract_hash", "dependency_manifest_hash",
             "product_capability_hash", "protocol_version", "python_executable",
-            "verified_at", "setup_completed_at",
+            "verified_at", "setup_completed_at", "runtime_generation_id",
         )
         stale = (
             payload.get("contract_version") != PROCESSING_ENGINE_CONTRACT_VERSION
@@ -355,6 +360,11 @@ class ProcessingEngineVerifier:
             if setup_completed and state is ProcessingEngineState.READY
             else str(previous.get("setup_plugin_build_id", ""))
         )
+        runtime_generation_id = (
+            uuid.uuid4().hex
+            if setup_completed and state is ProcessingEngineState.READY
+            else str(previous.get("runtime_generation_id", ""))
+        )
         payload = {
             **contract,
             "contract_version": PROCESSING_ENGINE_CONTRACT_VERSION,
@@ -368,6 +378,7 @@ class ProcessingEngineVerifier:
             "setup_completed_at": setup_completed_at,
             "setup_plugin_build_id": setup_plugin_build_id,
             "runner_hash": str(contract.get("runner_sha256", "")),
+            "runtime_generation_id": runtime_generation_id,
         }
         payload["contract_hash"] = contract_hash(payload)
         if persist:
@@ -460,6 +471,7 @@ class ProcessingEngineService:
             backend_runner_hash=token.backend_runner_hash,
             plugin_build_id=token.plugin_build_id,
             dependency_manifest_hash=token.dependency_manifest_hash,
+            runtime_generation_id=token.runtime_generation_id,
         )
 
     def validate_runtime_token_for_launch(
@@ -475,14 +487,20 @@ class ProcessingEngineService:
                 "Processing runtime identity is missing from the request.",
                 "Runtime token missing from polygon request.",
             )
-        state = self.state(quick=True)
-        observed = state.runtime_token
-        if not state.ready_for_processing or observed is None:
+        manifest_path = processing_engine_manifest_path(self.paths)
+        if not Path(token.executable).exists():
             raise ProcessingEngineError(
-                "ENGINE_RUNTIME_STATE_CHANGED",
-                "Processing Engine changed before launch. No scientific attempt started.",
-                f"Expected READY engine {token.engine_id}; observed {state.status.value} from {processing_engine_manifest_path(self.paths)}.",
+                "ENGINE_EXECUTABLE_MISSING",
+                "Processing Engine changed since this job was checked.",
+                f"Expected executable does not exist: {token.executable}",
             )
+        try:
+            contract = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except FileNotFoundError as exc:
+            raise ProcessingEngineError("ENGINE_MANIFEST_MISSING", "Processing Engine changed since this job was checked.", str(manifest_path)) from exc
+        except (OSError, ValueError) as exc:
+            raise ProcessingEngineError("ENGINE_MANIFEST_INVALID", "Processing Engine changed since this job was checked.", f"{manifest_path}: {exc}") from exc
+        observed = _token_from_contract(contract)
         expected = token.to_dict()
         actual = observed.to_dict()
         actual["product_capability_hash"] = product_capability_hash(products)
@@ -513,7 +531,8 @@ class ProcessingEngineService:
             _write_runtime_comparison(Path(snapshot_folder) / "runtime_token_comparison.json", comparison)
         if failures:
             details = "; ".join(f"{field}: expected {values['expected']!r}, observed {values['observed']!r}" for field, values in failures.items())
-            raise ProcessingEngineError("ENGINE_RUNTIME_TOKEN_MISMATCH", "Processing Engine changed before launch. No scientific attempt started.", details)
+            code = _launch_mismatch_code(tuple(failures))
+            raise ProcessingEngineError(code, "Processing Engine changed since this job was checked.", details)
         return comparison
 
     def environment(self) -> dict[str, str]:
@@ -607,7 +626,27 @@ def _token_from_contract(contract: dict[str, Any], products: tuple[str, ...] | N
         backend_runner_hash=str(contract.get("runner_sha256", "")),
         plugin_build_id=str(contract.get("plugin_build_id", "")),
         dependency_manifest_hash=str(contract.get("dependency_manifest_hash", "")),
+        runtime_generation_id=str(contract.get("runtime_generation_id", "")),
     )
+
+
+def _launch_mismatch_code(fields: tuple[str, ...]) -> str:
+    """Translate objective token differences into one precise launch error."""
+    priorities = (
+        ("plugin_build_id", "ENGINE_PLUGIN_BUILD_CHANGED"),
+        ("backend_runner_hash", "ENGINE_RUNNER_CHANGED"),
+        ("executable", "ENGINE_EXECUTABLE_CHANGED"),
+        ("normalized_executable", "ENGINE_EXECUTABLE_CHANGED"),
+        ("runtime_generation_id", "ENGINE_RUNTIME_TOKEN_STALE"),
+        ("contract_hash", "ENGINE_CONTRACT_CHANGED"),
+        ("dependency_manifest_hash", "ENGINE_DEPENDENCIES_CHANGED"),
+        ("product_capability_hash", "ENGINE_PRODUCT_CAPABILITIES_CHANGED"),
+        ("protocol", "ENGINE_PROTOCOL_CHANGED"),
+        ("environment_fingerprint", "ENGINE_ENVIRONMENT_CHANGED"),
+        ("engine_id", "ENGINE_ID_CHANGED"),
+    )
+    values = set(fields)
+    return next((code for field, code in priorities if field in values), "ENGINE_RUNTIME_TOKEN_MISMATCH")
 
 
 def _failure_code(state: ProcessingEngineState) -> str:

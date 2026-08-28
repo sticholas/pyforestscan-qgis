@@ -132,23 +132,37 @@ class BackendExecutionService:
         write_backend_log_entry(self.log_path,"execute","Submitted durable polygon coordinator.",stage="COORDINATOR",details={"pid":process.pid,"payload":str(payload_path),"job_dir":str(job_dir),"preflight_runtime_identity":runtime_token.executable,"execution_runtime_identity":runtime_token.executable,"contract_hash":runtime_token.contract_hash,"engine_id":runtime_token.engine_id})
         return process.pid,command
 
-    def run_product(self, product: str, request: Any) -> BackendJobResult:
+    def run_product(
+        self,
+        product: str,
+        request: Any,
+        runtime_token: ProcessingRuntimeToken | None = None,
+        runtime_products: tuple[str, ...] = (),
+    ) -> BackendJobResult:
         """Run a product request through the managed backend."""
         spec = build_job_spec_from_request(product, request)
+        if runtime_token is not None:
+            spec = replace(
+                spec,
+                runtime_token=runtime_token.to_dict(),
+                runtime_products=tuple(runtime_products) or (product,),
+            )
         spec_path = spec.write()
         return self.run_processing_job(spec, spec_path)
 
     def run_processing_job(self, spec: BackendJobSpec, spec_path: Path | None = None) -> BackendJobResult:
         """Run one PBM backend job spec and return the structured result."""
         if self.runner is subprocess.run:
-            token = ProcessingRuntimeToken.from_dict(spec.runtime_token) or self.engine_service.runtime_token_for((spec.product,))
+            products = tuple(spec.runtime_products) or (spec.product,)
+            token = ProcessingRuntimeToken.from_dict(spec.runtime_token) or self.engine_service.runtime_token_for(products)
         else:
             availability = self.can_execute_processing()
             if not availability.ready:
                 raise RuntimeError(availability.message)
             token = None
         if token is not None:
-            spec = replace(spec, runtime_token=token.to_dict())
+            self.engine_service.validate_runtime_token_for_launch(token, products, spec.run_folder)
+            spec = replace(spec, runtime_token=token.to_dict(), runtime_products=products)
         path = spec_path or spec.write()
         if token is not None:
             spec.write(path)

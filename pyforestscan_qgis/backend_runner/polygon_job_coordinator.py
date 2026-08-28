@@ -6,7 +6,7 @@ from pyforestscan_qgis.backend_runner.job_coordinator import DurableJobCoordinat
 from pyforestscan_qgis.core.atomic_state import atomic_write_json
 from pyforestscan_qgis.core.adapter import PyForestScanAdapter
 from pyforestscan_qgis.backend_runner.runtime_contract import inspect_runtime_contract
-from pyforestscan_qgis.core.backend.processing_engine import ProcessingRuntimeToken,contract_hash,product_capability_hash
+from pyforestscan_qgis.core.backend.processing_engine import ProcessingRuntimeToken,product_capability_hash
 
 def _atomic_pickle(path,value):
     import uuid
@@ -50,7 +50,6 @@ def _validate_and_trace_runtime(job_dir,job_id,products):
     if token is None:raise RuntimeError("ENGINE_RUNTIME_TOKEN_MISSING: polygon coordinator was not launched by the Processing Engine.")
     identity_matches=(
         str(Path(token.executable).resolve())==str(Path(contract.get("python_executable","")).resolve())
-        and token.contract_hash==contract_hash(contract)
         and token.backend_runner_hash==str(contract.get("runner_sha256",""))
         and token.plugin_build_id==str(contract.get("plugin_build_id",""))
         and token.dependency_manifest_hash==str(contract.get("dependency_manifest_hash",""))
@@ -60,7 +59,7 @@ def _validate_and_trace_runtime(job_dir,job_id,products):
     path=Path(job_dir)/"execution_runtime_trace.json"
     try:trace=json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"stages":{}}
     except (OSError,ValueError):trace={"stages":{}}
-    trace.setdefault("stages",{})["polygon_coordinator"]={"job_id":job_id,"pid":os.getpid(),"parent_pid":os.getppid(),"executable":contract.get("python_executable"),"sys_prefix":os.sys.prefix,"cwd":os.getcwd(),"pythonpath":os.environ.get("PYTHONPATH",""),"path":os.environ.get("PATH",""),"sys_path":contract.get("sys_path",[]),"module_locations":contract.get("module_locations",{}),"protocol":contract.get("protocol_version"),"contract_hash":contract_hash(contract)}
+    trace.setdefault("stages",{})["polygon_coordinator"]={"job_id":job_id,"pid":os.getpid(),"parent_pid":os.getppid(),"executable":contract.get("python_executable"),"sys_prefix":os.sys.prefix,"cwd":os.getcwd(),"pythonpath":os.environ.get("PYTHONPATH",""),"path":os.environ.get("PATH",""),"sys_path":contract.get("sys_path",[]),"module_locations":contract.get("module_locations",{}),"protocol":contract.get("protocol_version"),"contract_hash":token.contract_hash,"runtime_generation_id":token.runtime_generation_id}
     atomic_write_json(path,trace)
 
 if __name__=="__main__":raise SystemExit(main())

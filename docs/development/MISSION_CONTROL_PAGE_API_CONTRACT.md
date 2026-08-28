@@ -1,5 +1,9 @@
 # Mission Control Page API Contract
 
+## Ordered engine projections
+
+Mission Control tracks the latest accepted engine `verified_at` value. A deferred startup read without a timestamp, or with an older timestamp than a completed Repair / Reload, is discarded. A successful reload updates Process state and causes the existing preflight to run again without clearing user selections.
+
 ## Phase 32C semantic updates
 
 `SettingsPage.set_processing_engine_state(...)` owns the persistent setup/recovery action. `BatchPage.set_processing_engine_state(...)` owns the compact Process-page setup intervention, and `BatchPage.set_spatial_intervention(...)` owns source-specific CRS/units intervention. Mission Control propagates completed engine state through signals; pages do not reach into one another's child widgets.

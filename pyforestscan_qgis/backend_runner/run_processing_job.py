@@ -41,7 +41,7 @@ from pyforestscan_qgis.core.types import (
     VoxelStatRequest,
 )
 from pyforestscan_qgis.core.backend.native_runtime import print_native_runtime
-from pyforestscan_qgis.core.backend.processing_engine import ProcessingRuntimeToken, contract_hash, product_capability_hash
+from pyforestscan_qgis.core.backend.processing_engine import ProcessingRuntimeToken, product_capability_hash
 
 PRODUCT_REQUESTS = {
     "chm": (ChmRequest, "create_chm"),
@@ -300,20 +300,23 @@ def _validate_runtime_token(spec: BackendJobSpec, runtime_contract: dict[str, An
         raise RuntimeError(f"ENGINE_RUNTIME_CHANGED: expected {expected_executable}, running {actual_executable}.")
     if token.protocol != str(runtime_contract.get("protocol_version", "")):
         raise RuntimeError("ENGINE_PROTOCOL_MISMATCH: Processing Engine protocol changed after verification.")
-    if token.contract_hash != contract_hash(runtime_contract):
-        raise RuntimeError("ENGINE_RUNTIME_CHANGED: Processing Engine contract changed after verification.")
+    # The persisted contract hash includes QGIS-side setup generation metadata.
+    # It was validated immediately before launch and cannot be reconstructed from
+    # the managed runtime probe alone; compare every live invariant available here.
     if token.backend_runner_hash != str(runtime_contract.get("runner_sha256", "")):
         raise RuntimeError("ENGINE_RUNTIME_CHANGED: Processing Engine runner changed after verification.")
     if token.plugin_build_id != str(runtime_contract.get("plugin_build_id", "")):
         raise RuntimeError("ENGINE_RUNTIME_CHANGED: plugin execution code changed after verification.")
     if token.dependency_manifest_hash != str(runtime_contract.get("dependency_manifest_hash", "")):
         raise RuntimeError("ENGINE_RUNTIME_CHANGED: Processing Engine dependency contract changed after verification.")
-    if token.product_capability_hash != product_capability_hash((spec.product,)):
+    runtime_products = tuple(spec.runtime_products) or (spec.product,)
+    if token.product_capability_hash != product_capability_hash(runtime_products):
         raise RuntimeError("ENGINE_RUNTIME_CHANGED: selected product capability changed after verification.")
 
 
 def _write_execution_runtime_trace(spec: BackendJobSpec, contract: dict[str, Any]) -> None:
     path = create_diagnostics_dir(spec.run_folder) / "execution_runtime_trace.json"
+    token = ProcessingRuntimeToken.from_dict(spec.runtime_token)
     try:
         trace = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"stages": {}}
     except (OSError, ValueError):
@@ -324,7 +327,9 @@ def _write_execution_runtime_trace(spec: BackendJobSpec, contract: dict[str, Any
         "cwd": os.getcwd(), "pythonpath": os.environ.get("PYTHONPATH", ""),
         "path": os.environ.get("PATH", ""), "sys_path": contract.get("sys_path", []),
         "module_locations": contract.get("module_locations", {}),
-        "protocol": contract.get("protocol_version"), "contract_hash": contract_hash(contract),
+        "protocol": contract.get("protocol_version"),
+        "contract_hash": "" if token is None else token.contract_hash,
+        "runtime_generation_id": "" if token is None else token.runtime_generation_id,
     }
     atomic_write_json(path, trace)
 

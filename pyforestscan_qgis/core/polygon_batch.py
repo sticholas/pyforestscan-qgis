@@ -528,18 +528,22 @@ def execute_polygon_batch(
     if report.blockers:
         raise ValueError("Polygon batch preflight blockers must be resolved before execution.")
     adapter = adapter or PyForestScanAdapter(execution_mode="pbm_backend")
+    batch_folder = report.batch_folder if report.batch_folder.exists() else create_batch_folder(report.request.output_folder)
     if isinstance(adapter, PyForestScanAdapter) and adapter.execution_mode != "qgis_python":
         from .backend import BackendService
-        BackendService().processing_engine_service().validate_runtime_token_for_launch(
-            report.request.runtime_token,
-            tuple(product.value for product in report.request.products),
-            report.batch_folder,
-        )
+        service = BackendService().processing_engine_service()
+        products = tuple(product.value for product in report.request.products)
+        try:
+            comparison = service.validate_runtime_token_for_launch(report.request.runtime_token, products, batch_folder)
+        except Exception as exc:
+            _write_engine_decision_trace(report, batch_folder, service, adapter, dispatch_status="INVALID", reason=str(exc))
+            raise
+        _write_engine_decision_trace(report, batch_folder, service, adapter, dispatch_status="VALID", comparison=comparison)
+        adapter.bind_processing_runtime(report.request.runtime_token, products)
     if not _is_logical_spatial_report(report):
         path_blockers = selected_path_invariant(report.selected_sources, ordinary=True)
         if path_blockers:
             raise ValueError("; ".join(path_blockers))
-    batch_folder = report.batch_folder if report.batch_folder.exists() else create_batch_folder(report.request.output_folder)
     scalable_plan = build_source_aware_chm_plan(report)
     scalable_products = set(report.request.products)
     if report.selected_sources and scalable_products and scalable_products <= {ProductType.CHM, ProductType.RUMPLE} and scalable_plan is not None and len(scalable_plan.work_units) > 1:
@@ -617,6 +621,7 @@ def write_polygon_batch_manifest(
         "concurrency": requested_effective_concurrency(_shared_options(report), source_types=_source_types(report), product_count=len(report.request.products)),
         "execution_plan": None if report.execution_plan is None else report.execution_plan.to_dict(),
         "processing_runtime": None if report.request.runtime_token is None else report.request.runtime_token.to_dict(),
+        "runtime_validation_at_dispatch": _runtime_dispatch_evidence(folder),
         "source_aware_raster_plan": _source_aware_chm_plan_dict(report, source_aware_plan),
         "source_aware_chm_plan": _source_aware_chm_plan_dict(report, source_aware_plan),
         "spatial_provenance": _spatial_provenance(report),
@@ -698,6 +703,73 @@ def write_polygon_batch_manifest(
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     _write_polygon_source_resolution(report, folder)
     _write_effective_spatial_trace(report, folder)
+    return path
+
+
+def _runtime_dispatch_evidence(folder: Path) -> dict[str, object] | None:
+    """Read the immutable launch decision written before scientific dispatch."""
+    path = Path(folder) / "engine_decision_trace.json"
+    try:
+        trace = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    dispatch = dict(trace.get("dispatch_validation", {}))
+    return {
+        "status": dispatch.get("status", "UNKNOWN"),
+        "checked_at": dispatch.get("timestamp", ""),
+        "generation_id": dict(trace.get("runtime_token", {})).get("runtime_generation_id", ""),
+        "matched_fields": list(dispatch.get("matched_fields", ())),
+    }
+
+
+def _write_engine_decision_trace(
+    report: PolygonBatchPreflightReport,
+    folder: Path,
+    service: object,
+    adapter: PyForestScanAdapter,
+    *,
+    dispatch_status: str,
+    comparison: dict[str, dict[str, str]] | None = None,
+    reason: str = "",
+) -> Path:
+    """Persist the four readiness projections used by one launch attempt."""
+    from datetime import datetime, timezone
+    from .atomic_state import atomic_write_json
+
+    token = report.request.runtime_token
+    matched = [name for name, values in (comparison or {}).items() if values.get("status") == "MATCH"]
+    timestamp = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "schema": "pyforestscan-engine-decision-trace-v1",
+        "ui": {"state": "READY", "state_source": "Mission Control projection", "reason": "Process action was enabled after Prerun."},
+        "prerun": {
+            "state": "READY" if report.backend_ready else "NOT_READY",
+            "state_source": "PolygonBatchPreflightReport",
+            "engine_id": "" if token is None else token.engine_id,
+            "plugin_build_id": "" if token is None else token.plugin_build_id,
+            "contract_hash": "" if token is None else token.contract_hash,
+            "verified_at": "" if token is None else token.verified_at,
+            "reason": report.backend_message,
+            "timestamp": timestamp,
+        },
+        "runtime_token": {} if token is None else token.to_dict(),
+        "dispatch_validation": {
+            "status": dispatch_status,
+            "state_source": "ProcessingEngineService.validate_runtime_token_for_launch",
+            "service_instance_identity": id(service),
+            "manifest_path": str(getattr(service, "paths").backend_root / "processing_engine.json"),
+            "matched_fields": matched,
+            "reason": reason or "Frozen ProcessingRuntimeToken matched all objective launch invariants.",
+            "timestamp": timestamp,
+        },
+        "requested_products": [product.value for product in report.request.products],
+        "launch_route": "polygon_managed_engine",
+        "runner_executable": "" if token is None else token.executable,
+        "execution_mode": adapter.execution_mode,
+    }
+    path = Path(folder) / "engine_decision_trace.json"
+    atomic_write_json(path, payload)
+    atomic_write_json(Path(folder) / "processing_engine_decision_trace.json", payload)
     return path
 
 

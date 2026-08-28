@@ -123,9 +123,14 @@ class BackendService:
         """Launch the durable source-aware polygon coordinator."""
         return self.execution_service().submit_polygon_coordinator(payload_path,job_dir,runtime_token,products)
 
-    def run_product(self, product: str, request):
+    def run_product(self, product: str, request, runtime_token=None, runtime_products=()):
         """Run one product through the PBM backend execution service."""
-        return self.execution_service().run_product(product, request)
+        return self.execution_service().run_product(
+            product,
+            request,
+            runtime_token=runtime_token,
+            runtime_products=runtime_products,
+        )
 
     def run_dataset_inspection(self, input_path: Path, crs: str, options: dict[str, object], run_folder: Path):
         """Run Dataset Explorer inspection through PBM backend Python."""

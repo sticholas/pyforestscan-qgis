@@ -1,5 +1,9 @@
 # Processing Engine Setup Transaction
 
+## Runtime handoff
+
+Successful setup publishes a fresh runtime generation. Mission Control rejects delayed state projections older than the accepted verification timestamp, invalidates existing Prerun readiness, and reruns Prerun when active selections exist. Setup remains separate from launch: dispatch consumes the newly frozen token and never invokes setup or readiness discovery.
+
 ## Authoritative ensure operation
 
 Set Up and Repair / Reload both call `ensure_processing_engine_ready()`. It first performs a full managed-runtime reconciliation. A valid runtime is reverified and marked for the current plugin build without reinstalling packages. An invalid runtime enters the existing locked installer transaction, then receives final verification and the current-build setup marker. Successful completion republishes a fresh runtime token; failure remains non-Ready and exposes its concise reason plus diagnostics.

@@ -1,5 +1,9 @@
 # State Ownership Model
 
+## Attempt-scoped authority
+
+The shared Processing Engine service owns discovery and token issuance. The immutable processing request owns the selected token after Prerun. QGIS-side dispatch validates that token directly against the manifest; managed workers receive the token but no QGIS service object. UI projections cannot block a token after successful launch validation.
+
 ## Processing Engine setup generation
 
 The Processing Engine service owns readiness and runtime tokens. Quick state is re-read from disk instead of returned from a long-lived singleton cache. The current setup generation participates in the contract hash, so Repair / Reload invalidates old job tokens without loading scientific libraries into QGIS Python.

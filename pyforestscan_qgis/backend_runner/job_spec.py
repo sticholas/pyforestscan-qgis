@@ -40,6 +40,7 @@ class BackendJobSpec:
     spatial_reference: dict[str, Any] | None = None
     height_normalization: dict[str, Any] | None = None
     runtime_token: dict[str, Any] | None = None
+    runtime_products: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible values."""
@@ -59,6 +60,7 @@ class BackendJobSpec:
             "spatial_reference": _json_ready(self.spatial_reference or SpatialReferenceContract.from_crs(self.crs).to_dict()),
             "height_normalization": _json_ready(self.height_normalization or {}),
             "runtime_token": _json_ready(self.runtime_token or {}),
+            "runtime_products": list(self.runtime_products),
         }
 
     @classmethod
@@ -80,6 +82,7 @@ class BackendJobSpec:
             spatial_reference=dict(data.get("spatial_reference", {})) or SpatialReferenceContract.from_crs(data.get("crs")).to_dict(),
             height_normalization=dict(data.get("height_normalization", {})) or None,
             runtime_token=dict(data.get("runtime_token", {})) or None,
+            runtime_products=tuple(str(value) for value in data.get("runtime_products", ())),
         )
 
     def write(self, path: Path | None = None) -> Path:
