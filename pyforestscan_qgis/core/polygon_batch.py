@@ -47,6 +47,7 @@ from .hag_strategy import hag_method_signature
 from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, HagNormalizationRequest, PadRequest, PaiRequest, PointDensityRequest, ProductType, RumpleRequest, VoxelStatRequest
 from .backend.processing_engine import ProcessingRuntimeToken
 from .backend.process_env import hidden_subprocess_kwargs
+from .coordinator_lifecycle import CoordinatorHandle, CoordinatorTerminalResult, bounded_process_output
 from .source_alternatives import SourceRelationship, canonicalize_source_alternatives
 
 POLYGON_MANIFEST_NAME = "polygon_batch_manifest.json"
@@ -574,6 +575,7 @@ def execute_polygon_batch(
             report, adapter, batch_folder, item_callback=item_callback,
             stage_callback=stage_callback, control_callback=control_callback,
             progress_callback=progress_callback,
+            attempt_folder=attempt_folder,
         )
     clipped_folder = batch_folder / "polygon_clipped_sources"
     stage("JOB_DIRECTORY_STARTED", path=str(clipped_folder))
@@ -740,13 +742,14 @@ def _terminate_owned_process(process) -> None:
         process.kill()
 
 
-def _submit_and_observe_generic_polygon(report, adapter, batch_folder, *, item_callback=None, stage_callback=None, control_callback=None, progress_callback=None):
+def _submit_and_observe_generic_polygon(report, adapter, batch_folder, *, item_callback=None, stage_callback=None, control_callback=None, progress_callback=None, attempt_folder=None):
     """Launch generic polygon preparation and science in the managed PBM process."""
     from .atomic_state import atomic_write_json
 
     job_id = report.plan_signature or f"generic-{int(time.time())}"
-    attempt_id = f"attempt-{int(time.time())}"
-    job_dir = Path(batch_folder) / "polygon_jobs" / f"generic-{job_id[:12]}" / "coordinator"
+    attempt_id = Path(attempt_folder).name if attempt_folder is not None else f"attempt-{time.time_ns()}"
+    coordinator_root = Path(batch_folder) / "polygon_jobs" / f"generic-{job_id[:12]}" / "coordinator"
+    job_dir = coordinator_root / "attempts" / attempt_id
     job_dir.mkdir(parents=True, exist_ok=True)
     if stage_callback is not None:
         stage_callback("COORDINATOR_CONSTRUCTION_STARTED", {"job_directory": str(job_dir)})
@@ -762,22 +765,32 @@ def _submit_and_observe_generic_polygon(report, adapter, batch_folder, *, item_c
         stage_callback("COORDINATOR_CONSTRUCTION_FINISHED", {"request_path": str(payload_path)})
         stage_callback("COORDINATOR_LAUNCH_REQUESTED", {"runtime_executable": report.request.runtime_token.executable})
     products = tuple(product.value for product in report.request.products)
-    pid, _command = adapter._backend_service().submit_polygon_coordinator(
+    launch = adapter._backend_service().submit_polygon_coordinator(
         payload_path, job_dir, report.request.runtime_token, products, generic=True,
     )
+    pid, _command = launch
+    handle = getattr(launch, "handle", CoordinatorHandle(
+        attempt_id, pid, None, datetime.now(timezone.utc).isoformat(), payload_path,
+        job_dir / "progress_snapshot.json", job_dir / "coordinator_result.json",
+        job_dir / "cancel_requested.json", job_dir / "pause_requested.json",
+        job_dir / "coordinator_identity.json", job_dir / "coordinator_stdout.log",
+        job_dir / "coordinator_stderr.log",
+    ))
     atomic_write_json(job_dir / "submission.json", {"job_id": job_id, "attempt_id": attempt_id, "coordinator_pid": pid, "request_path": str(payload_path), "submitted_at": datetime.now(timezone.utc).isoformat()})
+    atomic_write_json(coordinator_root / "latest_attempt.json", {"attempt_id": attempt_id, "job_directory": str(job_dir), "coordinator_pid": pid})
     if stage_callback is not None:
         stage_callback("COORDINATOR_PROCESS_CREATED", {"coordinator_pid": pid, "request_path": str(payload_path), "runtime_executable": report.request.runtime_token.executable})
-    terminal = job_dir / "terminal_result.json"
-    identity = job_dir / "coordinator_identity.json"
-    progress = job_dir / "progress_snapshot.json"
+    terminal = handle.terminal_result_path
+    identity = handle.identity_path
+    progress = handle.progress_path
     coordinator_seen = False
     last_sequence = -1
-    pause_path = job_dir / "pause_requested.json"
-    while not terminal.exists():
+    pause_path = handle.pause_path
+    startup_deadline = time.monotonic() + 30
+    while True:
         control = control_callback() if control_callback is not None else None
         if control == "cancel":
-            atomic_write_json(job_dir / "cancel_requested.json", {"requested_at": datetime.now(timezone.utc).isoformat(), "coordinator_pid": pid})
+            atomic_write_json(handle.cancel_path, {"requested_at": datetime.now(timezone.utc).isoformat(), "coordinator_pid": pid, "attempt_id": attempt_id, "cancel_origin": "USER"})
         if control == "pause":
             atomic_write_json(pause_path, {"requested_at": datetime.now(timezone.utc).isoformat()})
         elif pause_path.exists():
@@ -786,6 +799,15 @@ def _submit_and_observe_generic_polygon(report, adapter, batch_folder, *, item_c
             coordinator_seen = True
             if stage_callback is not None:
                 stage_callback("COORDINATOR_STARTED", {"coordinator_pid": pid})
+        if terminal.exists():
+            break
+        exit_code = handle.poll()
+        if exit_code is not None and not terminal.exists():
+            code = "COORDINATOR_START_FAILED" if not coordinator_seen else "COORDINATOR_RESULT_MISSING"
+            details = bounded_process_output(handle.stderr_path) or bounded_process_output(handle.stdout_path)
+            raise RuntimeError(f"{code}: coordinator PID {pid} exited {exit_code} without a terminal result. {details}".strip())
+        if not coordinator_seen and time.monotonic() >= startup_deadline:
+            raise RuntimeError(f"COORDINATOR_START_FAILED: coordinator PID {pid} produced no startup evidence within 30 seconds.")
         try:
             snapshot = json.loads(progress.read_text(encoding="utf-8")) if progress.exists() else {}
         except (OSError, ValueError):
@@ -798,13 +820,37 @@ def _submit_and_observe_generic_polygon(report, adapter, batch_folder, *, item_c
         if progress_callback is not None and snapshot:
             progress_callback(snapshot)
         time.sleep(1)
-    state = json.loads(terminal.read_text(encoding="utf-8"))
-    if state.get("state") == "cancelled":
+    state = CoordinatorTerminalResult.read(terminal, attempt_id)
+    if state.status == "CANCELLED":
         raise RuntimeError("Polygon processing cancelled.")
-    if state.get("state") != "complete":
-        raise RuntimeError(state.get("error") or "Managed polygon coordinator failed.")
-    with Path(state["result_path"]).open("rb") as stream:
-        return pickle.load(stream)
+    if state.status not in {"SUCCEEDED", "PARTIAL_SUCCESS"}:
+        raise RuntimeError(state.error or f"Managed polygon coordinator finished {state.status}.")
+    if state.result_path is None or not state.result_path.exists():
+        raise RuntimeError("COORDINATOR_RESULT_MISSING: terminal result does not reference a readable batch result.")
+    with state.result_path.open("rb") as stream:
+        result = pickle.load(stream)
+    _validate_coordinator_success(result, state, report)
+    if stage_callback is not None:
+        stage_callback("COORDINATOR_TERMINAL_SUCCEEDED", {"coordinator_pid": pid, "terminal_result": str(terminal)})
+    return result
+
+
+def _validate_coordinator_success(result, terminal, report) -> None:
+    """Reject impossible zero-work success before UI finalization."""
+    requested = tuple(product.value for product in report.request.products)
+    items = tuple(getattr(result, "items", ()))
+    completed = tuple(item for item in items if getattr(item, "status", "") == "completed")
+    outputs = tuple(Path(path) for item in completed for path in getattr(item, "outputs", ()))
+    if not completed or len(outputs) < len(requested):
+        raise RuntimeError(
+            "INTERNAL_EXECUTION_STATE_ERROR: coordinator claimed success without a completed dataset and every requested product output."
+        )
+    missing = [str(path) for path in outputs if not path.exists() or path.stat().st_size <= 0]
+    if missing:
+        raise RuntimeError(f"INTERNAL_EXECUTION_STATE_ERROR: coordinator outputs are missing or empty: {', '.join(missing)}")
+    failed_products = [product for product in requested if terminal.products.get(product) != "SUCCEEDED"]
+    if terminal.status == "SUCCEEDED" and failed_products:
+        raise RuntimeError(f"INTERNAL_EXECUTION_STATE_ERROR: products lack terminal success: {', '.join(failed_products)}")
 
 
 def write_polygon_batch_manifest(

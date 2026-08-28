@@ -1954,6 +1954,7 @@ class _PolygonBatchExecutionWorker(QObject):
             append_attempt_stage(self.launch_attempt, terminal_stage, reason=str(exc))
             self.failed.emit(f"Unexpected polygon batch failure: {exc}")
             return
+        append_attempt_stage(self.launch_attempt, "TERMINAL_RESULT_VALIDATED")
         append_attempt_stage(self.launch_attempt, "FINALIZING")
         append_attempt_stage(self.launch_attempt, "COMPLETED")
         self.completed.emit(result)
@@ -4366,7 +4367,7 @@ class BatchPage(MissionPage):
         message = str(event.get("message") or stage.replace("_", " ").title())
         elapsed = int(event.get("elapsed_seconds", 0))
         entity_id = str(event.get("entity_id", ""))
-        if entity_id:
+        if entity_id and event.get("entity_type") == "dataset":
             source = Path(entity_id)
             folder = getattr(getattr(self, "preflight_report", None), "batch_folder", source.parent)
             self._on_batch_item(BatchItemResult(

@@ -11,3 +11,5 @@ Polygon progress distinguishes datasets, products, work units, transitions, and 
 - Preparation is indeterminate unless measurable bytes, points, or work units are available. `100%` is terminal only.
 
 Progress snapshots are atomically replaced. Launch history retains transitions in a bounded 256-entry list; its current heartbeat is stored separately.
+
+Coordinator state is attempt-scoped. `COORDINATOR_PROCESS_CREATED` records spawn only; it cannot imply completion. Finalization requires a matching durable coordinator terminal result and validated dataset, product, and output state. Exit code zero without that result is a failure.

@@ -23,6 +23,7 @@ from ..processing_monitor import ProcessingTimeoutPolicy, evaluate_liveness, hea
 from .process_env import build_processing_engine_environment, clean_env_summary, hidden_subprocess_kwargs, summarize_subprocess_output
 from .processing_engine import ProcessingEngineService, ProcessingEngineVerifier, ProcessingRuntimeToken
 from ..atomic_state import atomic_write_json
+from ..coordinator_lifecycle import CoordinatorLaunchResult, build_coordinator_handle
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -118,20 +119,30 @@ class BackendExecutionService:
         return BackendJobResult.read(result_path)
 
     def submit_polygon_coordinator(self, payload_path: Path, job_dir: Path, runtime_token: ProcessingRuntimeToken, products: tuple[str, ...], *, generic: bool = False):
-        """Launch a coordinator with the immutable token frozen during Prerun."""
+        """Spawn a coordinator and return ownership, never scientific success."""
         self.engine_service.validate_runtime_token_for_launch(runtime_token, products, job_dir)
         module = "pyforestscan_qgis.backend_runner.generic_polygon_coordinator" if generic else "pyforestscan_qgis.backend_runner.polygon_job_coordinator"
         command=[runtime_token.executable,"-m",module,"--payload",str(payload_path)]
         env=build_processing_engine_environment(self.paths.environment_path,self.paths.platform.value)
         env["PYFORESTSCAN_RUNTIME_TOKEN"] = json.dumps(runtime_token.to_dict(), sort_keys=True)
-        kwargs=dict(cwd=str(self.plugin_parent),env=env,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        stdout_path = job_dir / "coordinator_stdout.log"
+        stderr_path = job_dir / "coordinator_stderr.log"
+        stdout_stream = stdout_path.open("w", encoding="utf-8")
+        stderr_stream = stderr_path.open("w", encoding="utf-8")
+        kwargs=dict(cwd=str(self.plugin_parent),env=env,stdin=subprocess.DEVNULL,stdout=stdout_stream,stderr=stderr_stream)
         if self.paths.platform.value=="windows":
             hidden=hidden_subprocess_kwargs();flags=int(hidden.pop("creationflags",0));flags|=getattr(subprocess,"DETACHED_PROCESS",0)|getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0);kwargs.update(hidden);kwargs["creationflags"]=flags
         else:kwargs["start_new_session"]=True
-        process=subprocess.Popen(command,**kwargs)
+        try:
+            process=subprocess.Popen(command,**kwargs)
+        finally:
+            stdout_stream.close()
+            stderr_stream.close()
+        attempt_id = job_dir.name
+        handle = build_coordinator_handle(attempt_id, process, payload_path, job_dir, stdout_path, stderr_path)
         _append_runtime_trace(job_dir, "qgis_launcher", {"pid": os.getpid(), "parent_pid": os.getppid(), "executable": runtime_token.executable, "cwd": str(self.plugin_parent), "contract_hash": runtime_token.contract_hash, "engine_id": runtime_token.engine_id, "protocol": runtime_token.protocol, "coordinator_pid": process.pid})
         write_backend_log_entry(self.log_path,"execute","Submitted durable polygon coordinator.",stage="COORDINATOR",details={"pid":process.pid,"payload":str(payload_path),"job_dir":str(job_dir),"preflight_runtime_identity":runtime_token.executable,"execution_runtime_identity":runtime_token.executable,"contract_hash":runtime_token.contract_hash,"engine_id":runtime_token.engine_id})
-        return process.pid,command
+        return CoordinatorLaunchResult(True, process.pid, tuple(command), handle)
 
     def run_product(
         self,

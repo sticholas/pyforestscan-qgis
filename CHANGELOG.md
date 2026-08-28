@@ -1,5 +1,11 @@
 # Changelog
 
+## Phase 32J - Coordinator completion lifecycle
+
+- Isolated every polygon coordinator launch in an attempt-specific workspace so stale terminal and cancellation files cannot complete or cancel a new run.
+- Added typed spawn, handle, and terminal-result contracts with startup/exit diagnostics and bounded child output logs.
+- Blocked zero-output success and gated finalization on validated dataset, product, and output terminal state.
+
 ## Phase 32I - Polygon progress and execution control
 
 - Corrected polygon progress so heartbeats update one dataset record without incrementing completion counters or repeating `STARTED` transitions.
