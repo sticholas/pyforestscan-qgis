@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 
@@ -37,21 +36,35 @@ class PolygonSelection:
 
 
 def polygon_selection_from_wkt(wkt: str, crs: str, *, source_label: str = "polygon WKT") -> PolygonSelection:
-    """Validate polygon WKT enough for QGIS-free planning and derive bounds."""
+    """Validate polygon geometry with the shared CRS-aware transport contract."""
     text = (wkt or "").strip()
     if not text:
         raise ValueError("Polygon WKT is required.")
     upper = text.upper()
     if not (upper.startswith("POLYGON") or upper.startswith("MULTIPOLYGON")):
         raise ValueError("Polygon WKT must be POLYGON or MULTIPOLYGON geometry.")
-    if not (crs or "").strip():
+    normalized_crs = (crs or "").strip()
+    if not normalized_crs:
         raise ValueError("Polygon CRS is required.")
-    coords = [float(value) for value in re.findall(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", text)]
-    if len(coords) < 6 or len(coords) % 2 != 0:
+    from .polygon_transport import wkt_to_geojson_geometry
+
+    geometry = wkt_to_geojson_geometry(text, crs=normalized_crs)
+    coordinates: list[tuple[float, float]] = []
+
+    def collect(value: object) -> None:
+        if isinstance(value, (list, tuple)):
+            if len(value) >= 2 and all(isinstance(item, (int, float)) for item in value[:2]):
+                coordinates.append((float(value[0]), float(value[1])))
+            else:
+                for item in value:
+                    collect(item)
+
+    collect(geometry.get("coordinates"))
+    if len(coordinates) < 4:
         raise ValueError("Polygon WKT does not contain enough XY coordinates.")
-    xs = coords[0::2]
-    ys = coords[1::2]
+    xs = [item[0] for item in coordinates]
+    ys = [item[1] for item in coordinates]
     bounds = Bounds2D(min(xs), min(ys), max(xs), max(ys))
     if bounds.area <= 0:
         raise ValueError("Polygon geometry has empty bounds.")
-    return PolygonSelection(text, crs.strip(), bounds, source_label)
+    return PolygonSelection(text, normalized_crs, bounds, source_label)

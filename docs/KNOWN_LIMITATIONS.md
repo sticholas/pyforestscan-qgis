@@ -1,5 +1,7 @@
 # Known Limitations
 
+- Phase 32L corrected the live EPT CRS from contradictory raw-WKT state to canonical `EPSG:6635`. Default-profile QGIS 3.44.13 reproduced the preserved EPSG:3750 polygon prerun with zero blockers, and a 100 m polygon over the real UNC EPT completed CHM, exact finalization, output registration, and QGIS layer loading. The full 109-parent large job was not rerun; Phase 32K's four-parent checkpoint/restart evidence remains the current large-run gate.
+
 ## Phase 32H live gate
 
 - Automated plan/attempt lifecycle tests and the packaged click-path harness are complete. The exact default-profile QGIS 3.44.13 flow must still confirm Detailed Check has zero blockers and reaches the first managed worker after active QGIS sessions are saved and closed.

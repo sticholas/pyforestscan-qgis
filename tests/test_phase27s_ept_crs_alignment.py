@@ -47,18 +47,20 @@ class EptCrsResolutionTests(unittest.TestCase):
         self.assertTrue(resolved.valid)
         self.assertEqual(resolved.authid, "EPSG:32610")
 
-    def test_wkt_and_wkt2_take_priority_over_authority(self) -> None:
+    def test_authority_takes_priority_and_retains_wkt(self) -> None:
         wkt = 'PROJCS["Fake projected CRS",UNIT["metre",1]]'
         resolved = resolve_ept_spatial_reference({"srs": {"wkt2": wkt, "authority": "EPSG", "horizontal": "6635"}})
         self.assertTrue(resolved.valid)
-        self.assertEqual(resolved.source, "ept_wkt")
+        self.assertEqual(resolved.source, "ept_authority_code")
+        self.assertEqual(resolved.authid, "EPSG:6635")
         self.assertEqual(resolved.wkt, wkt)
 
-    def test_projjson_is_supported_before_authority_code(self) -> None:
+    def test_authority_takes_priority_and_retains_projjson(self) -> None:
         projjson = {"type": "ProjectedCRS", "name": "Fake projected CRS"}
         resolved = resolve_ept_spatial_reference({"srs": {"projjson": projjson, "authority": "EPSG", "horizontal": "6635"}})
         self.assertTrue(resolved.valid)
-        self.assertEqual(resolved.source, "ept_projjson")
+        self.assertEqual(resolved.source, "ept_authority_code")
+        self.assertEqual(resolved.projjson, projjson)
 
     def test_incomplete_authority_is_rejected(self) -> None:
         resolved = resolve_ept_spatial_reference({"srs": {"authority": "EPSG"}})

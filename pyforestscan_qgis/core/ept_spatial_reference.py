@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-EPT_CRS_PARSER_VERSION = "phase27s-ept-crs-v1"
+EPT_CRS_PARSER_VERSION = "phase32l-ept-crs-v2"
 INCOMPLETE_CRS_AUTHORITY = "INCOMPLETE_CRS_AUTHORITY"
 _AUTHORITY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_+-]*$")
 _AUTHID_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_+-]*):(\d+)$")
@@ -31,6 +31,10 @@ class ResolvedSpatialReference:
     warnings: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
     raw_srs: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.geographic is True and self.projected is True:
+            raise ValueError("A spatial reference cannot be both geographic and projected.")
 
     @property
     def crs_text(self) -> str:
@@ -71,15 +75,8 @@ def resolve_ept_spatial_reference(
     errors: list[str] = []
     raw_srs = _raw_srs(payload)
     candidates: list[ResolvedSpatialReference] = []
-
-    for key in ("wkt2", "wkt"):
-        wkt = _text(raw_srs.get(key))
-        if wkt:
-            candidates.append(_candidate(wkt=wkt, source="ept_wkt", raw_srs=raw_srs, validator=validator))
-
+    wkt = next((_text(raw_srs.get(key)) for key in ("wkt2", "wkt") if _text(raw_srs.get(key))), "")
     projjson = raw_srs.get("projjson") or raw_srs.get("proj_json")
-    if projjson:
-        candidates.append(_candidate(projjson=projjson, source="ept_projjson", raw_srs=raw_srs, validator=validator))
 
     authority = _text(raw_srs.get("authority"))
     horizontal = _text(raw_srs.get("horizontal") or raw_srs.get("code") or raw_srs.get("epsg"))
@@ -94,6 +91,8 @@ def resolve_ept_spatial_reference(
                 authority=(match.group(1).upper() if match else authority.upper()),
                 horizontal_code=horizontal or (match.group(2) if match else ""),
                 vertical_code=vertical,
+                wkt=wkt,
+                projjson=projjson,
                 source="ept_authority_code",
                 raw_srs=raw_srs,
                 validator=validator,
@@ -105,6 +104,11 @@ def resolve_ept_spatial_reference(
     elif horizontal and not authority:
         errors.append("INCOMPLETE_CRS_AUTHORITY_CODE")
         warnings.append("EPT metadata supplied a horizontal CRS code without an authority.")
+
+    if wkt:
+        candidates.append(_candidate(wkt=wkt, source="ept_wkt", raw_srs=raw_srs, validator=validator))
+    if projjson:
+        candidates.append(_candidate(projjson=projjson, source="ept_projjson", raw_srs=raw_srs, validator=validator))
 
     if pdal_probe:
         for key in ("authid", "detected_crs", "horizontal_crs", "spatialreference", "srs", "wkt"):
@@ -188,6 +192,15 @@ def _candidate(
     valid = not errors and _validate_crs_text(text, validator)
     if not valid and not errors:
         errors.append("CRS_VALIDATION_FAILED")
+    geographic, projected, units = _crs_characteristics(text, wkt=wkt, projjson=projjson)
+    top_level = _top_level_crs_type(wkt or text)
+    if top_level == "projected":
+        geographic, projected = False, True
+    elif top_level == "geographic":
+        geographic, projected = True, False
+    if valid and geographic is True and projected is True:
+        valid = False
+        errors.append("CRS_CLASSIFICATION_CONTRADICTION")
     return ResolvedSpatialReference(
         authid=authid,
         authority=authority or (_AUTHID_RE.match(authid).group(1).upper() if _AUTHID_RE.match(authid) else ""),
@@ -197,9 +210,9 @@ def _candidate(
         projjson=projjson,
         source=source,
         valid=valid,
-        geographic=_guess_geographic(text),
-        projected=_guess_projected(text),
-        units=_guess_units(text),
+        geographic=geographic,
+        projected=projected,
+        units=units,
         errors=tuple(errors),
         raw_srs=raw_srs,
     )
@@ -291,10 +304,10 @@ def _looks_like_projjson(text: str) -> bool:
 
 
 def _guess_geographic(text: str) -> bool | None:
-    upper = text.upper()
-    if "GEOGCRS" in upper or "GEOGCS" in upper:
+    top_level = _top_level_crs_type(text)
+    if top_level == "geographic":
         return True
-    if "PROJCRS" in upper or "PROJCS" in upper:
+    if top_level == "projected":
         return False
     return None
 
@@ -313,10 +326,57 @@ def _guess_units(text: str) -> str:
     return ""
 
 
+def _top_level_crs_type(text: str) -> str:
+    upper = text.lstrip().upper()
+    if upper.startswith(("PROJCRS[", "PROJCS[")):
+        return "projected"
+    if upper.startswith(("GEOGCRS[", "GEODCRS[", "GEOGCS[")):
+        return "geographic"
+    return "unknown"
+
+
+def _crs_characteristics(text: str, *, wkt: str = "", projjson: dict[str, Any] | str | None = None) -> tuple[bool | None, bool | None, str]:
+    try:
+        from pyproj import CRS  # type: ignore
+
+        crs = CRS.from_user_input(text or wkt or projjson)
+        units = ""
+        if crs.axis_info:
+            units = str(crs.axis_info[0].unit_name or "").lower()
+        return bool(crs.is_geographic), bool(crs.is_projected), units
+    except Exception:
+        known = _known_authid_characteristics(text)
+        if known is not None:
+            return known
+        geographic = _guess_geographic(wkt or text)
+        return geographic, None if geographic is None else not geographic, _guess_units(wkt or text)
+
+
+def _known_authid_characteristics(text: str) -> tuple[bool, bool, str] | None:
+    authid = text.strip().upper()
+    if authid in {"EPSG:4326", "EPSG:4269", "EPSG:4258", "OGC:CRS84"}:
+        return True, False, "degree"
+    return None
+
+
+def canonical_spatial_reference(value: str) -> ResolvedSpatialReference:
+    """Return the canonical CRS semantics used by coordinate validators."""
+    text = _text(value)
+    return _candidate(
+        authid=text if _AUTHID_RE.match(text) else "",
+        wkt=text if _looks_like_wkt(text) else "",
+        projjson=text if _looks_like_projjson(text) else None,
+        source="canonical_text",
+        raw_srs={},
+        validator=None,
+    )
+
+
 __all__ = [
     "EPT_CRS_PARSER_VERSION",
     "INCOMPLETE_CRS_AUTHORITY",
     "ResolvedSpatialReference",
+    "canonical_spatial_reference",
     "ept_spatial_metadata_summary",
     "is_incomplete_crs_identifier",
     "normalize_authority_code",

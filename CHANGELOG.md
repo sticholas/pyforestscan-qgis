@@ -1,5 +1,14 @@
 # Changelog
 
+## Phase 32L - Projected CRS polygon validation
+
+- Canonicalized authoritative EPT authority/code metadata before WKT heuristics, so the live NAD83(PA11) / UTM zone 5N source resolves as `EPSG:6635`, projected, metre, and valid.
+- Made top-level `PROJCS`/`PROJCRS` semantics authoritative over nested geographic base definitions and added contradictory-state invariants.
+- Unified prerun and backend polygon coordinate validation: all CRSs reject malformed or non-finite vertices, geographic CRSs retain strict degree domains, and projected/unknown CRSs do not infer invalidity from magnitude.
+- Added actionable coordinate failures with vertex, coordinate, source/destination CRS, classification, and rejected-rule details.
+- Corrected transformed polygon transport to carry the destination CRS and transformed envelope instead of the original polygon CRS/bounds.
+- Verified the preserved EPSG:3750 polygon transforms to the expected EPSG:6635 bounds with zero spatial blockers, and verified isolated managed children initialize GDAL/PROJ with backend-local data resources.
+
 ## Phase 32K - Bounded EPT CHM execution
 
 - Removed the source-wide EPT ground assessment and polygon-wide HAG materialization gate that prevented the 109-area scheduler from starting.

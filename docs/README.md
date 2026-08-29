@@ -1,5 +1,7 @@
 # Documentation Index
 
+Phase 32L projected-CRS parsing and polygon validation: [Projected CRS Validation](PHASE_32L_PROJECTED_CRS_VALIDATION.md).
+
 Phase 32K bounded EPT assessment and scheduler restoration: [Bounded EPT Execution](PHASE_32K_BOUNDED_EPT_EXECUTION.md).
 
 Phase 32J coordinator ownership and terminal-state evidence: [Coordinator Lifecycle](PHASE_32J_COORDINATOR_LIFECYCLE.md).

@@ -1986,7 +1986,11 @@ def _logical_product_request(product: ProductType, input_path: Path, output_path
         "crs": report.query_geometry.catalog_crs or report.request.polygon.processing_crs,
         "bounds": EptBounds.from_value(report.query_geometry.ept_bounds, crs=report.query_geometry.catalog_crs).to_json(),
         "crop_polygon": report.query_geometry.exact_polygon_wkt,
-        "polygon_execution_input": polygon_execution_input_from_selection(report.request.polygon, transformed_wkt=report.query_geometry.exact_polygon_wkt),
+        "polygon_execution_input": polygon_execution_input_from_selection(
+            report.request.polygon,
+            transformed_wkt=report.query_geometry.exact_polygon_wkt,
+            transformed_crs=report.query_geometry.catalog_crs,
+        ),
     }
     settings = report.request.settings
     if product == ProductType.CHM:
