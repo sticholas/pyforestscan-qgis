@@ -1,5 +1,14 @@
 # Changelog
 
+## Phase 32K - Bounded EPT CHM execution
+
+- Removed the source-wide EPT ground assessment and polygon-wide HAG materialization gate that prevented the 109-area scheduler from starting.
+- Added reader-level bounded EPT/CoPC assessment, durable pilot strategy evidence, and per-window HAG execution using the existing buffered CHM path.
+- Added explicit pilot-to-scheduler stages, a non-destructive no-forward-progress watchdog, and suppression of the contradictory local-tile warning when an overlapping logical EPT source is selected.
+- Kept the 109 frozen parent units while bounding dense EPT reads to checkpointed 100 m child cores, each isolated in a fresh managed PBM process with canonical GDAL/PROJ/DLL paths.
+- Completed four real large-plan parent TIFFs, then proved restart recovery of the first three before completing the fourth.
+- Positively identified and stopped stalled coordinator PID 32152, then closed its heartbeat as `FAILED_STALLED` while preserving its diagnostics.
+
 ## Phase 32J - Coordinator completion lifecycle
 
 - Isolated every polygon coordinator launch in an attempt-specific workspace so stale terminal and cancellation files cannot complete or cancel a new run.

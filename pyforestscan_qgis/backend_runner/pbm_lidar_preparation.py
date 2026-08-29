@@ -51,6 +51,7 @@ def prepare_request_source(spec, request, *, progress=None, preparation_bounds=N
             classification = ClassificationInspectionService().inspect(
                 Path(request.input_path),
                 point_count=getattr(request, "source_point_count", None),
+                bounds=preparation_bounds,
             )
             _write_json(classification_path, classification.to_dict())
         else:
@@ -128,7 +129,9 @@ def _pipeline(assessment, plan, output, bounds=None):
     source = str(assessment.source)
     reader = "readers.ept" if source.lower().endswith("ept.json") else "readers.copc" if source.lower().endswith((".copc", ".copc.laz")) else "readers.las"
     stages = [{"type": reader, "filename": source}]
-    if bounds is not None:
+    if bounds is not None and reader in {"readers.ept", "readers.copc"}:
+        stages[0]["bounds"] = _pdal_bounds(bounds)
+    elif bounds is not None:
         stages.append({"type": "filters.crop", "bounds": _pdal_bounds(bounds)})
     if plan.height_mode is HeightNormalizationPlanMode.EXISTING_NORMALIZED_Z:
         stages.append({"type": "filters.ferry", "dimensions": "Z=>HeightAboveGround"})

@@ -262,7 +262,11 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
     except ValueError as exc:
         blockers.append(str(exc))
         plan = _empty_plan(inventory, request, query_geometry, warnings)
-    warnings.extend(plan.warnings)
+    suppress_local_discovery_warning = repository.repository_kind == "ept" and bool(selected)
+    warnings.extend(
+        warning for warning in plan.warnings
+        if not (suppress_local_discovery_warning and warning == "No discovered LiDAR sources intersect the selected polygon bounds.")
+    )
     if repository.repository_kind not in {"ept", "copc"}:
         blockers.extend(selected_path_invariant(selected, ordinary=True))
     if not selected and not any("No LiDAR coverage" in item or "Catalog" in item or "spatial bounds" in item for item in blockers):
@@ -1410,14 +1414,30 @@ def _submit_and_observe_source_aware_chm(report,adapter,batch_folder,context,sou
     })
     pid,_command=service.submit_polygon_coordinator(payload_path,job_dir,runtime_token,products)
     atomic_write_json(job_dir/"submission.json",{"job_id":job_id,"attempt_id":attempt_id,"coordinator_pid":pid,"payload":str(payload_path),"submitted_at":datetime.now(timezone.utc).isoformat()})
-    terminal=job_dir/"terminal_result.json";last_stage=""
+    terminal=job_dir/"terminal_result.json";last_stage="";last_progress_signature=None;last_forward_progress=time.monotonic();stall_recorded=False
     while not terminal.exists():
         progress=job_dir/"progress_snapshot.json"
-        if progress.exists() and item_callback is not None:
+        if progress.exists():
             try:
                 data=json.loads(progress.read_text(encoding="utf-8"));stage=str(data.get("current_stage") or "Processing")
-                if stage!=last_stage:
+                progress_signature=(stage,int(data.get("attempted") or 0),int(data.get("completed") or 0),int(data.get("failed") or 0),str(data.get("current_work_unit_id") or ""))
+                if progress_signature != last_progress_signature:
+                    last_progress_signature=progress_signature;last_forward_progress=time.monotonic();stall_recorded=False
+                if stage!=last_stage and item_callback is not None:
                     _emit_polygon_stage(item_callback,source,context,stage,str(data.get("current_activity") or "Background processing continues."));last_stage=stage
+                if not stall_recorded and time.monotonic()-last_forward_progress>=120:
+                    output_files=tuple(str(path) for path in context.run_folder.glob("work_units/*/outputs/*.tif"))
+                    atomic_write_json(job_dir/"stall_snapshot.json",{
+                        "schema":"pyforestscan-forward-progress-stall-v1","job_id":job_id,"attempt_id":attempt_id,
+                        "state":"STALLED_NO_FORWARD_PROGRESS","active_stage":stage,"active_activity":str(data.get("current_activity") or ""),
+                        "pid":pid,"source_path":str(source.path),"last_successful_transition":last_stage,
+                        "last_forward_progress_age_seconds":time.monotonic()-last_forward_progress,"last_heartbeat_at":data.get("last_heartbeat"),
+                        "work_unit_id":data.get("current_work_unit_id"),"completed":data.get("completed"),"attempted":data.get("attempted"),
+                        "output_files":list(output_files),"output_size_bytes":sum(Path(path).stat().st_size for path in output_files if Path(path).is_file()),
+                        "recorded_at":datetime.now(timezone.utc).isoformat(),
+                    })
+                    if item_callback is not None:_emit_polygon_stage(item_callback,source,context,"No forward processing progress",f"No measurable work transition for 120 seconds during {stage}. The coordinator remains active; diagnostics were saved.")
+                    stall_recorded=True
             except (OSError,ValueError):pass
         time.sleep(1)
     state=json.loads(terminal.read_text(encoding="utf-8"))
@@ -1448,11 +1468,6 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         return _submit_and_observe_source_aware_chm(report,adapter,batch_folder,context,source,plan,item_callback=item_callback)
     started_at = datetime.now(timezone.utc).isoformat()
     signature = report.plan_signature or getattr(report.execution_plan, "plan_signature", "") or "source-aware-chm"
-    from .job_recovery import reconcile_polygon_job
-    recovery=reconcile_polygon_job(context.run_folder / "work_units",plan,signature,expected_hag_method_signature=hag_method_signature("existing_normalized_height","HeightAboveGround"))
-    if recovery.recovered_complete and item_callback is not None:
-        _emit_polygon_stage(item_callback,source,context,"Recovering completed work",recovery.message)
-        _emit_polygon_stage(item_callback,source,context,"Processing remaining areas","Continuing all required unfinished processing areas automatically.")
     checkpoint = CheckpointStore(context.run_folder / "work_units", signature)
     requested = set(report.request.products)
     rumple_requested = ProductType.RUMPLE in requested
@@ -1462,6 +1477,15 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
 
     prepared_input, prepared_dimensions, preparation_status = _prepare_source_dependency(report, source, plan, context, item_callback)
     _assert_source_preparation_complete(preparation_status, prepared_input)
+    preparation_contract = json.loads(Path(preparation_status).read_text(encoding="utf-8"))
+    resolved_hag_method = str(preparation_contract.get("chosen_hag_method") or "existing_normalized_height")
+    resolved_hag_dimension = str(preparation_contract.get("hag_source_dimension") or ("HeightAboveGround" if resolved_hag_method == "existing_normalized_height" else ""))
+    resolved_hag_signature = hag_method_signature(resolved_hag_method, resolved_hag_dimension)
+    from .job_recovery import reconcile_polygon_job
+    recovery=reconcile_polygon_job(context.run_folder / "work_units",plan,signature,expected_hag_method_signature=resolved_hag_signature)
+    if recovery.recovered_complete and item_callback is not None:
+        _emit_polygon_stage(item_callback,source,context,"Recovering completed work",recovery.message)
+        _emit_polygon_stage(item_callback,source,context,"Processing remaining areas","Continuing all required unfinished processing areas automatically.")
 
     def execute_unit(unit, attempt):
         unit_started=time.monotonic();timing={"schema":"pyforestscan-work-unit-timing-v1","work_unit_id":unit.work_unit_id,"attempt":attempt,"source_format":Path(prepared_input).suffix.lower(),"prepared_source":str(prepared_input),"prepared_source_size_bytes":Path(prepared_input).stat().st_size if Path(prepared_input).is_file() else None}
@@ -1473,7 +1497,7 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         request = _logical_product_request(ProductType.CHM, prepared_input, buffered_path, report)
         read = unit.read_extent
         request = replace(request, bounds=EptBounds.from_value(((read.xmin, read.xmax), (read.ymin, read.ymax)), crs=report.query_geometry.catalog_crs).to_json())
-        request = replace(request,crop_polygon=None,crop_polygon_path=None,polygon_execution_input=None,source_dimensions=prepared_dimensions,source_point_count=None,work_unit_id=unit.work_unit_id,attempt_id=f"attempt-{attempt}",completed_count=max(0,unit.execution_order-1),total_count=len(plan.work_units),inspect_hag_suitability=True,hag_method="existing_normalized_height",hag_source_dimension="HeightAboveGround",hag_method_signature=hag_method_signature("existing_normalized_height","HeightAboveGround"),diagnostics_path=unit_folder/"diagnostics",polygon_intersection_area=unit.polygon_intersection_area,polygon_coverage_percent=unit.polygon_coverage_percent)
+        request = replace(request,crop_polygon=None,crop_polygon_path=None,polygon_execution_input=None,source_dimensions=prepared_dimensions,source_point_count=None,work_unit_id=unit.work_unit_id,attempt_id=f"attempt-{attempt}",completed_count=max(0,unit.execution_order-1),total_count=len(plan.work_units),inspect_hag_suitability=True,hag_method=resolved_hag_method,hag_source_dimension=resolved_hag_dimension,hag_method_signature=resolved_hag_signature,diagnostics_path=unit_folder/"diagnostics",polygon_intersection_area=unit.polygon_intersection_area,polygon_coverage_percent=unit.polygon_coverage_percent)
         from dataclasses import asdict
         from .chm_work_unit_execution import write_work_unit_diagnostic
         request_payload=asdict(request);request_payload.update({"original_source_path":str(source.path),"prepared_source_path":str(prepared_input),"preparation_status_path":str(preparation_status)})
@@ -1487,7 +1511,11 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         else:
             try:
                 backend_started=time.monotonic()
-                result = _run_logical_product(adapter, ProductType.CHM, request)
+                if str(prepared_input).lower().endswith("ept.json") and (read.width > 500.0 or read.height > 500.0):
+                    buffered_path = _run_chunked_ept_parent_chm(adapter, request, unit_folder, read, report.query_geometry.catalog_crs, plan.grid.nodata)
+                else:
+                    result = _run_logical_product(adapter, ProductType.CHM, request)
+                    buffered_path = Path(result.output_path)
                 timing["bounded_read_and_chm_seconds"]=time.monotonic()-backend_started
             except Exception as exc:
                 if "empty point" not in str(exc).lower() and "no point" not in str(exc).lower():raise
@@ -1498,7 +1526,7 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
                     write_work_unit_diagnostic(request.diagnostics_path,"result.json",{"status":"CompleteNoData","reason_code":decision.reason_code,"message":decision.message})
                     return WorkUnitResult(unit.work_unit_id,"CompleteNoData",attempt_count=attempt,message=decision.message,metrics={"reason_code":decision.reason_code,"polygon_intersection_area":unit.polygon_intersection_area,"polygon_coverage_percent":unit.polygon_coverage_percent,"output_required":False,"grid_signature":plan.grid.grid_signature,"source_plan_signature":plan.plan_signature})
                 error=RuntimeError(decision.message);error.code="FAILED_EMPTY_READ";raise error
-            buffered_path=Path(result.output_path);core_started=time.monotonic();_extract_core_raster(buffered_path,core_path,unit.core_extent);timing["chm_core_extraction_seconds"]=time.monotonic()-core_started
+            core_started=time.monotonic();_extract_core_raster(buffered_path,core_path,unit.core_extent);timing["chm_core_extraction_seconds"]=time.monotonic()-core_started
             checksum_started=time.monotonic()
             _write_product_checkpoint(product_checkpoint,{"job_signature":plan.plan_signature,"work_unit_id":unit.work_unit_id,"products":{"chm":{"role":"requested" if ProductType.CHM in requested else "supporting","status":"Complete","buffered_path":str(buffered_path),"buffered_checksum":_file_checksum(buffered_path),"core_path":str(core_path),"core_checksum":_file_checksum(core_path),"grid_signature":plan.grid.grid_signature,"hag_method_signature":request.hag_method_signature}}})
             timing["chm_checksum_and_checkpoint_seconds"]=time.monotonic()-checksum_started
@@ -1544,10 +1572,13 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
             scheduler = canary
             results = (*canary_results, *(WorkUnitResult(unit.work_unit_id, "Pending", message="Canary validation did not pass; full execution was not started.") for unit in plan.work_units[1:]))
         else:
+            _emit_polygon_stage(item_callback, source, context, "PILOT_COMPLETED", f"Bounded pilot {plan.work_units[0].work_unit_id} completed and was checkpointed.")
             _emit_polygon_stage(item_callback, source, context, "Processing remaining areas", "Canary passed; continuing the full job automatically.")
+            _emit_polygon_stage(item_callback, source, context, "WORK_UNIT_SCHEDULER_STARTED", f"Starting {len(plan.work_units)} required CHM processing areas at concurrency {plan.concurrency_limit}.")
             scheduler = PolygonProductWorkScheduler(plan.work_units, execute_unit, checkpoint, concurrency=plan.concurrency_limit, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress)
             results = scheduler.run()
     else:
+        _emit_polygon_stage(item_callback, source, context, "WORK_UNIT_SCHEDULER_STARTED", f"Starting {len(plan.work_units)} required CHM processing areas at concurrency {plan.concurrency_limit}.")
         scheduler = PolygonProductWorkScheduler(plan.work_units, execute_unit, checkpoint, concurrency=plan.concurrency_limit, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress)
         results = scheduler.run()
     failed = tuple(item for item in results if item.status == "Failed")
@@ -1610,6 +1641,58 @@ def _prepare_source_dependency(report, source, plan, context, item_callback):
     }
     source_id = hashlib.sha256(str(source.path).encode("utf-8")).hexdigest()[:12]
     status_root = context.run_folder / "source_preparation" / source_id
+    status_path = status_root / "status.json"
+    source_path = Path(source.path)
+    if str(source_path).lower().endswith("ept.json"):
+        from .atomic_state import atomic_write_json
+        from .classification_inspection import ClassificationInspectionService
+        pilot = plan.work_units[0]
+        pilot_bounds = {
+            "xmin": pilot.read_extent.xmin,
+            "ymin": pilot.read_extent.ymin,
+            "xmax": pilot.read_extent.xmax,
+            "ymax": pilot.read_extent.ymax,
+        }
+        _emit_polygon_stage(item_callback, source, context, "PILOT_STARTED", f"Inspecting bounded height strategy in {pilot.work_unit_id}.")
+        started = time.monotonic()
+        assessment = ClassificationInspectionService().inspect(source_path, sample_target=50_000, strata=1, bounds=pilot_bounds)
+        if not assessment.existing_hag_valid and not assessment.ground_class_2_observed:
+            raise RuntimeError("BOUNDED_EPT_HAG_UNRESOLVED: ground class 2 was not observed in the bounded pilot area.")
+        dimensions = tuple(assessment.observed_dimensions or ("X", "Y", "Z", "Classification"))
+        selected_hag_method = "existing_normalized_height" if assessment.existing_hag_valid else "classified_ground_delaunay"
+        selected_hag_dimension = "HeightAboveGround" if assessment.existing_hag_valid else ""
+        strategy = {
+            "schema": "pyforestscan-bounded-ept-strategy-v1",
+            "state": "COMPLETE",
+            "message": "Bounded EPT height strategy resolved.",
+            "source_path": str(source_path),
+            "preparation_artifact_path": str(source_path),
+            "preparation_mode": "logical_bounded_ept",
+            "chosen_hag_method": selected_hag_method,
+            "hag_source_dimension": selected_hag_dimension,
+            "pilot_work_unit_id": pilot.work_unit_id,
+            "attempt_id": str(getattr(context, "attempt_id", "")),
+            "plan_id": str(getattr(plan, "plan_signature", "")),
+            "pilot_bounds": pilot_bounds,
+            "required_work_units": len(plan.work_units),
+            "source_wide_materialization": False,
+            "point_count": assessment.sampled_points,
+            "dimensions": list(dimensions),
+            "classification_counts": [{"classification": code, "count": count} for code, count in assessment.class_counts],
+            "ground_return_count": dict(assessment.class_counts).get(2, 0),
+            "ground_return_proportion": assessment.ground_fraction_estimate,
+            "hag_field_available": assessment.existing_hag_available,
+            "height_quantiles": dict(assessment.height_quantiles),
+            "reader_method": "readers.ept with reader-level bounds",
+            "bytes_transferred": None,
+            "assessment": assessment.to_dict(),
+            "elapsed_seconds": time.monotonic() - started,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        }
+        atomic_write_json(status_root / "pilot_result.json", strategy)
+        atomic_write_json(status_path, strategy)
+        _emit_polygon_stage(item_callback, source, context, "HAG_STRATEGY_RESOLVED", f"Bounded evidence selected {selected_hag_method}; each processing area will read EPT with reader-level bounds.")
+        return source_path, dimensions, status_path
     base_request = _logical_product_request(ProductType.CHM, source.path, status_root / "supporting_chm.tif", report)
     crs = report.query_geometry.catalog_crs or report.request.polygon.processing_crs
     units = assess_processing_coordinate_units(crs, "", "EFFECTIVE_CRS")
@@ -1684,6 +1767,117 @@ def _extract_core_raster(source_path: Path, output_path: Path, extent: SpatialEx
     if dataset is None: raise RuntimeError(f"Raster core extraction failed: {source_path}")
     dataset = None
     temporary.replace(output_path)
+
+
+def _run_chunked_ept_parent_chm(adapter, request, unit_folder: Path, parent_read: SpatialExtent, crs: str, nodata: float) -> Path:
+    """Bound peak memory while preserving one frozen parent scheduler unit."""
+    from types import SimpleNamespace
+    from .atomic_state import atomic_write_json
+
+    resolution = float(request.grid_resolution)
+    columns = max(1, int(round(parent_read.width / resolution)))
+    rows = max(1, int(round(parent_read.height / resolution)))
+    chunk_cells = min(100, columns, rows)
+    chunks = []
+    chunk_root = unit_folder / "bounded_subreads"
+    for row0 in range(0, rows, chunk_cells):
+        for col0 in range(0, columns, chunk_cells):
+            row1 = min(rows, row0 + chunk_cells)
+            col1 = min(columns, col0 + chunk_cells)
+            core = SpatialExtent(
+                parent_read.xmin + col0 * resolution,
+                parent_read.ymin + row0 * resolution,
+                parent_read.xmin + col1 * resolution,
+                parent_read.ymin + row1 * resolution,
+            )
+            read = core.buffered(50.0)
+            chunk_id = f"r{row0:05d}_c{col0:05d}"
+            folder = chunk_root / chunk_id
+            buffered = folder / "chm_buffered.tif"
+            output = folder / "chm_core.tif"
+            checkpoint = folder / "checkpoint.json"
+            reusable = False
+            try:
+                state = json.loads(checkpoint.read_text(encoding="utf-8"))
+                reusable = state.get("status") == "Complete" and output.is_file() and state.get("checksum") == _file_checksum(output)
+            except (OSError, ValueError):
+                pass
+            if not reusable:
+                folder.mkdir(parents=True, exist_ok=True)
+                bounded_request = replace(
+                    request,
+                    output_path=buffered,
+                    bounds=EptBounds.from_value(((read.xmin, read.xmax), (read.ymin, read.ymax)), crs=crs).to_json(),
+                    work_unit_id=f"{request.work_unit_id}:{chunk_id}",
+                    diagnostics_path=folder / "diagnostics",
+                )
+                started = time.monotonic()
+                result = _run_isolated_ept_subread(bounded_request, folder)
+                _extract_core_raster(Path(result.output_path), output, core)
+                atomic_write_json(checkpoint, {
+                    "schema": "pyforestscan-ept-parent-subread-v1",
+                    "status": "Complete",
+                    "parent_work_unit_id": request.work_unit_id,
+                    "chunk_id": chunk_id,
+                    "core_extent": core.__dict__,
+                    "read_extent": read.__dict__,
+                    "hag_method_signature": request.hag_method_signature,
+                    "checksum": _file_checksum(output),
+                    "elapsed_seconds": time.monotonic() - started,
+                })
+                close = getattr(adapter, "close", None)
+                if callable(close):
+                    close()
+                import gc
+                gc.collect()
+            chunks.append(output)
+    grid = AlignedRasterGrid.from_extent(parent_read, resolution, crs, nodata=nodata)
+    parent_buffered = Path(request.output_path)
+    _mosaic_core_rasters(tuple(chunks), parent_buffered, SimpleNamespace(grid=grid))
+    atomic_write_json(chunk_root / "subread_plan.json", {
+        "schema": "pyforestscan-ept-parent-subread-plan-v1",
+        "parent_work_unit_id": request.work_unit_id,
+        "parent_read_extent": parent_read.__dict__,
+        "chunk_core_cells": chunk_cells,
+        "read_buffer": 50.0,
+        "chunk_count": len(chunks),
+        "global_grid_signature": grid.grid_signature,
+        "output": str(parent_buffered),
+    })
+    return parent_buffered
+
+
+def _run_isolated_ept_subread(request, folder: Path):
+    """Contain native PyForestScan memory and crashes to one bounded child."""
+    payload = folder / "request.pkl"
+    result_path = folder / "result.pkl"
+    temporary = payload.with_suffix(".partial")
+    with temporary.open("wb") as stream:
+        pickle.dump(request, stream)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, payload)
+    command = [
+        os.sys.executable,
+        str(Path(__file__).parents[1] / "backend_runner" / "ept_chm_subread.py"),
+        "--payload",
+        str(payload),
+        "--result",
+        str(result_path),
+    ]
+    from .backend.process_env import build_processing_engine_environment
+    child_env = build_processing_engine_environment(Path(os.sys.prefix), "windows" if os.name == "nt" else "linux")
+    completed = subprocess.run(command, capture_output=True, text=True, check=False, env=child_env, **hidden_subprocess_kwargs())
+    if completed.returncode != 0 or not result_path.is_file():
+        error_path = result_path.with_suffix(".error.json")
+        try:
+            error = json.loads(error_path.read_text(encoding="utf-8")).get("error", "")
+        except (OSError, ValueError):
+            error = ""
+        stderr = "\n".join((completed.stderr or "").splitlines()[-8:])
+        raise RuntimeError(f"EPT_SUBREAD_PROCESS_FAILED: return code {completed.returncode}; {error or stderr or 'no result artifact'}")
+    with result_path.open("rb") as stream:
+        return pickle.load(stream)
 
 
 def _file_checksum(path: Path) -> str:

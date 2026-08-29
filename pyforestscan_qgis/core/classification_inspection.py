@@ -26,6 +26,9 @@ class ClassificationAssessment:
     strata_with_ground: int = 0
     ground_coverage_ratio: float | None = None
     ground_coverage_confidence: str = "UNKNOWN"
+    existing_hag_available: bool = False
+    existing_hag_valid: bool = False
+    height_quantiles: tuple[tuple[str, float], ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -43,6 +46,9 @@ class ClassificationAssessment:
             "strata_with_ground": self.strata_with_ground,
             "ground_coverage_ratio": self.ground_coverage_ratio,
             "ground_coverage_confidence": self.ground_coverage_confidence,
+            "existing_hag_available": self.existing_hag_available,
+            "existing_hag_valid": self.existing_hag_valid,
+            "height_quantiles": dict(self.height_quantiles),
         }
 
 
@@ -52,7 +58,7 @@ class ClassificationInspectionService:
     def __init__(self, pipeline_factory: Callable[[str], object] | None = None) -> None:
         self.pipeline_factory = pipeline_factory
 
-    def inspect(self, source: Path | str, *, point_count: int | None = None, sample_target: int = 50_000, strata: int = 5) -> ClassificationAssessment:
+    def inspect(self, source: Path | str, *, point_count: int | None = None, sample_target: int = 50_000, strata: int = 5, bounds: dict[str, float] | None = None) -> ClassificationAssessment:
         path = Path(source)
         count = max(1, int(point_count or sample_target))
         window = max(1, min(sample_target // max(1, strata), count))
@@ -63,12 +69,16 @@ class ClassificationInspectionService:
         observed_dimensions: list[str] = []
         strata_sampled = 0
         strata_with_ground = 0
+        hag_available = False
+        hag_values: list[float] = []
         factory = self.pipeline_factory or _default_pipeline_factory
         for start in starts:
             stratum_ground = 0
             reader_type = _reader_type(path)
             reader = {"type": reader_type, "filename": str(path)}
             stages = [reader]
+            if bounds is not None and reader_type in {"readers.ept", "readers.copc"}:
+                reader["bounds"] = _pdal_bounds(bounds)
             if reader_type == "readers.las":
                 reader.update(start=int(start), count=int(window))
             else:
@@ -78,6 +88,9 @@ class ClassificationInspectionService:
             for array in tuple(getattr(pipeline, "arrays", ()) or ()):
                 names = tuple(getattr(getattr(array, "dtype", None), "names", ()) or ())
                 observed_dimensions.extend(name for name in names if name not in observed_dimensions)
+                if "HeightAboveGround" in names:
+                    hag_available = True
+                    hag_values.extend(float(value) for value in array["HeightAboveGround"] if _finite(value))
                 if "Classification" not in names:
                     sampled += len(array)
                     continue
@@ -96,6 +109,8 @@ class ClassificationInspectionService:
         elif not ground:
             warnings.append("Ground class 2 was not observed in the bounded sample; absence is not proof for unsampled points.")
         coverage = strata_with_ground / strata_sampled if strata_sampled else None
+        quantiles = _quantiles(hag_values)
+        hag_valid = bool(hag_values and max(hag_values) - min(hag_values) > 1e-9)
         if ground and strata_sampled >= 3 and coverage is not None and coverage < 0.5:
             warnings.append("Ground returns occurred in fewer than half of sampled storage strata; review spatial support before Delaunay HAG.")
         return ClassificationAssessment(
@@ -105,7 +120,7 @@ class ClassificationInspectionService:
             (ground / sampled) if sampled else None,
             tuple(code for code in (3, 4, 5) if classes.get(code, 0)),
             "HIGH" if sampled >= min(count, sample_target) else "MEDIUM",
-            "storage-stratified bounded PDAL sample",
+            "spatially bounded EPT/CoPC sample" if bounds is not None and _reader_type(path) != "readers.las" else "storage-stratified bounded PDAL sample",
             tuple(warnings),
             tuple(sorted(classes.items())),
             tuple(observed_dimensions),
@@ -113,6 +128,9 @@ class ClassificationInspectionService:
             strata_with_ground,
             coverage,
             "HIGH" if strata_sampled >= 5 else ("MEDIUM" if strata_sampled >= 3 else "LOW"),
+            hag_available,
+            hag_valid,
+            quantiles,
         )
 
 
@@ -140,6 +158,25 @@ def _reader_type(path: Path) -> str:
     if lowered.endswith((".copc.laz", ".copc")):
         return "readers.copc"
     return "readers.las"
+
+
+def _pdal_bounds(bounds: dict[str, float]) -> str:
+    return f"([{float(bounds['xmin'])},{float(bounds['xmax'])}],[{float(bounds['ymin'])},{float(bounds['ymax'])}])"
+
+
+def _finite(value: object) -> bool:
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _quantiles(values: list[float]) -> tuple[tuple[str, float], ...]:
+    if not values:
+        return ()
+    ordered = sorted(values)
+    last = len(ordered) - 1
+    return tuple((label, ordered[int(round(last * fraction))]) for label, fraction in (("p05", 0.05), ("p50", 0.5), ("p95", 0.95)))
 
 
 def _default_pipeline_factory(spec: str) -> object:

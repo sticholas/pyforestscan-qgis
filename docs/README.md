@@ -1,5 +1,7 @@
 # Documentation Index
 
+Phase 32K bounded EPT assessment and scheduler restoration: [Bounded EPT Execution](PHASE_32K_BOUNDED_EPT_EXECUTION.md).
+
 Phase 32J coordinator ownership and terminal-state evidence: [Coordinator Lifecycle](PHASE_32J_COORDINATOR_LIFECYCLE.md).
 
 Polygon execution contracts: [progress](POLYGON_EXECUTION_PROGRESS_CONTRACT.md), [cancellation](POLYGON_CANCELLATION_CONTRACT.md), and [input preparation observability](POLYGON_INPUT_PREPARATION_OBSERVABILITY.md).
