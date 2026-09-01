@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32N - Large-scale processing architecture research
+
+- Verified that the active default-profile QGIS installation is still Phase 32L and rejected it as a Phase 32M comparison while preserving its running job.
+- Classified the observed 120-second warning as a false stall using child CPU, heartbeat, checkpoint, output-growth, and process-recycling telemetry.
+- Benchmarked the exact bounded UNC EPT source, PDAL streaming, immutable local cache, hierarchy pruning, Morton ordering, and managed-process startup overhead.
+- Established PyForestScan as the immutable scientific authority and documented scheduler, cache, COPC, GPU, and AI product boundaries.
+- Selected the existing durable coordinator for the next phases; no Dask, Ray, CUDA, COPC, or AI dependency was added to production.
+
 ## Phase 32M - Large polygon prerun hardening
 
 - Added immutable, QGIS-free normalized polygon geometry so WKT parsing and CRS-aware coordinate validation occur once per prerun instead of once per candidate extent.
