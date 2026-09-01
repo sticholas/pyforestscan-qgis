@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+import threading
 import time
 import traceback
 from html import escape
@@ -95,6 +96,7 @@ from ..core.repository_coverage import build_repository_coverage_model
 from ..core.repository_diagnostics import export_repository_diagnostic_report
 from ..core.polygon_batch import PolygonBatchRequest, catalog_status_text, execute_polygon_batch, polygon_preflight_text, record_polygon_dispatch_validation, run_polygon_batch_preflight, write_polygon_batch_manifest
 from ..core.polygon_progress import PolygonProgressProjection
+from ..core.prerun_profile import PrerunProfiler
 from ..core.job_manager import JobExecutionError, JobManager
 from ..core.knowledge import RecommendationReport
 from ..core.jobs import JobRecord, JobStatus
@@ -1896,6 +1898,49 @@ class _BatchExecutionWorker(QObject):
         self.completed.emit(result)
 
 
+class _PolygonPreflightWorker(QObject):
+    """Run pure polygon prerun planning and manifest I/O away from QGIS GUI objects."""
+
+    progress = pyqtSignal(str)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, request: PolygonBatchRequest, cancel_callback: Callable[[], bool]) -> None:
+        super().__init__()
+        self.request = request
+        self.cancel_callback = cancel_callback
+
+    def run(self) -> None:
+        profiler = PrerunProfiler()
+        try:
+            self.progress.emit("Reading repository metadata")
+            with profiler.measure("polygon_preflight"):
+                report = run_polygon_batch_preflight(self.request)
+            if self.cancel_callback():
+                raise RuntimeError("Polygon Prerun cancelled.")
+            self.progress.emit("Building processing grid")
+            with profiler.measure("source_aware_planning_and_manifest_serialization"):
+                manifest = write_polygon_batch_manifest(
+                    report,
+                    cancel_callback=self.cancel_callback,
+                    progress_callback=lambda stage, current, total: self.progress.emit(f"{stage} ({current:,}/{total:,})"),
+                )
+            profiler.write(Path(report.batch_folder) / "prerun_profile.json", stage="READY", extra={"manifest_bytes": manifest.stat().st_size})
+        except Exception as exc:  # noqa: BLE001 - worker boundary returns diagnostics to QGIS.
+            diagnostic = traceback.format_exc()
+            try:
+                folder = Path(self.request.batch_folder)
+                folder.mkdir(parents=True, exist_ok=True)
+                (folder / "prerun_failure.txt").write_text(diagnostic, encoding="utf-8")
+                profiler.write(folder / "prerun_profile.json", stage="PRERUN_FAILED", extra={"error": str(exc)})
+            except OSError:
+                pass
+            self.failed.emit(f"{exc}\n\nTechnical traceback saved with the Prerun artifacts when possible.")
+            return
+        self.progress.emit("Finalizing plan")
+        self.completed.emit(report)
+
+
 class _CatalogBuildWorker(QObject):
     """Worker-thread wrapper for durable LiDAR catalog jobs."""
 
@@ -2069,6 +2114,9 @@ class BatchPage(MissionPage):
         self.catalog_thread: QThread | None = None
         self.catalog_worker: _CatalogBuildWorker | None = None
         self.catalog_pause_requested = False
+        self.preflight_thread: QThread | None = None
+        self.preflight_worker: _PolygonPreflightWorker | None = None
+        self.preflight_cancel_event = threading.Event()
         self.preflight_report: object | None = None
         self.current_index_plan: object | None = None
         self.processing_ui_state = ProcessingUiState.IDLE
@@ -2599,6 +2647,11 @@ class BatchPage(MissionPage):
         self.preflight_button.clicked.connect(self.run_preflight)
         _apply_button_role(self.preflight_button, "primary")
         prerun_layout.addWidget(self.preflight_button)
+        self.cancel_preflight_button = QPushButton("Cancel Prerun")
+        self.cancel_preflight_button.setVisible(False)
+        self.cancel_preflight_button.clicked.connect(self.cancel_polygon_preflight)
+        _apply_button_role(self.cancel_preflight_button, "secondary")
+        prerun_layout.addWidget(self.cancel_preflight_button)
         self.preflight_summary_label = _body_label("Needs attention: choose data, products, and an output folder.")
         prerun_layout.addWidget(self.preflight_summary_label)
         self.preflight_text = QTextEdit()
@@ -3722,26 +3775,33 @@ class BatchPage(MissionPage):
         self.preflight_text.setPlainText("Running Prerun Check...")
         QApplication.processEvents()
         if self._current_batch_mode() == "polygon":
+            # run_polygon_batch_preflight is executed by _PolygonPreflightWorker;
+            # this UI method only captures the immutable request and submits it.
             try:
                 request = self.build_current_processing_request()
-                report = run_polygon_batch_preflight(request)
-                write_polygon_batch_manifest(report)
             except (BatchExecutionError, ValueError) as exc:
                 self.preflight_text.setPlainText(f"BLOCKER: {exc}")
                 self.preflight_report = None
                 self._update_run_button_enabled()
                 self.preflight_button.setEnabled(True)
                 return
-            finally:
-                self.preflight_button.setEnabled(True)
-            self.preflight_report = report
-            self.set_spatial_intervention(report.blockers)
-            self.preflight_text.setPlainText(self._polygon_guided_review_text(report))
-            self.preflight_summary_label.setText("Ready to process." if not report.blockers else f"{len(report.blockers)} item(s) need attention.")
-            self.polygon_guided_step_label.setText(guided_step_indicator("review"))
-            self._update_run_button_enabled()
-            self._refresh_footprint_label()
-            self._publish_session_state(plan_status="ready")
+            self.preflight_cancel_event.clear()
+            self.cancel_preflight_button.setVisible(True)
+            self.cancel_preflight_button.setEnabled(True)
+            self.preflight_summary_label.setText("Analyzing selected area...")
+            self.preflight_thread = QThread(self)
+            self.preflight_worker = _PolygonPreflightWorker(request, self.preflight_cancel_event.is_set)
+            self.preflight_worker.moveToThread(self.preflight_thread)
+            self.preflight_thread.started.connect(self.preflight_worker.run)
+            self.preflight_worker.progress.connect(self._on_polygon_preflight_progress)
+            self.preflight_worker.completed.connect(self._on_polygon_preflight_complete)
+            self.preflight_worker.failed.connect(self._on_polygon_preflight_failed)
+            self.preflight_worker.completed.connect(self.preflight_thread.quit)
+            self.preflight_worker.failed.connect(self.preflight_thread.quit)
+            self.preflight_thread.finished.connect(self.preflight_worker.deleteLater)
+            self.preflight_thread.finished.connect(self.preflight_thread.deleteLater)
+            self.preflight_thread.finished.connect(self._clear_preflight_thread)
+            self.preflight_thread.start()
             return
         try:
             request = self.build_current_processing_request()
@@ -3770,6 +3830,41 @@ class BatchPage(MissionPage):
         self.set_spatial_intervention(report.blockers)
         self._update_run_button_enabled()
         self._publish_session_state(plan_status="ready")
+
+    def cancel_polygon_preflight(self) -> None:
+        """Request cancellation at the next pure-core planning safe point."""
+        self.preflight_cancel_event.set()
+        self.cancel_preflight_button.setEnabled(False)
+        self.preflight_summary_label.setText("Cancelling Prerun after the current planning step...")
+
+    def _on_polygon_preflight_progress(self, message: str) -> None:
+        self.preflight_summary_label.setText(f"Analyzing selected area... {message}")
+        self.preflight_text.setPlainText(f"Prerun is running in the background.\nCurrent stage: {message}")
+
+    def _on_polygon_preflight_complete(self, report: object) -> None:
+        self.preflight_report = report
+        self.set_spatial_intervention(report.blockers)
+        self.preflight_text.setPlainText(self._polygon_guided_review_text(report))
+        self.preflight_summary_label.setText("Ready to process." if not report.blockers else f"{len(report.blockers)} item(s) need attention.")
+        self.polygon_guided_step_label.setText(guided_step_indicator("review"))
+        self._update_run_button_enabled()
+        self._refresh_footprint_label()
+        self._publish_session_state(plan_status="ready")
+        self.preflight_button.setEnabled(True)
+        self.cancel_preflight_button.setVisible(False)
+
+    def _on_polygon_preflight_failed(self, message: str) -> None:
+        cancelled = "cancelled" in message.lower()
+        self.preflight_text.setPlainText(("Prerun cancelled." if cancelled else "PRERUN_FAILED: ") + ("" if cancelled else message))
+        self.preflight_summary_label.setText("Prerun cancelled." if cancelled else "Prerun failed. Review the diagnostic artifact.")
+        self.preflight_report = None
+        self._update_run_button_enabled()
+        self.preflight_button.setEnabled(True)
+        self.cancel_preflight_button.setVisible(False)
+
+    def _clear_preflight_thread(self) -> None:
+        self.preflight_thread = None
+        self.preflight_worker = None
 
     def run_batch(self) -> None:
         """Validate current inputs and launch from an immutable execution snapshot."""

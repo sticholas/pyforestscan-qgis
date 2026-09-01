@@ -110,35 +110,46 @@ def sizing_policy(*,repository_kind,product,resolution,available_memory_bytes,cp
     return WorkUnitSizingPolicy(adaptive.target_width,adaptive.target_height,adaptive.buffer_distance,adaptive.estimated_points_per_unit[1],adaptive.expected_memory_per_unit[1],concurrency,rationale,adaptive.confidence,adaptive.strategy,adaptive.estimated_points_per_unit,adaptive.expected_memory_per_unit,adaptive.pilot_required,product)
 
 
+class PlanningCancelled(RuntimeError):
+    """Raised at pure-Python safe points when a prerun cancellation is requested."""
+
+
 class SourceAwareWorkPlanner:
-    def plan(self,*,repository_kind,sources,polygon_envelope,processing_crs,product,resolution,available_memory_bytes=8*1024**3,cpu_count=2,profile='recommended',polygon_wkt=None):
+    def plan(self,*,repository_kind,sources,polygon_envelope,processing_crs,product,resolution,available_memory_bytes=8*1024**3,cpu_count=2,profile='recommended',polygon_wkt=None,normalized_polygon=None,cancel_callback=None,progress_callback=None):
         policy=PRODUCT_POLICIES.get(product)
         if policy is None or not policy.partitionable: raise ValueError(f"{product} does not have a validated partition policy.")
         grid=AlignedRasterGrid.from_extent(polygon_envelope,resolution,processing_crs)
         paths=tuple(sources); location=source_location(paths[0].path) if paths else 'local'; network=location in {'network','remote_url'}
+        polygon = normalized_polygon
+        if polygon is None and polygon_wkt:
+            from .work_unit_geometry import normalize_polygon_geometry
+            polygon=normalize_polygon_geometry(polygon_wkt,processing_crs=processing_crs)
         exact_area=None
-        if polygon_wkt:
+        if polygon is not None:
             from .work_unit_geometry import measure_core_polygon_intersection
-            exact_area=measure_core_polygon_intersection(grid.total_extent,polygon_wkt).intersection_area
+            exact_area=measure_core_polygon_intersection(grid.total_extent,polygon).intersection_area
         sizing=sizing_policy(repository_kind=repository_kind,product=product,resolution=resolution,available_memory_bytes=available_memory_bytes,cpu_count=cpu_count,network=network,profile=profile,extent=grid.total_extent,polygon_area=exact_area,native_partition_count=len(paths),point_density=next((source.point_count/source.bounds.width/source.bounds.height for source in paths if source.point_count and source.bounds.width and source.bounds.height),None))
         if repository_kind=='ept': units=self._windows(grid,paths,WorkUnitType.EPT_WINDOW,sizing)
         elif repository_kind=='copc': units=self._copc(grid,paths,sizing)
         else: units=self._native(grid,paths,sizing)
         candidates=tuple(units);skipped=()
-        if polygon_wkt:
+        if polygon is not None:
             from dataclasses import replace
             from .work_unit_geometry import measure_core_polygon_intersection
             measured=[]
-            for unit in candidates:
-                intersection=measure_core_polygon_intersection(unit.core_extent,polygon_wkt);buffered=measure_core_polygon_intersection(unit.read_extent,polygon_wkt)
+            total=max(1,len(candidates))
+            for index,unit in enumerate(candidates,1):
+                if cancel_callback is not None and cancel_callback(): raise PlanningCancelled("Polygon Prerun cancelled.")
+                intersection=measure_core_polygon_intersection(unit.core_extent,polygon);buffered=measure_core_polygon_intersection(unit.read_extent,polygon)
                 measured.append(replace(unit,polygon_intersection_area=intersection.intersection_area,polygon_coverage_percent=intersection.coverage_percent,required_for_output=intersection.intersects,status="Pending" if intersection.intersects else "SkippedOutsidePolygon",planning_reason="positive core/polygon area" if intersection.intersects else "zero exact core/polygon area",buffered_polygon_intersects=buffered.intersects,source_coverage_expectation="expected"))
+                if progress_callback is not None and (index == total or index % 10 == 0): progress_callback("Checking polygon coverage",index,total)
             candidates=tuple(measured);units=[unit for unit in candidates if unit.required_for_output];skipped=tuple(unit for unit in candidates if not unit.required_for_output)
         cells=grid.rows*grid.columns; workload='Small' if cells<5_000_000 else 'Moderate' if cells<25_000_000 else 'Large' if cells<100_000_000 else 'Very Large'
         peak=max((unit.estimated_memory for unit in units),default=cells*4)
         memory='Low' if peak<256*1024**2 else 'Moderate' if peak<1024**3 else 'High' if peak<3*1024**3 else 'Very High'
         assumptions=[f"Global {resolution:g}-unit grid.",f"{sizing.buffer_distance:g}-unit CHM read buffer.",f"Adaptive strategy: {sizing.strategy}.",sizing.rationale,"Exact polygon mask is applied after mosaic."]
         if repository_kind=='ept' and product=='chm' and sizing.maximum_concurrent_units==1:assumptions.extend(("Safe processing mode is active for this EPT job.","Parallel EPT HAG workers are temporarily limited while native-worker stability is being validated."))
-        polygon_signature=hashlib.sha256((polygon_wkt or "").strip().encode()).hexdigest() if polygon_wkt else ""
+        polygon_signature=getattr(polygon,"polygon_signature","")
         hag_signature=hashlib.sha256(b"existing_normalized_height:HeightAboveGround").hexdigest()
         native_reused=len(paths) if repository_kind in {'folder','las','laz'} else 0
         subdivisions=max(0,len(units)-native_reused)

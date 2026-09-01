@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .ept_repository import is_ept_internal_path, prune_ept_traversal
+from .ept_repository import is_ept_internal_path, prune_ept_traversal, resolve_ept_selection
 from .lidar_catalog_models import CatalogBuildOptions
 from .lidar_inventory import lidar_source_type
 
@@ -78,6 +78,20 @@ class LidarRepositoryDiscoveryService:
             readable = False
         if not readable:
             return RepositoryDiscoveryReport(selected, normalized, True, False, options.recursive, elapsed_seconds=time.perf_counter() - start, errors=(f"Repository folder cannot be read: {normalized}",))
+
+        # One ept.json represents the complete logical source. Never enumerate
+        # its data, hierarchy, or source storage during normal discovery.
+        ept = resolve_ept_selection(normalized)
+        if ept is not None:
+            allowed = not options.source_types or "ept" in options.source_types
+            discovered = (ept.ept_json,) if allowed else ()
+            return RepositoryDiscoveryReport(
+                selected, ept.normalized_repository, True, True, options.recursive,
+                directories_scanned=1, files_examined=1,
+                supported_files_found=len(discovered), ept_count=len(discovered),
+                discovered_paths=discovered, elapsed_seconds=time.perf_counter() - start,
+                warnings=() if discovered else ("EPT sources are excluded by the selected source-type filter.",),
+            )
 
         directories = 0
         files_examined = 0

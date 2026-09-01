@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32M - Large polygon prerun hardening
+
+- Added immutable, QGIS-free normalized polygon geometry so WKT parsing and CRS-aware coordinate validation occur once per prerun instead of once per candidate extent.
+- Added polygon, part, and ring envelope rejection before exact clipping; a 221-parent synthetic benchmark reduced 442 parser calls to one and improved the intersection loop by about 23x.
+- Moved polygon prerun planning and manifest I/O to a cancellable Qt worker, with staged UI progress, `PRERUN_FAILED` traceback evidence, and `prerun_profile.json` timing/memory diagnostics.
+- Added a direct EPT repository fast path that recognizes one logical `ept.json` source without walking EPT internal storage.
+- Prevented duplicate source-aware plan construction for legacy manifest aliases while preserving Phase 32K/32L bounded EPT and CRS behavior.
+
 ## Phase 32L - Projected CRS polygon validation
 
 - Canonicalized authoritative EPT authority/code metadata before WKT heuristics, so the live NAD83(PA11) / UTM zone 5N source resolves as `EPSG:6635`, projected, metre, and valid.

@@ -6,6 +6,7 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -619,6 +620,16 @@ def _message(code: str, severity: str, title: str, message: str, technical: str 
 
 
 def _read_ept_metadata(path: Path) -> tuple[Bounds2D | None, str | None, int | None, ResolvedSpatialReference, dict[str, Any]]:
+    try:
+        stat = path.stat()
+    except OSError:
+        stat = None
+    return _read_ept_metadata_cached(str(path.resolve()), -1 if stat is None else stat.st_size, -1 if stat is None else stat.st_mtime_ns)
+
+
+@lru_cache(maxsize=16)
+def _read_ept_metadata_cached(path_text: str, _size: int, _modified_ns: int) -> tuple[Bounds2D | None, str | None, int | None, ResolvedSpatialReference, dict[str, Any]]:
+    path = Path(path_text)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):

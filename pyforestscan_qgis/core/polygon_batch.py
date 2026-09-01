@@ -864,12 +864,17 @@ def write_polygon_batch_manifest(
     batch_folder: Path | None = None,
     mask_records: list[dict[str, str]] | None = None,
     source_aware_plan=None,
+    cancel_callback=None,
+    progress_callback=None,
 ) -> Path:
     """Write polygon-specific metadata beside the normal batch manifest."""
     folder = batch_folder or report.batch_folder
     path = folder / POLYGON_MANIFEST_NAME
     path.parent.mkdir(parents=True, exist_ok=True)
     query = report.query_result
+    if source_aware_plan is None:
+        source_aware_plan = build_source_aware_chm_plan(report, cancel_callback=cancel_callback, progress_callback=progress_callback)
+    serialized_source_plan = _source_aware_chm_plan_dict(report, source_aware_plan)
     payload = {
         "lifecycle": "PRERUN_PLAN",
         "plan_id": report.plan_signature,
@@ -885,8 +890,8 @@ def write_polygon_batch_manifest(
         "processing_runtime": None if report.request.runtime_token is None else report.request.runtime_token.to_dict(),
         "runtime_generation_id": "" if report.request.runtime_token is None else report.request.runtime_token.runtime_generation_id,
         "runtime_validation_at_dispatch": None,
-        "source_aware_raster_plan": _source_aware_chm_plan_dict(report, source_aware_plan),
-        "source_aware_chm_plan": _source_aware_chm_plan_dict(report, source_aware_plan),
+        "source_aware_raster_plan": serialized_source_plan,
+        "source_aware_chm_plan": serialized_source_plan,
         "spatial_provenance": _spatial_provenance(report),
         "plan_signature": report.plan_signature,
         "repository_identity": None if report.repository is None else report.repository.to_dict(),
@@ -1215,7 +1220,7 @@ def _write_polygon_source_resolution(report: PolygonBatchPreflightReport, folder
 
 
 
-def build_source_aware_chm_plan(report: PolygonBatchPreflightReport):
+def build_source_aware_chm_plan(report: PolygonBatchPreflightReport, *, cancel_callback=None, progress_callback=None):
     """Build the bounded CHM plan used by prerun, manifests, and the future executor."""
     if not ({ProductType.CHM, ProductType.RUMPLE} & set(report.request.products)) or not report.selected_sources:
         return None
@@ -1236,6 +1241,8 @@ def build_source_aware_chm_plan(report: PolygonBatchPreflightReport):
         cpu_count=max(1, os.cpu_count() or _shared_options(report).worker_count),
         profile="recommended",
         polygon_wkt=report.query_geometry.exact_polygon_wkt,
+        cancel_callback=cancel_callback,
+        progress_callback=progress_callback,
     )
 
 def _source_aware_chm_plan_dict(report: PolygonBatchPreflightReport, plan=None):
