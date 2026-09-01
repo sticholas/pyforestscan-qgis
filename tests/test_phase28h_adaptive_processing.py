@@ -24,7 +24,8 @@ class AdaptiveScaleTests(unittest.TestCase):
     def test_irregular_polygon_filters_after_adaptive_grid(self):
         source=NativeSource(Path('ept.json'),SpatialExtent(0,0,3000,2000),source_type='ept')
         plan=SourceAwareWorkPlanner().plan(repository_kind='ept',sources=(source,),polygon_envelope=source.bounds,processing_crs='EPSG:26904',product='chm',resolution=1,polygon_wkt='POLYGON ((0 0, 3000 0, 500 2000, 0 2000, 0 0))')
-        self.assertGreater(plan.skipped_count,0);self.assertEqual(plan.candidate_count,plan.required_count+plan.skipped_count)
+        self.assertEqual(plan.skipped_count,0);self.assertEqual(plan.candidate_count,plan.required_count)
+        self.assertGreater(plan.outside_polygon_count_estimate,0)
         self.assertGreater(plan.target_work_unit_width,derive_adaptive_plan(AdaptivePlannerInputs(3000,2000,6_000_000,1)).target_width)
     def test_pilot_can_grow_or_shrink_units(self):
         base=derive_adaptive_plan(AdaptivePlannerInputs(5000,5000,25_000_000,1,available_memory_bytes=8*1024**3,cpu_count=8))

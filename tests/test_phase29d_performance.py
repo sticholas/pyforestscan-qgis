@@ -72,7 +72,8 @@ class AdaptivePerformanceTests(unittest.TestCase):
         base = self.plan(3000, 2000)
         filtered = self.plan(3000, 2000, polygon_wkt="POLYGON ((0 0, 3000 0, 500 2000, 0 2000, 0 0))")
         self.assertEqual(base.grid.grid_signature, filtered.grid.grid_signature)
-        self.assertGreater(filtered.skipped_count, 0)
+        self.assertEqual(filtered.skipped_count, 0)
+        self.assertGreater(filtered.outside_polygon_count_estimate, 0)
 
     def test_pilot_is_advisory_and_skipped_for_small_plan(self):
         small = derive_adaptive_plan(AdaptivePlannerInputs(200, 200, 40000, 1))

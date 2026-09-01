@@ -41,10 +41,11 @@ class ExactGeometryTests(unittest.TestCase):
 class PlanningAndStatusTests(unittest.TestCase):
     def test_planner_filters_buffer_only_candidates(self):
         plan=SourceAwareWorkPlanner().plan(repository_kind='ept',sources=(NativeSource(Path('ept.json'),SpatialExtent(0,0,2000,1000)),),polygon_envelope=SpatialExtent(0,0,2000,1000),processing_crs='EPSG:26904',product='chm',resolution=1,polygon_wkt='POLYGON ((0 0, 975 0, 975 1000, 0 1000, 0 0))')
-        self.assertGreaterEqual(plan.candidate_count,plan.required_count);self.assertEqual(plan.candidate_count,plan.required_count+plan.skipped_count)
+        self.assertEqual(plan.candidate_count,plan.required_count)
         self.assertTrue(all(unit.polygon_intersection_area>0 for unit in plan.work_units))
-        self.assertTrue(all(not unit.required_for_output for unit in plan.skipped_work_units))
-        self.assertGreater(plan.skipped_count,0)
+        self.assertEqual(plan.skipped_work_units,())
+        self.assertEqual(plan.skipped_count,0)
+        self.assertGreater(plan.outside_polygon_count_estimate,0)
         core=measure_core_polygon_intersection(SpatialExtent(1000,0,2000,1000),'POLYGON ((0 0, 975 0, 975 1000, 0 1000, 0 0))')
         buffered=measure_core_polygon_intersection(SpatialExtent(950,-50,2050,1050),'POLYGON ((0 0, 975 0, 975 1000, 0 1000, 0 0))')
         self.assertFalse(core.intersects);self.assertTrue(buffered.intersects)

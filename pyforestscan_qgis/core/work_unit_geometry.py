@@ -27,6 +27,24 @@ class NormalizedPolygonGeometry:
     polygon_signature: str
     vertex_count: int
 
+    def component(self, index: int) -> "NormalizedPolygonGeometry":
+        """Return one stable polygon part without reparsing or changing coordinates."""
+        part = self.parts[index]
+        bounds = self.part_bounds[index]
+        signature = hashlib.sha256(f"{self.polygon_signature}:{index}:{part!r}".encode("utf-8")).hexdigest()
+        return NormalizedPolygonGeometry(
+            "Polygon", (part,), bounds, (bounds,), (self.ring_bounds[index],),
+            self.source_crs, self.processing_crs, self.coordinate_domain,
+            signature, sum(len(ring) for ring in part),
+        )
+
+    @property
+    def component_areas(self) -> tuple[float, ...]:
+        return tuple(
+            max(0.0, _ring_area(part[0]) - sum(_ring_area(ring) for ring in part[1:]))
+            for part in self.parts
+        )
+
     @classmethod
     def from_wkt(cls, wkt: str, *, source_crs: str = "", processing_crs: str = "") -> "NormalizedPolygonGeometry":
         geometry = wkt_to_geojson_geometry(wkt, crs=processing_crs or source_crs, source_crs=source_crs)
@@ -90,6 +108,10 @@ def measure_core_polygon_intersection(extent, polygon):
 def _bounds(points: Ring) -> Bounds:
     xs = tuple(point[0] for point in points); ys = tuple(point[1] for point in points)
     return min(xs), min(ys), max(xs), max(ys)
+
+
+def _ring_area(ring: Ring) -> float:
+    return abs(sum(ring[index][0] * ring[(index + 1) % len(ring)][1] - ring[(index + 1) % len(ring)][0] * ring[index][1] for index in range(len(ring))) / 2.0)
 
 
 def _merge_bounds(items: tuple[Bounds, ...]) -> Bounds:

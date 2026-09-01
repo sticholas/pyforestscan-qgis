@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32O - Sparse adaptive EPT execution
+
+- Replaced global-envelope polygon candidate generation for EPT/COPC with component-first, globally aligned sparse planning.
+- Added stable component and ReadBlock/ScienceBlock/CheckpointTile identities, deterministic nearby-component clustering, Morton execution ordering, and fail-open root EPT hierarchy pruning.
+- Stopped materializing known-outside polygon cells or writing skipped-cell checkpoint state; the exact 414.636 ha fixture fell from 3,450 candidate objects to 50 executable regions and zero skipped objects.
+- Simplified normal preflight wording to selected areas, automatic strategy, and processing regions while retaining engineering counts in technical diagnostics.
+- Recorded the legacy run's deployment-loss blocker and deferred live Phase 32O attribution until exact installed-build identity can be verified.
+
 ## Phase 32N - Large-scale processing architecture research
 
 - Verified that the active default-profile QGIS installation is still Phase 32L and rejected it as a Phase 32M comparison while preserving its running job.

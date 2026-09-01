@@ -449,6 +449,9 @@ def polygon_preflight_text(report: PolygonBatchPreflightReport) -> str:
     estimate_text = _readable_point_estimate(report.estimated_point_count, None if query is None else query.point_estimate_confidence)
     workload = _workload_label(report.estimated_point_count, report.estimated_source_bytes)
     work_plan = build_source_aware_chm_plan(report)
+    if report.estimated_point_count is None and work_plan is not None and work_plan.estimated_point_range[0] >= 100_000:
+        low,high=work_plan.estimated_point_range
+        estimate_text=f"approximately {low/1_000_000:.1f}-{high/1_000_000:.1f} million (Medium confidence)"
     timing = getattr(query, "timing_seconds", {}) if query is not None else {}
     lines = [
         "Polygon Preflight",
@@ -463,7 +466,11 @@ def polygon_preflight_text(report: PolygonBatchPreflightReport) -> str:
         f"Plan status: Current",
         f"Estimated workload: {workload}",
         f"Estimated points: {estimate_text}",
-        *( [] if work_plan is None else [f"Processing grid: {work_plan.candidate_count} candidate areas",f"Inside polygon: {work_plan.required_count} required areas",f"Outside polygon: {work_plan.skipped_count} skipped areas"] ),
+        *( [] if work_plan is None else [
+            f"Separate areas: {work_plan.component_count or 1}",
+            "Processing strategy: Automatic",
+            f"Processing regions: {work_plan.science_block_count or work_plan.required_count}",
+        ] ),
         f"Output: {report.request.output_folder}",
         f"Warnings: {len(report.warnings)}",
         "",
@@ -484,6 +491,14 @@ def polygon_preflight_text(report: PolygonBatchPreflightReport) -> str:
         if len(report.selected_sources) > 10:
             lines.append(f"- {len(report.selected_sources) - 10} additional file(s)")
     lines.extend(("", "Technical diagnostics:"))
+    if work_plan is not None:
+        lines.extend((
+            f"- Geometry components: {work_plan.component_count or 1}",
+            f"- Read blocks: {work_plan.read_block_count or work_plan.required_count}",
+            f"- Science blocks: {work_plan.science_block_count or work_plan.required_count}",
+            f"- Checkpoint tiles: {work_plan.checkpoint_tile_count or work_plan.required_count}",
+            f"- Empty envelope regions not materialized: {work_plan.outside_polygon_count_estimate}",
+        ))
     if query is None:
         lines.append("- Catalog query was not run.")
     else:
@@ -1479,9 +1494,6 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
     requested = set(report.request.products)
     rumple_requested = ProductType.RUMPLE in requested
     rumple_grid = derive_rumple_grid(plan.grid) if rumple_requested else None
-    for skipped in plan.skipped_work_units:
-        checkpoint.save_state(skipped.work_unit_id,"SkippedOutsidePolygon",{"reason_code":"OUTSIDE_EXACT_POLYGON","polygon_intersection_area":skipped.polygon_intersection_area,"polygon_coverage_percent":skipped.polygon_coverage_percent,"buffered_polygon_intersects":skipped.buffered_polygon_intersects,"source_coverage_expectation":skipped.source_coverage_expectation,"output_required":False,"work_unit":{"core_extent":skipped.core_extent.__dict__,"read_extent":skipped.read_extent.__dict__}})
-
     prepared_input, prepared_dimensions, preparation_status = _prepare_source_dependency(report, source, plan, context, item_callback)
     _assert_source_preparation_complete(preparation_status, prepared_input)
     preparation_contract = json.loads(Path(preparation_status).read_text(encoding="utf-8"))
@@ -1581,11 +1593,11 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         else:
             _emit_polygon_stage(item_callback, source, context, "PILOT_COMPLETED", f"Bounded pilot {plan.work_units[0].work_unit_id} completed and was checkpointed.")
             _emit_polygon_stage(item_callback, source, context, "Processing remaining areas", "Canary passed; continuing the full job automatically.")
-            _emit_polygon_stage(item_callback, source, context, "WORK_UNIT_SCHEDULER_STARTED", f"Starting {len(plan.work_units)} required CHM processing areas at concurrency {plan.concurrency_limit}.")
+            _emit_polygon_stage(item_callback, source, context, "WORK_UNIT_SCHEDULER_STARTED", f"Starting {len(plan.work_units)} CHM processing regions at concurrency {plan.concurrency_limit}.")
             scheduler = PolygonProductWorkScheduler(plan.work_units, execute_unit, checkpoint, concurrency=plan.concurrency_limit, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress)
             results = scheduler.run()
     else:
-        _emit_polygon_stage(item_callback, source, context, "WORK_UNIT_SCHEDULER_STARTED", f"Starting {len(plan.work_units)} required CHM processing areas at concurrency {plan.concurrency_limit}.")
+        _emit_polygon_stage(item_callback, source, context, "WORK_UNIT_SCHEDULER_STARTED", f"Starting {len(plan.work_units)} CHM processing regions at concurrency {plan.concurrency_limit}.")
         scheduler = PolygonProductWorkScheduler(plan.work_units, execute_unit, checkpoint, concurrency=plan.concurrency_limit, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress)
         results = scheduler.run()
     failed = tuple(item for item in results if item.status == "Failed")

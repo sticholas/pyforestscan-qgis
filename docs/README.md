@@ -1,5 +1,7 @@
 # Documentation Index
 
+Phase 32O sparse component-first EPT planning: [implementation and regression evidence](research/PHASE_32O_SPARSE_EPT_EXECUTION.md) and [machine-readable fixture benchmark](research/PHASE_32O_CURRENT_FIXTURE.json).
+
 Phase 32N large-scale research: [architecture](research/LARGE_SCALE_LIDAR_ARCHITECTURE.md), [scientific authority](PYFORESTSCAN_SCIENTIFIC_AUTHORITY.md), [PyForestScan boundary](research/PYFORESTSCAN_BOUNDARY.md), [PDAL benchmark](research/PDAL_EPT_COPC_BENCHMARK.md), [cache design](research/LIDAR_CACHE_ARCHITECTURE.md), [scheduler comparison](research/DASK_RAY_SCHEDULER_COMPARISON.md), [AI survey](research/AI_MODEL_INTEGRATION_SURVEY.md), and [execution ADR](adr/ADR_LARGE_SCALE_EXECUTION_ENGINE.md).
 
 Phase 32L projected-CRS parsing and polygon validation: [Projected CRS Validation](PHASE_32L_PROJECTED_CRS_VALIDATION.md).
