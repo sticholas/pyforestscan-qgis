@@ -1516,7 +1516,7 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         request = _logical_product_request(ProductType.CHM, prepared_input, buffered_path, report)
         read = unit.read_extent
         request = replace(request, bounds=EptBounds.from_value(((read.xmin, read.xmax), (read.ymin, read.ymax)), crs=report.query_geometry.catalog_crs).to_json())
-        request = replace(request,crop_polygon=None,crop_polygon_path=None,polygon_execution_input=None,source_dimensions=prepared_dimensions,source_point_count=None,work_unit_id=unit.work_unit_id,attempt_id=f"attempt-{attempt}",completed_count=max(0,unit.execution_order-1),total_count=len(plan.work_units),inspect_hag_suitability=True,hag_method=resolved_hag_method,hag_source_dimension=resolved_hag_dimension,hag_method_signature=resolved_hag_signature,diagnostics_path=unit_folder/"diagnostics",polygon_intersection_area=unit.polygon_intersection_area,polygon_coverage_percent=unit.polygon_coverage_percent)
+        request = replace(request,crop_polygon=None,crop_polygon_path=None,polygon_execution_input=None,source_dimensions=prepared_dimensions,source_point_count=None,work_unit_id=unit.work_unit_id,attempt_id=f"attempt-{attempt}",completed_count=max(0,unit.execution_order-1),total_count=len(plan.work_units),inspect_hag_suitability=False,hag_method=resolved_hag_method,hag_source_dimension=resolved_hag_dimension,hag_method_signature=resolved_hag_signature,diagnostics_path=unit_folder/"diagnostics",polygon_intersection_area=unit.polygon_intersection_area,polygon_coverage_percent=unit.polygon_coverage_percent)
         from dataclasses import asdict
         from .chm_work_unit_execution import write_work_unit_diagnostic
         request_payload=asdict(request);request_payload.update({"original_source_path":str(source.path),"prepared_source_path":str(prepared_input),"preparation_status_path":str(preparation_status)})
@@ -1530,7 +1530,7 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
         else:
             try:
                 backend_started=time.monotonic()
-                if str(prepared_input).lower().endswith("ept.json") and (read.width > 500.0 or read.height > 500.0):
+                if str(prepared_input).lower().endswith("ept.json") and _requires_chunked_ept_parent(unit,read):
                     buffered_path = _run_chunked_ept_parent_chm(adapter, request, unit_folder, read, report.query_geometry.catalog_crs, plan.grid.nodata)
                 else:
                     result = _run_logical_product(adapter, ProductType.CHM, request)
@@ -1796,7 +1796,7 @@ def _run_chunked_ept_parent_chm(adapter, request, unit_folder: Path, parent_read
     resolution = float(request.grid_resolution)
     columns = max(1, int(round(parent_read.width / resolution)))
     rows = max(1, int(round(parent_read.height / resolution)))
-    chunk_cells = min(100, columns, rows)
+    chunk_cells = min(500, columns, rows)
     chunks = []
     chunk_root = unit_folder / "bounded_subreads"
     for row0 in range(0, rows, chunk_cells):
@@ -1864,6 +1864,11 @@ def _run_chunked_ept_parent_chm(adapter, request, unit_folder: Path, parent_read
         "output": str(parent_buffered),
     })
     return parent_buffered
+
+
+def _requires_chunked_ept_parent(unit,read: SpatialExtent) -> bool:
+    """Reserve nested isolation for genuinely large reads, not ordinary components."""
+    return read.width > 2000.0 or read.height > 2000.0 or int(getattr(unit,"estimated_memory",0)) > 6*1024**3
 
 
 def _run_isolated_ept_subread(request, folder: Path):

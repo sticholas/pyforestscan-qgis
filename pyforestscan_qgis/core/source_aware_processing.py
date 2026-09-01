@@ -181,13 +181,17 @@ class SourceAwareWorkPlanner:
             local=sizing_policy(repository_kind='ept' if kind is WorkUnitType.EPT_WINDOW else 'copc',product=sizing.product,resolution=grid.resolution,available_memory_bytes=max(sizing.maximum_expected_memory*4,1024**3),cpu_count=sizing.maximum_concurrent_units,network=True,extent=bounds,polygon_area=area)
             c0=max(0,int(math.floor((bounds.xmin-grid.origin_x)/grid.resolution)));c1=min(grid.columns,int(math.ceil((bounds.xmax-grid.origin_x)/grid.resolution)))
             r0=max(0,int(math.floor((bounds.ymin-grid.origin_y)/grid.resolution)));r1=min(grid.rows,int(math.ceil((bounds.ymax-grid.origin_y)/grid.resolution)))
-            step_c=max(1,round(local.target_width/grid.resolution));step_r=max(1,round(local.target_height/grid.resolution))
+            if local.strategy=='small_safe_request':
+                column_ranges=((c0,c1),);row_ranges=((r0,r1),)
+            else:
+                column_ranges=self._balanced_ranges(c0,c1,local.target_width/grid.resolution)
+                row_ranges=self._balanced_ranges(r0,r1,local.target_height/grid.resolution)
             component_id=f"pc-{component.polygon_signature[:12]}"
             cluster_id=cluster_map[component_index]
-            for row in range(r0,r1,step_r):
-                for col in range(c0,c1,step_c):
+            for row,row_end in row_ranges:
+                for col,column_end in column_ranges:
                     if cancel_callback is not None and cancel_callback():raise PlanningCancelled("Polygon Prerun cancelled.")
-                    local_candidates+=1;core=grid.cell_extent(row,min(r1,row+step_r),col,min(c1,col+step_c));intersection=measure_core_polygon_intersection(core,component)
+                    local_candidates+=1;core=grid.cell_extent(row,row_end,col,column_end);intersection=measure_core_polygon_intersection(core,component)
                     if not intersection.intersects:continue
                     if occupancy is not None and not occupancy.intersects(core):
                         hierarchy_pruned+=1;continue
@@ -195,7 +199,7 @@ class SourceAwareWorkPlanner:
                     from .resource_estimation import estimate_work_unit_resources
                     estimate=estimate_work_unit_resources(int(read.width*read.height*20.0),hag_method='existing_normalized_height',raster_cells=int(read.width*read.height/grid.resolution**2),core_width=local.target_width,product=sizing.product)
                     center=((core.xmin+core.xmax)/2,(core.ymin+core.ymax)/2)
-                    provisional.append((cluster_id,self._morton(center,grid.total_extent),component_id,core,read,row,min(r1,row+step_r),col,min(c1,col+step_c),intersection,estimate.estimated_memory))
+                    provisional.append((cluster_id,self._morton(center,grid.total_extent),component_id,core,read,row,row_end,col,column_end,intersection,estimate.estimated_memory))
             if progress_callback is not None:progress_callback("Planning selected areas",component_index+1,len(polygon.parts))
         ordered=[]
         for order,item in enumerate(sorted(provisional,key=lambda value:(value[1],value[0],value[2])),1):
@@ -220,6 +224,15 @@ class SourceAwareWorkPlanner:
                 current=clusters[selected];clusters[selected]=SpatialExtent(min(current.xmin,extent.xmin),min(current.ymin,extent.ymin),max(current.xmax,extent.xmax),max(current.ymax,extent.ymax))
             mapping[index]=f"tc-{selected+1:04d}"
         return mapping
+
+    @staticmethod
+    def _balanced_ranges(start,end,target_size):
+        """Partition aligned cells evenly so rounding cannot create micro-slivers."""
+        span=max(0,end-start)
+        if span==0:return ()
+        count=max(1,math.ceil(span/max(1.0,float(target_size))))
+        boundaries=[start+round(span*index/count) for index in range(count+1)]
+        return tuple((boundaries[index],boundaries[index+1]) for index in range(count) if boundaries[index+1]>boundaries[index])
 
     @staticmethod
     def _morton(point,extent):

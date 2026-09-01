@@ -16,13 +16,29 @@ from typing import Any
 BUILD_INFO_NAME = "build_info.json"
 CRITICAL_MODULES = (
     "plugin.py",
+    "metadata.txt",
     "ui/mission_control.py",
+    "ui/pages.py",
     "core/polygon_batch.py",
+    "core/source_aware_processing.py",
+    "core/work_unit_geometry.py",
+    "core/polygon_transport.py",
     "core/backend/processing_engine.py",
     "core/adapter.py",
     "core/backend/execution.py",
+    "backend_runner/api_contract.py",
+    "backend_runner/ept_chm_subread.py",
+    "backend_runner/generic_polygon_coordinator.py",
+    "backend_runner/job_coordinator.py",
+    "backend_runner/job_result.py",
+    "backend_runner/job_spec.py",
+    "backend_runner/pbm_lidar_preparation.py",
+    "backend_runner/polygon_preparation_worker.py",
+    "backend_runner/request_validation.py",
+    "backend_runner/run_catalog_job.py",
     "backend_runner/run_processing_job.py",
     "backend_runner/polygon_job_coordinator.py",
+    "backend_runner/runtime_contract.py",
 )
 PLUGIN_VALID = "PLUGIN_VALID"
 PLUGIN_MIXED_INSTALL = "PLUGIN_MIXED_INSTALL"

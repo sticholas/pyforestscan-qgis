@@ -27,6 +27,7 @@ try:
         read_metadata_version,
         read_version_info,
         sha256_file,
+        verify_package_source,
         versioned_zip_path,
     )
     from validate_plugin_package import validate_zip
@@ -45,6 +46,7 @@ except ModuleNotFoundError:  # pragma: no cover - used when imported as scripts.
         read_metadata_version,
         read_version_info,
         sha256_file,
+        verify_package_source,
         versioned_zip_path,
     )
     from scripts.validate_plugin_package import validate_zip
@@ -81,6 +83,8 @@ def validate_release(dist_dir: Path | None = None, update_manifest: bool = True)
     errors.extend(validate_zip_import_graph(release_zip))
     errors.extend(_validate_forbidden_members(release_zip))
     errors.extend(_validate_build_info(release_zip))
+    verification=verify_package_source(release_zip,require_clean=False)
+    if verification["status"]!="PASS":errors.append(f"Package/source verification failed: {verification}")
     errors.extend(_validate_retired_error_strings(release_zip))
     errors.extend(_validate_clean_profile_replacement(release_zip))
     errors.extend(_validate_changelog(version.plugin_version))

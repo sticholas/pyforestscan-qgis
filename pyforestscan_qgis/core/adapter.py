@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import replace
 from pathlib import Path
@@ -313,28 +314,34 @@ class PyForestScanAdapter:
             return pbm_result
         self._progress.start("Reading lidar for CHM")
         self._log(LogLevel.INFO, "Starting CHM generation", input=str(request.input_path), output=str(output_path))
+        science_timing={"schema":"pyforestscan-chm-stage-timing-v1","work_unit_id":str(getattr(request,"work_unit_id","")),"process_id":__import__("os").getpid()}
+        total_started=time.perf_counter()
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
             planned_method = getattr(request, "hag_method", "classified_ground_delaunay")
             if planned_method not in {"existing_normalized_height", "classified_ground_delaunay"}:
                 raise ProcessingError(f"Unsupported planned HAG method for CHM: {planned_method}")
+            read_started=time.perf_counter()
             if _requires_local_bounded_read(request):
                 point_cloud = _read_bounded_local_lidar(request)
             elif resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
                 point_cloud = _read_source_local_lidar(request)
             else:
                 point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **_read_lidar_spatial_kwargs(request, hag=planned_method != "existing_normalized_height"))
+            science_timing["ept_read_and_point_decode_seconds"]=time.perf_counter()-read_started
             if point_cloud is None:
                 raise ProcessingError("PyForestScan returned no point data for CHM generation.")
             self._progress.update(35, "Point cloud loaded")
-            point_array = _merge_point_cloud_arrays(point_cloud)
+            merge_started=time.perf_counter();point_array = _merge_point_cloud_arrays(point_cloud)
+            science_timing["array_merge_seconds"]=time.perf_counter()-merge_started
+            science_timing["point_count"]=int(getattr(point_array,"shape",(0,))[0])
             point_array, capabilities = _canonicalize_hag_dimension(point_array)
             names = capabilities.names
             inspected = PointDimensionCapabilities.from_names(getattr(request, "source_dimensions", ()))
             if planned_method == "existing_normalized_height" and inspected.has_existing_hag and not capabilities.has_existing_hag:
                 raise SourceDimensionMismatch(getattr(request, "hag_source_dimension", "HeightAboveGround"), names)
-            point_array, preparation_plan = _ensure_hag_for_product(point_array, request, resolution, "chm", handlers=handlers)
+            hag_started=time.perf_counter();point_array, preparation_plan = _ensure_hag_for_product(point_array, request, resolution, "chm", handlers=handlers)
             capabilities = PointDimensionCapabilities.from_names(point_array.dtype.names)
             names = capabilities.names
             planned_method = "existing_normalized_height"
@@ -343,28 +350,34 @@ class PyForestScanAdapter:
             if planned_method == "existing_normalized_height":
                 from .chm_work_unit_execution import validate_existing_hag_array
                 validate_existing_hag_array(point_array, request)
+            science_timing["hag_contract_seconds"]=time.perf_counter()-hag_started
             required = {"X", "Y", "HeightAboveGround"}
             missing = sorted(required.difference(names))
             if missing:
                 suffix = " for the planned existing-HAG method" if planned_method == "existing_normalized_height" else ""
                 raise ProcessingError(f"CHM input is missing required dimensions{suffix}: {', '.join(missing)}")
-            chm, extent = pyforestscan.calculate_chm(
+            calculation_started=time.perf_counter();chm, extent = pyforestscan.calculate_chm(
                 point_array,
                 _xy_resolution(request.grid_resolution, request.y_resolution),
                 interpolation=request.interpolation,
                 interp_valid_region=request.interp_valid_region,
                 interp_clean_edges=request.interp_clean_edges,
             )
+            science_timing["pyforestscan_chm_seconds"]=time.perf_counter()-calculation_started
             self._progress.update(70, "CHM array calculated")
             self._chm_cache[_chm_cache_key(request)] = (chm, extent)
+            write_started=time.perf_counter()
             if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
                 _write_source_local_geotiff(chm, output_path, extent, product="Canopy Height Model")
                 _write_source_local_adapter_trace(request, "chm_writer", {"source_local": True, "crs": None, "hag_mode": "EXISTING_HAG"})
             else:
                 handlers.create_geotiff(chm, str(output_path), request.crs, extent)
                 _write_crs_provenance(output_path, resolution, request)
+            science_timing["buffered_raster_write_seconds"]=time.perf_counter()-write_started
             _write_preparation_output_tags(output_path, preparation_plan)
             _validate_created_output(output_path)
+            science_timing["total_seconds"]=time.perf_counter()-total_started
+            _write_chm_stage_timing(request,science_timing)
             self._progress.complete("CHM GeoTIFF created")
             self._log(LogLevel.INFO, "CHM generation complete", output=str(output_path))
             return ChmResult(
@@ -1766,6 +1779,13 @@ def _validate_csv_output_path(output_path: Path) -> None:
             probe.unlink()
         except OSError:
             pass
+
+
+def _write_chm_stage_timing(request, payload: dict[str, object]) -> None:
+    raw=getattr(request,"diagnostics_path",None)
+    if not raw:return
+    from .atomic_state import atomic_write_json
+    atomic_write_json(Path(raw)/"science_timing.json",payload)
 
 
 def _validate_output_path(output_path: Path) -> None:

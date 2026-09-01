@@ -1,0 +1,79 @@
+{
+  "schema": "pyforestscan-work-unit-timing-summary-v1",
+  "run_folder": "/mnt/d/tmp/pyforestscan_polygon_batch_planned/polygon_jobs/ept-36ec9b5011fd/ept-full",
+  "work_units_with_timing": 49,
+  "metrics": {
+    "attempt": {
+      "count": 49,
+      "median": 1.0,
+      "p75": 1.0,
+      "p90": 1.0,
+      "maximum": 1.0,
+      "sum": 49.0
+    },
+    "bounded_read_and_chm_seconds": {
+      "count": 49,
+      "median": 46.51500000001397,
+      "p75": 105.53100000001723,
+      "p90": 153.11000000004424,
+      "maximum": 245.71899999998277,
+      "sum": 3503.561000000045
+    },
+    "chm_checksum_and_checkpoint_seconds": {
+      "count": 49,
+      "median": 0.01600000000325963,
+      "p75": 0.031000000017229468,
+      "p90": 0.0779999999795109,
+      "maximum": 0.14100000000325963,
+      "sum": 1.482999999949243
+    },
+    "chm_core_extraction_seconds": {
+      "count": 49,
+      "median": 0.031000000017229468,
+      "p75": 0.06300000002374873,
+      "p90": 0.09399999998277053,
+      "maximum": 0.14000000001396984,
+      "sum": 2.186000000045169
+    },
+    "points_per_second": {
+      "count": 12,
+      "median": 277995.32010781905,
+      "p75": 334967.5491110563,
+      "p90": 337313.9880849535,
+      "maximum": 489859.06351265946,
+      "sum": 3470628.0154596474
+    },
+    "points_read": {
+      "count": 12,
+      "median": 411593.0,
+      "p75": 676703.0,
+      "p90": 969697.0,
+      "maximum": 1056626.0,
+      "sum": 6625434.0
+    },
+    "prepared_source_size_bytes": {
+      "count": 49,
+      "median": 7915.0,
+      "p75": 7915.0,
+      "p90": 7915.0,
+      "maximum": 7915.0,
+      "sum": 387835.0
+    },
+    "rumple_lidar_reads": {
+      "count": 49,
+      "median": 0.0,
+      "p75": 0.0,
+      "p90": 0.0,
+      "maximum": 0.0,
+      "sum": 0.0
+    },
+    "total_seconds": {
+      "count": 49,
+      "median": 46.57799999997951,
+      "p75": 105.73399999999674,
+      "p90": 153.29699999996228,
+      "maximum": 245.85899999999674,
+      "sum": 3508.5430000001215
+    }
+  }
+}

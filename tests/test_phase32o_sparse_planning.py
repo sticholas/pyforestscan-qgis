@@ -35,11 +35,19 @@ class Phase32OSparsePlanningTests(unittest.TestCase):
         self.assertEqual(plan.component_count, 27)
         self.assertEqual(plan.skipped_count, 0)
         self.assertEqual(plan.candidate_count, plan.required_count)
-        self.assertLessEqual(plan.required_count, 54)
+        self.assertEqual(plan.required_count, 27)
         self.assertGreater(plan.outside_polygon_count_estimate, 1000)
         self.assertGreater(plan.estimated_point_range[1], plan.estimated_point_range[0])
         self.assertTrue(all(unit.component_ids for unit in plan.work_units))
         self.assertTrue(all(unit.read_block_id and unit.science_block_id and unit.checkpoint_tile_id for unit in plan.work_units))
+        self.assertTrue(all(unit.core_extent.width >= 300 for unit in plan.work_units))
+        self.assertTrue(all(unit.core_extent.height >= 300 for unit in plan.work_units))
+
+    def test_balanced_ranges_never_leave_rounding_slivers(self):
+        ranges = SourceAwareWorkPlanner._balanced_ranges(0, 701, 700)
+        self.assertEqual(ranges, ((0, 350), (350, 701)))
+        self.assertEqual(sum(end - start for start, end in ranges), 701)
+        self.assertGreaterEqual(min(end - start for start, end in ranges), 350)
 
     def test_small_component_uses_direct_science_block(self):
         plan = self.plan("POLYGON ((0 0, 500 0, 500 300, 0 300, 0 0))")

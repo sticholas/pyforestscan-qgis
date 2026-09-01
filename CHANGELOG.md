@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32P - High-throughput EPT execution and release integrity
+
+- Removed alignment-rounding slivers and replaced the fixed small-request point ceiling with computed point, raster, and memory safety budgets.
+- Restored one managed EPT operation per ordinary component while retaining larger 500-cell checkpointed subreads only for genuinely large regions.
+- Reduced the exact 414.636 ha fixture from 50 regions to its 27 real polygon components with 1.402x read amplification and no residual strip blocks.
+- Added per-work-unit scientific stage timing and active-region progress identity.
+- Hardened packaging with clean-tree enforcement, fresh staging, recursive source-to-ZIP verification, expanded build identity, and release-chain documentation.
+
 ## Phase 32O - Sparse adaptive EPT execution
 
 - Replaced global-envelope polygon candidate generation for EPT/COPC with component-first, globally aligned sparse planning.

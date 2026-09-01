@@ -17,6 +17,7 @@ Release documentation describes how to package, validate, and evaluate PyForestS
 - [v0.1.0-beta.1 Release Notes](v0.1.0-beta.1.md)
 - [Clean Machine ZIP Smoke Test](CLEAN_MACHINE_SMOKE_TEST.md)
 - [Dependency State Matrix](DEPENDENCY_STATE_MATRIX.md)
+- [Phase 32P Release Chain](PHASE_32P_RELEASE_CHAIN.md)
 
 The project changelog lives at [CHANGELOG.md](../../CHANGELOG.md). Known limitations are tracked in [docs/KNOWN_LIMITATIONS.md](../KNOWN_LIMITATIONS.md).
 

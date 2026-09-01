@@ -132,13 +132,13 @@ class BoundedEptTests(unittest.TestCase):
                 first_count = len(calls)
                 _run_chunked_ept_parent_chm(adapter, request, root, extent, "EPSG:6635", -9999.0)
             self.assertEqual(result, root / "parent.tif")
-            self.assertEqual(first_count, 144)
+            self.assertEqual(first_count, 9)
             self.assertEqual(len(calls), first_count)
             self.assertEqual(adapter.close_calls, first_count)
             for bounded in calls:
                 bounds = bounded.bounds
-                self.assertLessEqual(float(bounds["xmax"]) - float(bounds["xmin"]), 200.0)
-                self.assertLessEqual(float(bounds["ymax"]) - float(bounds["ymin"]), 200.0)
+                self.assertLessEqual(float(bounds["xmax"]) - float(bounds["xmin"]), 600.0)
+                self.assertLessEqual(float(bounds["ymax"]) - float(bounds["ymin"]), 600.0)
 
 
 if __name__ == "__main__":

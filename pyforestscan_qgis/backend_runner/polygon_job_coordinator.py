@@ -21,8 +21,10 @@ def run_payload(payload_path):
     products=tuple(product.value for product in payload["report"].request.products)
     _validate_and_trace_runtime(job_dir,job_id,products)
     def progress(item):
-        stage=getattr(item,"status","Processing");message=getattr(item,"message","");plan=payload["plan"];counts=aggregate_work_unit_statuses(payload["context"].run_folder/"work_units",plan.candidate_count,plan.required_count)
-        coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,"running",plan.candidate_count,completed=counts["completed"]+counts["complete_nodata"],failed=counts["failed"],pending=counts["pending"],running=counts["running"],attempted=counts["attempted"],current_stage=str(stage),current_activity=str(message),elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now(),candidate_work_units=plan.candidate_count,required_work_units=plan.required_count,skipped_outside_polygon=counts["skipped_outside_polygon"],complete_nodata=counts["complete_nodata"]))
+        stage=getattr(item,"stage",getattr(item,"status","Processing Regions"));message=getattr(item,"message","");plan=payload["plan"];counts=aggregate_work_unit_statuses(payload["context"].run_folder/"work_units",plan.candidate_count,plan.required_count)
+        active=tuple(getattr(item,"current_units",())) or tuple(counts["current_work_unit_ids"])
+        current=active[0] if active else ""
+        coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,"running",plan.candidate_count,completed=counts["completed"]+counts["complete_nodata"],failed=counts["failed"],pending=counts["pending"],running=counts["running"],attempted=counts["attempted"],current_work_unit_id=current,current_stage=str(stage),current_activity=str(message),elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now(),candidate_work_units=plan.candidate_count,required_work_units=plan.required_count,skipped_outside_polygon=counts["skipped_outside_polygon"],complete_nodata=counts["complete_nodata"]))
     try:
         os.environ["PYFORESTSCAN_POLYGON_COORDINATOR"]="1"
         from pyforestscan_qgis.core.polygon_batch import _execute_source_aware_chm

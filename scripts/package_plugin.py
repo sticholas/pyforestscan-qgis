@@ -10,6 +10,7 @@ import importlib.util
 import json
 import shutil
 import subprocess
+import tempfile
 import zipfile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -27,15 +28,32 @@ DEFAULT_LATEST_ZIP_PATH = DEFAULT_DIST_DIR / f"{PLUGIN_DIR_NAME}.zip"
 DEFAULT_ZIP_PATH = DEFAULT_LATEST_ZIP_PATH
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 BUILD_INFO_FILE_NAME = "build_info.json"
+PACKAGE_VERIFICATION_FILE_NAME = "package_source_verification.json"
 CRITICAL_PLUGIN_MODULES = (
     "plugin.py",
+    "metadata.txt",
     "ui/mission_control.py",
+    "ui/pages.py",
     "core/polygon_batch.py",
+    "core/source_aware_processing.py",
+    "core/work_unit_geometry.py",
+    "core/polygon_transport.py",
     "core/backend/processing_engine.py",
     "core/adapter.py",
     "core/backend/execution.py",
+    "backend_runner/api_contract.py",
+    "backend_runner/generic_polygon_coordinator.py",
+    "backend_runner/job_coordinator.py",
+    "backend_runner/job_result.py",
+    "backend_runner/job_spec.py",
+    "backend_runner/pbm_lidar_preparation.py",
+    "backend_runner/polygon_preparation_worker.py",
+    "backend_runner/request_validation.py",
+    "backend_runner/run_catalog_job.py",
     "backend_runner/run_processing_job.py",
     "backend_runner/polygon_job_coordinator.py",
+    "backend_runner/ept_chm_subread.py",
+    "backend_runner/runtime_contract.py",
 )
 PROCESSING_ENGINE_BUILD_MODULES = (
     "backend_runner/run_processing_job.py",
@@ -77,6 +95,7 @@ class PackageResult:
     release_manifest_path: Path
     version: str
     sha256: str
+    verification_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -145,16 +164,23 @@ def package_plugin(
     write_manifest: bool = True,
     validation_status: str = "pending",
     docs_link_check_status: str = "pending",
+    require_clean: bool = False,
 ) -> PackageResult:
     """Create versioned and latest QGIS-installable plugin ZIPs."""
     plugin_root = REPOSITORY_ROOT / PLUGIN_DIR_NAME
     if not plugin_root.is_dir():
         raise FileNotFoundError(f"Plugin directory not found: {plugin_root}")
+    if require_clean:
+        assert_clean_repository()
 
     version = read_version_info().plugin_version
     target_path = (output_path or versioned_zip_path(version)).resolve()
     target_path.parent.mkdir(parents=True, exist_ok=True)
     _build_plugin_zip(target_path)
+    verification_path=target_path.parent/PACKAGE_VERIFICATION_FILE_NAME
+    verification=verify_package_source(target_path,require_clean=require_clean)
+    verification_path.write_text(json.dumps(verification,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+    if verification["status"]!="PASS":raise RuntimeError(f"Package/source verification failed: {verification_path}")
 
     latest_result_path: Path | None = None
     if latest_path is not None:
@@ -172,7 +198,7 @@ def package_plugin(
             docs_link_check_status=docs_link_check_status,
         )
         manifest_path.write_text(json.dumps(asdict(manifest), indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return PackageResult(target_path, latest_result_path, manifest_path, version, sha256)
+    return PackageResult(target_path, latest_result_path, manifest_path, version, sha256, verification_path)
 
 
 def build_release_manifest(zip_path: Path, validation_status: str = "pending", docs_link_check_status: str = "pending") -> ReleaseManifest:
@@ -210,15 +236,27 @@ def _build_plugin_zip(output_path: Path) -> None:
     if output_path.exists():
         output_path.unlink()
     plugin_root = REPOSITORY_ROOT / PLUGIN_DIR_NAME
-    with zipfile.ZipFile(output_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-        _write_tree_to_archive(archive, plugin_root, Path(PLUGIN_DIR_NAME))
-        _write_json_to_archive(archive, build_package_info(plugin_root), Path(PLUGIN_DIR_NAME) / BUILD_INFO_FILE_NAME)
+    with tempfile.TemporaryDirectory(prefix="pyforestscan-package-stage-") as folder:
+        stage=Path(folder)/PLUGIN_DIR_NAME
+        _copy_clean_tree(plugin_root,stage)
         specs_root = REPOSITORY_ROOT / BACKEND_SPECS_DIR_NAME
         if specs_root.is_dir():
-            _write_tree_to_archive(archive, specs_root, Path(PLUGIN_DIR_NAME) / BACKEND_SPECS_DIR_NAME)
+            _copy_clean_tree(specs_root,stage/BACKEND_SPECS_DIR_NAME)
         backend_manifest = REPOSITORY_ROOT / BACKEND_MANIFEST_FILE_NAME
         if backend_manifest.is_file():
-            _write_file_to_archive(archive, backend_manifest, Path(PLUGIN_DIR_NAME) / BACKEND_MANIFEST_FILE_NAME)
+            shutil.copy2(backend_manifest,stage/BACKEND_MANIFEST_FILE_NAME)
+        (stage/BUILD_INFO_FILE_NAME).write_text(json.dumps(build_package_info(stage),indent=2,sort_keys=True)+"\n",encoding="utf-8")
+        with zipfile.ZipFile(output_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+            _write_tree_to_archive(archive,stage,Path(PLUGIN_DIR_NAME))
+
+
+def _copy_clean_tree(source: Path,destination: Path) -> None:
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.mkdir(parents=True,exist_ok=True)
+    for path in sorted(source.rglob("*")):
+        if should_include(path,source):
+            target=destination/path.relative_to(source);target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(path,target)
 
 
 def _write_tree_to_archive(archive: zipfile.ZipFile, source_root: Path, archive_root: Path) -> None:
@@ -257,7 +295,9 @@ def build_package_info(plugin_root: Path | None = None) -> dict[str, Any]:
     identity_payload = {
         "version": read_version_info().plugin_version,
         "git_commit": _git_value("rev-parse", "HEAD"),
+        "git_state": "clean" if not _git_status() else "dirty",
         "critical_module_hashes": hashes,
+        "package_manifest_hash": _manifest_hash(_tree_hashes(root,exclude={BUILD_INFO_FILE_NAME})),
     }
     package_identity = hashlib.sha256(
         json.dumps(identity_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -272,6 +312,49 @@ def build_package_info(plugin_root: Path | None = None) -> dict[str, Any]:
         "package_sha256": "See dist/release_manifest.json; the ZIP cannot contain its own final digest.",
         "built_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
+
+
+def expected_package_files() -> dict[str,str]:
+    expected={f"{PLUGIN_DIR_NAME}/{path.relative_to(REPOSITORY_ROOT/PLUGIN_DIR_NAME).as_posix()}":sha256_file(path) for path in (REPOSITORY_ROOT/PLUGIN_DIR_NAME).rglob("*") if should_include(path,REPOSITORY_ROOT/PLUGIN_DIR_NAME) and path.name!=BUILD_INFO_FILE_NAME}
+    specs=REPOSITORY_ROOT/BACKEND_SPECS_DIR_NAME
+    if specs.is_dir():
+        expected.update({f"{PLUGIN_DIR_NAME}/{BACKEND_SPECS_DIR_NAME}/{path.relative_to(specs).as_posix()}":sha256_file(path) for path in specs.rglob("*") if should_include(path,specs)})
+    manifest=REPOSITORY_ROOT/BACKEND_MANIFEST_FILE_NAME
+    if manifest.is_file():expected[f"{PLUGIN_DIR_NAME}/{BACKEND_MANIFEST_FILE_NAME}"]=sha256_file(manifest)
+    return expected
+
+
+def verify_package_source(zip_path: Path,require_clean:bool=True) -> dict[str,Any]:
+    expected=expected_package_files()
+    with zipfile.ZipFile(zip_path) as archive:
+        actual={name:hashlib.sha256(archive.read(name)).hexdigest() for name in archive.namelist() if not name.endswith("/")}
+        info=json.loads(archive.read(f"{PLUGIN_DIR_NAME}/{BUILD_INFO_FILE_NAME}"))
+    generated={f"{PLUGIN_DIR_NAME}/{BUILD_INFO_FILE_NAME}"}
+    missing=sorted(set(expected)-set(actual));unexpected=sorted(set(actual)-set(expected)-generated)
+    mismatches=sorted(name for name in set(expected)&set(actual) if expected[name]!=actual[name])
+    head=_git_value("rev-parse","HEAD")
+    identity_errors=[]
+    if info.get("git_commit")!=head:identity_errors.append("build identity commit does not match HEAD")
+    if require_clean and info.get("git_state")!="clean":identity_errors.append("build identity is not clean")
+    return {"schema":"pyforestscan-package-source-verification-v1","status":"PASS" if not (missing or unexpected or mismatches or identity_errors) else "FAIL","git_head":head,"embedded_commit":info.get("git_commit"),"build_id":info.get("build_id"),"source_manifest_count":len(expected),"zip_manifest_count":len(actual),"missing_files":missing,"unexpected_files":unexpected,"hash_mismatches":mismatches,"identity_errors":identity_errors,"critical_module_hashes":info.get("critical_module_hashes",{})}
+
+
+def assert_clean_repository() -> None:
+    status=_git_status()
+    if status:raise RuntimeError("Release packaging requires a clean Git worktree. Commit changes or pass the explicit developer override.")
+
+
+def _git_status() -> str:
+    try:return subprocess.run(("git","status","--porcelain"),cwd=REPOSITORY_ROOT,check=False,capture_output=True,text=True,timeout=10).stdout.strip()
+    except (OSError,subprocess.SubprocessError):return "unknown"
+
+
+def _tree_hashes(root: Path,exclude:set[str]|None=None) -> dict[str,str]:
+    omitted=exclude or set();return {path.relative_to(root).as_posix():sha256_file(path) for path in root.rglob("*") if path.is_file() and path.name not in omitted and should_include(path,root)}
+
+
+def _manifest_hash(manifest:dict[str,str]) -> str:
+    return hashlib.sha256(json.dumps(manifest,sort_keys=True,separators=(",",":")).encode()).hexdigest()
 
 
 def qgis_plugin_directory(profile: str = "default") -> Path:
@@ -362,17 +445,19 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Explicit QGIS plugins directory used with --sync-local.",
     )
+    parser.add_argument("--allow-dirty",action="store_true",help="Developer-only override for non-release package testing.")
     return parser.parse_args()
 
 
 def main() -> None:
     """Package the plugin and optionally sync it into QGIS."""
     args = parse_args()
-    result = package_plugin(args.output, latest_path=None if args.no_latest else DEFAULT_LATEST_ZIP_PATH)
+    result = package_plugin(args.output, latest_path=None if args.no_latest else DEFAULT_LATEST_ZIP_PATH,require_clean=not args.allow_dirty)
     print(f"Created versioned plugin ZIP: {result.versioned_zip_path}")
     if result.latest_zip_path is not None:
         print(f"Updated latest plugin ZIP: {result.latest_zip_path}")
     print(f"Wrote release manifest: {result.release_manifest_path}")
+    print(f"Wrote source verification: {result.verification_path}")
     print(f"ZIP SHA256: {result.sha256}")
 
     if args.sync_local:

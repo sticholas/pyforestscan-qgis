@@ -7,13 +7,17 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 from scripts.package_plugin import (
     PLUGIN_DIR_NAME,
+    _copy_clean_tree,
+    assert_clean_repository,
     package_plugin,
     read_metadata_version,
     read_version_info,
     versioned_zip_path,
+    verify_package_source,
 )
 from scripts.prepare_github_release import prepare_release, release_notes_path
 from scripts.validate_release import _validate_changelog, validate_release
@@ -71,6 +75,37 @@ class ReleasePipelineTests(unittest.TestCase):
         self.assertIn(f"{PLUGIN_DIR_NAME}/backend_manifest.json", names)
         self.assertFalse(any("/tests/" in name or name.startswith("tests/") for name in names))
         self.assertFalse(any("__pycache__" in name or name.endswith(".pyc") for name in names))
+
+    def test_package_matches_the_complete_included_source_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dist = Path(tmpdir)
+            version = read_version_info().plugin_version
+            result = package_plugin(output_path=versioned_zip_path(version, dist), latest_path=None)
+            verification = verify_package_source(result.versioned_zip_path, require_clean=False)
+
+        self.assertEqual(verification["status"], "PASS")
+        self.assertEqual(verification["missing_files"], [])
+        self.assertEqual(verification["unexpected_files"], [])
+        self.assertEqual(verification["hash_mismatches"], [])
+
+    def test_release_packaging_rejects_a_dirty_repository(self) -> None:
+        with mock.patch("scripts.package_plugin._git_status", return_value=" M source.py"):
+            with self.assertRaisesRegex(RuntimeError, "clean Git worktree"):
+                assert_clean_repository()
+
+    def test_clean_stage_removes_retired_and_deleted_modules(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "source"
+            destination = root / "stage"
+            source.mkdir()
+            destination.mkdir()
+            (source / "current.py").write_text("CURRENT = True\n", encoding="utf-8")
+            (destination / "legacy_module.py").write_text("RETIRED_STAGE_MARKER\n", encoding="utf-8")
+            _copy_clean_tree(source, destination)
+
+            self.assertTrue((destination / "current.py").is_file())
+            self.assertFalse((destination / "legacy_module.py").exists())
 
     def test_changelog_contains_current_version(self) -> None:
         self.assertEqual(_validate_changelog(read_version_info().plugin_version), [])

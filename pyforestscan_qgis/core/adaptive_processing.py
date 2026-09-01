@@ -51,7 +51,11 @@ def derive_adaptive_plan(inputs:AdaptivePlannerInputs)->AdaptiveProcessingPlan:
     shape_scale=min(1.75,1.0/math.sqrt(max(compactness,.25)))
     width=max(lower,min(upper,safe_width*shape_scale));height=width
     estimated_points=int(polygon_area*density);output_cells=int(envelope_area/(inputs.output_resolution**2))
-    fast_safe=estimated_points<=3_000_000 and output_cells<=2_500_000 and estimated_points*bytes_per_point<=memory_budget
+    fast_safe=(
+        estimated_points<=point_limit
+        and output_cells<=raster_cell_limit
+        and estimated_points*bytes_per_point<=memory_budget
+    )
     if fast_safe:
         width=max(inputs.envelope_width,1.0);height=max(inputs.envelope_height,1.0);strategy='small_safe_request';estimated_units=1
     else:
