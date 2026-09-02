@@ -39,12 +39,12 @@ class Phase32UProcessCompositionTests(unittest.TestCase):
         self.assertIn("self.workflow_action_row.addWidget(self.run_button", responsive)
 
     def test_area_utilities_do_not_stretch(self) -> None:
-        self.assertIn("polygon_area_actions.addWidget(self.polygon_refresh_layers_button, 0)", PAGES)
-        self.assertIn("polygon_area_actions.addWidget(self.zoom_polygon_button, 0)", PAGES)
+        self.assertIn("polygon_area_actions.addWidget(self.polygon_refresh_layers_button, 0, 0)", PAGES)
+        self.assertIn("polygon_area_actions.addWidget(self.zoom_polygon_button, 0, 2)", PAGES)
 
     def test_process_sections_are_frameless_and_help_is_bounded(self) -> None:
         self.assertIn('QGroupBox[processSection="true"]', STYLES)
-        self.assertIn("self.setMaximumHeight(54)", PAGES)
+        self.assertIn("self.setMaximumHeight(42)", PAGES)
 
     def test_design_metrics_are_centralized(self) -> None:
         for token in ("PAGE_MARGIN", "SECTION_GAP", "ROW_GAP", "CONTROL_GAP", "HEADING_GAP", "COMPACT_BUTTON_HEIGHT", "FIELD_HEIGHT"):

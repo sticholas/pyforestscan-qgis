@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32V - Compact Process density and map selection
+
+- Made Process configuration sections content-sized and moved all spare vertical height below the workflow.
+- Reduced accumulated page, section, collapsible, and help spacing while retaining the Phase 32U reading order.
+- Made Products two natural checkbox rows at wide widths, collapsed Advanced one genuine row, and Output one inline row.
+- Matched Prerun Check and Process LiDAR geometry and restored natural-width Refresh/Zoom controls.
+- Added **Use Selected Features** for adopting the current QGIS map selection through the existing polygon normalization and dissolve contract without triggering heavy planning.
+
 ## Phase 32U - Process page visual reset
 
 - Replaced the Process page's split workflow columns with one stable top-to-bottom information architecture.

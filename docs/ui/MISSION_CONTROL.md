@@ -6,6 +6,10 @@ Process follows one continuous sequence: choose Mode, LiDAR Data, Processing Are
 
 Advanced Scientific Settings shows only parameters relevant to selected products and is collapsed by default. Refresh and Zoom to Area remain beside the area they affect. Processing progress and the current result appear below the action row, while contextual help remains in the page footer.
 
+The Process configuration is content-sized: Mode and Output use compact inline rows, Products uses only its checkbox rows, and collapsed Advanced occupies one title row. Spare window height appears after the workflow instead of inside configuration sections. Prerun Check and Process LiDAR use equal geometry.
+
+For a loaded QGIS polygon layer, select features with normal map tools and choose **Use Selected Features**. The summary reports selected feature count, area, geometry validity, and CRS. **Refresh** adopts later map-selection changes without running repository preparation; **Zoom to Area** uses the same normalized geometry that Prerun will freeze.
+
 ## Processing Engine setup
 
 Tools & Setup always offers one engine action: **Set Up Processing Engine**, or **Repair / Reload Processing Engine** after setup or when recovery is needed. Ready means the complete managed runtime contract was established for this plugin build. Startup only reads that local state; setup occurs only after confirmation.

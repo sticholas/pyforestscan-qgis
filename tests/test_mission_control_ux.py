@@ -108,7 +108,7 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn("def _set_status_badge(label: QLabel", source)
         self.assertIn('requested not in {"primary", "secondary", "neutral", "danger"}', source)
         self.assertIn("DESIGN_SPACING = design_spacing_tokens()", source)
-        self.assertIn("PAGE_MARGINS = (SPACING_MD, SPACING_XS, SPACING_MD, SPACING_MD)", source)
+        self.assertIn("PAGE_MARGINS = (SPACING_SM, SPACING_XS, SPACING_SM, SPACING_SM)", source)
         self.assertIn("self.content_layout.setContentsMargins(*PAGE_MARGINS)", source)
         self.assertIn("_size_list_to_content(self.file_list, row_height=72)", source)
         self.assertIn("self.backend_details.setMaximumHeight(140)", source)

@@ -30,6 +30,7 @@ from qgis.PyQt.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QLayout,
     QListWidget,
     QMessageBox,
     QListWidgetItem,
@@ -147,15 +148,15 @@ SPACING_SM = DESIGN_SPACING["sm"]
 SPACING_MD = DESIGN_SPACING["md"]
 SPACING_LG = DESIGN_SPACING["lg"]
 SPACING_XL = DESIGN_SPACING["xl"]
-PAGE_MARGINS = (SPACING_MD, SPACING_XS, SPACING_MD, SPACING_MD)
-SECTION_MARGINS = (SPACING_SM, SPACING_SM, SPACING_SM, SPACING_SM)
-SECTION_SPACING = SPACING_SM
+PAGE_MARGINS = (SPACING_SM, SPACING_XS, SPACING_SM, SPACING_SM)
+SECTION_MARGINS = (SPACING_XS, SPACING_XS, SPACING_XS, SPACING_XS)
+SECTION_SPACING = SPACING_XS
 ACTION_ROW_SPACING = SPACING_SM
 PRIMARY_BUTTON_HEIGHT = 36
 SECONDARY_BUTTON_HEIGHT = 30
 PAGE_MARGIN = SPACING_MD
-SECTION_GAP = SPACING_MD
-ROW_GAP = SPACING_SM
+SECTION_GAP = SPACING_SM
+ROW_GAP = SPACING_XS
 CONTROL_GAP = SPACING_SM
 HEADING_GAP = SPACING_XS
 COMPACT_BUTTON_HEIGHT = SECONDARY_BUTTON_HEIGHT
@@ -176,7 +177,7 @@ class ContextHelpBanner(QFrame):
         self.setAccessibleName("Context help")
         self.setFrameShape(QFrame.StyledPanel)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-        self.setMaximumHeight(54)
+        self.setMaximumHeight(42)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(SPACING_SM, SPACING_XS, SPACING_SM, SPACING_XS)
         layout.setSpacing(SPACING_SM)
@@ -217,10 +218,10 @@ class MissionPage(QWidget):
         self.scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.content_widget = QWidget()
         self.content_widget.setObjectName("pageContent")
-        self.content_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
+        self.content_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.content_layout = QVBoxLayout(self.content_widget)
         self.content_layout.setContentsMargins(*PAGE_MARGINS)
-        self.content_layout.setSpacing(SPACING_LG)
+        self.content_layout.setSpacing(SECTION_GAP)
         self.scroll_area.setWidget(self.content_widget)
         self.main_layout.addWidget(self.scroll_area, 1)
         self.help_banner = ContextHelpBanner(self)
@@ -2148,6 +2149,7 @@ class BatchPage(MissionPage):
         """Create the Batch page."""
         super().__init__("Process", parent)
         self.content_layout.setContentsMargins(0, SPACING_XS, 0, SPACING_MD)
+        self.content_layout.setSizeConstraint(QLayout.SetNoConstraint)
         self.adapter = adapter
         self._job_token_factory = None
         self._current_job_token = None
@@ -2421,7 +2423,8 @@ class BatchPage(MissionPage):
         qgis_source_layout = QVBoxLayout(self.polygon_qgis_source_frame)
         qgis_source_layout.setContentsMargins(0, 0, 0, 0)
         qgis_source_layout.setSpacing(SECTION_SPACING)
-        qgis_layer_row = QHBoxLayout()
+        qgis_layer_row = QGridLayout()
+        self.qgis_layer_row = qgis_layer_row
         self.polygon_layer_combo = QComboBox()
         self.polygon_layer_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.polygon_layer_combo.setMinimumContentsLength(12)
@@ -2429,13 +2432,22 @@ class BatchPage(MissionPage):
         self.polygon_layer_combo.currentIndexChanged.connect(self._update_selected_polygon_layer_status)
         self.polygon_refresh_layers_button = QPushButton("Refresh")
         self.polygon_refresh_layers_button.clicked.connect(self.refresh_polygon_layers)
-        self.polygon_refresh_layers_button.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.polygon_refresh_layers_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         _apply_button_role(self.polygon_refresh_layers_button, "neutral")
-        qgis_layer_row.addWidget(self.polygon_layer_combo, 1)
-        qgis_source_layout.addLayout(qgis_layer_row)
-        polygon_area_actions = QHBoxLayout()
+        qgis_layer_row.addWidget(self.polygon_layer_combo, 0, 0)
+        polygon_area_actions = QGridLayout()
+        self.polygon_area_actions = polygon_area_actions
         polygon_area_actions.setSpacing(ACTION_ROW_SPACING)
-        polygon_area_actions.addWidget(self.polygon_refresh_layers_button, 0)
+        polygon_area_actions.addWidget(self.polygon_refresh_layers_button, 0, 0)
+        self.use_selected_features_button = QPushButton("Use Selected Features")
+        self.use_selected_features_button.clicked.connect(self.use_selected_polygon_features)
+        self.use_selected_features_button.setProperty(
+            "contextHelp",
+            "Use the features currently selected with QGIS map-selection tools as the processing area.",
+        )
+        _apply_button_role(self.use_selected_features_button, "secondary")
+        self.use_selected_features_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        polygon_area_actions.addWidget(self.use_selected_features_button, 0, 1)
         self.polygon_layer_mode_combo = QComboBox()
         self.polygon_layer_mode_combo.addItem("Selected features", "selected")
         self.polygon_layer_mode_combo.addItem("Entire layer", "full")
@@ -2445,7 +2457,9 @@ class BatchPage(MissionPage):
         self.polygon_dissolve_check = QCheckBox("Dissolve selection")
         self.polygon_dissolve_check.setChecked(True)
         self.polygon_dissolve_check.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-        qgis_source_layout.addWidget(self.polygon_layer_mode_combo)
+        qgis_layer_row.addWidget(self.polygon_layer_mode_combo, 0, 1)
+        qgis_layer_row.setColumnStretch(0, 1)
+        qgis_source_layout.addLayout(qgis_layer_row)
         self.polygon_dissolve_check.setVisible(False)
         self.polygon_layer_status_label = _details_label("Refresh Polygon Layers to choose a loaded polygon layer.")
         qgis_source_layout.addWidget(self.polygon_layer_status_label)
@@ -2516,14 +2530,15 @@ class BatchPage(MissionPage):
         self.advanced_spatial_section.setVisible(False)
         self.zoom_polygon_button.setText("Zoom to Area")
         self.zoom_polygon_button.setProperty("contextHelp", "Center the QGIS map on the selected processing area.")
-        self.zoom_polygon_button.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-        polygon_area_actions.addWidget(self.zoom_polygon_button, 0)
-        polygon_area_actions.addStretch(1)
+        self.zoom_polygon_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        polygon_area_actions.addWidget(self.zoom_polygon_button, 0, 2)
+        polygon_area_actions.setColumnStretch(3, 1)
         qgis_source_layout.addLayout(polygon_area_actions)
 
         self.output_section, output_layout = self.create_section("Output")
         self.batch_output_section = self.output_section
         output_row = QHBoxLayout()
+        self.output_row = output_row
         self.output_folder_edit = QLineEdit()
         self.output_folder_edit.setPlaceholderText("Choose one output folder for the batch")
         self.output_folder_edit.setProperty("contextHelp", "Choose where final product rasters and provenance will be written. Internal checkpoints remain in the managed job workspace.")
@@ -2757,14 +2772,6 @@ class BatchPage(MissionPage):
         self.advanced_batch_section.setVisible(False)
         self.retain_unmasked_intermediate_check.setText("Retain unmasked processing intermediate")
         self.retain_unmasked_intermediate_check.setProperty("contextHelp", "Keep the larger unmasked intermediate only for expert review or troubleshooting.")
-        settings_layout.addWidget(self.retain_unmasked_intermediate_check)
-        repository_maintenance = QHBoxLayout()
-        repository_maintenance.setSpacing(ACTION_ROW_SPACING)
-        for button in (self.inspect_repository_button, self.update_catalog_button, self.repair_catalog_button):
-            repository_maintenance.addWidget(button)
-        repository_maintenance.addStretch(1)
-        settings_layout.addWidget(_details_label("Repository maintenance"))
-        settings_layout.addLayout(repository_maintenance)
         self.refresh_processing_status_button = QPushButton("Refresh Status")
         self.refresh_processing_status_button.clicked.connect(self.refresh_processing_status)
         self.refresh_processing_status_button.setVisible(False)
@@ -2817,7 +2824,6 @@ class BatchPage(MissionPage):
         self.process_section, process_layout = self.create_section("Process")
         self.run_button = QPushButton(primary_action_label("batch"))
         self.run_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
-        self.run_button.setMaximumWidth(220)
         self.run_button.clicked.connect(self.run_batch)
         self.run_button.setProperty("contextHelp", "Validate the current plan and start processing with automatic preparation, scheduling, checkpointing, and final clipping.")
         _apply_button_role(self.run_button, "primary")
@@ -2921,8 +2927,9 @@ class BatchPage(MissionPage):
         """Compose one top-to-bottom workflow with responsive section internals."""
         self.process_workspace = QWidget(self.content_widget)
         self.process_workspace.setObjectName("responsiveProcessWorkspace")
-        self.process_workspace.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.process_workspace.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.process_workspace_layout = QVBoxLayout(self.process_workspace)
+        self.process_workspace_layout.setSizeConstraint(QLayout.SetNoConstraint)
         self.process_workspace_layout.setContentsMargins(0, 0, 0, 0)
         self.process_workspace_layout.setSpacing(SECTION_GAP)
         self._routine_process_sections = (
@@ -2933,10 +2940,26 @@ class BatchPage(MissionPage):
             _take_layout_widget(self.content_layout, section)
             section.setParent(self.process_workspace)
             section.setProperty("processSection", True)
+            section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
             section.style().unpolish(section)
             section.style().polish(section)
+        compact_headings = (
+            (self.repository_section, "LiDAR Data"),
+            (self.polygon_section, "Processing Area"),
+            (self.products_section, "Products"),
+            (self.process_section, "Processing"),
+        )
+        for section, text in compact_headings:
+            section.setTitle("")
+            heading = QLabel(text)
+            heading.setObjectName("compactSectionHeading")
+            section.layout().insertWidget(0, heading)
         self.mode_section.setTitle("")
         self.prerun_section.setTitle("")
+        self.output_section.setTitle("")
+        output_heading = QLabel("Output")
+        output_heading.setObjectName("compactSectionHeading")
+        self.output_row.insertWidget(0, output_heading, 0)
         _take_layout_widget(self.prerun_section.layout(), self.preflight_button)
         _take_layout_widget(self.process_button_row, self.run_button)
         self.workflow_action_row = QGridLayout()
@@ -2944,10 +2967,14 @@ class BatchPage(MissionPage):
         self.workflow_action_row.setVerticalSpacing(ROW_GAP)
         self.preflight_button.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.run_button.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        equal_height = max(self.preflight_button.sizeHint().height(), self.run_button.sizeHint().height())
+        self.preflight_button.setFixedHeight(equal_height)
+        self.run_button.setFixedHeight(equal_height)
         self.prerun_section.layout().insertLayout(0, self.workflow_action_row)
         self.content_layout.insertWidget(0, self.process_workspace)
         for section in self._routine_process_sections:
             self.process_workspace_layout.addWidget(section)
+        self.process_workspace_layout.addStretch(1)
         self._apply_process_layout(760)
 
     def _apply_process_layout(self, width: int) -> None:
@@ -2964,6 +2991,31 @@ class BatchPage(MissionPage):
             self.workflow_action_row.addWidget(self.run_button, 0, 1)
         self.workflow_action_row.setColumnStretch(0, 1)
         self.workflow_action_row.setColumnStretch(1, 1 if width >= 420 else 0)
+        _take_layout_widget(self.qgis_layer_row, self.polygon_layer_combo)
+        _take_layout_widget(self.qgis_layer_row, self.polygon_layer_mode_combo)
+        if width < 480:
+            self.qgis_layer_row.addWidget(self.polygon_layer_combo, 0, 0)
+            self.qgis_layer_row.addWidget(self.polygon_layer_mode_combo, 1, 0)
+        else:
+            self.qgis_layer_row.addWidget(self.polygon_layer_combo, 0, 0)
+            self.qgis_layer_row.addWidget(self.polygon_layer_mode_combo, 0, 1)
+        self.qgis_layer_row.setColumnStretch(0, 1)
+        for button in (
+            self.polygon_refresh_layers_button,
+            self.use_selected_features_button,
+            self.zoom_polygon_button,
+        ):
+            _take_layout_widget(self.polygon_area_actions, button)
+        if width < 480:
+            self.polygon_area_actions.addWidget(self.polygon_refresh_layers_button, 0, 0)
+            self.polygon_area_actions.addWidget(self.zoom_polygon_button, 0, 1)
+            self.polygon_area_actions.addWidget(self.use_selected_features_button, 1, 0, 1, 2)
+            self.polygon_area_actions.setColumnStretch(2, 1)
+        else:
+            self.polygon_area_actions.addWidget(self.polygon_refresh_layers_button, 0, 0)
+            self.polygon_area_actions.addWidget(self.use_selected_features_button, 0, 1)
+            self.polygon_area_actions.addWidget(self.zoom_polygon_button, 0, 2)
+            self.polygon_area_actions.setColumnStretch(3, 1)
         if columns != self._product_column_count:
             self._product_column_count = columns
             for check in self.product_checks.values():
@@ -3134,7 +3186,10 @@ class BatchPage(MissionPage):
         if hasattr(self, "polygon_summary_label"):
             area_text = f"{area / 10000:.3g} ha" if area is not None else "Not selected"
             geometry_text = "Valid Polygon" if geometry_signature else "Not selected"
-            self.polygon_summary_label.setText(f"Area: {area_text}   Geometry: {geometry_text}   CRS: {crs or 'Unknown'}")
+            selection_text = f"{feature_count} feature{'s' if feature_count != 1 else ''}" if feature_count else "Not selected"
+            self.polygon_summary_label.setText(
+                f"Selection: {selection_text}   Area: {area_text}   Geometry: {geometry_text}   CRS: {crs or 'Unknown'}"
+            )
         products = tuple(PRODUCT_LABELS[p] for p, check in self.product_checks.items() if check.isChecked())
         signature = workflow_input_signature({
             "mode": mode, "repository": repository, "polygon_source": source,
@@ -3218,6 +3273,8 @@ class BatchPage(MissionPage):
             _set_form_field_visible(self.product_settings_form, self.rumple_min_height_spin, ProductType.RUMPLE in selected)
             _set_form_field_visible(self.product_settings_form, self.point_density_per_area_check, ProductType.POINT_DENSITY in selected)
             _set_form_field_visible(self.product_settings_form, self.chm_interpolation_combo, ProductType.CHM in selected)
+            if self.advanced_product_settings_group.isChecked():
+                _refresh_layout_geometry(self.advanced_product_settings_group)
         visibility = batch_control_visibility(
             profile=str(self.processing_profile_combo.currentData() or "recommended"),
             execution_mode=str(self.execution_mode_combo.currentData() or SEQUENTIAL_MODE),
@@ -3821,10 +3878,26 @@ class BatchPage(MissionPage):
         item = self.polygon_layer_combo.currentData()
         if item is None:
             self.polygon_layer_status_label.setText("No polygon layer selected.")
+            self.polygon_layer_status_label.setVisible(True)
+            self.use_selected_features_button.setEnabled(False)
             return
         selected = selected_feature_count_text(getattr(item, "selected_feature_count", 0))
         guidance = "Use Selected Features is ready." if getattr(item, "selected_feature_count", 0) else "No selected features; use the entire layer or select polygon features on the map."
         self.polygon_layer_status_label.setText(f"{item.name}: {selected}; CRS {item.crs or 'unknown'}. {guidance}")
+        self.polygon_layer_status_label.setVisible(not bool(getattr(item, "selected_feature_count", 0)))
+        self.use_selected_features_button.setEnabled(bool(getattr(item, "selected_feature_count", 0)))
+
+    def use_selected_polygon_features(self) -> None:
+        """Adopt the current lightweight QGIS feature selection without planning."""
+        self.refresh_polygon_layers()
+        item = self.polygon_layer_combo.currentData()
+        if int(getattr(item, "selected_feature_count", 0) or 0):
+            self.polygon_layer_mode_combo.setCurrentIndex(
+                self.polygon_layer_mode_combo.findData("selected")
+            )
+            self._on_session_input_changed()
+            self._publish_session_state()
+        self._update_selected_polygon_layer_status()
 
     def _update_polygon_source_visibility(self, *_args: object) -> None:
         if not hasattr(self, "polygon_source_combo"):
@@ -6036,13 +6109,14 @@ def _collapsible_section(parent: QVBoxLayout, title: str, checked: bool = False)
     group = QGroupBox(title)
     group.setCheckable(True)
     group.setChecked(checked)
-    group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+    group.setProperty("compactCollapsible", True)
+    group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
     outer = QVBoxLayout(group)
-    outer.setContentsMargins(*SECTION_MARGINS)
+    outer.setContentsMargins(SPACING_XS, SPACING_XS, SPACING_XS, SPACING_XS)
     outer.setSpacing(0)
     content = QWidget(group)
     content.setObjectName("collapsibleContent")
-    content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+    content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
     layout = QVBoxLayout(content)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(SECTION_SPACING)
@@ -6061,6 +6135,7 @@ def _wire_collapsible_group(group: QGroupBox) -> None:
 def _set_collapsible_content_visible(group: QGroupBox, visible: bool) -> None:
     content = getattr(group, "_content_widget", None)
     if isinstance(content, QWidget):
+        content.setMaximumHeight(16777215 if visible else 0)
         content.setVisible(visible)
     _refresh_layout_geometry(group)
 

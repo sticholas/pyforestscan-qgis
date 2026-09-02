@@ -6,6 +6,10 @@ Process uses one top-to-bottom information architecture. Major workflow sections
 
 The shared desktop-density metrics are `PAGE_MARGIN`, `SECTION_GAP`, `ROW_GAP`, `CONTROL_GAP`, `HEADING_GAP`, `COMPACT_BUTTON_HEIGHT`, and `FIELD_HEIGHT`. Routine Process sections use headings and spacing rather than card borders. Utility commands use natural width; primary execution actions may expand only when the layout requires it.
 
+Configuration sections must hug their current contents. Use vertical `Fixed`, `Maximum`, or `Preferred` according to the control; do not use `Expanding` for configuration merely because the viewport is tall. Put remaining stretch after the configuration workflow or in a genuine progress/results region. Hidden collapsible bodies have zero height, and their size hint reflects currently visible controls rather than a worst-case parameter set.
+
+Process-page spacing targets are 4-6 px outer/row/heading gaps and 4-8 px section separation after DPI-aware token mapping. Repeated 10-20 px vertical margins are not permitted. At normal width, Output is one row and Prerun/Process actions have identical geometry.
+
 At narrow widths, Products uses two columns and the Prerun/Process actions may stack. At wide widths, Products uses four columns and Advanced settings use inline label/control rows. Width changes must never reorder Mode, LiDAR Data, Processing Area, Products, Advanced, Output, and execution actions.
 
 Phase 29A establishes adaptive visibility as an implementation contract: empty collections collapse to one-line states, populated lists use bounded internal scrolling, form rows disappear when their controlling mode is inactive, and responsive status strips reduce detail before they wrap or clip.
