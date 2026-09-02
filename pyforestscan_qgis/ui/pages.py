@@ -2414,8 +2414,10 @@ class BatchPage(MissionPage):
         self.polygon_refresh_layers_button.clicked.connect(self.refresh_polygon_layers)
         _apply_button_role(self.polygon_refresh_layers_button, "neutral")
         qgis_layer_row.addWidget(self.polygon_layer_combo, 1)
-        qgis_layer_row.addWidget(self.polygon_refresh_layers_button, 0)
         qgis_source_layout.addLayout(qgis_layer_row)
+        polygon_area_actions = QHBoxLayout()
+        polygon_area_actions.setSpacing(ACTION_ROW_SPACING)
+        polygon_area_actions.addWidget(self.polygon_refresh_layers_button, 0)
         self.polygon_layer_mode_combo = QComboBox()
         self.polygon_layer_mode_combo.addItem("Selected features", "selected")
         self.polygon_layer_mode_combo.addItem("Entire layer", "full")
@@ -2494,7 +2496,9 @@ class BatchPage(MissionPage):
         self.advanced_spatial_section.setVisible(False)
         self.zoom_polygon_button.setText("Zoom to Area")
         self.zoom_polygon_button.setProperty("contextHelp", "Center the QGIS map on the selected processing area.")
-        qgis_layer_row.addWidget(self.zoom_polygon_button, 0)
+        polygon_area_actions.addWidget(self.zoom_polygon_button, 0)
+        polygon_area_actions.addStretch(1)
+        qgis_source_layout.addLayout(polygon_area_actions)
 
         self.output_section, output_layout = self.create_section("Output Folder")
         self.batch_output_section = self.output_section

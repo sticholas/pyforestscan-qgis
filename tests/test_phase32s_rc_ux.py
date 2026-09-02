@@ -21,8 +21,8 @@ class Phase32SRcUxTests(unittest.TestCase):
         self.assertIn("Help  |  ", PAGES)
 
     def test_polygon_primary_controls_are_compact(self) -> None:
-        self.assertIn("qgis_layer_row.addWidget(self.polygon_refresh_layers_button", BATCH)
-        self.assertIn("qgis_layer_row.addWidget(self.zoom_polygon_button", BATCH)
+        self.assertIn("polygon_area_actions.addWidget(self.polygon_refresh_layers_button", BATCH)
+        self.assertIn("polygon_area_actions.addWidget(self.zoom_polygon_button", BATCH)
         self.assertIn("self.polygon_dissolve_check.setVisible(False)", BATCH)
         self.assertNotIn("polygon_layout.addWidget(self.zoom_polygon_button", BATCH)
 
