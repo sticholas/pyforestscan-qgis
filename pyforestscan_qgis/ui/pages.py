@@ -83,7 +83,7 @@ from ..core.dependency_check import CheckStatus, EnvironmentReport
 from ..core.exceptions import AdapterError, ProcessingError
 from ..core.ept_repository import incorrect_ept_catalog_detected, repair_ept_catalog
 from ..core.ept_subset import build_ept_subset_request, compact_ept_subset_summary
-from ..core.guided_polygon_workflow import PROCESSING_PROFILES, guided_review_summary, guided_step_indicator, profile_by_key
+from ..core.guided_polygon_workflow import PROCESSING_PROFILES, guided_review_summary, profile_by_key
 from ..core.polygon_source import POLYGON_VECTOR_FILE_FILTER, PolygonSource, selected_feature_count_text
 from ..core.polygon_normalization import normalize_polygon_source
 from ..core.lidar_catalog_jobs import CatalogJobRunner, CatalogJobSpec, CatalogJobStatus, latest_catalog_job_state
@@ -157,6 +157,29 @@ TECHNICAL_DETAIL_HEIGHT = 72
 COMPACT_VISIBLE_ROWS = 6
 
 
+class ContextHelpBanner(QFrame):
+    """Shared, theme-aware explanation surface for Mission Control controls."""
+
+    DEFAULT_TEXT = "Hover over or focus a control for more information."
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("contextHelpBanner")
+        self.setAccessibleName("Context help")
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(SPACING_SM, SPACING_XS, SPACING_SM, SPACING_XS)
+        layout.setSpacing(SPACING_SM)
+        self.label = QLabel(f"Help  |  {self.DEFAULT_TEXT}")
+        self.label.setWordWrap(True)
+        self.label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        layout.addWidget(self.label, 1)
+
+    def set_help(self, text: str | None = None) -> None:
+        self.label.setText(f"Help  |  {(text or self.DEFAULT_TEXT).strip()}")
+
+
 class MissionPage(QWidget):
     """Base class for Mission Control pages with one full-page scroll region."""
 
@@ -191,13 +214,7 @@ class MissionPage(QWidget):
         self.content_layout.setSpacing(SPACING_LG)
         self.scroll_area.setWidget(self.content_widget)
         self.main_layout.addWidget(self.scroll_area, 1)
-        self.help_banner = QLabel("Hover over or focus a control for more information.")
-        self.help_banner.setObjectName("contextHelpBanner")
-        self.help_banner.setAccessibleName("Context help")
-        self.help_banner.setWordWrap(True)
-        self.help_banner.setMinimumHeight(38)
-        self.help_banner.setMaximumHeight(68)
-        self.help_banner.setMargin(SPACING_SM)
+        self.help_banner = ContextHelpBanner(self)
         self.main_layout.addWidget(self.help_banner)
         QTimer.singleShot(0, self._install_context_help)
 
@@ -237,9 +254,9 @@ class MissionPage(QWidget):
         if event.type() in {QEvent.Enter, QEvent.FocusIn}:
             text = str(watched.property("resolvedContextHelp") or "").strip()
             if text:
-                self.help_banner.setText(text)
+                self.help_banner.set_help(text)
         elif event.type() in {QEvent.Leave, QEvent.FocusOut} and not self.focusWidget():
-            self.help_banner.setText("Hover over or focus a control for more information.")
+            self.help_banner.set_help()
         return super().eventFilter(watched, event)
 
     def set_next_step(self, message: str, button_label: str, enabled: bool = True) -> None:
@@ -2157,7 +2174,11 @@ class BatchPage(MissionPage):
         self.batch_mode_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.batch_mode_combo.setToolTip("Choose LiDAR Folder Selection or Polygon Selection.")
         self.batch_mode_combo.currentIndexChanged.connect(self._update_batch_mode_visibility)
-        mode_layout.addWidget(self.batch_mode_combo)
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(ACTION_ROW_SPACING)
+        mode_row.addWidget(QLabel("Mode"))
+        mode_row.addWidget(self.batch_mode_combo, 1)
+        mode_layout.addLayout(mode_row)
         self.batch_mode_combo.setAccessibleName("Processing mode")
         self.batch_mode_combo.setToolTip("Choose folder processing or processing limited to a polygon.")
         self.batch_mode_summary_label = _details_label("Process LiDAR files found in a selected folder.")
@@ -2393,8 +2414,8 @@ class BatchPage(MissionPage):
         self.polygon_refresh_layers_button.clicked.connect(self.refresh_polygon_layers)
         _apply_button_role(self.polygon_refresh_layers_button, "neutral")
         qgis_layer_row.addWidget(self.polygon_layer_combo, 1)
+        qgis_layer_row.addWidget(self.polygon_refresh_layers_button, 0)
         qgis_source_layout.addLayout(qgis_layer_row)
-        qgis_source_layout.addWidget(self.polygon_refresh_layers_button, 0, Qt.AlignLeft)
         self.polygon_layer_mode_combo = QComboBox()
         self.polygon_layer_mode_combo.addItem("Selected features", "selected")
         self.polygon_layer_mode_combo.addItem("Entire layer", "full")
@@ -2403,7 +2424,7 @@ class BatchPage(MissionPage):
         self.polygon_dissolve_check.setChecked(True)
         self.polygon_dissolve_check.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         qgis_source_layout.addWidget(self.polygon_layer_mode_combo)
-        qgis_source_layout.addWidget(self.polygon_dissolve_check)
+        self.polygon_dissolve_check.setVisible(False)
         self.polygon_layer_status_label = _details_label("Refresh Polygon Layers to choose a loaded polygon layer.")
         qgis_source_layout.addWidget(self.polygon_layer_status_label)
         self.polygon_layer_status_label.setVisible(False)
@@ -2473,7 +2494,7 @@ class BatchPage(MissionPage):
         self.advanced_spatial_section.setVisible(False)
         self.zoom_polygon_button.setText("Zoom to Area")
         self.zoom_polygon_button.setProperty("contextHelp", "Center the QGIS map on the selected processing area.")
-        polygon_layout.addWidget(self.zoom_polygon_button, 0, Qt.AlignLeft)
+        qgis_layer_row.addWidget(self.zoom_polygon_button, 0)
 
         self.output_section, output_layout = self.create_section("Output Folder")
         self.batch_output_section = self.output_section
@@ -3916,7 +3937,6 @@ class BatchPage(MissionPage):
         self.set_spatial_intervention(report.blockers)
         self.preflight_text.setPlainText(self._polygon_guided_review_text(report))
         self.preflight_summary_label.setText("Ready to process." if not report.blockers else f"{len(report.blockers)} item(s) need attention.")
-        self.polygon_guided_step_label.setText(guided_step_indicator("review"))
         self._update_run_button_enabled()
         self._refresh_footprint_label()
         self._publish_session_state(plan_status="ready")

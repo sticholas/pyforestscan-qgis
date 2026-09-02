@@ -1,5 +1,12 @@
 # Changelog
 
+## Phase 32S - RC UX defect cleanup
+
+- Removed the stale polygon guided-step callback that could raise an `AttributeError` after a successful Prerun Check.
+- Compacted polygon mode, processing-area actions, and output controls while keeping repository and finalization engineering controls outside the routine path.
+- Made selection dissolve automatic for the guided polygon workflow and retained intermediate output as an expert-only diagnostic option.
+- Added one shared, theme-aware context-help banner with mouse and keyboard focus support across Mission Control pages.
+
 ## Phase 32R - Release-candidate UX consolidation
 
 - Reduced Polygon mode to the user decisions that define a run: LiDAR data,

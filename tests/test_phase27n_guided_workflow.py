@@ -24,7 +24,8 @@ class Phase27NGuidedWorkflowTests(unittest.TestCase):
 
     def test_batch_page_exposes_guided_actions_and_advanced_profile(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
-        self.assertIn("guided_step_indicator", source)
+        self.assertIn("guided_review_summary", source)
+        self.assertNotIn("polygon_guided_step_label", source)
         self.assertIn("Processing profile", source)
         self.assertIn("Show Selected Files on Map", source)
         self.assertIn("Zoom to Repository Extent", source)

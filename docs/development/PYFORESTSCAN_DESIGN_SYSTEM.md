@@ -266,3 +266,6 @@ Use content-sized group boxes and maximum heights for expanded technical reports
 ## Phase 28H Adaptive Scale and Compact Workspace
 
 Compact dock layouts target 420, 500, 620, and 800 px. SmartStatus provides one concise headline plus context; current-result actions appear in the same Process workspace.
+# Phase 32S RC guidance
+
+Mission Control uses one shared, theme-aware context-help banner. Visible controls register concise consequence-focused help, available through both pointer hover and keyboard focus. Routine polygon processing keeps mode, source, area, products, output, readiness, and execution prominent; repository maintenance and temporary-intermediate controls remain in advanced or setup surfaces.
