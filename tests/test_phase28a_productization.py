@@ -29,15 +29,16 @@ class Phase28AProductizationTests(unittest.TestCase):
         self.assertIn('self._navigate_to("Process")', self.mission)
 
     def test_simplified_product_language_exists(self):
-        for label in ("LiDAR Folder Selection", "Polygon Selection", "Run Detailed Check", "Process LiDAR"):
+        for label in ("LiDAR Folder Selection", "Polygon Selection", "Prerun Check", "Process LiDAR"):
             self.assertIn(label, self.pages)
 
-    def test_repository_and_spatial_tools_are_collapsed(self):
-        self.assertIn('_collapsible_section(polygon_layout, "Repository Tools", checked=False)', self.pages)
-        self.assertIn('_collapsible_section(polygon_layout, "Map and Spatial Tools", checked=False)', self.pages)
+    def test_repository_and_spatial_tools_are_removed_from_normal_flow(self):
+        self.assertIn("self.advanced_repository_section.setVisible(False)", self.pages)
+        self.assertIn("self.advanced_spatial_section.setVisible(False)", self.pages)
+        self.assertIn('self.zoom_polygon_button.setText("Zoom to Area")', self.pages)
 
-    def test_required_primary_repository_controls_remain(self):
-        for label in ("Browse Repository", "Repository needs attention", "Build Index", "Update Index"):
+    def test_repository_maintenance_controls_remain_available(self):
+        for label in ('QPushButton("Browse")', "Inspect Repository", "Update Index", "Repair Catalog"):
             self.assertIn(label, self.pages)
 
     def test_results_prioritize_loading(self):

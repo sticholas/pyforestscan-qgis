@@ -1,8 +1,27 @@
 # Known Limitations
 
+## Phase 32R release-candidate gate
+
+- Network EPT retains two workers as the measured safe baseline. A third worker
+  is probationary only after stable completed regions, healthy memory, and stable
+  EPT latency. Any failure or degradation returns that job to two without repeated
+  oscillation. Network workers four and five are not a release assumption.
+- The final clean-package product/cancel/pause/resume matrix and a packaged
+  medium/large Polygon smoke remain RC blockers. The plugin version therefore
+  remains `0.1.0-beta.3`.
+- The managed installer still needs a release-pinned Micromamba artifact digest
+  before public distribution.
+- Point-cloud viewing/editing and candidate feature extraction are deferred and
+  are not release blockers.
+
+See the [feature matrix](RELEASE_CANDIDATE_FEATURE_MATRIX.md) and
+[Phase 32R blocker audit](PHASE_32R_RELEASE_BLOCKERS.md).
+
 ## Phase 32Q benchmark gate
 
-- Adaptive EPT execution is capped at five machine-wide isolated workers and at the measured two-worker safety ceiling for network/remote sources.
+- Adaptive EPT execution is capped at five machine-wide isolated workers. The
+  production network baseline remains two, with only the Phase 32R probationary
+  worker-3 policy described above.
 - The full 109-region rerun remains pending. The N=1 through N=5 representative network benchmark is complete, but no full-fixture Phase 32Q speedup is claimed.
 - CPU, disk, and network telemetry are represented indirectly by worker timing, RSS, and EPT latency; operating-system-wide throughput sampling remains diagnostic follow-up work.
 

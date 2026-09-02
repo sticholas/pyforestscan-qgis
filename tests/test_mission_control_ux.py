@@ -326,7 +326,8 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn("Backend installer: available on Windows beta builds", source)
         self.assertIn("def set_workflow_indicator", source)
         self.assertIn("def set_next_step", source)
-        self.assertIn("workflowStepIndicator", source)
+        self.assertNotIn('setObjectName("workflowStepIndicator")', source)
+        self.assertIn('setObjectName("contextHelpBanner")', source)
 
 
     def test_refresh_controls_are_available_for_ui_recovery(self) -> None:

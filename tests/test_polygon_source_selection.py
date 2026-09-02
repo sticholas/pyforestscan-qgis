@@ -78,9 +78,9 @@ class PolygonSourceUiStaticTests(unittest.TestCase):
         self.assertIn("QGIS polygon layer", source)
         self.assertIn("Vector file", source)
         self.assertIn("Technical WKT", source)
-        self.assertIn("Refresh Polygon Layers", source)
-        self.assertIn("Use Selected Features", source)
-        self.assertIn("Use Entire Layer", source)
+        self.assertIn('QPushButton("Refresh")', source)
+        self.assertIn('addItem("Selected features", "selected")', source)
+        self.assertIn('addItem("Entire layer", "full")', source)
         self.assertIn("run_polygon_batch_preflight", source)
 
     def test_guided_mode_no_longer_requires_wkt(self) -> None:

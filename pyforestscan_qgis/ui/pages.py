@@ -16,7 +16,7 @@ from html import escape
 from pathlib import Path
 from typing import Callable
 
-from qgis.PyQt.QtCore import QObject, QSize, Qt, QThread, QTimer, QUrl, pyqtSignal
+from qgis.PyQt.QtCore import QEvent, QObject, QSize, Qt, QThread, QTimer, QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
     QApplication,
@@ -174,11 +174,6 @@ class MissionPage(QWidget):
         heading.setObjectName("pageHeading")
         heading.setWordWrap(True)
         self.main_layout.addWidget(heading)
-        self.workflow_indicator_label = QLabel("")
-        self.workflow_indicator_label.setObjectName("workflowStepIndicator")
-        self.workflow_indicator_label.setWordWrap(True)
-        self.workflow_indicator_label.setVisible(False)
-        self.main_layout.addWidget(self.workflow_indicator_label)
         self.next_step_section: QGroupBox | None = None
         self.next_step_label: QLabel | None = None
         self.next_step_button: QPushButton | None = None
@@ -196,6 +191,15 @@ class MissionPage(QWidget):
         self.content_layout.setSpacing(SPACING_LG)
         self.scroll_area.setWidget(self.content_widget)
         self.main_layout.addWidget(self.scroll_area, 1)
+        self.help_banner = QLabel("Hover over or focus a control for more information.")
+        self.help_banner.setObjectName("contextHelpBanner")
+        self.help_banner.setAccessibleName("Context help")
+        self.help_banner.setWordWrap(True)
+        self.help_banner.setMinimumHeight(38)
+        self.help_banner.setMaximumHeight(68)
+        self.help_banner.setMargin(SPACING_SM)
+        self.main_layout.addWidget(self.help_banner)
+        QTimer.singleShot(0, self._install_context_help)
 
     def create_section(self, title: str, index: int | None = None) -> tuple[QGroupBox, QVBoxLayout]:
         """Create a durable section widget and its owned layout."""
@@ -216,9 +220,27 @@ class MissionPage(QWidget):
         return layout
 
     def set_workflow_indicator(self, text: str | None) -> None:
-        """Show or hide subtle completed/current/upcoming workflow context."""
-        self.workflow_indicator_label.setText(text or "")
-        self.workflow_indicator_label.setVisible(bool(text))
+        """Retain the compatibility hook after removing the wizard-like strip."""
+
+    def _install_context_help(self) -> None:
+        """Use existing accessible text and explicit help without adding icon clutter."""
+        for widget in self.findChildren(QWidget):
+            if widget is self.help_banner:
+                continue
+            text = str(widget.property("contextHelp") or widget.toolTip() or widget.accessibleName() or "").strip()
+            if text:
+                widget.setProperty("resolvedContextHelp", text)
+                widget.installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt API
+        """Project mouse and keyboard context into one stable help banner."""
+        if event.type() in {QEvent.Enter, QEvent.FocusIn}:
+            text = str(watched.property("resolvedContextHelp") or "").strip()
+            if text:
+                self.help_banner.setText(text)
+        elif event.type() in {QEvent.Leave, QEvent.FocusOut} and not self.focusWidget():
+            self.help_banner.setText("Hover over or focus a control for more information.")
+        return super().eventFilter(watched, event)
 
     def set_next_step(self, message: str, button_label: str, enabled: bool = True) -> None:
         """Show one concise next-step recommendation at the bottom of the page."""
@@ -2098,6 +2120,7 @@ class BatchPage(MissionPage):
     def __init__(self, adapter: PyForestScanAdapter, iface: object | None = None, parent: QWidget | None = None) -> None:
         """Create the Batch page."""
         super().__init__("Process", parent)
+        self.content_layout.setContentsMargins(0, SPACING_XS, 0, SPACING_MD)
         self.adapter = adapter
         self._job_token_factory = None
         self._current_job_token = None
@@ -2129,8 +2152,10 @@ class BatchPage(MissionPage):
 
         self.mode_section, mode_layout = self.create_section("Processing Mode")
         self.batch_mode_combo = QComboBox()
-        self.batch_mode_combo.addItem("LiDAR Folder Selection", "standard")
-        self.batch_mode_combo.addItem("Polygon Selection", "polygon")
+        self.batch_mode_combo.addItem("Folder", "standard")
+        self.batch_mode_combo.addItem("Polygon Area", "polygon")
+        self.batch_mode_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.batch_mode_combo.setToolTip("Choose LiDAR Folder Selection or Polygon Selection.")
         self.batch_mode_combo.currentIndexChanged.connect(self._update_batch_mode_visibility)
         mode_layout.addWidget(self.batch_mode_combo)
         self.batch_mode_combo.setAccessibleName("Processing mode")
@@ -2139,6 +2164,8 @@ class BatchPage(MissionPage):
         mode_layout.addWidget(self.batch_mode_summary_label)
         self.smart_status_label = _body_label("Needs attention: select LiDAR data, processing area, product, and output.")
         mode_layout.addWidget(self.smart_status_label)
+        self.batch_mode_summary_label.setVisible(False)
+        self.smart_status_label.setVisible(False)
 
         self.repository_section, repository_layout = self.create_section("LiDAR Data")
         self.standard_batch_section = self.repository_section
@@ -2208,15 +2235,15 @@ class BatchPage(MissionPage):
 
         self.polygon_section, polygon_layout = self.create_section("Processing Area")
         self.polygon_batch_section = self.polygon_section
-        self.polygon_guided_step_label = _body_label(guided_step_indicator("data"))
-        polygon_layout.addWidget(self.polygon_guided_step_label)
-        polygon_layout.addWidget(_body_label("Choose LiDAR data and area. Mission Control resolves repository identity once, then validates spatial coverage before Run."))
         polygon_form = QFormLayout()
         polygon_form.setVerticalSpacing(SECTION_SPACING)
+        polygon_form.setRowWrapPolicy(QFormLayout.WrapAllRows)
         self.polygon_lidar_folder_edit = QLineEdit()
         self.polygon_lidar_folder_edit.setPlaceholderText("LiDAR repository containing LAS, LAZ, COPC, or local ept.json sources")
+        self.polygon_lidar_folder_edit.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.polygon_lidar_folder_edit.setProperty("contextHelp", "Choose the LiDAR source. Repository recognition, metadata preparation, and spatial indexing are automatic when needed.")
         polygon_folder_row = QHBoxLayout()
-        polygon_folder_browse = QPushButton("Browse Repository")
+        polygon_folder_browse = QPushButton("Browse")
         polygon_folder_browse.clicked.connect(self.browse_polygon_lidar_folder)
         self.polygon_lidar_folder_edit.editingFinished.connect(self.use_polygon_repository_path)
         polygon_folder_row.addWidget(self.polygon_lidar_folder_edit, 1)
@@ -2225,20 +2252,19 @@ class BatchPage(MissionPage):
         self.polygon_source_combo.addItem("QGIS polygon layer", "qgis")
         self.polygon_source_combo.addItem("Vector file", "file")
         self.polygon_source_combo.addItem("Technical WKT", "wkt")
+        self.polygon_source_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.polygon_source_combo.currentIndexChanged.connect(self._update_polygon_source_visibility)
+        self.polygon_source_combo.setProperty("contextHelp", "Choose a loaded QGIS polygon layer or a vector file that defines the processing area.")
         lidar_repository_row = QHBoxLayout()
         lidar_repository_row.addLayout(polygon_folder_row, 1)
-        lidar_repository_row.addWidget(info_badge("batch.lidar_repository", parent=self), 0)
-        polygon_form.addRow("LiDAR Repository", lidar_repository_row)
-        polygon_source_row = QHBoxLayout()
-        polygon_source_row.addWidget(self.polygon_source_combo, 1)
-        polygon_source_row.addWidget(info_badge("batch.polygon", parent=self), 0)
-        polygon_form.addRow("Polygon source", polygon_source_row)
+        polygon_form.addRow("LiDAR Data", lidar_repository_row)
+        polygon_form.addRow("Polygon source", self.polygon_source_combo)
         polygon_layout.addLayout(polygon_form)
         self.polygon_catalog_status_label = _details_label("Status: choose LiDAR data.")
         polygon_layout.addWidget(self.polygon_catalog_status_label)
         self.polygon_summary_label = _body_label("Area: Not selected   Geometry: Not selected   CRS: Unknown")
         self.polygon_summary_label.setAccessibleName("Processing area summary")
+        self.polygon_summary_label.setProperty("contextHelp", "The Processing Engine automatically aligns coordinate systems, prepares bounded inputs, subdivides large areas, and clips final outputs.")
         polygon_layout.addWidget(self.polygon_summary_label)
         strategy_form = QFormLayout()
         strategy_form.setVerticalSpacing(SECTION_SPACING)
@@ -2284,6 +2310,7 @@ class BatchPage(MissionPage):
         strategy_actions.addWidget(self.build_relevant_index_button)
         strategy_actions.addStretch(1)
         polygon_layout.addLayout(strategy_actions)
+        self.build_relevant_index_button.setVisible(False)
         self.advanced_repository_section, advanced_repository = _collapsible_section(polygon_layout, "Repository Tools", checked=False)
         advanced_repository.addWidget(_details_label("Automatic setup is recommended. Expand only to diagnose, repair, resume, or override repository preparation."))
         advanced_repository.addLayout(strategy_form)
@@ -2352,6 +2379,7 @@ class BatchPage(MissionPage):
         catalog_actions.addStretch(1)
         advanced_repository.addLayout(catalog_actions)
         _wire_collapsible_group(self.advanced_repository_section)
+        self.advanced_repository_section.setVisible(False)
 
         self.polygon_qgis_source_frame = QFrame()
         qgis_source_layout = QVBoxLayout(self.polygon_qgis_source_frame)
@@ -2359,25 +2387,26 @@ class BatchPage(MissionPage):
         qgis_source_layout.setSpacing(SECTION_SPACING)
         qgis_layer_row = QHBoxLayout()
         self.polygon_layer_combo = QComboBox()
+        self.polygon_layer_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.polygon_layer_combo.currentIndexChanged.connect(self._update_selected_polygon_layer_status)
-        self.polygon_refresh_layers_button = QPushButton("Refresh Polygon Layers")
+        self.polygon_refresh_layers_button = QPushButton("Refresh")
         self.polygon_refresh_layers_button.clicked.connect(self.refresh_polygon_layers)
         _apply_button_role(self.polygon_refresh_layers_button, "neutral")
         qgis_layer_row.addWidget(self.polygon_layer_combo, 1)
-        qgis_layer_row.addWidget(self.polygon_refresh_layers_button, 0)
         qgis_source_layout.addLayout(qgis_layer_row)
-        qgis_mode_row = QHBoxLayout()
+        qgis_source_layout.addWidget(self.polygon_refresh_layers_button, 0, Qt.AlignLeft)
         self.polygon_layer_mode_combo = QComboBox()
-        self.polygon_layer_mode_combo.addItem("Use Selected Features", "selected")
-        self.polygon_layer_mode_combo.addItem("Use Entire Layer", "full")
-        self.polygon_dissolve_check = QCheckBox("Dissolve multiple features")
+        self.polygon_layer_mode_combo.addItem("Selected features", "selected")
+        self.polygon_layer_mode_combo.addItem("Entire layer", "full")
+        self.polygon_layer_mode_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.polygon_dissolve_check = QCheckBox("Dissolve selection")
         self.polygon_dissolve_check.setChecked(True)
-        qgis_mode_row.addWidget(self.polygon_layer_mode_combo, 0)
-        qgis_mode_row.addWidget(self.polygon_dissolve_check, 0)
-        qgis_mode_row.addStretch(1)
-        qgis_source_layout.addLayout(qgis_mode_row)
+        self.polygon_dissolve_check.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        qgis_source_layout.addWidget(self.polygon_layer_mode_combo)
+        qgis_source_layout.addWidget(self.polygon_dissolve_check)
         self.polygon_layer_status_label = _details_label("Refresh Polygon Layers to choose a loaded polygon layer.")
         qgis_source_layout.addWidget(self.polygon_layer_status_label)
+        self.polygon_layer_status_label.setVisible(False)
         polygon_layout.addWidget(self.polygon_qgis_source_frame)
 
         self.polygon_vector_source_frame = QFrame()
@@ -2398,6 +2427,7 @@ class BatchPage(MissionPage):
         vector_source_layout.addWidget(self.polygon_vector_layer_combo)
         self.polygon_vector_status_label = _details_label("Guided default: all polygon features are dissolved into one processing geometry.")
         vector_source_layout.addWidget(self.polygon_vector_status_label)
+        self.polygon_vector_status_label.setVisible(False)
         polygon_layout.addWidget(self.polygon_vector_source_frame)
 
         self.polygon_wkt_group, polygon_wkt_layout = _collapsible_section(polygon_layout, "Advanced WKT", checked=False)
@@ -2440,12 +2470,17 @@ class BatchPage(MissionPage):
         advanced_spatial.addWidget(_details_label("Use these map previews and recovery controls only when reviewing coverage or coordinate-system alignment."))
         advanced_spatial.addLayout(polygon_actions)
         _wire_collapsible_group(self.advanced_spatial_section)
+        self.advanced_spatial_section.setVisible(False)
+        self.zoom_polygon_button.setText("Zoom to Area")
+        self.zoom_polygon_button.setProperty("contextHelp", "Center the QGIS map on the selected processing area.")
+        polygon_layout.addWidget(self.zoom_polygon_button, 0, Qt.AlignLeft)
 
         self.output_section, output_layout = self.create_section("Output Folder")
         self.batch_output_section = self.output_section
         output_row = QHBoxLayout()
         self.output_folder_edit = QLineEdit()
         self.output_folder_edit.setPlaceholderText("Choose one output folder for the batch")
+        self.output_folder_edit.setProperty("contextHelp", "Choose where final product rasters and provenance will be written. Internal checkpoints remain in the managed job workspace.")
         output_browse = QPushButton("Browse")
         output_browse.clicked.connect(self.browse_output_folder)
         output_row.addWidget(self.output_folder_edit, 1)
@@ -2462,9 +2497,20 @@ class BatchPage(MissionPage):
         product_grid = QGridLayout()
         product_grid.setHorizontalSpacing(SPACING_XL)
         product_grid.setVerticalSpacing(SPACING_SM)
+        compact_product_labels = {
+            ProductType.CHM: "CHM",
+            ProductType.CANOPY_COVER: "Canopy Cover",
+            ProductType.PAD: "PAD",
+            ProductType.PAI: "PAI",
+            ProductType.FHD: "FHD",
+            ProductType.RUMPLE: "Rumple",
+        }
         for index, (product, label) in enumerate(PRODUCT_LABELS.items()):
-            check = QCheckBox(label)
+            check = QCheckBox(compact_product_labels.get(product, label))
             check.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
+            check.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+            check.setToolTip(label)
+            check.setProperty("contextHelp", "Choose the forest structure products to calculate. Additional products may require separate scientific passes and increase processing time.")
             if product is ProductType.CHM:
                 check.setChecked(True)
             self.product_checks[product] = check
@@ -2481,13 +2527,16 @@ class BatchPage(MissionPage):
         product_actions.addWidget(self.clear_products_button)
         product_actions.addStretch(1)
         products_layout.addLayout(product_actions)
-        self.advanced_product_settings_group, settings_layout = _collapsible_section(products_layout, "Advanced Product Settings", checked=False)
+        self.select_recommended_products_button.setVisible(False)
+        self.clear_products_button.setVisible(False)
+        self.advanced_product_settings_group, settings_layout = _collapsible_section(products_layout, "Advanced", checked=False)
         settings_form = QFormLayout()
         settings_form.setVerticalSpacing(SECTION_SPACING)
         self.resolution_spin = QDoubleSpinBox()
         self.resolution_spin.setDecimals(3)
         self.resolution_spin.setMinimum(0.01)
         self.resolution_spin.setValue(1.0)
+        self.resolution_spin.setProperty("contextHelp", "Override output grid resolution only when the scientific or delivery requirement calls for a different cell size.")
         self.height_bin_spin = QDoubleSpinBox()
         self.height_bin_spin.setDecimals(3)
         self.height_bin_spin.setMinimum(0.0)
@@ -2615,6 +2664,17 @@ class BatchPage(MissionPage):
         polygon_finalization.addWidget(_details_label("Applies to Polygon Selection raster outputs. Final registered outputs use the masked raster when exact masking is enabled."))
         _wire_collapsible_group(polygon_finalization_group)
         _wire_collapsible_group(self.advanced_batch_section)
+        self.advanced_batch_section.setVisible(False)
+        self.retain_unmasked_intermediate_check.setText("Retain unmasked processing intermediate")
+        self.retain_unmasked_intermediate_check.setProperty("contextHelp", "Keep the larger unmasked intermediate only for expert review or troubleshooting.")
+        settings_layout.addWidget(self.retain_unmasked_intermediate_check)
+        repository_maintenance = QHBoxLayout()
+        repository_maintenance.setSpacing(ACTION_ROW_SPACING)
+        for button in (self.inspect_repository_button, self.update_catalog_button, self.repair_catalog_button):
+            repository_maintenance.addWidget(button)
+        repository_maintenance.addStretch(1)
+        settings_layout.addWidget(_details_label("Repository maintenance"))
+        settings_layout.addLayout(repository_maintenance)
         self.refresh_processing_status_button = QPushButton("Refresh Status")
         self.refresh_processing_status_button.clicked.connect(self.refresh_processing_status)
         self.refresh_processing_status_button.setVisible(False)
@@ -2642,9 +2702,10 @@ class BatchPage(MissionPage):
         self.footprint_label.setVisible(False)
 
         self.prerun_section, prerun_layout = self.create_section("Readiness")
-        self.preflight_button = QPushButton("Run Detailed Check")
+        self.preflight_button = QPushButton("Prerun Check")
         self.preflight_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.preflight_button.clicked.connect(self.run_preflight)
+        self.preflight_button.setProperty("contextHelp", "Check the Processing Engine, LiDAR source, polygon, coordinate systems, products, storage, and estimated workload before dispatch.")
         _apply_button_role(self.preflight_button, "primary")
         prerun_layout.addWidget(self.preflight_button)
         self.cancel_preflight_button = QPushButton("Cancel Prerun")
@@ -2660,13 +2721,17 @@ class BatchPage(MissionPage):
         self.preflight_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.preflight_text.setPlainText("Run the Prerun Check when your data, products, and output folder are ready.")
         self.preflight_text.textChanged.connect(lambda: _size_text_edit_to_content(self.preflight_text))
-        prerun_layout.addWidget(self.preflight_text)
+        self.preflight_details_group, preflight_details = _collapsible_section(prerun_layout, "Details", checked=False)
+        preflight_details.addWidget(self.preflight_text)
+        _wire_collapsible_group(self.preflight_details_group)
         _size_text_edit_to_content(self.preflight_text)
 
         self.process_section, process_layout = self.create_section("Process")
         self.run_button = QPushButton(primary_action_label("batch"))
         self.run_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
+        self.run_button.setMaximumWidth(220)
         self.run_button.clicked.connect(self.run_batch)
+        self.run_button.setProperty("contextHelp", "Validate the current plan and start processing with automatic preparation, scheduling, checkpointing, and final clipping.")
         _apply_button_role(self.run_button, "primary")
         self.run_button.setEnabled(False)
         button_row = QHBoxLayout()
@@ -2710,8 +2775,11 @@ class BatchPage(MissionPage):
         process_layout.addWidget(self.status_label)
         self.engine_status_label = _body_label("Processing Engine: Checking")
         process_layout.addWidget(self.engine_status_label)
-        self.worker_status_label = _body_label("Active workers: 0")
+        self.worker_status_label = _body_label("Processing capacity: Automatic")
         process_layout.addWidget(self.worker_status_label)
+        self.processing_confidence_label = _details_label("Completed regions are saved as processing continues. Valid completed regions can be resumed after an interruption.")
+        self.processing_confidence_label.setVisible(False)
+        process_layout.addWidget(self.processing_confidence_label)
         filter_row = QHBoxLayout()
         self.result_filter_label = QLabel("Show")
         filter_row.addWidget(self.result_filter_label)
@@ -2955,8 +3023,10 @@ class BatchPage(MissionPage):
         if hasattr(self, 'advanced_batch_form'):
             _set_form_field_visible(self.advanced_batch_form, self.execution_mode_container, visibility.execution_mode)
             _set_form_field_visible(self.advanced_batch_form, self.max_workers_container, visibility.maximum_workers)
-        self.polygon_finalization_group.setVisible(visibility.polygon_finalization)
-        self.advanced_repository_section.setVisible(visibility.repository_options)
+        self.polygon_finalization_group.setVisible(False)
+        self.advanced_repository_section.setVisible(False)
+        self.advanced_spatial_section.setVisible(False)
+        self.advanced_batch_section.setVisible(False)
         _refresh_layout_geometry(self.advanced_batch_section)
 
     def _update_adaptive_visibility(self, *_args: object) -> None:
@@ -3919,7 +3989,8 @@ class BatchPage(MissionPage):
             return
         self.active_workers = guardrail.max_workers if guardrail.is_parallel else 1
         mode_label = guardrail.effective_mode.replace("_", " ")
-        self.worker_status_label.setText(f"Active workers: {self.active_workers} ({mode_label})")
+        self.worker_status_label.setText("Processing capacity: Automatic")
+        self.processing_confidence_label.setVisible(True)
         backend_label = PyForestScanAdapter(execution_mode="pbm_backend").selected_execution_backend().replace("_", " ")
         _set_status_badge(self.status_label, "RUNNING", f"Status: Running - {len(selected)} dataset(s) in {mode_label}. Execution backend: {backend_label}.")
         self.batch_thread = QThread(self)
@@ -4249,7 +4320,8 @@ class BatchPage(MissionPage):
         self.pause_requested = False
         self.pause_button.setText("Pause After Current Step")
         self.active_workers = 0
-        self.worker_status_label.setText("Active workers: 0")
+        self.worker_status_label.setText("Processing capacity: Automatic")
+        self.processing_confidence_label.setVisible(False)
 
     def _transition_processing_ui_state(self, state: ProcessingUiState) -> None:
         """Project one authoritative processing state onto all workflow controls."""
@@ -4481,12 +4553,12 @@ class BatchPage(MissionPage):
         eta = event.get("eta_seconds")
         eta_text = "Calculating" if eta is None else _compact_duration(float(eta))
         health = str(event.get("health") or "WORKING").replace("_", " ").title()
-        target = int(event.get("target_concurrency", active or 1) or 1)
         self.worker_status_label.setText(
-            f"{message}  |  {completed}/{total or '?'} regions complete  |  "
-            f"{active} active (target {target})  |  {remaining} remaining  |  "
+            f"{message}  |  {completed} of {total or '?'} regions complete  |  "
+            f"{active} regions processing  |  {remaining} remaining  |  "
             f"Elapsed {_compact_duration(elapsed)}  |  ETA {eta_text}  |  {health}"
         )
+        self.processing_confidence_label.setVisible(True)
         _set_status_badge(self.status_label, "RUNNING", f"Status: Running - {projection.summary()}.")
 
     def _on_batch_job_update(self, job: JobRecord) -> None:

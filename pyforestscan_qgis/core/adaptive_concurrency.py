@@ -42,6 +42,9 @@ class AdaptiveConcurrencyController:
     reason: str = "Starting conservatively with one isolated worker."
     worker_rss: list[int] = field(default_factory=list)
     ept_seconds: list[float] = field(default_factory=list)
+    network_probation_attempted: bool = False
+    network_probation_revoked: bool = False
+    network_probation_successes: int = 0
 
     def __post_init__(self) -> None:
         self.requested = max(1, min(int(self.requested), self.hard_maximum))
@@ -53,7 +56,7 @@ class AdaptiveConcurrencyController:
         conservative = max(int(self.p90_worker_rss * 1.35), 512 * 1024**2) if self.p90_worker_rss else max(self.estimated_worker_memory, 512 * 1024**2)
         memory_capacity = max(1, int(max(0, available - self.reserve_bytes) / max(conservative * 1.25, 1)))
         cpu_capacity = max(1, min(self.hard_maximum, self.cpu_count // 2 or 1))
-        network_capacity = 2 if self.source_location in {"network", "remote_url"} else self.hard_maximum
+        network_capacity = self._network_capacity()
         return max(1, min(self.requested, memory_capacity, cpu_capacity, network_capacity, self.hard_maximum))
 
     @property
@@ -83,24 +86,36 @@ class AdaptiveConcurrencyController:
             del self.ept_seconds[:-32]
         if getattr(result, "status", "") == "Failed":
             self.failed += 1
+            if self.source_location in {"network", "remote_url"} and self.target >= 3:
+                self.network_probation_revoked = True
+                self.network_probation_successes = 0
             self.target = max(1, self.target - 1)
             self.health = "RESOURCE_LIMITED" if getattr(result, "error_code", "") != "NATIVE_BACKEND_CRASH" else "POSSIBLE_STALL"
             self.reason = "Worker failure reduced automatic processing capacity."
             return
         self.successful += 1
+        if self.source_location in {"network", "remote_url"} and self.target >= 3:
+            self.network_probation_successes += 1
         if self._memory_pressure():
             self.target = max(1, self.target - 1)
             self.health = "RESOURCE_LIMITED"
             self.reason = "Available memory reduced automatic processing capacity."
             return
         if self._network_degraded():
+            if self.target >= 3:
+                self.network_probation_revoked = True
+                self.network_probation_successes = 0
             self.target = max(1, self.target - 1)
             self.health = "WAITING_FOR_DATA"
             self.reason = "LiDAR read latency increased under concurrency."
             return
         if self.successful >= self.target and self.target < self.ceiling:
             self.target += 1
-            self.reason = f"Stable completed regions allowed ramp-up to {self.target} workers."
+            if self.source_location in {"network", "remote_url"} and self.target == 3:
+                self.network_probation_attempted = True
+                self.reason = "Stable regions and healthy resources allowed one probationary capacity increase."
+            else:
+                self.reason = f"Stable completed regions allowed ramp-up to {self.target} workers."
         else:
             self.health = "WORKING"
             self.reason = "Automatic capacity is stable."
@@ -129,6 +144,20 @@ class AdaptiveConcurrencyController:
         baseline = statistics.median(self.ept_seconds[:3])
         recent = statistics.median(self.ept_seconds[-3:])
         return baseline > 0 and recent > baseline * 2.25
+
+    def _network_capacity(self) -> int:
+        """Keep two as the network baseline and permit one non-oscillating trial at three."""
+        if self.source_location not in {"network", "remote_url"}:
+            return self.hard_maximum
+        if self.network_probation_revoked:
+            return 2
+        if self.network_probation_attempted:
+            return 3
+        if self.successful < 8 or len(self.ept_seconds) < 6 or self.failed:
+            return 2
+        if self._network_degraded() or self._memory_pressure():
+            return 2
+        return 3
 
 
 def weighted_progress(completed_weight: float, active_weight: float, total_weight: float) -> int:

@@ -18,13 +18,16 @@ GIB = 1024 ** 3
 
 
 class AdaptiveConcurrencyTests(unittest.TestCase):
-    def test_network_controller_starts_at_one_and_never_exceeds_measured_two(self):
+    def test_network_controller_starts_at_one_and_keeps_two_as_safe_baseline(self):
         controller = AdaptiveConcurrencyController(5, "network", GIB, lambda: 32 * GIB, cpu_count=16)
         self.assertEqual(controller.target, 1)
         self.assertEqual(controller.ceiling, 2)
-        for _index in range(8):
-            controller.observe(WorkUnitResult("unit", "Complete", metrics={"worker_peak_rss": GIB}))
-        self.assertLessEqual(controller.target, 2)
+        for _index in range(7):
+            controller.observe(WorkUnitResult("unit", "Complete", metrics={"worker_peak_rss": GIB, "ept_read_and_point_decode_seconds": 1.0}))
+        self.assertEqual(controller.target, 2)
+        controller.observe(WorkUnitResult("unit", "Complete", metrics={"worker_peak_rss": GIB, "ept_read_and_point_decode_seconds": 1.0}))
+        self.assertEqual(controller.target, 3)
+        self.assertTrue(controller.network_probation_attempted)
 
     def test_controller_backs_off_after_failure(self):
         controller = AdaptiveConcurrencyController(5, "local", GIB, lambda: 32 * GIB, cpu_count=16)

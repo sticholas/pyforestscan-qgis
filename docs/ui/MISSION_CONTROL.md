@@ -36,9 +36,14 @@ For strongly compatible unreferenced LiDAR, the default advanced preference auto
 
 Prerun preparation remains concise, for example **Height normalization will be generated automatically**. Ground samples, parameters, provenance, and recommendations remain in technical output rather than the primary workflow.
 
-Batch Process automatically refreshes missing readiness when clicked; Run Detailed Check remains available for review but is not required. Automatic is the normal profile. Execution mode appears only for Custom, and Maximum Workers appears only for Custom + Parallel as an adaptive upper bound. Primary output loading defaults on. Software determines parallel safety.
+Process LiDAR automatically refreshes stale readiness where safe; Prerun Check
+remains the explicit review action. Processing capacity is Automatic. Worker
+counts, source planning, checkpoint policy, and finalization implementation are
+not user decisions and remain available only in diagnostics/provenance.
 
-Phase 29B reduces normal decisions: repository paths refresh automatically, one Prepare Repository action owns normal setup, spatial actions refresh their required plan on demand, Automatic is the default profile, and detailed execution controls appear only under Custom. Mission Control no longer opens at QGIS startup unless enabled in Advanced Settings. See the [Phase 29B Workflow Simplification Audit](../development/PHASE_29B_WORKFLOW_SIMPLIFICATION_AUDIT.md).
+Phase 32R completes that simplification: repository preparation is part of
+Prerun, `Zoom to Area` is the only normal map action, and one compact Advanced
+section retains resolution, intermediate retention, and repository maintenance.
 
 
 Phase 29A makes the two retained workspaces content-driven: empty file and report surfaces stay compact, populated lists cap at six visible rows, product and concurrency controls follow current selections, backend maintenance stays under troubleshooting, and the live footer reports only current-session state. See the [Phase 29A Productization UI Audit](../development/PHASE_29A_PRODUCTIZATION_UI_AUDIT.md).
@@ -88,6 +93,20 @@ Toolbox opens the existing QGIS Processing Toolbox.
 - Settings: user defaults and PBM backend controls. Technical logs remain
   collapsed.
 - Advanced Toolbox: opens the existing parameter-rich Processing Toolbox.
+
+## Release-Candidate Polygon Workflow
+
+Polygon mode presents one continuous workspace:
+
+`LiDAR Data -> Processing Area -> Products -> Output Folder -> Prerun Check -> Process LiDAR -> Results`
+
+The former numbered workflow strip is removed. Repository recognition, indexing,
+CRS normalization, bounded preparation, scheduling, checkpointing, exact masking,
+and final clipping are automatic unless user input is genuinely required.
+
+Every page includes one bounded context-help strip below its content. Hover and
+keyboard focus both update it. Tooltips and accessible names remain available,
+so hover is not the only help path.
 
 Home, Workspace, Dataset, Planning, and Processing remain internal compatibility
 pages. Their state, services, and signal wiring are preserved, but they are not
@@ -228,19 +247,17 @@ When `batch_manifest.json` exists, Mission Control exposes Resume Batch. Complet
 
 External Worker mode is disabled and is not selectable in Mission Control. Manual validation showed that QGIS GUI Python can launch full QGIS application windows instead of headless jobs. The preserved external-worker code is future research only and is blocked by core guardrails unless an explicit developer flag is set outside normal use.
 
-## Batch Adaptive Indexing Controls
+## Repository Preparation
 
-In **Batch > Polygon Area Processing**, users can preview repository indexing before heavy catalog work:
-
-- **Detect Best Indexing Strategy** shows the selected strategy, reason, cost, expected accuracy, files avoided, and warnings.
-- **Build Relevant Index** uses the detected low-cost path where supported, such as existing indexes or native EPT/COPC registration.
-- **Build Complete Repository Index** starts the durable full catalog build/update path.
-
-The strategy panel is informational and bounded; it must not start a deep scan by itself.
+Selecting LiDAR and running Prerun triggers bounded repository recognition and
+the safest available preparation path. Normal users do not choose an indexing
+strategy or run a separate Prepare Repository step. Inspect, update, and repair
+actions remain under Advanced for maintenance and recovery.
 
 ## Polygon Area Processing Help And Terminology
 
-The Batch page now uses **Prepare Repository** and **Automatic Setup (Recommended)** as the guided path. Technical indexing strategy names are hidden from the default guided labels. Contextual help buttons explain LiDAR Repository, Polygon source, and Repository setup method.
+The release-candidate path uses automatic repository preparation. One persistent
+hover/focus help strip replaces normal-flow information badges.
 
 Preflight shows compact execution readiness: repository type, logical inputs, backend status, workload, estimated points, output, warnings, and expandable-style technical diagnostics.
 

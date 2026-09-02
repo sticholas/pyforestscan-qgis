@@ -1,5 +1,18 @@
 # Changelog
 
+## Phase 32R - Release-candidate UX consolidation
+
+- Reduced Polygon mode to the user decisions that define a run: LiDAR data,
+  processing area, products, output folder, Prerun Check, Process, and Results.
+- Removed the wizard strip and hid routine repository, scheduler, map-diagnostic,
+  and polygon-finalization controls while preserving automatic safe defaults.
+- Added a bounded hover/focus help banner with keyboard-accessible context and
+  removed normal-flow information-badge clutter.
+- Kept the measured two-worker network EPT baseline and added a single cautious,
+  non-oscillating probationary worker-3 trial after stable evidence.
+- Added the market comparison, Polygon UI audit, release feature matrix, blocker
+  audit, and concise Quick Start. PyForestScan science remains unchanged.
+
 ## Phase 32Q - Adaptive parallel EPT execution and live progress
 
 - Added conservative one-to-five process-level EPT concurrency with measured-memory ceilings, network-latency backoff, repeated-crash circuit breaking, and a machine-wide heavy-worker budget.

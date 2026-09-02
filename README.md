@@ -46,12 +46,16 @@ Core logic is kept QGIS-free where practical. QGIS UI and layer-loading behavior
 
 ### Guided Mode: Mission Control
 
-1. Select a LiDAR dataset and output folder.
-2. Run Dataset Explorer.
-3. Review Scientific Advisor recommendations.
-4. Build a Product Plan.
-5. Run selected products.
-6. Review outputs, reports, logs, and workspace history.
+1. Choose Folder or Polygon processing.
+2. Select LiDAR data and, for Polygon mode, the processing area.
+3. Choose products and an output folder.
+4. Run Prerun Check.
+5. Select Process LiDAR.
+6. Review or load the generated outputs.
+
+Repository recognition, spatial normalization, bounded preparation, scheduling,
+checkpointing, and final clipping are automatic unless user input is genuinely
+required. See the [Quick Start](docs/getting-started/QUICK_START.md).
 
 ### Expert Mode: Processing Toolbox
 
@@ -124,6 +128,7 @@ Start with the [Documentation Index](docs/README.md).
 Key entry points:
 
 - [Getting Started](docs/getting-started/README.md)
+- [Quick Start](docs/getting-started/QUICK_START.md)
 - [User Guide](docs/user-guide/README.md)
 - [Scientific Methods](docs/scientific-methods/README.md)
 - [Architecture](docs/architecture/README.md)
@@ -144,6 +149,9 @@ Key entry points:
 - [PBM Internal Beta Smoke Test](docs/releases/PBM_INTERNAL_BETA_SMOKE_TEST.md)
 - [No-Manual-Setup Beta Smoke Test](docs/releases/NO_MANUAL_SETUP_BETA_SMOKE_TEST.md)
 - [Known Limitations](docs/KNOWN_LIMITATIONS.md)
+- [Release Candidate Feature Matrix](docs/RELEASE_CANDIDATE_FEATURE_MATRIX.md)
+- [Phase 32R Polygon UI Audit](docs/PHASE_32R_POLYGON_UI_AUDIT.md)
+- [Phase 32R Market Comparison](docs/research/PHASE_32R_MARKET_COMPARISON.md)
 
 ## Roadmap
 

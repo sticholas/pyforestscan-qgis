@@ -4,10 +4,11 @@ The main user guide remains at [docs/USER_GUIDE.md](../USER_GUIDE.md). This sect
 
 Recommended reading order:
 
-1. [Mission Control](../ui/MISSION_CONTROL.md)
-2. [User Guide](../USER_GUIDE.md)
-3. [Scientific Methods](../scientific-methods/README.md)
-4. [Known Limitations](../KNOWN_LIMITATIONS.md)
+1. [Quick Start](../getting-started/QUICK_START.md)
+2. [Mission Control](../ui/MISSION_CONTROL.md)
+3. [User Guide](../USER_GUIDE.md)
+4. [Scientific Methods](../scientific-methods/README.md)
+5. [Known Limitations](../KNOWN_LIMITATIONS.md)
 
 ## Pages
 
@@ -20,7 +21,9 @@ Recommended reading order:
 
 ## Contextual Help
 
-See [Contextual Help](contextual-help.md) for how Mission Control information badges work offline.
+Mission Control uses one compact help strip. Hovering over a control or moving
+keyboard focus to it updates the same explanatory text; standard tooltips and
+accessible names remain available.
 
 ## Phase 27M Polygon Output Notes
 
@@ -37,4 +40,8 @@ Polygon, product, resolution, repository, and output changes refresh optional Sc
 
 ## Compact Batch workflow
 
-Choose folder or polygon processing, select LiDAR data and products, choose an output folder, run Prerun Check, then process. Repository maintenance, spatial diagnostics, performance controls, and technical reports are optional collapsed sections.
+Choose folder or polygon processing, select LiDAR data and area, choose products
+and an output folder, run Prerun Check, then Process LiDAR. Repository recognition,
+spatial preparation, scheduling, checkpointing, and final clipping are automatic.
+One compact Advanced section retains resolution, intermediate retention, and
+repository maintenance for expert use.

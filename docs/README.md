@@ -1,5 +1,11 @@
 # Documentation Index
 
+Release-candidate productization: [Quick Start](getting-started/QUICK_START.md),
+[feature matrix](RELEASE_CANDIDATE_FEATURE_MATRIX.md),
+[Polygon UI audit](PHASE_32R_POLYGON_UI_AUDIT.md),
+[release blockers](PHASE_32R_RELEASE_BLOCKERS.md), and
+[market comparison](research/PHASE_32R_MARKET_COMPARISON.md).
+
 Phase 32Q adaptive parallel EPT execution: [production baseline](PHASE_32Q_PRODUCTION_PERFORMANCE_BASELINE.md), [scheduler and progress design](PHASE_32Q_ADAPTIVE_EPT_EXECUTION.md), and [managed concurrency benchmark gate](PHASE_32Q_CONCURRENCY_BENCHMARK.md).
 
 Phase 32P throughput and release evidence: [analysis](research/PHASE_32P_HIGH_THROUGHPUT_EPT.md), [measured block plan](research/PHASE_32P_BLOCK_PLAN.json), [production timing baseline](research/PHASE_32P_PRODUCTION_TIMING_BASELINE.json), and [exact release chain](releases/PHASE_32P_RELEASE_CHAIN.md).
@@ -25,6 +31,7 @@ This documentation is organized for users, scientists, developers, maintainers, 
 ## Getting Started
 
 - [Getting Started Overview](getting-started/README.md)
+- [Quick Start](getting-started/QUICK_START.md)
 - [Installation Strategy](INSTALLATION_STRATEGY.md)
 - [Windows QGIS Dependencies](development/WINDOWS_QGIS_DEPENDENCIES.md)
 - [QGIS Local Testing](development/QGIS_LOCAL_TESTING.md)

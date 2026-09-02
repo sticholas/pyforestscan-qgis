@@ -286,7 +286,7 @@ class MissionControlDock(QDockWidget):
             #subtitleLabel { color: #5f6f77; }
             #statusFrame { background: #f2f5f6; border-top: 1px solid #dbe3e6; }
             #pageHeading { font-size: 21px; font-weight: 700; margin: 12px 24px 6px 24px; color: #22323a; }
-            #workflowStepIndicator { margin: 0 24px 6px 24px; color: #667780; font-size: 12px; background: transparent; }
+            #contextHelpBanner { background: #eef3f4; color: #40545d; border-top: 1px solid #d8e1e5; font-size: 12px; }
             #pageScroll { border: 0; background: #f7f8f9; }
             #pageContent { background: #f7f8f9; }
             #advisorBody { background: #f7f8f9; }
