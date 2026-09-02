@@ -26,6 +26,7 @@ class Phase32SRcUxTests(unittest.TestCase):
         self.assertIn("self.polygon_dissolve_check.setVisible(False)", BATCH)
         self.assertNotIn("polygon_layout.addWidget(self.zoom_polygon_button", BATCH)
         self.assertGreaterEqual(BATCH.count("AdjustToMinimumContentsLengthWithIcon"), 4)
+        self.assertIn("self.zoom_polygon_button.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)", BATCH)
 
     def test_expert_controls_stay_out_of_normal_workflow(self) -> None:
         self.assertIn("self.advanced_repository_section.setVisible(False)", BATCH)
