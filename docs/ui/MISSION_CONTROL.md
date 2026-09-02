@@ -308,6 +308,10 @@ Batch selections update Results context and Scientific Advisor automatically. Ad
 
 Batch follows Processing Mode -> LiDAR Data/Processing Area -> Products -> Output Folder -> Prerun Check -> Process. Results hides output actions until products exist. Advisor, Environment, Settings, and Advanced Toolbox keep technical details collapsed by default.
 
+## Compact expanders and live status
+
+Advanced Scientific Settings and Details use consistent disclosure rows with visible arrows and keyboard focus. Their hidden bodies reserve no space. Processing is a compact readiness row while idle or complete and expands only while Prerun or processing is active. Tools & Setup keeps Preferences and diagnostics collapsed; READY shows Recheck and a quiet Repair action, while missing or broken engines promote Setup or Repair respectively.
+
 ## Processing reliability
 Mission Control displays current LiDAR and area selection rather than a historical dataset. Every workflow-defining Process control contributes to the current input identity. Changing that identity invalidates Prerun Check, Advisor guidance, progress, and current output references. Results load only explicitly registered outputs from a completed current attempt and never discover outputs by scanning folders. Session reset preserves files, PBM, catalogs, preferences, and previous-run history.
 

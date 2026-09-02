@@ -12,11 +12,11 @@ MISSION = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text(encoding=
 
 class ToolsSetupProductContractTests(unittest.TestCase):
     def test_processing_engine_action_matrix(self):
-        self.assertEqual(processing_engine_setup_action("READY"), (True, "Repair / Reload Processing Engine"))
+        self.assertEqual(processing_engine_setup_action("READY"), (True, "Repair"))
         self.assertEqual(processing_engine_setup_action("SETUP_REQUIRED"), (True, "Set Up Processing Engine"))
-        self.assertEqual(processing_engine_setup_action("REPAIR_REQUIRED"), (True, "Repair / Reload Processing Engine"))
-        self.assertEqual(processing_engine_setup_action("FAILED"), (True, "Repair / Reload Processing Engine"))
-        self.assertEqual(processing_engine_setup_action("INCOMPATIBLE"), (True, "Repair / Reload Processing Engine"))
+        self.assertEqual(processing_engine_setup_action("REPAIR_REQUIRED"), (True, "Repair Processing Engine"))
+        self.assertEqual(processing_engine_setup_action("FAILED"), (True, "Repair Processing Engine"))
+        self.assertEqual(processing_engine_setup_action("INCOMPATIBLE"), (True, "Repair Processing Engine"))
 
     def test_additional_tools_and_recent_limit_are_not_visible_controls(self):
         settings = PAGES[PAGES.index("class SettingsPage"):PAGES.index("def _processing_lifecycle_stage")]
@@ -26,9 +26,8 @@ class ToolsSetupProductContractTests(unittest.TestCase):
         self.assertIn("recent_item_display_limit", settings)
         self.assertIn("never a job limit", settings)
 
-    def test_advanced_settings_are_always_visible(self):
-        self.assertIn('defaults = self.add_section("Advanced Settings")', PAGES)
-        self.assertNotIn('_collapsible_section(self.content_layout, "Advanced Settings"', PAGES)
+    def test_preferences_are_available_without_dominating_ready_state(self):
+        self.assertIn('_collapsible_section(self.content_layout, "Preferences", checked=False)', PAGES)
 
     def test_troubleshooting_has_one_purposeful_diagnostics_action(self):
         settings = PAGES[PAGES.index("class SettingsPage"):PAGES.index("def _processing_lifecycle_stage")]

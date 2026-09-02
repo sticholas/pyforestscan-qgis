@@ -237,8 +237,8 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertIn('Advanced Batch Options', source)
         self.assertNotIn('_collapsible_section(self.content_layout, "Batch Footprint Estimate"', source)
         self.assertIn('Technical Report', source)
-        self.assertIn('_collapsible_section(self.content_layout, "Troubleshooting", checked=False)', source)
-        self.assertIn('QGroupBox("Technical log")', source)
+        self.assertIn('_collapsible_section(self.content_layout, "Details", checked=False)', source)
+        self.assertIn('backend_detail_layout, "Technical log", checked=False', source)
         self.assertIn('self.recommendations_card.setVisible(bool(report.suggested_next_actions))', source)
         self.assertIn('self.warnings_card.setVisible(bool(report.warnings))', source)
         self.assertIn('self.jobs_section.setVisible(False)', source)
@@ -260,7 +260,7 @@ class MissionControlUxTests(unittest.TestCase):
         )
         for snippet in primary_snippets:
             self.assertIn(snippet, source)
-        self.assertIn('_collapsible_section(self.content_layout, "Troubleshooting", checked=False)', source)
+        self.assertIn('_collapsible_section(self.content_layout, "Details", checked=False)', source)
 
     def test_unified_interaction_model_static_hooks(self) -> None:
         controller = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text(encoding="utf-8")

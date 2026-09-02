@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32W - Collapsible affordance and adaptive status density
+
+- Replaced weak checkable-group headers with a reusable 28 px disclosure row featuring native arrows, accessible names, contextual help, and subtle hover/focus treatment.
+- Kept collapsed bodies at zero height while preserving product-driven Advanced Scientific Settings growth.
+- Made Processing hide progress and worker scaffolding while idle or complete and expand only for active validation/processing states.
+- Compacted Tools & Setup with collapsed Preferences and Details, top-packed content, and state-aware Setup, Repair, Recheck, and diagnostics actions.
+- Preserved processing execution, PBM behavior, scientific products, adaptive workers, and deterministic output behavior.
+
 ## Phase 32V - Compact Process density and map selection
 
 - Made Process configuration sections content-sized and moved all spare vertical height below the workflow.

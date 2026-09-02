@@ -24,8 +24,12 @@ QGIS_FALLBACK_PRODUCT_LABELS: tuple[str, ...] = (
 def processing_engine_setup_action(status: str) -> tuple[bool, str]:
     """Return whether the authoritative setup action is visible and its label."""
     normalized = str(status).strip().upper().replace(" ", "_")
-    if normalized in {"READY", "REPAIR_REQUIRED", "INCOMPATIBLE", "FAILED", "CHECKING"}:
-        return True, "Repair / Reload Processing Engine"
+    if normalized == "READY":
+        return True, "Repair"
+    if normalized == "CHECKING":
+        return False, ""
+    if normalized in {"REPAIR_REQUIRED", "INCOMPATIBLE", "FAILED"}:
+        return True, "Repair Processing Engine"
     return True, "Set Up Processing Engine"
 
 MISSION_WORKFLOW_STEPS: tuple[str, ...] = (

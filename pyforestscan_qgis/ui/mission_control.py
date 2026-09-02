@@ -313,8 +313,11 @@ class MissionControlDock(QDockWidget):
             QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #32424a; }
             QGroupBox[processSection="true"] { margin-top: 0; border: 0; border-radius: 0; padding: 0; background: transparent; }
             QGroupBox[processSection="true"]::title { subcontrol-origin: margin; left: 0; padding: 0 3px 0 0; color: #2b3c44; font-weight: 700; }
-            QGroupBox[compactCollapsible="true"] { margin-top: 3px; padding: 0; }
-            QGroupBox[compactCollapsible="true"]::title { left: 4px; padding: 0 3px; }
+            QWidget[compactCollapsible="true"] { background: transparent; }
+            QToolButton#compactCollapsibleHeader { border: 1px solid #d7e0e3; border-radius: 3px; padding: 1px 6px; background: #f7f9fa; color: #2b3c44; font-weight: 600; text-align: left; }
+            QToolButton#compactCollapsibleHeader:hover { background: #eef3f5; border-color: #bdcbd0; }
+            QToolButton#compactCollapsibleHeader:focus { border-color: #5f8790; }
+            QLabel#statusBadge[compactProcessingStatus="true"] { font-size: 12px; font-weight: 600; border-left-width: 3px; border-radius: 3px; padding: 3px 6px; }
             QLabel#compactSectionHeading { font-weight: 700; color: #2b3c44; }
             QPushButton { background: #ffffff; border: 1px solid #cfd9dd; border-radius: 4px; padding: 6px 10px; }
             QPushButton[buttonRole="primary"] { background: #2f6f7d; border-color: #275e6a; color: #ffffff; font-weight: 600; }

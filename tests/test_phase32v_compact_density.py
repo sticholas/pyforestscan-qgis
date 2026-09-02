@@ -18,8 +18,9 @@ class Phase32VCompactDensityTests(unittest.TestCase):
         self.assertIn("setSizeConstraint(QLayout.SetNoConstraint)", install)
 
     def test_collapsible_body_has_true_zero_height(self) -> None:
-        helper = PAGES[PAGES.index("def _collapsible_section"):PAGES.index("def _set_layout_visible")]
+        helper = PAGES[PAGES.index("class CompactCollapsibleSection"):PAGES.index("def _set_layout_visible")]
         self.assertIn('setProperty("compactCollapsible", True)', helper)
+        self.assertIn('setFixedHeight(28)', helper)
         self.assertIn("content.setMaximumHeight(16777215 if visible else 0)", helper)
         self.assertIn("content.setVisible(visible)", helper)
 

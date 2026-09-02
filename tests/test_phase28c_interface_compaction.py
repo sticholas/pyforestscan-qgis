@@ -55,9 +55,8 @@ class Phase28CInterfaceCompactionTests(unittest.TestCase):
     def test_environment_and_settings_use_progressive_disclosure(self):
         self.assertIn('"QGIS Python fallback environment", checked=False', PAGES)
         self.assertIn('"Technical dependency details", checked=False', PAGES)
-        self.assertIn('self.add_section("Advanced Settings")', PAGES)
-        self.assertNotIn('"Advanced Settings", checked=False', PAGES)
-        self.assertIn('"Troubleshooting", checked=False', PAGES)
+        self.assertIn('"Preferences", checked=False', PAGES)
+        self.assertIn('"Details", checked=False', PAGES)
 
     def test_primary_action_and_toolbox_contract(self):
         self.assertIn("self.resume_button.setVisible(enabled and resumable)", PAGES)

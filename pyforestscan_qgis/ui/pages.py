@@ -43,6 +43,7 @@ from qgis.PyQt.QtWidgets import (
     QDoubleSpinBox,
     QInputDialog,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -2867,6 +2868,9 @@ class BatchPage(MissionPage):
         process_layout.addWidget(self.progress_bar)
         self.status_label = QLabel()
         _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: Needs Attention - choose data and run the Prerun Check.")
+        self.status_label.setProperty("compactProcessingStatus", True)
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
         process_layout.addWidget(self.status_label)
         self.engine_status_label = _body_label("Processing Engine: Checking")
         process_layout.addWidget(self.engine_status_label)
@@ -2914,6 +2918,7 @@ class BatchPage(MissionPage):
         self._process_column_mode = ""
         self._product_column_count = 0
         self._install_process_workspace()
+        self._update_processing_density()
         self._update_batch_mode_visibility()
         self._wire_session_state_inputs()
         self._refresh_batch_option_visibility()
@@ -4120,6 +4125,8 @@ class BatchPage(MissionPage):
         """Run batch preflight and update readiness display."""
         self.preflight_button.setEnabled(False)
         self.preflight_text.setPlainText("Running Prerun Check...")
+        self.status_label.setText("Checking request...")
+        self._update_processing_density(ProcessingUiState.VALIDATING)
         QApplication.processEvents()
         if self._current_batch_mode() == "polygon":
             # run_polygon_batch_preflight is executed by _PolygonPreflightWorker;
@@ -4131,6 +4138,7 @@ class BatchPage(MissionPage):
                 self.preflight_report = None
                 self._update_run_button_enabled()
                 self.preflight_button.setEnabled(True)
+                self._update_processing_density(ProcessingUiState.IDLE)
                 return
             self.preflight_cancel_event.clear()
             self.cancel_preflight_button.setVisible(True)
@@ -4157,6 +4165,7 @@ class BatchPage(MissionPage):
             self.preflight_report = None
             self._update_run_button_enabled()
             self.preflight_button.setEnabled(True)
+            self._update_processing_density(ProcessingUiState.IDLE)
             return
         try:
             runtime_token = BackendService().processing_engine_service().runtime_token_for(tuple(product.value for product in request.settings.products))
@@ -4166,6 +4175,7 @@ class BatchPage(MissionPage):
             self.preflight_report = None
             self._update_run_button_enabled()
             self.preflight_button.setEnabled(True)
+            self._update_processing_density(ProcessingUiState.IDLE)
             return
         try:
             report = run_batch_preflight(request, adapter=self.adapter)
@@ -4177,6 +4187,7 @@ class BatchPage(MissionPage):
         self.set_spatial_intervention(report.blockers)
         self._update_run_button_enabled()
         self._publish_session_state(plan_status="ready")
+        self._update_processing_density(ProcessingUiState.IDLE)
 
     def cancel_polygon_preflight(self) -> None:
         """Request cancellation at the next pure-core planning safe point."""
@@ -4198,6 +4209,7 @@ class BatchPage(MissionPage):
         self._publish_session_state(plan_status="ready")
         self.preflight_button.setEnabled(True)
         self.cancel_preflight_button.setVisible(False)
+        self._update_processing_density(ProcessingUiState.IDLE)
 
     def _on_polygon_preflight_failed(self, message: str) -> None:
         cancelled = "cancelled" in message.lower()
@@ -4207,6 +4219,7 @@ class BatchPage(MissionPage):
         self._update_run_button_enabled()
         self.preflight_button.setEnabled(True)
         self.cancel_preflight_button.setVisible(False)
+        self._update_processing_density(ProcessingUiState.FAILED)
 
     def _clear_preflight_thread(self) -> None:
         self.preflight_thread = None
@@ -4641,6 +4654,39 @@ class BatchPage(MissionPage):
         self.cancel_button.setEnabled(policy.cancel_enabled)
         self.cancel_button.setVisible(policy.cancel_enabled)
         self.refresh_processing_status_button.setVisible(state in {ProcessingUiState.INTERRUPTED, ProcessingUiState.RECOVERABLE})
+        self._update_processing_density(state)
+
+    def _update_processing_density(self, state: ProcessingUiState | None = None) -> None:
+        """Size Processing from the information useful in its current state."""
+        state = state or self.processing_ui_state
+        active = state in {
+            ProcessingUiState.VALIDATING, ProcessingUiState.STARTING,
+            ProcessingUiState.RUNNING, ProcessingUiState.PAUSED,
+            ProcessingUiState.FINALIZING,
+        }
+        failed = state in {
+            ProcessingUiState.FAILED, ProcessingUiState.INTERRUPTED,
+            ProcessingUiState.RECOVERABLE,
+        }
+        terminal = state in {
+            ProcessingUiState.COMPLETE, ProcessingUiState.COMPLETE_WITH_WARNING,
+            ProcessingUiState.CANCELLED,
+        }
+        self.progress_bar.setVisible(active)
+        self.engine_status_label.setVisible(active)
+        self.worker_status_label.setVisible(active)
+        self.summary_label.setVisible(active)
+        self.processing_confidence_label.setVisible(False)
+        self.result_filter_label.setVisible(False)
+        self.result_filter_combo.setVisible(False)
+        self.batch_results.setVisible(False)
+        if state is ProcessingUiState.IDLE:
+            self.status_label.setText("Ready for Prerun" if self.preflight_report is None else "Prerun ready")
+        elif terminal:
+            self.recent_error_group.setVisible(False)
+        elif failed:
+            self.recent_error_group.setVisible(bool(self._recent_error_path))
+        _refresh_layout_geometry(self.process_section)
 
     def _reconcile_processing_ui(self) -> None:
         launch = read_attempt_status(self._active_launch_attempt)
@@ -5302,7 +5348,7 @@ class SettingsPage(MissionPage):
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create the settings page."""
         super().__init__("Tools & Setup", parent)
-        defaults = self.add_section("Advanced Settings")
+        defaults_group, defaults = _collapsible_section(self.content_layout, "Preferences", checked=False)
         form = QFormLayout()
         self.default_output_folder = QLineEdit()
         self.default_output_folder.editingFinished.connect(self.emit_default_output_folder)
@@ -5318,6 +5364,7 @@ class SettingsPage(MissionPage):
         defaults.addLayout(form)
         self.default_output_preview_label = _details_label("Global preferences apply to new runs. Job-specific scientific settings stay on Process.")
         defaults.addWidget(self.default_output_preview_label)
+        _wire_collapsible_group(defaults_group)
 
         # Session continuity remains an internal default, not a settings wall.
         self.remember_workspace_check = QCheckBox("Remember last workspace")
@@ -5357,7 +5404,7 @@ class SettingsPage(MissionPage):
         backend.addWidget(self.backend_status_label)
         backend.addWidget(self.manual_dependency_setup_label)
 
-        backend_detail_group, backend_detail_layout = _collapsible_section(self.content_layout, "Troubleshooting", checked=False)
+        self.backend_detail_group, backend_detail_layout = _collapsible_section(self.content_layout, "Details", checked=False)
         for label in (
             self.backend_dependency_label,
             self.qgis_compatibility_label,
@@ -5373,7 +5420,7 @@ class SettingsPage(MissionPage):
             self.backend_pdal_label,
         ):
             backend_detail_layout.addWidget(label)
-        _wire_collapsible_group(backend_detail_group)
+        _wire_collapsible_group(self.backend_detail_group)
 
         self.backend_install_progress_bar = QProgressBar()
         self.backend_install_progress_bar.setRange(0, 100)
@@ -5403,10 +5450,15 @@ class SettingsPage(MissionPage):
         self.open_diagnostics_button = QPushButton("Open Diagnostics")
         self.open_diagnostics_button.clicked.connect(self.open_processing_engine_diagnostics)
         _apply_button_role(self.open_diagnostics_button, "neutral")
+        self.recheck_backend_button = QPushButton("Recheck")
+        self.recheck_backend_button.clicked.connect(self.verifyEnvironmentRequested.emit)
+        self.recheck_backend_button.clicked.connect(self.refresh_backend_summary)
+        _apply_button_role(self.recheck_backend_button, "neutral")
 
         self.backend_primary_buttons = QHBoxLayout()
         self.backend_primary_buttons.setSpacing(ACTION_ROW_SPACING)
         self.backend_primary_buttons.addWidget(self.install_backend_button)
+        self.backend_primary_buttons.addWidget(self.recheck_backend_button)
         self.backend_primary_buttons.addStretch(1)
         backend.addLayout(self.backend_primary_buttons)
 
@@ -5421,18 +5473,15 @@ class SettingsPage(MissionPage):
         self.backend_details.setMaximumHeight(140)
         self.backend_details.setPlainText("Processing Engine diagnostics appear here after Recheck or Open Diagnostics.")
         backend_detail_layout.addWidget(self.backend_details)
-        self.backend_technical_log_group = QGroupBox("Technical log")
-        self.backend_technical_log_group.setCheckable(True)
-        self.backend_technical_log_group.setChecked(False)
-        technical_layout = QVBoxLayout()
+        self.backend_technical_log_group, technical_layout = _collapsible_section(
+            backend_detail_layout, "Technical log", checked=False
+        )
         self.backend_technical_log = QTextEdit()
         self.backend_technical_log.setReadOnly(True)
-        self.backend_technical_log.setVisible(False)
-        self.backend_technical_log_group.toggled.connect(self.backend_technical_log.setVisible)
         technical_layout.addWidget(self.backend_technical_log)
-        self.backend_technical_log_group.setLayout(technical_layout)
-        backend_detail_layout.addWidget(self.backend_technical_log_group)
+        _wire_collapsible_group(self.backend_technical_log_group)
         self.set_processing_engine_state(None)
+        self.content_layout.addStretch(1)
 
     def set_workspace_session(self, session: WorkspaceSession) -> None:
         """Display persisted workspace session preferences."""
@@ -5484,6 +5533,9 @@ class SettingsPage(MissionPage):
             self.install_backend_button.setVisible(action_visible)
             self.install_backend_button.setText(action_label)
             self.install_backend_button.setEnabled(action_visible and self.backend_service.install_availability().enabled)
+            _apply_button_role(self.install_backend_button, "secondary" if ready else "primary")
+        self.open_diagnostics_button.setVisible(repair or status in {"FAILED", "INCOMPATIBLE"})
+        self.recheck_backend_button.setVisible(status != "CHECKING")
 
     def workspace_session_preferences(self, session: WorkspaceSession) -> WorkspaceSession:
         """Return session with settings-page workspace preferences applied."""
@@ -6104,35 +6156,85 @@ def _set_status_badge(label: QLabel, status: str, text: str | None = None) -> QL
     return label
 
 
-def _collapsible_section(parent: QVBoxLayout, title: str, checked: bool = False) -> tuple[QGroupBox, QVBoxLayout]:
-    """Add a checkable section without overwriting child semantic visibility."""
-    group = QGroupBox(title)
-    group.setCheckable(True)
-    group.setChecked(checked)
-    group.setProperty("compactCollapsible", True)
-    group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-    outer = QVBoxLayout(group)
-    outer.setContentsMargins(SPACING_XS, SPACING_XS, SPACING_XS, SPACING_XS)
-    outer.setSpacing(0)
-    content = QWidget(group)
-    content.setObjectName("collapsibleContent")
-    content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+class CompactCollapsibleSection(QWidget):
+    """A native compact disclosure row whose hidden body contributes no height."""
+
+    toggled = pyqtSignal(bool)
+
+    def __init__(self, title: str, checked: bool = False, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._title = title
+        self._checked = bool(checked)
+        self.setProperty("compactCollapsible", True)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        self.header_button = QToolButton(self)
+        self.header_button.setObjectName("compactCollapsibleHeader")
+        self.header_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.header_button.setCheckable(True)
+        self.header_button.setChecked(self._checked)
+        self.header_button.setAccessibleName(f"{title}, expandable section")
+        self.header_button.setProperty("contextHelp", _collapsible_help_text(title))
+        self.header_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.header_button.setFixedHeight(28)
+        self.header_button.clicked.connect(self.setChecked)
+        outer.addWidget(self.header_button)
+        self._content_widget = QWidget(self)
+        self._content_widget.setObjectName("collapsibleContent")
+        self._content_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        outer.addWidget(self._content_widget)
+        self._sync_header()
+
+    def title(self) -> str:
+        return self._title
+
+    def isChecked(self) -> bool:  # noqa: N802 - compatibility with prior QGroupBox contract
+        return self._checked
+
+    def setChecked(self, checked: bool) -> None:  # noqa: N802 - Qt-style compatibility API
+        checked = bool(checked)
+        changed = checked != self._checked
+        self._checked = checked
+        self.header_button.blockSignals(True)
+        self.header_button.setChecked(checked)
+        self.header_button.blockSignals(False)
+        self._sync_header()
+        if changed:
+            self.toggled.emit(checked)
+
+    def _sync_header(self) -> None:
+        self.header_button.setArrowType(Qt.DownArrow if self._checked else Qt.RightArrow)
+        self.header_button.setText(self._title)
+
+
+def _collapsible_help_text(title: str) -> str:
+    if title == "Advanced Scientific Settings":
+        return "Adjust optional scientific parameters for the products you selected."
+    if title in {"Details", "Technical Details", "Troubleshooting"}:
+        return "Show additional technical information about the current operation."
+    return f"Show or hide {title.lower()}."
+
+
+def _collapsible_section(parent: QVBoxLayout, title: str, checked: bool = False) -> tuple[CompactCollapsibleSection, QVBoxLayout]:
+    """Add a compact disclosure section without overwriting child visibility."""
+    group = CompactCollapsibleSection(title, checked)
+    content = group._content_widget
     layout = QVBoxLayout(content)
-    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setContentsMargins(SPACING_XS, SPACING_XS, SPACING_XS, SPACING_XS)
     layout.setSpacing(SECTION_SPACING)
-    outer.addWidget(content)
-    group._content_widget = content
     parent.addWidget(group)
     return group, layout
 
 
-def _wire_collapsible_group(group: QGroupBox) -> None:
+def _wire_collapsible_group(group: CompactCollapsibleSection) -> None:
     """Connect and apply visibility for a checkable section's content widgets."""
     _set_collapsible_content_visible(group, group.isChecked())
     group.toggled.connect(lambda checked: _set_collapsible_content_visible(group, checked))
 
 
-def _set_collapsible_content_visible(group: QGroupBox, visible: bool) -> None:
+def _set_collapsible_content_visible(group: CompactCollapsibleSection, visible: bool) -> None:
     content = getattr(group, "_content_widget", None)
     if isinstance(content, QWidget):
         content.setMaximumHeight(16777215 if visible else 0)

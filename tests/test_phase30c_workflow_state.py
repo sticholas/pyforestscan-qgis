@@ -132,7 +132,7 @@ class StaticBatchPageRegressionTests(unittest.TestCase):
 
     def test_collapsible_container_preserves_child_semantic_visibility(self):
         helper = self.source.split("def _collapsible_section", 1)[1].split("def _set_layout_visible", 1)[0]
-        self.assertIn("group._content_widget = content", helper)
+        self.assertIn("content = group._content_widget", helper)
         self.assertNotIn("_set_layout_visible(child_layout", helper)
         self.assertIn("self.execution_mode_container = QWidget()", self.source)
         self.assertIn("self.max_workers_container = QWidget()", self.source)

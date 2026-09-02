@@ -274,6 +274,14 @@ Hide obsolete derived content immediately and show one compact updating message.
 
 Use content-sized group boxes and maximum heights for expanded technical reports. Do not use a large minimum height for an empty list or report. At most one workflow action should use the primary role in a state. QGIS theme icons remain preferred with Qt fallbacks.
 
+### Compact disclosure rows
+
+Expandable content uses one standard disclosure row, approximately 24-30 px at normal DPI. The row keeps a visible right/down arrow, subtle border, hover/focus feedback, and contextual help. Expanding changes only the body height; a collapsed body contributes zero pixels.
+
+### Adaptive operation status
+
+Idle and terminal operation areas show only their concise status. Progress bars, worker details, elapsed time, and ETA appear only while validation or processing is active. Layout geometry must update immediately when state changes, without reserving the largest possible height.
+
 
 ## Phase 28H Adaptive Scale and Compact Workspace
 
