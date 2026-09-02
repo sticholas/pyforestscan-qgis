@@ -1,5 +1,12 @@
 # Changelog
 
+## Phase 32U - Process page visual reset
+
+- Replaced the Process page's split workflow columns with one stable top-to-bottom information architecture.
+- Kept responsive columns inside Products and Advanced Scientific Settings while preserving section order at every dock width.
+- Flattened routine Process cards, restored natural-width area utilities, joined Prerun and Process actions, and bounded the contextual help footer.
+- Preserved Phase 32T product-toggle responsiveness, scientific registry/defaults, parameter provenance, automatic execution, and recovery behavior.
+
 ## Phase 32T - Non-blocking scientific product UX
 
 - Removed polygon normalization, repository refresh, and duplicate callback work from product toggles; live FHD toggles now complete in under one millisecond in the measured QGIS profile.

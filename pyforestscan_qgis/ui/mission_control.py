@@ -311,6 +311,8 @@ class MissionControlDock(QDockWidget):
             QListWidget::item:selected { background: #dde8ec; color: #1f2d35; }
             QGroupBox { font-weight: 600; margin-top: 8px; border: 1px solid #dfe6e9; border-radius: 6px; padding: 8px; background: #ffffff; }
             QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #32424a; }
+            QGroupBox[processSection="true"] { margin-top: 6px; border: 0; border-radius: 0; padding: 0; background: transparent; }
+            QGroupBox[processSection="true"]::title { subcontrol-origin: margin; left: 0; padding: 0 3px 0 0; color: #2b3c44; font-weight: 700; }
             QPushButton { background: #ffffff; border: 1px solid #cfd9dd; border-radius: 4px; padding: 6px 10px; }
             QPushButton[buttonRole="primary"] { background: #2f6f7d; border-color: #275e6a; color: #ffffff; font-weight: 600; }
             QPushButton[buttonRole="secondary"] { background: #ffffff; border-color: #b9c9cf; color: #263840; }

@@ -153,6 +153,13 @@ SECTION_SPACING = SPACING_SM
 ACTION_ROW_SPACING = SPACING_SM
 PRIMARY_BUTTON_HEIGHT = 36
 SECONDARY_BUTTON_HEIGHT = 30
+PAGE_MARGIN = SPACING_MD
+SECTION_GAP = SPACING_MD
+ROW_GAP = SPACING_SM
+CONTROL_GAP = SPACING_SM
+HEADING_GAP = SPACING_XS
+COMPACT_BUTTON_HEIGHT = SECONDARY_BUTTON_HEIGHT
+FIELD_HEIGHT = SECONDARY_BUTTON_HEIGHT
 COMPACT_LIST_HEIGHT = 76
 TECHNICAL_DETAIL_HEIGHT = 72
 COMPACT_VISIBLE_ROWS = 6
@@ -169,6 +176,7 @@ class ContextHelpBanner(QFrame):
         self.setAccessibleName("Context help")
         self.setFrameShape(QFrame.StyledPanel)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.setMaximumHeight(54)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(SPACING_SM, SPACING_XS, SPACING_SM, SPACING_XS)
         layout.setSpacing(SPACING_SM)
@@ -2427,7 +2435,7 @@ class BatchPage(MissionPage):
         qgis_source_layout.addLayout(qgis_layer_row)
         polygon_area_actions = QHBoxLayout()
         polygon_area_actions.setSpacing(ACTION_ROW_SPACING)
-        polygon_area_actions.addWidget(self.polygon_refresh_layers_button, 1)
+        polygon_area_actions.addWidget(self.polygon_refresh_layers_button, 0)
         self.polygon_layer_mode_combo = QComboBox()
         self.polygon_layer_mode_combo.addItem("Selected features", "selected")
         self.polygon_layer_mode_combo.addItem("Entire layer", "full")
@@ -2509,11 +2517,11 @@ class BatchPage(MissionPage):
         self.zoom_polygon_button.setText("Zoom to Area")
         self.zoom_polygon_button.setProperty("contextHelp", "Center the QGIS map on the selected processing area.")
         self.zoom_polygon_button.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-        polygon_area_actions.addWidget(self.zoom_polygon_button, 1)
+        polygon_area_actions.addWidget(self.zoom_polygon_button, 0)
         polygon_area_actions.addStretch(1)
         qgis_source_layout.addLayout(polygon_area_actions)
 
-        self.output_section, output_layout = self.create_section("Output Folder")
+        self.output_section, output_layout = self.create_section("Output")
         self.batch_output_section = self.output_section
         output_row = QHBoxLayout()
         self.output_folder_edit = QLineEdit()
@@ -2532,21 +2540,20 @@ class BatchPage(MissionPage):
 
         self.products_section, products_layout = self.create_section("Products", index=self.content_layout.indexOf(self.output_section))
         self.product_checks: dict[ProductType, QCheckBox] = {}
-        product_grid = QGridLayout()
-        product_grid.setHorizontalSpacing(SPACING_XL)
-        product_grid.setVerticalSpacing(SPACING_SM)
+        self.product_grid = QGridLayout()
+        self.product_grid.setHorizontalSpacing(SPACING_XL)
+        self.product_grid.setVerticalSpacing(SPACING_XS)
         for index, definition in enumerate(MISSION_CONTROL_PRODUCTS):
             product = definition.product
             check = QCheckBox(definition.short_name)
-            check.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
             check.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
             check.setToolTip(definition.description)
             check.setProperty("contextHelp", definition.description)
             if product is ProductType.CHM:
                 check.setChecked(True)
             self.product_checks[product] = check
-            product_grid.addWidget(check, index // 2, index % 2)
-        products_layout.addLayout(product_grid)
+            self.product_grid.addWidget(check, index // 2, index % 2)
+        products_layout.addLayout(self.product_grid)
         product_actions = QHBoxLayout()
         self.select_recommended_products_button = QPushButton("Select Recommended")
         self.clear_products_button = QPushButton("Clear Selection")
@@ -2560,7 +2567,7 @@ class BatchPage(MissionPage):
         products_layout.addLayout(product_actions)
         self.select_recommended_products_button.setVisible(False)
         self.clear_products_button.setVisible(False)
-        self.advanced_product_settings_group, settings_layout = _collapsible_section(products_layout, "Advanced", checked=False)
+        self.advanced_product_settings_group, settings_layout = _collapsible_section(products_layout, "Advanced Scientific Settings", checked=False)
         self.advanced_product_settings_group.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Minimum)
         settings_form = QFormLayout()
         settings_form.setVerticalSpacing(SECTION_SPACING)
@@ -2816,6 +2823,7 @@ class BatchPage(MissionPage):
         _apply_button_role(self.run_button, "primary")
         self.run_button.setEnabled(False)
         button_row = QHBoxLayout()
+        self.process_button_row = button_row
         button_row.addWidget(self.run_button)
         self.engine_setup_button = QPushButton("Set Up Processing Engine")
         self.engine_setup_button.clicked.connect(self.processingEngineSetupRequested.emit)
@@ -2898,6 +2906,7 @@ class BatchPage(MissionPage):
         self.previous_runs_list=QListWidget();self.previous_runs_list.setMaximumHeight(120);self.previous_runs_layout.addWidget(self.previous_runs_list)
         self.previous_runs_group.setVisible(False);_wire_collapsible_group(self.previous_runs_group)
         self._process_column_mode = ""
+        self._product_column_count = 0
         self._install_process_workspace()
         self._update_batch_mode_visibility()
         self._wire_session_state_inputs()
@@ -2909,14 +2918,13 @@ class BatchPage(MissionPage):
         self._processing_watchdog.start()
 
     def _install_process_workspace(self) -> None:
-        """Place routine processing sections in one responsive workspace."""
+        """Compose one top-to-bottom workflow with responsive section internals."""
         self.process_workspace = QWidget(self.content_widget)
         self.process_workspace.setObjectName("responsiveProcessWorkspace")
         self.process_workspace.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-        self.process_workspace_layout = QGridLayout(self.process_workspace)
+        self.process_workspace_layout = QVBoxLayout(self.process_workspace)
         self.process_workspace_layout.setContentsMargins(0, 0, 0, 0)
-        self.process_workspace_layout.setHorizontalSpacing(SPACING_SM)
-        self.process_workspace_layout.setVerticalSpacing(SPACING_SM)
+        self.process_workspace_layout.setSpacing(SECTION_GAP)
         self._routine_process_sections = (
             self.mode_section, self.repository_section, self.polygon_section,
             self.products_section, self.output_section, self.prerun_section, self.process_section,
@@ -2924,37 +2932,54 @@ class BatchPage(MissionPage):
         for section in self._routine_process_sections:
             _take_layout_widget(self.content_layout, section)
             section.setParent(self.process_workspace)
+            section.setProperty("processSection", True)
+            section.style().unpolish(section)
+            section.style().polish(section)
+        self.mode_section.setTitle("")
+        self.prerun_section.setTitle("")
+        _take_layout_widget(self.prerun_section.layout(), self.preflight_button)
+        _take_layout_widget(self.process_button_row, self.run_button)
+        self.workflow_action_row = QGridLayout()
+        self.workflow_action_row.setHorizontalSpacing(ACTION_ROW_SPACING)
+        self.workflow_action_row.setVerticalSpacing(ROW_GAP)
+        self.preflight_button.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.run_button.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.prerun_section.layout().insertLayout(0, self.workflow_action_row)
         self.content_layout.insertWidget(0, self.process_workspace)
-        self._apply_process_columns(620)
-
-    def _apply_process_columns(self, width: int) -> None:
-        """Switch between single and dual columns at the measured 620 px breakpoint."""
-        mode = "two" if width >= 620 else "one"
-        if mode == self._process_column_mode:
-            return
-        self._process_column_mode = mode
         for section in self._routine_process_sections:
-            _take_layout_widget(self.process_workspace_layout, section)
-        if mode == "two":
-            for row, section in enumerate((self.mode_section, self.repository_section, self.polygon_section, self.output_section)):
-                self.process_workspace_layout.addWidget(section, row, 0)
-            for row, section in enumerate((self.products_section, self.prerun_section, self.process_section)):
-                self.process_workspace_layout.addWidget(section, row, 1)
-            self.process_workspace_layout.setColumnStretch(0, 1)
-            self.process_workspace_layout.setColumnStretch(1, 1)
+            self.process_workspace_layout.addWidget(section)
+        self._apply_process_layout(760)
+
+    def _apply_process_layout(self, width: int) -> None:
+        """Adapt Products and Advanced without changing workflow reading order."""
+        columns = 4 if width >= 720 else 2
+        mode = "wide" if columns == 4 else "narrow"
+        _take_layout_widget(self.workflow_action_row, self.preflight_button)
+        _take_layout_widget(self.workflow_action_row, self.run_button)
+        if width < 420:
+            self.workflow_action_row.addWidget(self.preflight_button, 0, 0)
+            self.workflow_action_row.addWidget(self.run_button, 1, 0)
         else:
-            ordered = (self.mode_section, self.repository_section, self.polygon_section, self.products_section,
-                       self.output_section, self.prerun_section, self.process_section)
-            for row, section in enumerate(ordered):
-                self.process_workspace_layout.addWidget(section, row, 0)
-            self.process_workspace_layout.setColumnStretch(0, 1)
-            self.process_workspace_layout.setColumnStretch(1, 0)
+            self.workflow_action_row.addWidget(self.preflight_button, 0, 0)
+            self.workflow_action_row.addWidget(self.run_button, 0, 1)
+        self.workflow_action_row.setColumnStretch(0, 1)
+        self.workflow_action_row.setColumnStretch(1, 1 if width >= 420 else 0)
+        if columns != self._product_column_count:
+            self._product_column_count = columns
+            for check in self.product_checks.values():
+                _take_layout_widget(self.product_grid, check)
+            for index, definition in enumerate(MISSION_CONTROL_PRODUCTS):
+                self.product_grid.addWidget(self.product_checks[definition.product], index // columns, index % columns)
+        self.product_settings_form.setRowWrapPolicy(
+            QFormLayout.DontWrapRows if width >= 720 else QFormLayout.WrapAllRows
+        )
+        self._process_column_mode = mode
 
     def resizeEvent(self, event: object) -> None:  # noqa: N802 - Qt API
         """Adapt routine workflow columns without rebuilding any controls."""
         super().resizeEvent(event)
         if hasattr(self, "process_workspace"):
-            self._apply_process_columns(self.scroll_area.viewport().width())
+            self._apply_process_layout(self.scroll_area.viewport().width())
 
     def set_job_token_factory(self,factory) -> None:
         self._job_token_factory=factory

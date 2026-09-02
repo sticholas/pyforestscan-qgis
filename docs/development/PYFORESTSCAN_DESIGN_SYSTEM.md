@@ -1,5 +1,13 @@
 # PyForestScan Design System
 
+## Process workflow composition
+
+Process uses one top-to-bottom information architecture. Major workflow sections must not be distributed across parallel columns. Responsive columns are reserved for homogeneous content such as Product choices or scientific parameter rows.
+
+The shared desktop-density metrics are `PAGE_MARGIN`, `SECTION_GAP`, `ROW_GAP`, `CONTROL_GAP`, `HEADING_GAP`, `COMPACT_BUTTON_HEIGHT`, and `FIELD_HEIGHT`. Routine Process sections use headings and spacing rather than card borders. Utility commands use natural width; primary execution actions may expand only when the layout requires it.
+
+At narrow widths, Products uses two columns and the Prerun/Process actions may stack. At wide widths, Products uses four columns and Advanced settings use inline label/control rows. Width changes must never reorder Mode, LiDAR Data, Processing Area, Products, Advanced, Output, and execution actions.
+
 Phase 29A establishes adaptive visibility as an implementation contract: empty collections collapse to one-line states, populated lists use bounded internal scrolling, form rows disappear when their controlling mode is inactive, and responsive status strips reduce detail before they wrap or clip.
 
 

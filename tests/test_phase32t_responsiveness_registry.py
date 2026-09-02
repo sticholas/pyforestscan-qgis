@@ -50,9 +50,11 @@ class Phase32TRegistryTests(unittest.TestCase):
         self.assertEqual(len(descriptions), len(set(descriptions)))
         self.assertTrue(all(description.endswith(".") for description in descriptions))
 
-    def test_responsive_workspace_has_measured_breakpoint(self) -> None:
-        self.assertIn('mode = "two" if width >= 620 else "one"', PAGES)
+    def test_responsive_workspace_preserves_vertical_workflow(self) -> None:
+        self.assertIn('columns = 4 if width >= 720 else 2', PAGES)
         self.assertIn('setObjectName("responsiveProcessWorkspace")', PAGES)
+        self.assertIn('self.process_workspace_layout = QVBoxLayout', PAGES)
+        self.assertNotIn('self.process_workspace_layout = QGridLayout', PAGES)
         mode_change = PAGES[PAGES.index("def _update_batch_mode_visibility"):PAGES.index("def _on_execution_mode_changed")]
         self.assertNotIn("refresh_catalog_status", mode_change)
 

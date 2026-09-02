@@ -23,7 +23,7 @@ class Phase28CInterfaceCompactionTests(unittest.TestCase):
         self.assertIn("Process LiDAR files found in a selected folder.", PAGES)
 
     def test_normal_batch_flow_uses_compact_section_names(self):
-        for title in ("Processing Mode", "LiDAR Data", "Processing Area", "Products", "Output Folder", "Readiness", "Process", "Current Result"):
+        for title in ("Processing Mode", "LiDAR Data", "Processing Area", "Products", "Output", "Readiness", "Process", "Current Result"):
             self.assertIn(f'create_section("{title}"', PAGES)
         self.assertNotIn('_collapsible_section(self.content_layout, "Batch Footprint Estimate"', PAGES)
 

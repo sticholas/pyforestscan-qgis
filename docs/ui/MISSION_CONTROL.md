@@ -1,5 +1,11 @@
 # Mission Control
 
+## Process page
+
+Process follows one continuous sequence: choose Mode, LiDAR Data, Processing Area, Products, optional Advanced Scientific Settings, Output, then run Prerun Check and Process LiDAR. Major sections remain in this order at every dock width. Products and Advanced adapt internally to available width without splitting the workflow.
+
+Advanced Scientific Settings shows only parameters relevant to selected products and is collapsed by default. Refresh and Zoom to Area remain beside the area they affect. Processing progress and the current result appear below the action row, while contextual help remains in the page footer.
+
 ## Processing Engine setup
 
 Tools & Setup always offers one engine action: **Set Up Processing Engine**, or **Repair / Reload Processing Engine** after setup or when recovery is needed. Ready means the complete managed runtime contract was established for this plugin build. Startup only reads that local state; setup occurs only after confirmation.
