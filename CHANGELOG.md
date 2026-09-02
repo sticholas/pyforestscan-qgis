@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32Q - Adaptive parallel EPT execution and live progress
+
+- Added conservative one-to-five process-level EPT concurrency with measured-memory ceilings, network-latency backoff, repeated-crash circuit breaking, and a machine-wide heavy-worker budget.
+- Kept every bounded region in an isolated PBM child process while preserving region checkpoints, pause-after-active-work, owned-child cancellation, and coordinator-only finalization.
+- Projected coordinator state into Mission Control with weighted progress, robust ETA, completed/active/remaining region counts, child stages, health, and human-readable elapsed time.
+- Accounted for the completed 109-region, 9,847.953-second production baseline and documented the benchmark gate without claiming unmeasured speedup.
+- Left PyForestScan source, scientific parameters, global grid, exact polygon mask, and Advanced Toolbox behavior unchanged.
+
 ## Phase 32P - High-throughput EPT execution and release integrity
 
 - Removed alignment-rounding slivers and replaced the fixed small-request point ceiling with computed point, raster, and memory safety budgets.

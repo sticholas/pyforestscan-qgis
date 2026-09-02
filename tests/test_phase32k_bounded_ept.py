@@ -96,7 +96,7 @@ class BoundedEptTests(unittest.TestCase):
         self.assertIn('"PILOT_COMPLETED"', source)
         self.assertIn('"HAG_STRATEGY_RESOLVED"', source)
         self.assertIn('"WORK_UNIT_SCHEDULER_STARTED"', source)
-        self.assertIn('"STALLED_NO_FORWARD_PROGRESS"', source)
+        self.assertIn('"POSSIBLE_STALL"', source)
         self.assertIn("suppress_local_discovery_warning", source)
         self.assertIn("build_processing_engine_environment", source)
         self.assertIn("ept_chm_subread.py", source)

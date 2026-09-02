@@ -105,7 +105,7 @@ def sizing_policy(*,repository_kind,product,resolution,available_memory_bytes,cp
     adaptive=derive_adaptive_plan(AdaptivePlannerInputs(width,height,polygon_area if polygon_area is not None else area,resolution,repository_kind,point_density,available_memory_bytes,cpu_count,network,product,hag_method,native_partition_count))
     concurrency=adaptive.concurrency
     if profile=='conservative':concurrency=1
-    elif profile=='performance' and not network and (repository_kind!='ept' or os.environ.get('PYFORESTSCAN_DEV_EPT_PARALLEL')=='1'):concurrency=min(max(1,cpu_count),4,max(1,concurrency+1))
+    elif profile=='performance' and not network:concurrency=min(max(1,cpu_count),5,max(1,concurrency+1))
     rationale=' '.join(adaptive.rationale)
     return WorkUnitSizingPolicy(adaptive.target_width,adaptive.target_height,adaptive.buffer_distance,adaptive.estimated_points_per_unit[1],adaptive.expected_memory_per_unit[1],concurrency,rationale,adaptive.confidence,adaptive.strategy,adaptive.estimated_points_per_unit,adaptive.expected_memory_per_unit,adaptive.pilot_required,product)
 
@@ -153,7 +153,7 @@ class SourceAwareWorkPlanner:
         peak=max((unit.estimated_memory for unit in units),default=cells*4)
         memory='Low' if peak<256*1024**2 else 'Moderate' if peak<1024**3 else 'High' if peak<3*1024**3 else 'Very High'
         assumptions=[f"Global {resolution:g}-unit grid.",f"{sizing.buffer_distance:g}-unit CHM read buffer.",f"Adaptive strategy: {sizing.strategy}.",sizing.rationale,"Exact polygon mask is applied after mosaic."]
-        if repository_kind=='ept' and product=='chm' and sizing.maximum_concurrent_units==1:assumptions.extend(("Safe processing mode is active for this EPT job.","Parallel EPT HAG workers are temporarily limited while native-worker stability is being validated."))
+        if repository_kind=='ept' and product=='chm':assumptions.extend(("Adaptive isolated-worker mode starts at one region and ramps up within measured resource limits.","Automatic concurrency never exceeds five heavy workers."))
         polygon_signature=getattr(polygon,"polygon_signature","")
         hag_signature=hashlib.sha256(b"existing_normalized_height:HeightAboveGround").hexdigest()
         native_reused=len(paths) if repository_kind in {'folder','las','laz'} else 0

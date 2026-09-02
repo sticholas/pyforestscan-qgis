@@ -11,7 +11,7 @@ def utc_now():return datetime.now(timezone.utc).isoformat()
 
 @dataclass(frozen=True)
 class ProcessingProgressSnapshot:
-    job_id:str;attempt_id:str;state:str;total_work_units:int;completed:int=0;failed:int=0;pending:int=0;running:int=0;attempted:int=0;current_work_unit_id:str="";current_stage:str="Preparing Job";current_activity:str="";elapsed_seconds:float=0.;last_heartbeat:str="";pilot_state:str="pending";circuit_breaker_state:str="closed";finalization_state:str="pending";source_count:int=1;candidate_work_units:int=0;required_work_units:int=0;skipped_outside_polygon:int=0;complete_nodata:int=0;stop_reason:str=""
+    job_id:str;attempt_id:str;state:str;total_work_units:int;completed:int=0;failed:int=0;pending:int=0;running:int=0;attempted:int=0;current_work_unit_id:str="";current_stage:str="Preparing";current_activity:str="";elapsed_seconds:float=0.;last_heartbeat:str="";pilot_state:str="pending";circuit_breaker_state:str="closed";finalization_state:str="pending";source_count:int=1;candidate_work_units:int=0;required_work_units:int=0;skipped_outside_polygon:int=0;complete_nodata:int=0;stop_reason:str="";current_work_unit_ids:tuple[str,...]=();progress_percent:int=0;eta_seconds:float|None=None;eta_confidence:str="CALCULATING";health:str="WORKING";target_concurrency:int=1;worker_details:tuple[dict,...]=();points_processed:int=0
 
 def aggregate_work_unit_statuses(folder,candidate_work_units,required_work_units):
     counts={"completed":0,"complete_nodata":0,"failed":0,"pending":0,"running":0,"attempted":0,"skipped_outside_polygon":0,"current_work_unit_ids":[]}

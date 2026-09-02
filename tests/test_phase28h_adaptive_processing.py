@@ -14,9 +14,9 @@ class AdaptiveScaleTests(unittest.TestCase):
         self.assertLessEqual(small.required_count,4);self.assertGreater(medium.required_count,small.required_count)
         self.assertGreater(large.required_count,medium.required_count);self.assertGreater(very_large.required_count,120)
         self.assertNotEqual(very_large.required_count,120)
-    def test_network_ept_is_bounded_and_serial_by_default(self):
+    def test_network_ept_is_bounded_for_adaptive_isolated_execution(self):
         plan=self.plan(5000,5000,path='//server/ept.json',profile='performance')
-        self.assertEqual(plan.concurrency_limit,1);self.assertTrue(all(unit.unit_type is WorkUnitType.EPT_WINDOW for unit in plan.work_units))
+        self.assertGreaterEqual(plan.concurrency_limit,1);self.assertLessEqual(plan.concurrency_limit,2);self.assertTrue(all(unit.unit_type is WorkUnitType.EPT_WINDOW for unit in plan.work_units))
     def test_native_small_tiles_are_reused_without_grid_overlay(self):
         sources=tuple(NativeSource(Path(f'{i}.laz'),SpatialExtent(i*100,0,(i+1)*100,100),10*1024**2,source_type='laz') for i in range(4))
         plan=SourceAwareWorkPlanner().plan(repository_kind='folder',sources=sources,polygon_envelope=SpatialExtent(0,0,400,100),processing_crs='EPSG:26904',product='chm',resolution=1)

@@ -9,6 +9,7 @@ import traceback
 import uuid
 from pathlib import Path
 import sys
+from datetime import datetime, timezone
 
 PLUGIN_PARENT = Path(__file__).resolve().parents[2]
 if str(PLUGIN_PARENT) not in sys.path:
@@ -28,11 +29,29 @@ def _atomic_pickle(path: Path, value: object) -> None:
 
 
 def run(payload_path: Path, result_path: Path) -> int:
+    status_path = result_path.with_suffix(".status.json")
+    started = __import__("time").monotonic()
+    def progress(snapshot) -> None:
+        message = str(getattr(snapshot, "message", "") or "Processing LiDAR")
+        stage = (
+            "Reading LiDAR" if "load" in message.lower() or "read" in message.lower()
+            else "Calculating CHM" if "calculat" in message.lower()
+            else "Writing Result" if "geotiff" in message.lower() or "raster" in message.lower()
+            else "Preparing Data"
+        )
+        atomic_write_json(status_path, {
+            "state": "running", "pid": os.getpid(), "stage": stage,
+            "message": message, "percent": float(getattr(snapshot, "percent", 0.0)),
+            "elapsed_seconds": __import__("time").monotonic() - started,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
     try:
         with payload_path.open("rb") as stream:
             request = pickle.load(stream)
-        result = PyForestScanAdapter(execution_mode="qgis_python").create_chm(request)
+        atomic_write_json(status_path, {"state": "running", "pid": os.getpid(), "stage": "Reading LiDAR", "message": "Starting bounded LiDAR read.", "percent": 0, "updated_at": datetime.now(timezone.utc).isoformat()})
+        result = PyForestScanAdapter(execution_mode="qgis_python", progress_sink=progress).create_chm(request)
         _atomic_pickle(result_path, result)
+        atomic_write_json(status_path, {"state": "complete", "pid": os.getpid(), "stage": "Saving Checkpoint", "message": "Bounded result complete.", "percent": 100, "elapsed_seconds": __import__("time").monotonic() - started, "updated_at": datetime.now(timezone.utc).isoformat()})
         return 0
     except Exception as exc:
         atomic_write_json(result_path.with_suffix(".error.json"), {
@@ -40,6 +59,7 @@ def run(payload_path: Path, result_path: Path) -> int:
             "traceback": traceback.format_exc(),
             "payload": str(payload_path),
         })
+        atomic_write_json(status_path, {"state": "failed", "pid": os.getpid(), "stage": "Needs Attention", "message": str(exc), "elapsed_seconds": __import__("time").monotonic() - started, "updated_at": datetime.now(timezone.utc).isoformat()})
         return 1
 
 

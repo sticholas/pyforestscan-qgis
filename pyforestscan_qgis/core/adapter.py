@@ -111,10 +111,15 @@ DEFAULT_PRODUCTS = (
 class AdapterProgress:
     """Small progress interface independent of QGIS Processing feedback."""
 
-    def __init__(self) -> None:
+    def __init__(self, callback: Callable[[ProgressSnapshot], None] | None = None) -> None:
         """Create an idle progress tracker."""
         self._snapshot = ProgressSnapshot(state=ProgressState.IDLE, percent=0.0)
         self._canceled = False
+        self._callback = callback
+
+    def _publish(self) -> None:
+        if self._callback is not None:
+            self._callback(self._snapshot)
 
     def start(self, message: str) -> None:
         """Mark an operation as running."""
@@ -124,6 +129,7 @@ class AdapterProgress:
             message=message,
             canceled=self._canceled,
         )
+        self._publish()
 
     def update(self, percent: float, message: str = "") -> None:
         """Update progress percentage and optional message."""
@@ -135,6 +141,7 @@ class AdapterProgress:
             message=message,
             canceled=self._canceled,
         )
+        self._publish()
 
     def complete(self, message: str = "") -> None:
         """Mark the operation as complete."""
@@ -144,6 +151,7 @@ class AdapterProgress:
             message=message,
             canceled=self._canceled,
         )
+        self._publish()
 
     def fail(self, message: str) -> None:
         """Mark the operation as failed."""
@@ -153,6 +161,7 @@ class AdapterProgress:
             message=message,
             canceled=self._canceled,
         )
+        self._publish()
 
     def cancel(self) -> None:
         """Request cancellation for future adapter work."""
@@ -163,6 +172,7 @@ class AdapterProgress:
             message=self._snapshot.message,
             canceled=True,
         )
+        self._publish()
 
     def snapshot(self) -> ProgressSnapshot:
         """Return the current immutable progress snapshot."""
@@ -180,6 +190,7 @@ class PyForestScanAdapter:
         backend_service_factory: TypingCallable[[], object] | None = None,
         runtime_token: object | None = None,
         runtime_products: tuple[str, ...] = (),
+        progress_sink: Callable[[ProgressSnapshot], None] | None = None,
     ) -> None:
         """Create an adapter with immutable configuration and optional logging."""
         self.config = config or AdapterConfig()
@@ -188,7 +199,7 @@ class PyForestScanAdapter:
         self._backend_service_factory = backend_service_factory
         self._runtime_token = runtime_token
         self._runtime_products = tuple(runtime_products)
-        self._progress = AdapterProgress()
+        self._progress = AdapterProgress(progress_sink)
         self._open_dataset: DatasetSource | None = None
         self._chm_cache: dict[tuple[object, ...], tuple[object, object]] = {}
 

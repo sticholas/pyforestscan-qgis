@@ -65,9 +65,8 @@ def derive_adaptive_plan(inputs:AdaptivePlannerInputs)->AdaptiveProcessingPlan:
     point_range=(max(0,int(central*.55)),max(1,int(central*1.6)))
     memory_range=(int(point_range[0]*bytes_per_point),int(point_range[1]*bytes_per_point))
     memory_concurrency=max(1,int((inputs.available_memory_bytes*.55)/max(memory_range[1],1)))
-    concurrency=max(1,min(int(inputs.cpu_count or 1),4,memory_concurrency))
+    concurrency=max(1,min(int(inputs.cpu_count or 1),5,memory_concurrency))
     if inputs.network:concurrency=min(concurrency,2)
-    if inputs.source_type=='ept' and os.environ.get('PYFORESTSCAN_DEV_EPT_PARALLEL')!='1':concurrency=1
     native_reused=inputs.native_partition_count if inputs.source_type in {'las','laz','folder'} else 0
     shared_note='Rumple memory includes simultaneous buffered CHM, patch raster, and mosaic buffers.' if inputs.product=='rumple' else 'CHM memory includes buffered raster and output buffers.'
     rationale=(f'Unit scale derives from {density:g} points/m2, {memory_budget/1024**2:.0f} MiB per-unit budget, and {inputs.output_resolution:g}-unit output cells.',shared_note,f'Polygon occupies {compactness:.0%} of its envelope; no preferred work-unit count is used.',f'{"Network-aware" if inputs.network else "Local"} concurrency is bounded by memory and CPU.')

@@ -4396,10 +4396,9 @@ class BatchPage(MissionPage):
                 f"Polygon intersecting sources: {selected_count} after preflight\n"
                 f"Selected products: {', '.join(products) if products else 'none'}\n"
                 f"Shared grid resolution: {self.resolution_spin.value():g}\n"
-                f"Concurrency: requested {concurrency['requested_concurrent_jobs']}; effective {concurrency['effective_concurrent_jobs']}\n"
+                f"Processing strategy: Automatic (up to {concurrency['effective_concurrent_jobs']} isolated workers)\n"
                 f"Exact raster mask: {'on' if self.exact_raster_mask_check.isChecked() else 'off'}; engine {self.mask_engine_combo.currentText()}\n"
-                "Output loading: automatic after completion\n"
-                f"{concurrency['reason']}"
+                "Output loading: automatic after completion"
             )
             return
         selected_count = len(self._selected_paths())
@@ -4460,7 +4459,7 @@ class BatchPage(MissionPage):
             return
         stage = str(event.get("active_stage") or event.get("stage") or "PROCESSING")
         message = str(event.get("message") or stage.replace("_", " ").title())
-        elapsed = int(event.get("elapsed_seconds", 0))
+        elapsed = float(event.get("elapsed_seconds", 0) or 0)
         entity_id = str(event.get("entity_id", ""))
         if entity_id and event.get("entity_type") == "dataset":
             source = Path(entity_id)
@@ -4469,8 +4468,25 @@ class BatchPage(MissionPage):
                 source, batch_run_context(source, folder, reuse_existing=True),
                 "running", message, (), stage,
             ))
-        self.progress_bar.setRange(0, 0)
-        self.worker_status_label.setText(f"{message} Elapsed: {elapsed} s. Coordinator active.")
+        percent = event.get("progress_percent")
+        if percent is None:
+            self.progress_bar.setRange(0, 0)
+        else:
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(max(0, min(99, int(float(percent)))))
+        completed = int(event.get("completed", 0) or 0)
+        total = int(event.get("required_work_units", event.get("total", 0)) or 0)
+        active = int(event.get("running", 0) or 0)
+        remaining = max(0, total - completed - int(event.get("failed", 0) or 0))
+        eta = event.get("eta_seconds")
+        eta_text = "Calculating" if eta is None else _compact_duration(float(eta))
+        health = str(event.get("health") or "WORKING").replace("_", " ").title()
+        target = int(event.get("target_concurrency", active or 1) or 1)
+        self.worker_status_label.setText(
+            f"{message}  |  {completed}/{total or '?'} regions complete  |  "
+            f"{active} active (target {target})  |  {remaining} remaining  |  "
+            f"Elapsed {_compact_duration(elapsed)}  |  ETA {eta_text}  |  {health}"
+        )
         _set_status_badge(self.status_label, "RUNNING", f"Status: Running - {projection.summary()}.")
 
     def _on_batch_job_update(self, job: JobRecord) -> None:
@@ -5768,6 +5784,18 @@ def _add_advisor_item(widget: QListWidget, text: str, height: int = 58) -> None:
     item = QListWidgetItem(text)
     item.setSizeHint(QSize(0, height))
     widget.addItem(item)
+
+
+def _compact_duration(seconds: float) -> str:
+    """Format live processing durations without exposing raw seconds."""
+    value = max(0, int(seconds))
+    hours, remainder = divmod(value, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    if minutes:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
 
 
 def _body_label(text: str) -> QLabel:

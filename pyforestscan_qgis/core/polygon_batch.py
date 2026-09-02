@@ -586,9 +586,16 @@ def execute_polygon_batch(
         context = batch_run_context(Path(source.path), job_folder, reuse_existing=True).ensure_directories()
         for child in ("inputs", "staging", "outputs", "logs", "diagnostics"):
             (job_folder / child).mkdir(parents=True, exist_ok=True)
-        return _execute_source_aware_chm(report, adapter, batch_folder, context, source, scalable_plan, item_callback=item_callback)
+        return _execute_source_aware_chm(
+            report, adapter, batch_folder, context, source, scalable_plan,
+            item_callback=item_callback, control_callback=control_callback,
+            progress_callback=progress_callback,
+        )
     if _is_logical_spatial_report(report):
-        return _execute_logical_spatial_batch(report, adapter, batch_folder, item_callback=item_callback)
+        return _execute_logical_spatial_batch(
+            report, adapter, batch_folder, item_callback=item_callback,
+            control_callback=control_callback, progress_callback=progress_callback,
+        )
     if isinstance(adapter, PyForestScanAdapter) and os.environ.get("PYFORESTSCAN_GENERIC_POLYGON_COORDINATOR") != "1" and adapter.selected_execution_backend() == "pbm_backend":
         return _submit_and_observe_generic_polygon(
             report, adapter, batch_folder, item_callback=item_callback,
@@ -1349,7 +1356,15 @@ def _is_logical_spatial_report(report: PolygonBatchPreflightReport) -> bool:
     return bool(report.selected_sources) and len(report.selected_sources) == 1 and repository_kind == "ept" and report.selected_sources[0].source_type == "ept"
 
 
-def _execute_logical_spatial_batch(report: PolygonBatchPreflightReport, adapter: PyForestScanAdapter, batch_folder: Path, *, item_callback=None) -> BatchResult:
+def _execute_logical_spatial_batch(
+    report: PolygonBatchPreflightReport,
+    adapter: PyForestScanAdapter,
+    batch_folder: Path,
+    *,
+    item_callback=None,
+    control_callback=None,
+    progress_callback=None,
+) -> BatchResult:
     started_at = datetime.now(timezone.utc).isoformat()
     source = report.selected_sources[0]
     job_folder = batch_folder / "polygon_jobs" / unique_polygon_job_id(source.source_type)
@@ -1361,7 +1376,11 @@ def _execute_logical_spatial_batch(report: PolygonBatchPreflightReport, adapter:
     scalable_plan = build_source_aware_chm_plan(report)
     scalable_products = set(report.request.products)
     if scalable_products and scalable_products <= {ProductType.CHM, ProductType.RUMPLE} and scalable_plan is not None and len(scalable_plan.work_units) > 1:
-        return _execute_source_aware_chm(report, adapter, batch_folder, context, source, scalable_plan, item_callback=item_callback)
+        return _execute_source_aware_chm(
+            report, adapter, batch_folder, context, source, scalable_plan,
+            item_callback=item_callback, control_callback=control_callback,
+            progress_callback=progress_callback,
+        )
     try:
         _emit_polygon_stage(item_callback, source, context, "Preparing Inputs", "Preparing durable polygon job workspace.")
         write_polygon_batch_manifest(report, [{"source": str(source.path), "clipped": "native", "points": str(source.point_count or "unknown"), "bounds_used": str(report.query_geometry.ept_bounds), "job_folder": str(job_folder)}], batch_folder=batch_folder)
@@ -1371,6 +1390,7 @@ def _execute_logical_spatial_batch(report: PolygonBatchPreflightReport, adapter:
             request = _logical_product_request(product, source.path, result_path, report)
             result = _run_logical_product(adapter, product, request)
             outputs.append(Path(getattr(result, "output_path")))
+        _emit_polygon_stage(item_callback,source,context,"Clipping to selected area","Applying the exact selected-area mask.")
         mask_results = _mask_paths(outputs, report)
         status = "completed"
         message = "Logical EPT/COPC source processed through PBM backend and exact polygon finalization."
@@ -1412,7 +1432,10 @@ def _execute_logical_spatial_batch(report: PolygonBatchPreflightReport, adapter:
 
 
 
-def _submit_and_observe_source_aware_chm(report,adapter,batch_folder,context,source,plan,*,item_callback=None):
+def _submit_and_observe_source_aware_chm(
+    report, adapter, batch_folder, context, source, plan, *,
+    item_callback=None, control_callback=None, progress_callback=None,
+):
     job_dir=context.run_folder/"coordinator";job_dir.mkdir(parents=True,exist_ok=True)
     job_id=report.plan_signature or getattr(report.execution_plan,"plan_signature","") or context.run_folder.name;attempt_id=f"attempt-{int(time.time())}"
     payload={"job_id":job_id,"attempt_id":attempt_id,"job_dir":str(job_dir),"report":report,"batch_folder":str(batch_folder),"context":context,"source":source,"plan":plan}
@@ -1438,31 +1461,60 @@ def _submit_and_observe_source_aware_chm(report,adapter,batch_folder,context,sou
     atomic_write_json(job_dir/"submission.json",{"job_id":job_id,"attempt_id":attempt_id,"coordinator_pid":pid,"payload":str(payload_path),"submitted_at":datetime.now(timezone.utc).isoformat()})
     terminal=job_dir/"terminal_result.json";last_stage="";last_progress_signature=None;last_forward_progress=time.monotonic();stall_recorded=False
     while not terminal.exists():
+        requested_control = control_callback() if control_callback is not None else None
+        cancel_path = job_dir / "cancel_requested.json"
+        pause_path = job_dir / "pause_requested.json"
+        if requested_control == "cancel":
+            atomic_write_json(cancel_path, {"requested": True, "requested_at": datetime.now(timezone.utc).isoformat()})
+        if requested_control == "pause":
+            atomic_write_json(pause_path, {"requested": True, "requested_at": datetime.now(timezone.utc).isoformat()})
+        elif pause_path.exists():
+            try:
+                pause_path.unlink()
+            except OSError:
+                pass
         progress=job_dir/"progress_snapshot.json"
         if progress.exists():
             try:
                 data=json.loads(progress.read_text(encoding="utf-8"));stage=str(data.get("current_stage") or "Processing")
                 progress_signature=(stage,int(data.get("attempted") or 0),int(data.get("completed") or 0),int(data.get("failed") or 0),str(data.get("current_work_unit_id") or ""))
-                if progress_signature != last_progress_signature:
+                changed=progress_signature != last_progress_signature
+                if changed:
                     last_progress_signature=progress_signature;last_forward_progress=time.monotonic();stall_recorded=False
-                if stage!=last_stage and item_callback is not None:
-                    _emit_polygon_stage(item_callback,source,context,stage,str(data.get("current_activity") or "Background processing continues."));last_stage=stage
-                if not stall_recorded and time.monotonic()-last_forward_progress>=120:
+                if item_callback is not None and (stage!=last_stage or changed):
+                    eta=data.get("eta_seconds");eta_text="Calculating..." if eta is None else _human_duration(float(eta))
+                    active_ids=tuple(data.get("current_work_unit_ids") or ())
+                    activity=f"{data.get('completed',0)} of {data.get('required_work_units',0)} regions complete; {len(active_ids) or data.get('running',0)} active; estimated remaining {eta_text}; {_health_label(str(data.get('health') or 'WORKING'))}."
+                    _emit_polygon_stage(item_callback,source,context,_job_stage_label(stage),activity);last_stage=stage
+                if progress_callback is not None:
+                    forwarded = dict(data)
+                    forwarded.update({
+                        "entity_type": "dataset",
+                        "entity_id": str(source.path),
+                        "active_stage": _job_stage_label(stage),
+                        "message": str(data.get("current_activity") or _job_stage_label(stage)),
+                    })
+                    progress_callback(forwarded)
+                heartbeat_age=_iso_age_seconds(data.get("last_heartbeat"))
+                worker_evidence=bool(data.get("worker_details")) or int(data.get("running") or 0)>0
+                if not stall_recorded and time.monotonic()-last_forward_progress>=max(600.0,float(data.get("eta_seconds") or 0)*.25) and not worker_evidence and (heartbeat_age is None or heartbeat_age>1800):
                     output_files=tuple(str(path) for path in context.run_folder.glob("work_units/*/outputs/*.tif"))
                     atomic_write_json(job_dir/"stall_snapshot.json",{
                         "schema":"pyforestscan-forward-progress-stall-v1","job_id":job_id,"attempt_id":attempt_id,
-                        "state":"STALLED_NO_FORWARD_PROGRESS","active_stage":stage,"active_activity":str(data.get("current_activity") or ""),
+                        "state":"POSSIBLE_STALL","active_stage":stage,"active_activity":str(data.get("current_activity") or ""),
                         "pid":pid,"source_path":str(source.path),"last_successful_transition":last_stage,
                         "last_forward_progress_age_seconds":time.monotonic()-last_forward_progress,"last_heartbeat_at":data.get("last_heartbeat"),
                         "work_unit_id":data.get("current_work_unit_id"),"completed":data.get("completed"),"attempted":data.get("attempted"),
                         "output_files":list(output_files),"output_size_bytes":sum(Path(path).stat().st_size for path in output_files if Path(path).is_file()),
                         "recorded_at":datetime.now(timezone.utc).isoformat(),
                     })
-                    if item_callback is not None:_emit_polygon_stage(item_callback,source,context,"No forward processing progress",f"No measurable work transition for 120 seconds during {stage}. The coordinator remains active; diagnostics were saved.")
+                    if item_callback is not None:_emit_polygon_stage(item_callback,source,context,"Needs attention",f"No worker, heartbeat, or output progress is measurable during {_job_stage_label(stage)}. Diagnostics were saved.")
                     stall_recorded=True
             except (OSError,ValueError):pass
         time.sleep(1)
     state=json.loads(terminal.read_text(encoding="utf-8"))
+    if state.get("state") in {"cancelled","paused"} and state.get("result_path"):
+        with Path(state["result_path"]).open("rb") as stream:return pickle.load(stream)
     if state.get("state")!="complete":
         from .finalization_recovery import recover_completed_polygon_job
         recovery = recover_completed_polygon_job(
@@ -1484,10 +1536,38 @@ def _submit_and_observe_source_aware_chm(report,adapter,batch_folder,context,sou
     result_path=Path(state["result_path"])
     with result_path.open("rb") as stream:return pickle.load(stream)
 
-def _execute_source_aware_chm(report, adapter, batch_folder, context, source, plan, *, item_callback=None):
+def _human_duration(seconds):
+    value=max(0,int(seconds));hours,remainder=divmod(value,3600);minutes,_=divmod(remainder,60)
+    return f"~{hours}h {minutes}m" if hours else f"~{max(1,minutes)} min"
+
+def _health_label(value):
+    return {"WORKING":"working normally","WORKING_SLOWLY":"working on a large region","WAITING_FOR_DATA":"waiting for data","RESOURCE_LIMITED":"system resources are limiting speed","POSSIBLE_STALL":"checking progress","STALLED":"needs attention"}.get(value,"working normally")
+
+def _job_stage_label(value):
+    text=str(value).lower()
+    if "final" in text or "combin" in text:return "Combining results"
+    if "mask" in text or "clip" in text:return "Clipping to selected area"
+    if "load" in text:return "Loading result"
+    if "complete" in text:return "Complete"
+    if "prepar" in text or "pilot" in text or "canary" in text:return "Preparing"
+    return "Processing"
+
+def _iso_age_seconds(value):
+    if not value:return None
+    try:return max(0.0,(datetime.now(timezone.utc)-datetime.fromisoformat(str(value))).total_seconds())
+    except (TypeError,ValueError):return None
+
+def _execute_source_aware_chm(
+    report, adapter, batch_folder, context, source, plan, *,
+    item_callback=None, control_callback=None, progress_callback=None,
+):
     """Execute bounded shared CHM and optional Rumple through the durable coordinator."""
     if os.environ.get("PYFORESTSCAN_POLYGON_COORDINATOR")!="1" and adapter.selected_execution_backend()=="pbm_backend":
-        return _submit_and_observe_source_aware_chm(report,adapter,batch_folder,context,source,plan,item_callback=item_callback)
+        return _submit_and_observe_source_aware_chm(
+            report, adapter, batch_folder, context, source, plan,
+            item_callback=item_callback, control_callback=control_callback,
+            progress_callback=progress_callback,
+        )
     started_at = datetime.now(timezone.utc).isoformat()
     signature = report.plan_signature or getattr(report.execution_plan, "plan_signature", "") or "source-aware-chm"
     checkpoint = CheckpointStore(context.run_folder / "work_units", signature)
@@ -1500,6 +1580,15 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
     resolved_hag_method = str(preparation_contract.get("chosen_hag_method") or "existing_normalized_height")
     resolved_hag_dimension = str(preparation_contract.get("hag_source_dimension") or ("HeightAboveGround" if resolved_hag_method == "existing_normalized_height" else ""))
     resolved_hag_signature = hag_method_signature(resolved_hag_method, resolved_hag_dimension)
+    from .adaptive_concurrency import AdaptiveConcurrencyController
+    from .adaptive_processing import available_memory_bytes
+    from .owned_workers import OwnedWorkerRegistry
+    worker_registry=OwnedWorkerRegistry()
+    concurrency_controller=AdaptiveConcurrencyController(
+        requested=min(5,max(1,plan.concurrency_limit)),source_location=plan.source_location,
+        estimated_worker_memory=max((unit.estimated_memory for unit in plan.work_units),default=1024**3),
+        available_memory_provider=available_memory_bytes,
+    )
     from .job_recovery import reconcile_polygon_job
     recovery=reconcile_polygon_job(context.run_folder / "work_units",plan,signature,expected_hag_method_signature=resolved_hag_signature)
     if recovery.recovered_complete and item_callback is not None:
@@ -1531,7 +1620,10 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
             try:
                 backend_started=time.monotonic()
                 if str(prepared_input).lower().endswith("ept.json") and _requires_chunked_ept_parent(unit,read):
-                    buffered_path = _run_chunked_ept_parent_chm(adapter, request, unit_folder, read, report.query_geometry.catalog_crs, plan.grid.nodata)
+                    buffered_path = _run_chunked_ept_parent_chm(adapter, request, unit_folder, read, report.query_geometry.catalog_crs, plan.grid.nodata,worker_registry=worker_registry)
+                elif str(prepared_input).lower().endswith("ept.json"):
+                    result = _run_isolated_ept_subread(request,unit_folder/"region_worker",worker_registry=worker_registry,worker_id=unit.work_unit_id)
+                    buffered_path = Path(result.output_path)
                 else:
                     result = _run_logical_product(adapter, ProductType.CHM, request)
                     buffered_path = Path(result.output_path)
@@ -1568,6 +1660,19 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
             try:timing["points_read"]=int(json.loads(bounded_read_result.read_text(encoding="utf-8")).get("point_count",0))
             except (OSError,ValueError,TypeError):pass
         if timing.get("points_read") and timing["total_seconds"]>0:timing["points_per_second"]=timing["points_read"]/timing["total_seconds"]
+        worker_records=[]
+        for worker_path in unit_folder.glob("**/worker_process.json"):
+            try:worker_records.append(json.loads(worker_path.read_text(encoding="utf-8")))
+            except (OSError,ValueError):pass
+        if worker_records:
+            metrics["worker_peak_rss"]=max(int(item.get("peak_rss",0) or 0) for item in worker_records)
+            metrics["worker_process_count"]=len(worker_records)
+        science_records=[]
+        for science_path in unit_folder.glob("**/science_timing.json"):
+            try:science_records.append(json.loads(science_path.read_text(encoding="utf-8")))
+            except (OSError,ValueError):pass
+        for key in ("ept_read_and_point_decode_seconds","pyforestscan_chm_seconds","buffered_raster_write_seconds","point_count"):
+            if science_records:metrics[key]=sum(float(item.get(key,0) or 0) for item in science_records)
         metrics["timing"]=dict(timing)
         write_work_unit_diagnostic(request.diagnostics_path,"work_unit_timing.json",timing)
         write_work_unit_diagnostic(request.diagnostics_path,"result.json",{"status":"Complete","buffered_output":str(buffered_path),"chm_core":str(core_path),"rumple_core":str(rumple_path) if rumple_path else "","executed_method":request.hag_method,"metrics":metrics})
@@ -1582,7 +1687,7 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
 
     if plan.pilot_required and plan.work_units:
         _emit_polygon_stage(item_callback, source, context, "Canary Validation", f"Validating Processing Engine and source access on {plan.work_units[0].work_unit_id} before automatic continuation.")
-        canary = PolygonProductWorkScheduler((plan.work_units[0],), execute_unit, checkpoint, concurrency=1, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress)
+        canary = PolygonProductWorkScheduler((plan.work_units[0],), execute_unit, checkpoint, concurrency=1, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress,control_callback=control_callback,worker_registry=worker_registry)
         canary_results = canary.run()
         from .atomic_state import atomic_write_json
         canary_timing=dict(canary_results[0].metrics.get("timing",{}))
@@ -1591,30 +1696,37 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
             scheduler = canary
             results = (*canary_results, *(WorkUnitResult(unit.work_unit_id, "Pending", message="Canary validation did not pass; full execution was not started.") for unit in plan.work_units[1:]))
         else:
+            concurrency_controller.observe(canary_results[0])
             _emit_polygon_stage(item_callback, source, context, "PILOT_COMPLETED", f"Bounded pilot {plan.work_units[0].work_unit_id} completed and was checkpointed.")
             _emit_polygon_stage(item_callback, source, context, "Processing remaining areas", "Canary passed; continuing the full job automatically.")
             _emit_polygon_stage(item_callback, source, context, "WORK_UNIT_SCHEDULER_STARTED", f"Starting {len(plan.work_units)} CHM processing regions at concurrency {plan.concurrency_limit}.")
-            scheduler = PolygonProductWorkScheduler(plan.work_units, execute_unit, checkpoint, concurrency=plan.concurrency_limit, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress)
+            scheduler = PolygonProductWorkScheduler(plan.work_units, execute_unit, checkpoint, concurrency=plan.concurrency_limit, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress,adaptive_controller=concurrency_controller,control_callback=control_callback,worker_registry=worker_registry)
             results = scheduler.run()
     else:
         _emit_polygon_stage(item_callback, source, context, "WORK_UNIT_SCHEDULER_STARTED", f"Starting {len(plan.work_units)} CHM processing regions at concurrency {plan.concurrency_limit}.")
-        scheduler = PolygonProductWorkScheduler(plan.work_units, execute_unit, checkpoint, concurrency=plan.concurrency_limit, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress)
+        scheduler = PolygonProductWorkScheduler(plan.work_units, execute_unit, checkpoint, concurrency=plan.concurrency_limit, retry_count=2, transient=_transient_work_unit_error, progress_callback=progress,adaptive_controller=concurrency_controller,control_callback=control_callback,worker_registry=worker_registry)
         results = scheduler.run()
     failed = tuple(item for item in results if item.status == "Failed")
     pending = tuple(item for item in results if item.status == "Pending")
+    cancelled = tuple(item for item in results if item.status == "Cancelled")
     final_unmasked = context.run_folder / "mosaics" / "chm.tif"
     outputs = []
     mask_results = ()
-    if failed or pending:
-        status = "failed"
-        first = failed[0] if failed else pending[0]
-        message = scheduler.stop_reason or f"{len(failed)} CHM work units failed and {len(pending)} remain pending. First affected unit {first.work_unit_id}: {first.message}"
+    if failed or pending or cancelled:
+        if cancelled:status="cancelled";message="Processing was cancelled. Completed regions remain checkpointed and resumable."
+        elif pending and getattr(scheduler,"_pause",None) is not None and scheduler._pause.is_set():status="paused";message="Processing paused after active regions finished. Completed regions remain checkpointed."
+        else:
+            status = "failed"
+            first = failed[0] if failed else pending[0]
+            message = scheduler.stop_reason or f"{len(failed)} processing regions failed and {len(pending)} remain pending. First affected region {first.work_unit_id}: {first.message}"
     else:
         completion_warning = ""
         chm_paths=tuple(Path(item.metrics.get("chm_core",item.output_path)) for item in results if item.status=="Complete" and (item.metrics.get("chm_core") or item.output_path))
+        _emit_polygon_stage(item_callback,source,context,"Combining results",f"Combining {len(chm_paths)} completed processing regions.")
         if chm_paths:_mosaic_core_rasters(chm_paths, final_unmasked, plan)
         else:_create_empty_aligned_raster(final_unmasked,plan)
         if ProductType.CHM in requested:
+            _emit_polygon_stage(item_callback,source,context,"Saving output","Saving the Canopy Height Model.")
             final_path=context.outputs_dir/"chm.tif";final_path.parent.mkdir(parents=True,exist_ok=True);final_unmasked.replace(final_path);outputs.append(final_path)
         if rumple_requested:
             rumple_paths=_verified_rumple_core_paths(results,rumple_grid,plan.plan_signature)
@@ -1634,7 +1746,7 @@ def _execute_source_aware_chm(report, adapter, batch_folder, context, source, pl
                 completion_warning=f"Processing completed with warning: the Rumple raster is valid, but its secondary scalar summary could not be written: {exc}"
                 write_recent_error(context.run_folder,DurableErrorRecord("RUMPLE_SUMMARY_WRITE_FAILED","OUTPUT","Rumple completed with a warning.",str(exc),"secondary_output",job_id=signature,product="rumple",recommended_action="Use the Rumple raster; retry summary registration from diagnostics if needed."))
         nodata_count=sum(item.status=="CompleteNoData" for item in results)
-        message = "; ".join(item.message for item in failures) if failures else (completion_warning or ("Processing completed. Areas without LiDAR returns are represented as NoData." if nodata_count else f"Source-aware CHM completed from {len(results)} verified required work units."))
+        message = "; ".join(item.message for item in failures) if failures else (completion_warning or ("Processing completed. Areas without LiDAR returns are represented as NoData." if nodata_count else f"Canopy Height Model completed from {len(results)} processing regions."))
     item = BatchItemResult(Path(source.path), context, status, message, tuple(outputs), _requested_extent_summary(report))
     result = BatchResult("polygon-source-aware-chm", report.request.title, started_at, datetime.now(timezone.utc).isoformat(), batch_folder, (item,), batch_folder / "batch_summary.json", batch_folder / "batch_summary.csv", batch_folder / "batch_summary.html", load_outputs_after_completion=_shared_options(report).load_outputs_after_completion)
     result = _register_polygon_outputs_recoverably(result, report, mask_results, context.run_folder)
@@ -1788,7 +1900,7 @@ def _extract_core_raster(source_path: Path, output_path: Path, extent: SpatialEx
     temporary.replace(output_path)
 
 
-def _run_chunked_ept_parent_chm(adapter, request, unit_folder: Path, parent_read: SpatialExtent, crs: str, nodata: float) -> Path:
+def _run_chunked_ept_parent_chm(adapter, request, unit_folder: Path, parent_read: SpatialExtent, crs: str, nodata: float, *, worker_registry=None) -> Path:
     """Bound peak memory while preserving one frozen parent scheduler unit."""
     from types import SimpleNamespace
     from .atomic_state import atomic_write_json
@@ -1831,7 +1943,11 @@ def _run_chunked_ept_parent_chm(adapter, request, unit_folder: Path, parent_read
                     diagnostics_path=folder / "diagnostics",
                 )
                 started = time.monotonic()
-                result = _run_isolated_ept_subread(bounded_request, folder)
+                worker_kwargs = {} if worker_registry is None else {
+                    "worker_registry": worker_registry,
+                    "worker_id": f"{request.work_unit_id}:{chunk_id}",
+                }
+                result = _run_isolated_ept_subread(bounded_request, folder, **worker_kwargs)
                 _extract_core_raster(Path(result.output_path), output, core)
                 atomic_write_json(checkpoint, {
                     "schema": "pyforestscan-ept-parent-subread-v1",
@@ -1871,8 +1987,9 @@ def _requires_chunked_ept_parent(unit,read: SpatialExtent) -> bool:
     return read.width > 2000.0 or read.height > 2000.0 or int(getattr(unit,"estimated_memory",0)) > 6*1024**3
 
 
-def _run_isolated_ept_subread(request, folder: Path):
+def _run_isolated_ept_subread(request, folder: Path, *, worker_registry=None, worker_id=""):
     """Contain native PyForestScan memory and crashes to one bounded child."""
+    folder.mkdir(parents=True,exist_ok=True)
     payload = folder / "request.pkl"
     result_path = folder / "result.pkl"
     temporary = payload.with_suffix(".partial")
@@ -1891,15 +2008,38 @@ def _run_isolated_ept_subread(request, folder: Path):
     ]
     from .backend.process_env import build_processing_engine_environment
     child_env = build_processing_engine_environment(Path(os.sys.prefix), "windows" if os.name == "nt" else "linux")
-    completed = subprocess.run(command, capture_output=True, text=True, check=False, env=child_env, **hidden_subprocess_kwargs())
-    if completed.returncode != 0 or not result_path.is_file():
+    child_env.update({
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+    })
+    identity=worker_id or str(getattr(request,"work_unit_id",folder.name));peak_rss=0;status_path=result_path.with_suffix(".status.json")
+    from .owned_workers import GlobalResourceGovernor
+    lease=GlobalResourceGovernor().acquire(identity)
+    try:process=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=child_env,**hidden_subprocess_kwargs())
+    except Exception:lease.release();raise
+    if worker_registry is not None:worker_registry.register(identity,process)
+    from .owned_workers import process_rss_bytes
+    while process.poll() is None:
+        peak_rss=max(peak_rss,process_rss_bytes(process.pid));stage="Reading LiDAR"
+        try:stage=str(json.loads(status_path.read_text(encoding="utf-8")).get("stage") or stage)
+        except (OSError,ValueError):pass
+        if worker_registry is not None:worker_registry.update(identity,stage=stage,peak_rss=peak_rss)
+        time.sleep(.25)
+    stdout,stderr_text=process.communicate();peak_rss=max(peak_rss,process_rss_bytes(process.pid));lease.release()
+    if worker_registry is not None:worker_registry.unregister(identity)
+    from .atomic_state import atomic_write_json
+    atomic_write_json(folder/"worker_process.json",{"schema":"pyforestscan-isolated-region-worker-v1","worker_id":identity,"pid":process.pid,"returncode":process.returncode,"peak_rss":peak_rss,"status_path":str(status_path)})
+    if process.returncode != 0 or not result_path.is_file():
         error_path = result_path.with_suffix(".error.json")
         try:
             error = json.loads(error_path.read_text(encoding="utf-8")).get("error", "")
         except (OSError, ValueError):
             error = ""
-        stderr = "\n".join((completed.stderr or "").splitlines()[-8:])
-        raise RuntimeError(f"EPT_SUBREAD_PROCESS_FAILED: return code {completed.returncode}; {error or stderr or 'no result artifact'}")
+        stderr = "\n".join((stderr_text or "").splitlines()[-8:])
+        code="NATIVE_BACKEND_CRASH" if process.returncode not in {0,1} else "EPT_SUBREAD_PROCESS_FAILED"
+        failure=RuntimeError(f"{code}: return code {process.returncode}; {error or stderr or 'no result artifact'}");failure.code=code;raise failure
     with result_path.open("rb") as stream:
         return pickle.load(stream)
 
@@ -2001,7 +2141,7 @@ def _create_empty_aligned_raster(output_path: Path,plan) -> None:
 def _transient_work_unit_error(exc: Exception) -> bool:
     text = str(exc).lower()
     if "all points collinear" in text or "invalid" in text or "crs" in text: return False
-    return any(token in text for token in ("network", "connection", "temporarily", "timeout", "reset by peer"))
+    return any(token in text for token in ("network", "connection", "temporarily", "timeout", "reset by peer", "qhull internal error", "qh6108"))
 
 def _logical_product_request(product: ProductType, input_path: Path, output_path: Path, report: PolygonBatchPreflightReport):
     kwargs = {

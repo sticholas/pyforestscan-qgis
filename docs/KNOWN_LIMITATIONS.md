@@ -1,5 +1,11 @@
 # Known Limitations
 
+## Phase 32Q benchmark gate
+
+- Adaptive EPT execution is capped at five machine-wide isolated workers and at the measured two-worker safety ceiling for network/remote sources.
+- The full 109-region rerun remains pending. The N=1 through N=5 representative network benchmark is complete, but no full-fixture Phase 32Q speedup is claimed.
+- CPU, disk, and network telemetry are represented indirectly by worker timing, RSS, and EPT latency; operating-system-wide throughput sampling remains diagnostic follow-up work.
+
 - Phase 32L corrected the live EPT CRS from contradictory raw-WKT state to canonical `EPSG:6635`. Default-profile QGIS 3.44.13 reproduced the preserved EPSG:3750 polygon prerun with zero blockers, and a 100 m polygon over the real UNC EPT completed CHM, exact finalization, output registration, and QGIS layer loading. The full 109-parent large job was not rerun; Phase 32K's four-parent checkpoint/restart evidence remains the current large-run gate.
 
 ## Phase 32H live gate

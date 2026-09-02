@@ -20,22 +20,26 @@ def run_payload(payload_path):
     job_dir=Path(payload["job_dir"]);job_id=payload["job_id"];attempt_id=payload["attempt_id"];coordinator=DurableJobCoordinator(job_dir);coordinator.recover();coordinator.write_identity(job_id,attempt_id,os.sys.argv);started=time.monotonic()
     products=tuple(product.value for product in payload["report"].request.products)
     _validate_and_trace_runtime(job_dir,job_id,products)
+    def control():
+        if (job_dir/"cancel_requested.json").exists():return "cancel"
+        if (job_dir/"pause_requested.json").exists():return "pause"
+        return None
     def progress(item):
         stage=getattr(item,"stage",getattr(item,"status","Processing Regions"));message=getattr(item,"message","");plan=payload["plan"];counts=aggregate_work_unit_statuses(payload["context"].run_folder/"work_units",plan.candidate_count,plan.required_count)
         active=tuple(getattr(item,"current_units",())) or tuple(counts["current_work_unit_ids"])
         current=active[0] if active else ""
-        coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,"running",plan.candidate_count,completed=counts["completed"]+counts["complete_nodata"],failed=counts["failed"],pending=counts["pending"],running=counts["running"],attempted=counts["attempted"],current_work_unit_id=current,current_stage=str(stage),current_activity=str(message),elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now(),candidate_work_units=plan.candidate_count,required_work_units=plan.required_count,skipped_outside_polygon=counts["skipped_outside_polygon"],complete_nodata=counts["complete_nodata"]))
+        coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,"running",plan.candidate_count,completed=counts["completed"]+counts["complete_nodata"],failed=counts["failed"],pending=counts["pending"],running=counts["running"],attempted=counts["attempted"],current_work_unit_id=current,current_stage=str(stage),current_activity=str(message),elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now(),candidate_work_units=plan.candidate_count,required_work_units=plan.required_count,skipped_outside_polygon=counts["skipped_outside_polygon"],complete_nodata=counts["complete_nodata"],current_work_unit_ids=active,progress_percent=int(getattr(item,"progress_percent",0)),eta_seconds=getattr(item,"eta_seconds",None),eta_confidence=str(getattr(item,"eta_confidence","CALCULATING")),health=str(getattr(item,"health","WORKING")),target_concurrency=int(getattr(item,"target_concurrency",1)),worker_details=tuple(getattr(item,"worker_details",()))))
     try:
         os.environ["PYFORESTSCAN_POLYGON_COORDINATOR"]="1"
         from pyforestscan_qgis.core.polygon_batch import _execute_source_aware_chm
         adapter=PyForestScanAdapter(execution_mode="qgis_python")
-        result=_execute_source_aware_chm(payload["report"],adapter,Path(payload["batch_folder"]),payload["context"],payload["source"],payload["plan"],item_callback=progress)
-        failed=any(getattr(item,"status","").lower()!="completed" for item in result.items)
+        result=_execute_source_aware_chm(payload["report"],adapter,Path(payload["batch_folder"]),payload["context"],payload["source"],payload["plan"],item_callback=progress,control_callback=control)
+        statuses=tuple(getattr(item,"status","").lower() for item in result.items);failed=any(status not in {"completed","cancelled","paused"} for status in statuses)
         result_path=job_dir/"coordinator_result.pkl";_atomic_pickle(result_path,result)
-        state="scientific_blocker" if failed else "complete"
+        state="cancelled" if "cancelled" in statuses else "paused" if "paused" in statuses else "scientific_blocker" if failed else "complete"
         atomic_write_json(job_dir/"terminal_result.json",{"job_id":job_id,"attempt_id":attempt_id,"state":state,"result_path":str(result_path),"error":"One or more required work areas failed." if failed else "","finished_at":utc_now()})
         plan=payload["plan"];counts=aggregate_work_unit_statuses(payload["context"].run_folder/"work_units",plan.candidate_count,plan.required_count)
-        coordinator.write_terminal_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,state,plan.candidate_count,completed=counts["completed"]+counts["complete_nodata"],failed=counts["failed"],pending=counts["pending"],running=counts["running"],attempted=counts["attempted"],current_stage="Scientific Blocker" if failed else "Complete",current_activity="Completed work was preserved." if failed else "",circuit_breaker_state="open" if failed else "closed",finalization_state="blocked" if failed else "complete",elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now(),candidate_work_units=plan.candidate_count,required_work_units=plan.required_count,skipped_outside_polygon=counts["skipped_outside_polygon"],complete_nodata=counts["complete_nodata"],stop_reason="One or more required work areas failed." if failed else ""))
+        coordinator.write_terminal_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,state,plan.candidate_count,completed=counts["completed"]+counts["complete_nodata"],failed=counts["failed"],pending=counts["pending"],running=counts["running"],attempted=counts["attempted"],current_stage="Cancelled" if state=="cancelled" else "Paused" if state=="paused" else "Scientific Blocker" if failed else "Complete",current_activity="Completed regions were preserved." if state in {"cancelled","paused"} or failed else "",circuit_breaker_state="open" if failed else "closed",finalization_state="paused" if state=="paused" else "cancelled" if state=="cancelled" else "blocked" if failed else "complete",elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now(),candidate_work_units=plan.candidate_count,required_work_units=plan.required_count,skipped_outside_polygon=counts["skipped_outside_polygon"],complete_nodata=counts["complete_nodata"],stop_reason="One or more required processing regions failed." if failed else ""))
         return 1 if failed else 0
     except Exception as exc:
         preparation_failure="SOURCE_PREPARATION" in str(exc) or "NORMALIZED_Z_VALIDATION" in str(exc) or "PREPARED_SOURCE" in str(exc)

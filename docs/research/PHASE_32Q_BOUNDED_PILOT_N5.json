@@ -1,0 +1,123 @@
+{
+  "requests": [
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r00000_c00000\\request.pkl",
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r00000_c00500\\request.pkl",
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r00000_c01000\\request.pkl",
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r00500_c00000\\request.pkl",
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r00500_c00500\\request.pkl",
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r00500_c01000\\request.pkl",
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r01000_c00000\\request.pkl",
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r01000_c00500\\request.pkl"
+  ],
+  "concurrency": [
+    5
+  ],
+  "output": "D:\\tmp\\phase32q_concurrency_benchmark_n5",
+  "status": "COMPLETE",
+  "rows": [
+    {
+      "workers": 5,
+      "wall_seconds": 25.766000000061467,
+      "regions_per_minute": 18.62920127295098,
+      "points_per_second": 1100021.2683354958,
+      "ept_seconds": 16.82225070009008,
+      "pyforestscan_seconds": 52.818513599806465,
+      "peak_aggregate_rss_upper_bound_bytes": 5641203712,
+      "maximum_worker_rss_bytes": 1333194752,
+      "failures": 0,
+      "outputs_equivalent_to_n1": true,
+      "results": [
+        {
+          "index": 0,
+          "returncode": 0,
+          "elapsed_seconds": 16.20299999997951,
+          "peak_rss_bytes": 1207300096,
+          "point_count": 4393782,
+          "ept_seconds": 2.8076022000750527,
+          "pyforestscan_seconds": 8.787659400026314,
+          "output_sha256": "9c8d9c3ad11cebde5814c5df0222dca63c37326a78617058919d38756dfcdcee",
+          "stderr_tail": ""
+        },
+        {
+          "index": 1,
+          "returncode": 0,
+          "elapsed_seconds": 15.890999999945052,
+          "peak_rss_bytes": 1180016640,
+          "point_count": 4281075,
+          "ept_seconds": 2.7266665999777615,
+          "pyforestscan_seconds": 8.561438899952918,
+          "output_sha256": "5504dda0d3eb63ca6d70c3a185a366687f1b07f55ad3d613a168955c292b81a6",
+          "stderr_tail": ""
+        },
+        {
+          "index": 2,
+          "returncode": 0,
+          "elapsed_seconds": 8.468999999924563,
+          "peak_rss_bytes": 584032256,
+          "point_count": 1566342,
+          "ept_seconds": 1.4571349000325426,
+          "pyforestscan_seconds": 3.283810699940659,
+          "output_sha256": "47a6e734fdd7593b72e84a82a930120be58bba499c87795adbf956edc26af95e",
+          "stderr_tail": ""
+        },
+        {
+          "index": 3,
+          "returncode": 0,
+          "elapsed_seconds": 16.405999999959022,
+          "peak_rss_bytes": 1206845440,
+          "point_count": 4563281,
+          "ept_seconds": 2.837239100015722,
+          "pyforestscan_seconds": 8.957552999956533,
+          "output_sha256": "aa8513b9b92c3eacd9b164247775e0ebf3e226b360efb38b476885e1b2a421a9",
+          "stderr_tail": ""
+        },
+        {
+          "index": 4,
+          "returncode": 0,
+          "elapsed_seconds": 19.608999999938533,
+          "peak_rss_bytes": 1333194752,
+          "point_count": 6178111,
+          "ept_seconds": 3.448211699957028,
+          "pyforestscan_seconds": 10.897675700020045,
+          "output_sha256": "594fbd8c6102927c4675f8d0add9d648c484f9719039d3c871d7aa5cbcf9b05e",
+          "stderr_tail": ""
+        },
+        {
+          "index": 5,
+          "returncode": 0,
+          "elapsed_seconds": 8.452999999979511,
+          "peak_rss_bytes": 634179584,
+          "point_count": 2252970,
+          "ept_seconds": 1.039519099984318,
+          "pyforestscan_seconds": 4.139318399946205,
+          "output_sha256": "d2dc37bea3a3dac947bd36bf82e313e7fe46a6741714b8be5af1719a76e88aa8",
+          "stderr_tail": ""
+        },
+        {
+          "index": 6,
+          "returncode": 0,
+          "elapsed_seconds": 8.031000000075437,
+          "peak_rss_bytes": 648048640,
+          "point_count": 2219762,
+          "ept_seconds": 1.1613988999743015,
+          "pyforestscan_seconds": 3.746042800019495,
+          "output_sha256": "39c13b06da887cf35feb7748322da61498e3b6d73d18112b9fc278680bd50d70",
+          "stderr_tail": ""
+        },
+        {
+          "index": 7,
+          "returncode": 0,
+          "elapsed_seconds": 9.25,
+          "peak_rss_bytes": 713846784,
+          "point_count": 2887825,
+          "ept_seconds": 1.344478200073354,
+          "pyforestscan_seconds": 4.445014699944295,
+          "output_sha256": "b0fdb4826af70c0b7a34088357a1f01311254332bc10b46a3b690fcfcf9c2921",
+          "stderr_tail": ""
+        }
+      ],
+      "speedup": 1.0,
+      "parallel_efficiency": 0.2
+    }
+  ]
+}

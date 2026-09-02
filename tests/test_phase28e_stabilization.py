@@ -42,10 +42,10 @@ class SchedulerStabilityTests(unittest.TestCase):
    core=SpatialExtent(index*1000,0,(index+1)*1000,1000)
    units.append(WorkUnit(f'wu-{index+1:04d}',WorkUnitType.EPT_WINDOW,(Path('ept.json'),),core,core.buffered(50),0,1000,index*1000,(index+1)*1000,index+1,1))
   return tuple(units)
- def test_safe_ept_profile_is_one_worker(self):
+ def test_ept_profile_exposes_capacity_to_adaptive_controller(self):
   with patch.dict(os.environ,{},clear=False):
    os.environ.pop('PYFORESTSCAN_DEV_EPT_PARALLEL',None);extent=SpatialExtent(0,0,3000,3000);src=NativeSource(Path('ept.json'),extent,source_type='ept');plan=SourceAwareWorkPlanner().plan(repository_kind='ept',sources=(src,),polygon_envelope=extent,processing_crs='EPSG:1',product='chm',resolution=1,cpu_count=16,available_memory_bytes=64*1024**3,profile='performance')
-  self.assertEqual(plan.concurrency_limit,1);self.assertIn('Safe processing mode is active for this EPT job.',plan.scientific_assumptions)
+  self.assertGreaterEqual(plan.concurrency_limit,1);self.assertLessEqual(plan.concurrency_limit,5);self.assertTrue(any('adaptive' in note.lower() for note in plan.scientific_assumptions))
  def test_sanitized_120_unit_fixture_stops_after_three_neighbor_failures(self):
   units=self.units();events=[]
   with tempfile.TemporaryDirectory() as folder:
@@ -57,11 +57,11 @@ class SchedulerStabilityTests(unittest.TestCase):
     return WorkUnitResult(unit.work_unit_id,'Failed',error_code='HAG_COLLINEAR_INPUT',message='All points collinear')
    result=PolygonProductWorkScheduler(units,execute,CheckpointStore(Path(folder)/'cp','fixture'),concurrency=1,progress_callback=events.append).run()
    self.assertEqual(len(calls),5);self.assertEqual(sum(x.status=='Complete' for x in result),2);self.assertEqual(sum(x.status=='Failed' for x in result),3);self.assertEqual(sum(x.status=='Pending' for x in result),115);self.assertIn('paused',events[-1].stop_reason.lower());self.assertEqual(events[-1].attempted,5);self.assertEqual(events[-1].pending,115)
- def test_native_crash_stops_queue_immediately(self):
+ def test_repeated_native_crash_stops_queue(self):
   with tempfile.TemporaryDirectory() as folder:
    calls=[]
    def execute(unit,attempt):calls.append(unit.work_unit_id);return WorkUnitResult(unit.work_unit_id,'Failed',error_code='NATIVE_BACKEND_CRASH',message='native crash')
-   result=PolygonProductWorkScheduler(self.units(10),execute,CheckpointStore(Path(folder),'native'),concurrency=1).run();self.assertEqual(len(calls),1);self.assertEqual(sum(x.status=='Pending' for x in result),9)
+   result=PolygonProductWorkScheduler(self.units(10),execute,CheckpointStore(Path(folder),'native'),concurrency=1).run();self.assertEqual(len(calls),2);self.assertEqual(sum(x.status=='Pending' for x in result),8)
  def test_durable_transition_and_restart_reconciliation(self):
   with tempfile.TemporaryDirectory() as folder:
    store=CheckpointStore(Path(folder),'sig');unit=self.units(1)[0];store.mark_pending(unit);self.assertEqual(store.load(unit.work_unit_id)['status'],'Pending');store.mark_starting(unit,1);self.assertEqual(store.load(unit.work_unit_id)['status'],'Starting');store.mark_running(unit,1,pid=999);self.assertEqual(store.load(unit.work_unit_id)['pid'],999);self.assertEqual(store.reconcile(unit.work_unit_id,pid_alive=lambda pid:False),'Interrupted');self.assertEqual(store.load(unit.work_unit_id)['error_code'],'INTERRUPTED_WORKER')
