@@ -109,6 +109,46 @@ class PipelineContext:
         return float(self._parameter("canopy_cover_height_threshold", 2.0))
 
     @property
+    def canopy_cover_max_height(self) -> float | None:
+        value = self._parameter("canopy_cover_max_height", None)
+        return float(value) if value is not None else None
+
+    @property
+    def canopy_cover_extinction_coefficient(self) -> float:
+        return float(self._parameter("canopy_cover_extinction_coefficient", 0.5))
+
+    @property
+    def pad_beer_lambert_constant(self) -> float:
+        return float(self._parameter("pad_beer_lambert_constant", 1.0))
+
+    @property
+    def pad_drop_ground(self) -> bool:
+        return bool(self._parameter("pad_drop_ground", True))
+
+    @property
+    def pai_min_height(self) -> float:
+        return float(self._parameter("pai_min_height", 1.0))
+
+    @property
+    def pai_max_height(self) -> float | None:
+        value = self._parameter("pai_max_height", None)
+        return float(value) if value is not None else None
+
+    @property
+    def fhd_min_height(self) -> float:
+        return float(self._parameter("fhd_min_height", 0.0))
+
+    @property
+    def fhd_max_height(self) -> float | None:
+        value = self._parameter("fhd_max_height", None)
+        return float(value) if value is not None else None
+
+    @property
+    def rumple_min_height(self) -> float | None:
+        value = self._parameter("rumple_min_height", None)
+        return float(value) if value is not None else None
+
+    @property
     def canopy_cover_output_filename(self) -> str:
         """Return the planned canopy cover output filename."""
         value = str(self._parameter("canopy_cover_output_filename", "canopy_cover.tif"))

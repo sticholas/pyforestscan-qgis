@@ -34,6 +34,16 @@ class BatchProductSettings:
     chm_interpolate_valid_region: bool = False
     chm_clean_edges: bool = False
     canopy_cover_height_threshold: float = 2.0
+    canopy_cover_max_height: float | None = None
+    canopy_cover_extinction_coefficient: float = 0.5
+    pad_beer_lambert_constant: float = 1.0
+    pad_drop_ground: bool = True
+    pai_min_height: float = 1.0
+    pai_max_height: float | None = None
+    fhd_min_height: float = 0.0
+    fhd_max_height: float | None = None
+    rumple_min_height: float | None = None
+    point_density_per_area: bool = True
     stop_on_error: bool = False
     load_outputs_into_qgis: bool = True
     execution_mode: str = "automatic"

@@ -139,6 +139,15 @@ class BatchRunner:
                 chm_interpolate_valid_region=request.settings.chm_interpolate_valid_region,
                 chm_clean_edges=request.settings.chm_clean_edges,
                 canopy_cover_height_threshold=request.settings.canopy_cover_height_threshold,
+                canopy_cover_max_height=request.settings.canopy_cover_max_height,
+                canopy_cover_extinction_coefficient=request.settings.canopy_cover_extinction_coefficient,
+                pad_beer_lambert_constant=request.settings.pad_beer_lambert_constant,
+                pad_drop_ground=request.settings.pad_drop_ground,
+                pai_min_height=request.settings.pai_min_height,
+                pai_max_height=request.settings.pai_max_height,
+                fhd_min_height=request.settings.fhd_min_height,
+                fhd_max_height=request.settings.fhd_max_height,
+                rumple_min_height=request.settings.rumple_min_height,
                 title=f"Product Plan - {dataset.name}",
             )
             plan = build_product_plan(report_to_dict(report), product_request)

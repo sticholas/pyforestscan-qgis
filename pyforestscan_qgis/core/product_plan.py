@@ -17,15 +17,9 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .types import ProductType
+from .product_registry import MISSION_CONTROL_PRODUCTS
 
-PRODUCT_LABELS = {
-    ProductType.CHM: "Canopy Height Model (CHM)",
-    ProductType.PAI: "Plant Area Index (PAI)",
-    ProductType.PAD: "Plant Area Density (PAD)",
-    ProductType.FHD: "Foliage Height Diversity (FHD)",
-    ProductType.CANOPY_COVER: "Canopy Cover",
-    ProductType.RUMPLE: "Rumple Index",
-}
+PRODUCT_LABELS = {definition.product: definition.display_name for definition in MISSION_CONTROL_PRODUCTS}
 
 PRODUCT_OUTPUTS = {
     ProductType.CHM: ("chm.tif", "GeoTIFF raster", "Canopy height raster."),
@@ -34,6 +28,8 @@ PRODUCT_OUTPUTS = {
     ProductType.FHD: ("fhd.tif", "GeoTIFF raster", "Future foliage height diversity raster."),
     ProductType.CANOPY_COVER: ("canopy_cover.tif", "GeoTIFF raster", "Canopy cover raster."),
     ProductType.RUMPLE: ("rumple.tif", "GeoTIFF raster", "Spatial canopy-surface complexity with a supporting scalar summary.")
+    ,ProductType.POINT_DENSITY: ("point_density.tif", "GeoTIFF raster", "Point return density per output cell area.")
+    ,ProductType.DTM: ("dtm.tif", "GeoTIFF raster", "Estimated ground elevation raster.")
 }
 
 
@@ -89,6 +85,15 @@ class ProductPlannerRequest:
     fhd_output_filename: str = "fhd.tif"
     rumple_output_filename: str = "rumple.tif"
     canopy_cover_height_threshold: float = 2.0
+    canopy_cover_max_height: float | None = None
+    canopy_cover_extinction_coefficient: float = 0.5
+    pad_beer_lambert_constant: float = 1.0
+    pad_drop_ground: bool = True
+    pai_min_height: float = 1.0
+    pai_max_height: float | None = None
+    fhd_min_height: float = 0.0
+    fhd_max_height: float | None = None
+    rumple_min_height: float | None = None
     canopy_cover_output_filename: str = "canopy_cover.tif"
     title: str = "PyForestScan Product Planner"
     notes: str = ""
@@ -114,6 +119,15 @@ class ProductPlannerReport:
     fhd_output_filename: str
     rumple_output_filename: str
     canopy_cover_height_threshold: float
+    canopy_cover_max_height: float | None
+    canopy_cover_extinction_coefficient: float
+    pad_beer_lambert_constant: float
+    pad_drop_ground: bool
+    pai_min_height: float
+    pai_max_height: float | None
+    fhd_min_height: float
+    fhd_max_height: float | None
+    rumple_min_height: float | None
     canopy_cover_output_filename: str
     notes: str
     estimated_columns: int | None
@@ -200,6 +214,15 @@ def build_product_plan(
         fhd_output_filename=request.fhd_output_filename,
         rumple_output_filename=request.rumple_output_filename,
         canopy_cover_height_threshold=request.canopy_cover_height_threshold,
+        canopy_cover_max_height=request.canopy_cover_max_height,
+        canopy_cover_extinction_coefficient=request.canopy_cover_extinction_coefficient,
+        pad_beer_lambert_constant=request.pad_beer_lambert_constant,
+        pad_drop_ground=request.pad_drop_ground,
+        pai_min_height=request.pai_min_height,
+        pai_max_height=request.pai_max_height,
+        fhd_min_height=request.fhd_min_height,
+        fhd_max_height=request.fhd_max_height,
+        rumple_min_height=request.rumple_min_height,
         canopy_cover_output_filename=request.canopy_cover_output_filename,
         notes=request.notes,
         estimated_columns=columns,
@@ -232,6 +255,15 @@ def plan_to_dict(report: ProductPlannerReport) -> dict[str, Any]:
             "fhd_output_filename": report.fhd_output_filename,
             "rumple_output_filename": report.rumple_output_filename,
             "canopy_cover_height_threshold": report.canopy_cover_height_threshold,
+            "canopy_cover_max_height": report.canopy_cover_max_height,
+            "canopy_cover_extinction_coefficient": report.canopy_cover_extinction_coefficient,
+            "pad_beer_lambert_constant": report.pad_beer_lambert_constant,
+            "pad_drop_ground": report.pad_drop_ground,
+            "pai_min_height": report.pai_min_height,
+            "pai_max_height": report.pai_max_height,
+            "fhd_min_height": report.fhd_min_height,
+            "fhd_max_height": report.fhd_max_height,
+            "rumple_min_height": report.rumple_min_height,
             "canopy_cover_output_filename": report.canopy_cover_output_filename,
         },
         "estimates": {

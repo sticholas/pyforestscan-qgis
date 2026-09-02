@@ -166,6 +166,8 @@ def _execute_pad_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 output_path=output_path,
                 grid_resolution=context.grid_resolution,
                 voxel_height=context.voxel_height,
+                beer_lambert_constant=context.pad_beer_lambert_constant,
+                drop_ground=context.pad_drop_ground,
                 crs=context.crs,
             )
         )
@@ -191,6 +193,10 @@ def _execute_pai_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 output_path=output_path,
                 grid_resolution=context.grid_resolution,
                 voxel_height=context.voxel_height,
+                min_height=context.pai_min_height,
+                max_height=context.pai_max_height,
+                beer_lambert_constant=context.pad_beer_lambert_constant,
+                drop_ground=context.pad_drop_ground,
                 crs=context.crs,
             )
         )
@@ -218,6 +224,8 @@ def _execute_fhd_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 output_path=output_path,
                 grid_resolution=context.grid_resolution,
                 voxel_height=context.voxel_height,
+                min_height=context.fhd_min_height,
+                max_height=context.fhd_max_height,
                 crs=context.crs,
             )
         )
@@ -244,6 +252,7 @@ def _execute_rumple_step(context: PipelineContext, step: PipelineStep, adapter: 
                 interpolation=context.chm_interpolation,
                 interp_valid_region=context.chm_interpolate_valid_region,
                 interp_clean_edges=context.chm_clean_edges,
+                min_height=context.rumple_min_height,
                 hag_method=context.hag_method,
                 hag_source_dimension=context.point_dimensions.hag_dimension_name or "HeightAboveGround",
                 source_dimensions=context.point_dimensions.names,
@@ -301,6 +310,11 @@ def _execute_canopy_cover_step(context: PipelineContext, step: PipelineStep, ada
                 output_path=output_path,
                 grid_resolution=context.grid_resolution,
                 canopy_height_threshold=context.canopy_cover_height_threshold,
+                max_height=context.canopy_cover_max_height,
+                extinction_coefficient=context.canopy_cover_extinction_coefficient,
+                voxel_height=context.voxel_height,
+                beer_lambert_constant=context.pad_beer_lambert_constant,
+                drop_ground=context.pad_drop_ground,
                 crs=context.crs,
             )
         )

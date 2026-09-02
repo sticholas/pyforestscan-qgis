@@ -1,5 +1,14 @@
 # Changelog
 
+## Phase 32T - Non-blocking scientific product UX
+
+- Removed polygon normalization, repository refresh, and duplicate callback work from product toggles; live FHD toggles now complete in under one millisecond in the measured QGIS profile.
+- Added a static, release-pinned PyForestScan calculate product registry with product-specific help, dependencies, output semantics, and contextual parameter schemas.
+- Added Mission Control release products for DTM and Point Density while keeping generic voxel statistics in Advanced Toolbox and voxel assignment internal.
+- Added contextual FHD, PAI, PAD, Canopy Cover, Rumple, and Point Density settings with range validation, defaults restoration, request propagation, and polygon-manifest provenance.
+- Added a responsive one/two-column Process workspace, reducing measured normal/wide content height by 43.4 percent with no horizontal overflow.
+- Added shared fallback context-help registration for visible interactive Mission Control controls without triggering validation or processing work.
+
 ## Phase 32S - RC UX defect cleanup
 
 - Removed the stale polygon guided-step callback that could raise an `AttributeError` after a successful Prerun Check.

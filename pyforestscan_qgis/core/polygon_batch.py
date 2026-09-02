@@ -905,6 +905,7 @@ def write_polygon_batch_manifest(
         "catalog_path": str(report.catalog_path),
         "output_folder": str(report.request.output_folder),
         "shared_execution_options": _shared_options(report).to_dict(),
+        "scientific_parameters": _scientific_parameter_provenance(report.request.settings),
         "polygon_options": report.request.polygon_options.to_dict(),
         "option_applicability": [item.to_dict() for item in _option_applicability(report)],
         "concurrency": requested_effective_concurrency(_shared_options(report), source_types=_source_types(report), product_count=len(report.request.products)),
@@ -2143,6 +2144,29 @@ def _transient_work_unit_error(exc: Exception) -> bool:
     if "all points collinear" in text or "invalid" in text or "crs" in text: return False
     return any(token in text for token in ("network", "connection", "temporarily", "timeout", "reset by peer", "qhull internal error", "qh6108"))
 
+def _scientific_parameter_provenance(settings: BatchProductSettings) -> dict[str, object]:
+    """Record actual release-supported scientific settings used by polygon products."""
+    return {
+        "grid_resolution": settings.grid_resolution,
+        "voxel_height": settings.height_bin_size or 1.0,
+        "chm_interpolation": settings.chm_interpolation,
+        "canopy_cover": {
+            "min_height": settings.canopy_cover_height_threshold,
+            "max_height": settings.canopy_cover_max_height,
+            "k": settings.canopy_cover_extinction_coefficient,
+        },
+        "pad": {
+            "beer_lambert_constant": settings.pad_beer_lambert_constant,
+            "drop_ground": settings.pad_drop_ground,
+        },
+        "pai": {"min_height": settings.pai_min_height, "max_height": settings.pai_max_height},
+        "fhd": {"min_height": settings.fhd_min_height, "max_height": settings.fhd_max_height},
+        "rumple": {"min_height": settings.rumple_min_height},
+        "point_density": {"per_area": settings.point_density_per_area},
+        "parameter_source": "PyForestScan default or explicit Mission Control override",
+    }
+
+
 def _logical_product_request(product: ProductType, input_path: Path, output_path: Path, report: PolygonBatchPreflightReport):
     kwargs = {
         "input_path": input_path,
@@ -2160,19 +2184,20 @@ def _logical_product_request(product: ProductType, input_path: Path, output_path
     if product == ProductType.CHM:
         return ChmRequest(grid_resolution=settings.grid_resolution, interpolation=settings.chm_interpolation, interp_valid_region=settings.chm_interpolate_valid_region, interp_clean_edges=settings.chm_clean_edges, **kwargs)
     if product == ProductType.PAD:
-        return PadRequest(grid_resolution=settings.grid_resolution, voxel_height=settings.height_bin_size or 1.0, **kwargs)
+        return PadRequest(grid_resolution=settings.grid_resolution, voxel_height=settings.height_bin_size or 1.0, beer_lambert_constant=settings.pad_beer_lambert_constant, drop_ground=settings.pad_drop_ground, **kwargs)
     if product == ProductType.PAI:
-        return PaiRequest(grid_resolution=settings.grid_resolution, voxel_height=settings.height_bin_size or 1.0, **kwargs)
+        return PaiRequest(grid_resolution=settings.grid_resolution, voxel_height=settings.height_bin_size or 1.0, min_height=settings.pai_min_height, max_height=settings.pai_max_height, beer_lambert_constant=settings.pad_beer_lambert_constant, drop_ground=settings.pad_drop_ground, **kwargs)
     if product == ProductType.FHD:
-        return FhdRequest(grid_resolution=settings.grid_resolution, voxel_height=settings.height_bin_size or 1.0, **kwargs)
+        return FhdRequest(grid_resolution=settings.grid_resolution, voxel_height=settings.height_bin_size or 1.0, min_height=settings.fhd_min_height, max_height=settings.fhd_max_height, **kwargs)
     if product == ProductType.RUMPLE:
-        return RumpleRequest(grid_resolution=settings.grid_resolution, interpolation=settings.chm_interpolation, interp_valid_region=settings.chm_interpolate_valid_region, interp_clean_edges=settings.chm_clean_edges, **kwargs)
+        return RumpleRequest(grid_resolution=settings.grid_resolution, min_height=settings.rumple_min_height, interpolation=settings.chm_interpolation, interp_valid_region=settings.chm_interpolate_valid_region, interp_clean_edges=settings.chm_clean_edges, **kwargs)
     if product == ProductType.CANOPY_COVER:
-        return CanopyCoverRequest(grid_resolution=settings.grid_resolution, canopy_height_threshold=settings.canopy_cover_height_threshold, voxel_height=settings.height_bin_size or 1.0, **kwargs)
+        return CanopyCoverRequest(grid_resolution=settings.grid_resolution, canopy_height_threshold=settings.canopy_cover_height_threshold, max_height=settings.canopy_cover_max_height, extinction_coefficient=settings.canopy_cover_extinction_coefficient, voxel_height=settings.height_bin_size or 1.0, beer_lambert_constant=settings.pad_beer_lambert_constant, drop_ground=settings.pad_drop_ground, **kwargs)
     if product == ProductType.DTM:
         return DtmRequest(resolution=settings.grid_resolution, **kwargs)
     if product == ProductType.POINT_DENSITY:
-        return PointDensityRequest(grid_resolution=settings.grid_resolution, voxel_height=settings.height_bin_size or 1.0, **kwargs)
+        cell_area = settings.grid_resolution * settings.grid_resolution if settings.point_density_per_area else None
+        return PointDensityRequest(grid_resolution=settings.grid_resolution, voxel_height=settings.height_bin_size or 1.0, per_area=settings.point_density_per_area, cell_area=cell_area, **kwargs)
     if product == ProductType.VOXEL_STAT:
         return VoxelStatRequest(grid_resolution=settings.grid_resolution, voxel_height=settings.height_bin_size or 1.0, dimension="HeightAboveGround", stat="count", **kwargs)
     raise ValueError(f"Unsupported polygon product for logical EPT/COPC execution: {product.value}")

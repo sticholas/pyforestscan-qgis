@@ -33,6 +33,6 @@ class Phase29BWorkflowTests(unittest.TestCase):
   self.assertIn('Upper limit; adaptive planning may use fewer workers',PAGES)
  def test_processing_inputs_share_invalidation(self):
   self.assertIn('self.mask_engine_combo',PAGES)
-  self.assertIn('option.toggled.connect(self._on_session_input_changed)',PAGES)
+  self.assertIn('option.toggled.connect(self._on_product_selection_changed)',PAGES)
 
 if __name__=='__main__':unittest.main()

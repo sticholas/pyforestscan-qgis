@@ -111,6 +111,7 @@ from ..core.product_plan import (
     write_plan_html,
     write_plan_json,
 )
+from ..core.product_registry import MISSION_CONTROL_PRODUCTS
 from ..core.types import ProductType
 from ..core.spatial_assignment import AssignmentScope, LinearUnit
 from ..core.spatial_reference_resolver import default_spatial_assignment_store
@@ -245,9 +246,10 @@ class MissionPage(QWidget):
             if widget is self.help_banner:
                 continue
             text = str(widget.property("contextHelp") or widget.toolTip() or widget.accessibleName() or "").strip()
+            if not text:
+                text = _default_context_help(widget)
             if text:
-                widget.setProperty("resolvedContextHelp", text)
-                widget.installEventFilter(self)
+                register_context_help(widget, text, self)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt API
         """Project mouse and keyboard context into one stable help banner."""
@@ -2166,6 +2168,7 @@ class BatchPage(MissionPage):
         self._active_processing_profile = "Automatic (Recommended)"
         self._active_launch_attempt: LaunchAttempt | None = None
         self._last_launch_heartbeat_ms = 0
+        self._last_session_state: MissionControlSessionState | None = None
 
         self.mode_section, mode_layout = self.create_section("Processing Mode")
         self.batch_mode_combo = QComboBox()
@@ -2532,20 +2535,13 @@ class BatchPage(MissionPage):
         product_grid = QGridLayout()
         product_grid.setHorizontalSpacing(SPACING_XL)
         product_grid.setVerticalSpacing(SPACING_SM)
-        compact_product_labels = {
-            ProductType.CHM: "CHM",
-            ProductType.CANOPY_COVER: "Canopy Cover",
-            ProductType.PAD: "PAD",
-            ProductType.PAI: "PAI",
-            ProductType.FHD: "FHD",
-            ProductType.RUMPLE: "Rumple",
-        }
-        for index, (product, label) in enumerate(PRODUCT_LABELS.items()):
-            check = QCheckBox(compact_product_labels.get(product, label))
+        for index, definition in enumerate(MISSION_CONTROL_PRODUCTS):
+            product = definition.product
+            check = QCheckBox(definition.short_name)
             check.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
             check.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-            check.setToolTip(label)
-            check.setProperty("contextHelp", "Choose the forest structure products to calculate. Additional products may require separate scientific passes and increase processing time.")
+            check.setToolTip(definition.description)
+            check.setProperty("contextHelp", definition.description)
             if product is ProductType.CHM:
                 check.setChecked(True)
             self.product_checks[product] = check
@@ -2565,8 +2561,10 @@ class BatchPage(MissionPage):
         self.select_recommended_products_button.setVisible(False)
         self.clear_products_button.setVisible(False)
         self.advanced_product_settings_group, settings_layout = _collapsible_section(products_layout, "Advanced", checked=False)
+        self.advanced_product_settings_group.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Minimum)
         settings_form = QFormLayout()
         settings_form.setVerticalSpacing(SECTION_SPACING)
+        settings_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self.resolution_spin = QDoubleSpinBox()
         self.resolution_spin.setDecimals(3)
         self.resolution_spin.setMinimum(0.01)
@@ -2581,14 +2579,64 @@ class BatchPage(MissionPage):
         self.canopy_threshold_spin.setDecimals(3)
         self.canopy_threshold_spin.setMinimum(0.0)
         self.canopy_threshold_spin.setValue(2.0)
+        self.canopy_max_height_spin = _automatic_height_spin()
+        self.canopy_extinction_spin = QDoubleSpinBox()
+        self.canopy_extinction_spin.setRange(0.0, 100.0)
+        self.canopy_extinction_spin.setDecimals(3)
+        self.canopy_extinction_spin.setValue(0.5)
+        self.pad_beer_lambert_spin = QDoubleSpinBox()
+        self.pad_beer_lambert_spin.setRange(0.0, 100.0)
+        self.pad_beer_lambert_spin.setDecimals(3)
+        self.pad_beer_lambert_spin.setValue(1.0)
+        self.pad_drop_ground_check = QCheckBox("Exclude ground layer")
+        self.pad_drop_ground_check.setChecked(True)
+        self.pai_min_height_spin = _height_spin(1.0)
+        self.pai_max_height_spin = _automatic_height_spin()
+        self.fhd_min_height_spin = _height_spin(0.0)
+        self.fhd_max_height_spin = _automatic_height_spin()
+        self.rumple_min_height_spin = _automatic_height_spin()
+        self.point_density_per_area_check = QCheckBox("Density per unit area")
+        self.point_density_per_area_check.setChecked(True)
         self.chm_interpolation_combo = QComboBox()
         self.chm_interpolation_combo.addItems(("linear", "nearest", "cubic"))
+        for control in (
+            self.resolution_spin,
+            self.height_bin_spin,
+            self.canopy_threshold_spin,
+            self.canopy_max_height_spin,
+            self.canopy_extinction_spin,
+            self.pad_beer_lambert_spin,
+            self.pad_drop_ground_check,
+            self.pai_min_height_spin,
+            self.pai_max_height_spin,
+            self.fhd_min_height_spin,
+            self.fhd_max_height_spin,
+            self.rumple_min_height_spin,
+            self.point_density_per_area_check,
+            self.chm_interpolation_combo,
+        ):
+            control.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         settings_form.addRow("Grid resolution", self.resolution_spin)
         settings_form.addRow("Height bin size", self.height_bin_spin)
         settings_form.addRow("Canopy cover threshold", self.canopy_threshold_spin)
+        settings_form.addRow("Canopy cover maximum", self.canopy_max_height_spin)
+        settings_form.addRow("Extinction coefficient", self.canopy_extinction_spin)
+        settings_form.addRow("Beer-Lambert coefficient", self.pad_beer_lambert_spin)
+        settings_form.addRow("", self.pad_drop_ground_check)
+        settings_form.addRow("PAI minimum height", self.pai_min_height_spin)
+        settings_form.addRow("PAI maximum height", self.pai_max_height_spin)
+        settings_form.addRow("FHD minimum height", self.fhd_min_height_spin)
+        settings_form.addRow("FHD maximum height", self.fhd_max_height_spin)
+        settings_form.addRow("Rumple minimum height", self.rumple_min_height_spin)
+        settings_form.addRow("", self.point_density_per_area_check)
         settings_form.addRow("CHM interpolation", self.chm_interpolation_combo)
         self.product_settings_form = settings_form
         settings_layout.addLayout(settings_form)
+        self.restore_scientific_defaults_button = QPushButton("Restore PyForestScan Defaults")
+        self.restore_scientific_defaults_button.clicked.connect(self._restore_scientific_defaults)
+        self.restore_scientific_defaults_button.setProperty("contextHelp", "Restore supported scientific parameters without changing data, products, or output selections.")
+        self.restore_scientific_defaults_button.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        settings_layout.addWidget(self.restore_scientific_defaults_button)
         _wire_collapsible_group(self.advanced_product_settings_group)
         self.advanced_batch_section, advanced_batch = _collapsible_section(self.content_layout, "Advanced Batch Options", checked=False)
         advanced_form = QFormLayout()
@@ -2726,8 +2774,6 @@ class BatchPage(MissionPage):
         self.open_job_diagnostics_button.clicked.connect(self.open_recent_error_diagnostics)
         recent_error_actions.addWidget(self.copy_error_summary_button);recent_error_actions.addWidget(self.open_job_diagnostics_button);recent_error_actions.addStretch(1)
         recent_error_layout.addLayout(recent_error_actions);_wire_collapsible_group(self.recent_error_group)
-        for check in self.product_checks.values():
-            check.toggled.connect(lambda _checked: self._refresh_footprint_label())
         self.resolution_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
         self.height_bin_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
         self.file_list.itemChanged.connect(lambda _item: self._refresh_footprint_label())
@@ -2851,6 +2897,8 @@ class BatchPage(MissionPage):
         self.previous_runs_group,self.previous_runs_layout=_collapsible_section(self.content_layout,"Previous Runs",checked=False)
         self.previous_runs_list=QListWidget();self.previous_runs_list.setMaximumHeight(120);self.previous_runs_layout.addWidget(self.previous_runs_list)
         self.previous_runs_group.setVisible(False);_wire_collapsible_group(self.previous_runs_group)
+        self._process_column_mode = ""
+        self._install_process_workspace()
         self._update_batch_mode_visibility()
         self._wire_session_state_inputs()
         self._refresh_batch_option_visibility()
@@ -2859,6 +2907,54 @@ class BatchPage(MissionPage):
         self._processing_watchdog.setInterval(2500)
         self._processing_watchdog.timeout.connect(self._reconcile_processing_ui)
         self._processing_watchdog.start()
+
+    def _install_process_workspace(self) -> None:
+        """Place routine processing sections in one responsive workspace."""
+        self.process_workspace = QWidget(self.content_widget)
+        self.process_workspace.setObjectName("responsiveProcessWorkspace")
+        self.process_workspace.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.process_workspace_layout = QGridLayout(self.process_workspace)
+        self.process_workspace_layout.setContentsMargins(0, 0, 0, 0)
+        self.process_workspace_layout.setHorizontalSpacing(SPACING_SM)
+        self.process_workspace_layout.setVerticalSpacing(SPACING_SM)
+        self._routine_process_sections = (
+            self.mode_section, self.repository_section, self.polygon_section,
+            self.products_section, self.output_section, self.prerun_section, self.process_section,
+        )
+        for section in self._routine_process_sections:
+            _take_layout_widget(self.content_layout, section)
+            section.setParent(self.process_workspace)
+        self.content_layout.insertWidget(0, self.process_workspace)
+        self._apply_process_columns(620)
+
+    def _apply_process_columns(self, width: int) -> None:
+        """Switch between single and dual columns at the measured 620 px breakpoint."""
+        mode = "two" if width >= 620 else "one"
+        if mode == self._process_column_mode:
+            return
+        self._process_column_mode = mode
+        for section in self._routine_process_sections:
+            _take_layout_widget(self.process_workspace_layout, section)
+        if mode == "two":
+            for row, section in enumerate((self.mode_section, self.repository_section, self.polygon_section, self.output_section)):
+                self.process_workspace_layout.addWidget(section, row, 0)
+            for row, section in enumerate((self.products_section, self.prerun_section, self.process_section)):
+                self.process_workspace_layout.addWidget(section, row, 1)
+            self.process_workspace_layout.setColumnStretch(0, 1)
+            self.process_workspace_layout.setColumnStretch(1, 1)
+        else:
+            ordered = (self.mode_section, self.repository_section, self.polygon_section, self.products_section,
+                       self.output_section, self.prerun_section, self.process_section)
+            for row, section in enumerate(ordered):
+                self.process_workspace_layout.addWidget(section, row, 0)
+            self.process_workspace_layout.setColumnStretch(0, 1)
+            self.process_workspace_layout.setColumnStretch(1, 0)
+
+    def resizeEvent(self, event: object) -> None:  # noqa: N802 - Qt API
+        """Adapt routine workflow columns without rebuilding any controls."""
+        super().resizeEvent(event)
+        if hasattr(self, "process_workspace"):
+            self._apply_process_columns(self.scroll_area.viewport().width())
 
     def set_job_token_factory(self,factory) -> None:
         self._job_token_factory=factory
@@ -2910,6 +3006,24 @@ class BatchPage(MissionPage):
         if ProductType.CHM in self.product_checks:
             self.product_checks[ProductType.CHM].setChecked(True)
 
+    def _restore_scientific_defaults(self) -> None:
+        """Restore official release-supported defaults without changing workflow inputs."""
+        self.resolution_spin.setValue(1.0)
+        self.height_bin_spin.setValue(1.0)
+        self.canopy_threshold_spin.setValue(2.0)
+        self.canopy_max_height_spin.setValue(0.0)
+        self.canopy_extinction_spin.setValue(0.5)
+        self.pad_beer_lambert_spin.setValue(1.0)
+        self.pad_drop_ground_check.setChecked(True)
+        self.pai_min_height_spin.setValue(1.0)
+        self.pai_max_height_spin.setValue(0.0)
+        self.fhd_min_height_spin.setValue(0.0)
+        self.fhd_max_height_spin.setValue(0.0)
+        self.rumple_min_height_spin.setValue(0.0)
+        self.point_density_per_area_check.setChecked(True)
+        self.chm_interpolation_combo.setCurrentText("linear")
+        self._on_product_selection_changed()
+
     def _set_all_products(self, checked: bool) -> None:
         for product_check in self.product_checks.values():
             product_check.setChecked(checked)
@@ -2926,22 +3040,28 @@ class BatchPage(MissionPage):
             edit.textChanged.connect(self._on_session_input_changed)
         self.polygon_dissolve_check.toggled.connect(self._on_session_input_changed)
         self.recursive_check.toggled.connect(self._on_session_input_changed)
-        self.polygon_direct_fallback_check.toggled.connect(self._on_session_input_changed)
-        self.resolution_spin.valueChanged.connect(self._on_session_input_changed)
-        for control in (self.height_bin_spin, self.canopy_threshold_spin, self.max_workers_spin):
-            control.valueChanged.connect(self._on_session_input_changed)
+        self.polygon_direct_fallback_check.toggled.connect(self._on_product_selection_changed)
+        scientific_values = (
+            self.resolution_spin, self.height_bin_spin, self.canopy_threshold_spin, self.max_workers_spin,
+            self.canopy_max_height_spin, self.canopy_extinction_spin, self.pad_beer_lambert_spin,
+            self.pai_min_height_spin, self.pai_max_height_spin, self.fhd_min_height_spin,
+            self.fhd_max_height_spin, self.rumple_min_height_spin,
+        )
+        for control in scientific_values:
+            control.valueChanged.connect(self._on_product_selection_changed)
         for combo in (self.processing_profile_combo, self.execution_mode_combo, self.chm_interpolation_combo,
                       self.polygon_index_strategy_combo, self.polygon_selection_mode_combo, self.mask_engine_combo,
                       self.mask_failure_policy_combo):
-            combo.currentIndexChanged.connect(self._on_session_input_changed)
+            combo.currentIndexChanged.connect(self._on_product_selection_changed)
         for option in (self.stop_on_error_check,
                        self.skip_completed_check, self.retry_failed_only_check, self.overwrite_existing_check,
                        self.exact_raster_mask_check, self.crop_to_polygon_extent_check,
                        self.all_touched_mask_check, self.retain_unmasked_intermediate_check):
-            option.toggled.connect(self._on_session_input_changed)
+            option.toggled.connect(self._on_product_selection_changed)
+        self.pad_drop_ground_check.toggled.connect(self._on_product_selection_changed)
+        self.point_density_per_area_check.toggled.connect(self._on_product_selection_changed)
         for check in self.product_checks.values():
-            check.toggled.connect(self._on_session_input_changed)
-            check.toggled.connect(self._update_adaptive_visibility)
+            check.toggled.connect(self._on_product_selection_changed)
         self.polygon_lidar_folder_edit.textChanged.connect(self._update_adaptive_visibility)
 
     def _on_session_input_changed(self, *_args: object) -> None:
@@ -2953,6 +3073,19 @@ class BatchPage(MissionPage):
         if hasattr(self, "preflight_summary_label"):
             self.preflight_summary_label.setText("Needs attention: Prerun Check must be refreshed.")
         self._publish_session_state()
+
+    def _on_product_selection_changed(self, *_args: object) -> None:
+        """Invalidate the plan without inspecting source, polygon, or backend state."""
+        self.preflight_report = None
+        self._refresh_batch_option_visibility()
+        self._update_run_button_enabled()
+        self.preflight_text.setPlainText("Prerun Check needs refresh for the selected products.")
+        self.preflight_summary_label.setText("Needs attention: Prerun Check must be refreshed.")
+        selected = tuple(PRODUCT_LABELS[p] for p, check in self.product_checks.items() if check.isChecked())
+        if self._last_session_state is not None:
+            state = replace(self._last_session_state, selected_products=selected, plan_status="needs refresh")
+            self._last_session_state = state
+            self.sessionStateChanged.emit(state)
 
     def _publish_session_state(self, *, plan_status: str = "needs refresh") -> None:
         mode = self._current_batch_mode()
@@ -3008,6 +3141,7 @@ class BatchPage(MissionPage):
             polygon_geometry_signature=geometry_signature, polygon_area=area, polygon_crs=crs,
             selected_products=products, output_resolution=self.resolution_spin.value(),
             output_folder=self.output_folder_edit.text().strip(), plan_status=plan_status)
+        self._last_session_state = state
         self.sessionStateChanged.emit(state)
 
     def _current_batch_mode(self) -> str:
@@ -3031,7 +3165,6 @@ class BatchPage(MissionPage):
         self.summary_label.setText("Review Polygon Batch outputs after execution." if polygon else "4. Review Results after the batch completes.")
         self._update_polygon_source_visibility()
         self._update_adaptive_visibility()
-        self.refresh_catalog_status()
         self._update_run_button_enabled()
 
     def _on_execution_mode_changed(self, *_args: object) -> None:
@@ -3048,6 +3181,17 @@ class BatchPage(MissionPage):
             _set_form_field_visible(self.product_settings_form, self.resolution_spin, bool(selected & raster_products))
             _set_form_field_visible(self.product_settings_form, self.height_bin_spin, bool(selected & binned_products))
             _set_form_field_visible(self.product_settings_form, self.canopy_threshold_spin, ProductType.CANOPY_COVER in selected)
+            _set_form_field_visible(self.product_settings_form, self.canopy_max_height_spin, ProductType.CANOPY_COVER in selected)
+            _set_form_field_visible(self.product_settings_form, self.canopy_extinction_spin, ProductType.CANOPY_COVER in selected)
+            pad_family = {ProductType.PAD, ProductType.PAI, ProductType.CANOPY_COVER}
+            _set_form_field_visible(self.product_settings_form, self.pad_beer_lambert_spin, bool(selected & pad_family))
+            _set_form_field_visible(self.product_settings_form, self.pad_drop_ground_check, bool(selected & pad_family))
+            _set_form_field_visible(self.product_settings_form, self.pai_min_height_spin, ProductType.PAI in selected)
+            _set_form_field_visible(self.product_settings_form, self.pai_max_height_spin, ProductType.PAI in selected)
+            _set_form_field_visible(self.product_settings_form, self.fhd_min_height_spin, ProductType.FHD in selected)
+            _set_form_field_visible(self.product_settings_form, self.fhd_max_height_spin, ProductType.FHD in selected)
+            _set_form_field_visible(self.product_settings_form, self.rumple_min_height_spin, ProductType.RUMPLE in selected)
+            _set_form_field_visible(self.product_settings_form, self.point_density_per_area_check, ProductType.POINT_DENSITY in selected)
             _set_form_field_visible(self.product_settings_form, self.chm_interpolation_combo, ProductType.CHM in selected)
         visibility = batch_control_visibility(
             profile=str(self.processing_profile_combo.currentData() or "recommended"),
@@ -4171,6 +4315,34 @@ class BatchPage(MissionPage):
         self.batch_thread.start()
         self._transition_processing_ui_state(ProcessingUiState.RUNNING)
 
+    def _scientific_settings_kwargs(self) -> dict[str, object]:
+        """Validate and return product parameters that affect scientific output."""
+        def optional(spin: QDoubleSpinBox) -> float | None:
+            return None if spin.value() <= 0 else spin.value()
+
+        pai_max = optional(self.pai_max_height_spin)
+        fhd_max = optional(self.fhd_max_height_spin)
+        canopy_max = optional(self.canopy_max_height_spin)
+        if pai_max is not None and pai_max <= self.pai_min_height_spin.value():
+            raise BatchExecutionError("PAI maximum height must be greater than its minimum integration height.")
+        if fhd_max is not None and fhd_max <= self.fhd_min_height_spin.value():
+            raise BatchExecutionError("FHD maximum height must be greater than its minimum canopy height.")
+        if canopy_max is not None and canopy_max <= self.canopy_threshold_spin.value():
+            raise BatchExecutionError("Canopy Cover maximum height must be greater than its minimum height.")
+        return {
+            "canopy_cover_height_threshold": self.canopy_threshold_spin.value(),
+            "canopy_cover_max_height": canopy_max,
+            "canopy_cover_extinction_coefficient": self.canopy_extinction_spin.value(),
+            "pad_beer_lambert_constant": self.pad_beer_lambert_spin.value(),
+            "pad_drop_ground": self.pad_drop_ground_check.isChecked(),
+            "pai_min_height": self.pai_min_height_spin.value(),
+            "pai_max_height": pai_max,
+            "fhd_min_height": self.fhd_min_height_spin.value(),
+            "fhd_max_height": fhd_max,
+            "rumple_min_height": optional(self.rumple_min_height_spin),
+            "point_density_per_area": self.point_density_per_area_check.isChecked(),
+        }
+
     def _build_batch_request(self, batch_folder: Path | None = None, datasets: tuple[Path, ...] | None = None) -> BatchRequest:
         """Build a typed batch request from current UI state."""
         selected = tuple(datasets) if datasets is not None else tuple(self._selected_paths())
@@ -4187,7 +4359,7 @@ class BatchPage(MissionPage):
             grid_resolution=self.resolution_spin.value(),
             height_bin_size=self.height_bin_spin.value() if self.height_bin_spin.value() > 0 else None,
             chm_interpolation=self.chm_interpolation_combo.currentText(),
-            canopy_cover_height_threshold=self.canopy_threshold_spin.value(),
+            **self._scientific_settings_kwargs(),
             stop_on_error=self.stop_on_error_check.isChecked(),
             load_outputs_into_qgis=True,
             execution_mode="automatic",
@@ -4230,7 +4402,7 @@ class BatchPage(MissionPage):
             grid_resolution=self.resolution_spin.value(),
             height_bin_size=self.height_bin_spin.value() if self.height_bin_spin.value() > 0 else None,
             chm_interpolation=self.chm_interpolation_combo.currentText(),
-            canopy_cover_height_threshold=self.canopy_threshold_spin.value(),
+            **self._scientific_settings_kwargs(),
             stop_on_error=self.stop_on_error_check.isChecked(),
             load_outputs_into_qgis=True,
             execution_mode="automatic",
@@ -5598,6 +5770,48 @@ class SettingsPage(MissionPage):
             lines.append("")
         self.backend_details.setPlainText("\n".join(lines).strip())
 
+def register_context_help(widget: QWidget, text: str, owner: MissionPage) -> None:
+    """Register explanation-only hover/focus behavior for one control."""
+    resolved = str(text).strip()
+    if not resolved:
+        return
+    widget.setProperty("resolvedContextHelp", resolved)
+    widget.installEventFilter(owner)
+
+
+def _take_layout_widget(layout: object, widget: QWidget) -> None:
+    """Detach one known widget while preserving Qt ownership for responsive placement."""
+    if not hasattr(layout, "count"):
+        return
+    for index in range(layout.count() - 1, -1, -1):
+        item = layout.itemAt(index)
+        if item.widget() is widget:
+            layout.takeAt(index)
+            return
+
+
+def _default_context_help(widget: QWidget) -> str:
+    """Return concise fallback help for otherwise-unregistered interactive controls."""
+    if isinstance(widget, QGroupBox) and widget.isCheckable():
+        return f"Expand or collapse {widget.title()} settings."
+    if isinstance(widget, (QPushButton, QCheckBox)):
+        label = widget.text().replace("&", "").strip()
+        if isinstance(widget, QCheckBox):
+            return f"Turn {label} on or off for the current workflow." if label else ""
+        return f"Use {label} to continue this page action." if label else ""
+    if isinstance(widget, QComboBox):
+        label = widget.accessibleName().strip() or widget.currentText().strip() or "this option"
+        return f"Choose {label} for the current workflow."
+    if isinstance(widget, (QLineEdit, QSpinBox, QDoubleSpinBox)):
+        label = widget.accessibleName().strip()
+        if isinstance(widget, QLineEdit):
+            label = label or widget.placeholderText().strip()
+        return f"Set {label or 'this value'} for the current workflow."
+    if isinstance(widget, QListWidget):
+        return "Review or select items in this list."
+    return ""
+
+
 def _processing_lifecycle_stage(job: JobRecord) -> str:
     """Return the common user-facing processing lifecycle stage."""
     if job.status in {JobStatus.PENDING, JobStatus.VALIDATING}:
@@ -5873,6 +6087,23 @@ def _size_text_edit_to_content(widget: QTextEdit, *, visible_lines: int = 6) -> 
     height = min(lines, visible_lines) * 19 + 14
     widget.setMinimumHeight(height)
     widget.setMaximumHeight(height)
+
+
+def _height_spin(value: float) -> QDoubleSpinBox:
+    """Return a compact non-negative height control in metres."""
+    spin = QDoubleSpinBox()
+    spin.setRange(0.0, 10000.0)
+    spin.setDecimals(2)
+    spin.setSuffix(" m")
+    spin.setValue(value)
+    return spin
+
+
+def _automatic_height_spin() -> QDoubleSpinBox:
+    """Return a height control whose zero value means automatic/full canopy."""
+    spin = _height_spin(0.0)
+    spin.setSpecialValueText("Automatic")
+    return spin
 
 
 def _readable_list() -> QListWidget:
