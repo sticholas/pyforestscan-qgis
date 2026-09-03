@@ -12,11 +12,11 @@ MISSION = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text(encoding=
 
 class ToolsSetupProductContractTests(unittest.TestCase):
     def test_processing_engine_action_matrix(self):
-        self.assertEqual(processing_engine_setup_action("READY"), (True, "Repair"))
-        self.assertEqual(processing_engine_setup_action("SETUP_REQUIRED"), (True, "Set Up Processing Engine"))
+        self.assertEqual(processing_engine_setup_action("READY"), (True, "Reinstall / Repair"))
+        self.assertEqual(processing_engine_setup_action("SETUP_REQUIRED"), (True, "Install Processing Engine"))
         self.assertEqual(processing_engine_setup_action("REPAIR_REQUIRED"), (True, "Repair Processing Engine"))
         self.assertEqual(processing_engine_setup_action("FAILED"), (True, "Repair Processing Engine"))
-        self.assertEqual(processing_engine_setup_action("INCOMPATIBLE"), (True, "Repair Processing Engine"))
+        self.assertEqual(processing_engine_setup_action("INCOMPATIBLE"), (True, "Update Processing Engine"))
 
     def test_additional_tools_and_recent_limit_are_not_visible_controls(self):
         settings = PAGES[PAGES.index("class SettingsPage"):PAGES.index("def _processing_lifecycle_stage")]

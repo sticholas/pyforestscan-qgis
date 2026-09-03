@@ -209,7 +209,25 @@ def _normalize_layer_features(layer, features: Iterable[object], *, description:
         bounds=bounds,
         area=float(geom.area()),
         warnings=tuple(warnings),
+        area_hectares=_measure_area_hectares(geom, processing or source_crs),
     )
+
+
+def _measure_area_hectares(geometry, crs_text: str) -> float | None:
+    """Measure area geodesically in hectares; never convert square degrees directly."""
+    try:
+        from qgis.core import QgsCoordinateReferenceSystem, QgsDistanceArea, QgsProject
+
+        crs = QgsCoordinateReferenceSystem(crs_text)
+        if not crs.isValid():
+            return None
+        measurement = QgsDistanceArea()
+        measurement.setSourceCrs(crs, QgsProject.instance().transformContext())
+        measurement.setEllipsoid("WGS84")
+        square_metres = float(measurement.measureArea(geometry))
+        return square_metres / 10000.0 if square_metres >= 0 else None
+    except Exception:  # noqa: BLE001 - area display must not block processing.
+        return None
 
 
 def _dissolve_geometries(geometries: list[object]):

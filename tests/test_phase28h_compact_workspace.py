@@ -12,7 +12,7 @@ class CompactWorkspaceTests(unittest.TestCase):
  def test_process_combines_current_results(self):
   self.assertIn('create_section("Current Result")',self.pages);self.assertIn('QPushButton("Load into QGIS")',self.pages);self.assertIn('QPushButton("New Run")',self.pages)
  def test_tools_synthesizes_system_and_advanced_access(self):
-  self.assertIn('super().__init__("Tools & Setup"',self.pages);self.assertIn('QPushButton("Set Up Processing Engine")',self.pages);self.assertIn('"Repair / Reload Processing Engine"',self.pages);self.assertNotIn('QPushButton("Recheck Processing Engine")',self.pages);self.assertIn('QPushButton("Open Diagnostics")',self.pages)
+  self.assertIn('super().__init__("Tools & Setup"',self.pages);self.assertIn('QPushButton("Set Up Processing Engine")',self.pages);self.assertIn('processing_engine_setup_action',self.pages);self.assertNotIn('QPushButton("Recheck Processing Engine")',self.pages);self.assertIn('QPushButton("Open Diagnostics")',self.pages)
  def test_compact_width_and_live_status_strip(self):
   self.assertIn('<width>420</width>',self.form);self.assertIn('self.ui.statusFrame.setVisible(True)',self.mission)
   self.assertIn('compact = self.width() < 620',self.mission)

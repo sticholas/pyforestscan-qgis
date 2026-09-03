@@ -112,7 +112,7 @@ class AuthoritativeProcessingEngineTests(unittest.TestCase):
     def test_normal_ui_has_one_authoritative_setup_action(self):
         source = (Path(__file__).parents[1] / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
         self.assertIn('QPushButton("Set Up Processing Engine")', source)
-        self.assertIn('"Repair / Reload Processing Engine"', source)
+        self.assertIn("processing_engine_setup_action", source)
         self.assertNotIn('QPushButton("Recheck Processing Engine")', source)
         self.assertIn("processingEngineStateChanged", source)
         self.assertIn("ready_for_processing", source)

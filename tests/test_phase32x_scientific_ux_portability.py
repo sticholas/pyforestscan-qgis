@@ -38,7 +38,7 @@ class ScientificLayoutAndHelpTests(unittest.TestCase):
 
     def test_official_calculation_reference_is_compact_and_exact(self) -> None:
         self.assertIn("https://pyforestscan.sefa.ai/api/calculate/", PAGES)
-        self.assertIn('QPushButton("Calculation Reference")', PAGES)
+        self.assertIn('QPushButton("PyForestScan Calculation Guide ↗")', PAGES)
         self.assertIn("QSizePolicy.Fixed, QSizePolicy.Fixed", PAGES)
 
     def test_semantic_registry_covers_products_and_scientific_parameters(self) -> None:

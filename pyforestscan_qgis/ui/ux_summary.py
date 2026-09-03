@@ -25,12 +25,41 @@ def processing_engine_setup_action(status: str) -> tuple[bool, str]:
     """Return whether the authoritative setup action is visible and its label."""
     normalized = str(status).strip().upper().replace(" ", "_")
     if normalized == "READY":
-        return True, "Repair"
+        return True, "Reinstall / Repair"
     if normalized == "CHECKING":
         return False, ""
     if normalized in {"REPAIR_REQUIRED", "INCOMPATIBLE", "FAILED"}:
-        return True, "Repair Processing Engine"
-    return True, "Set Up Processing Engine"
+        return True, "Update Processing Engine" if normalized == "INCOMPATIBLE" else "Repair Processing Engine"
+    return True, "Install Processing Engine"
+
+
+def scientific_form_column_count(width: int) -> int:
+    """Return a readable scientific-form column count for the live viewport."""
+    return 2 if int(width) >= 760 else 1
+
+
+def processing_area_summary(*, feature_count: int = 0, area_hectares: float | None = None, crs: str = "", adopted: bool = False) -> str:
+    """Describe only an explicitly adopted processing area."""
+    if not adopted:
+        return "Selection: Not selected   Area: Not selected   Geometry: Not selected   Processing Area CRS: Not selected"
+    count = f"{feature_count} feature{'s' if feature_count != 1 else ''}"
+    area = "Unavailable" if area_hectares is None else f"{area_hectares:.3g} ha"
+    return f"Selection: {count}   Area: {area}   Geometry: Valid Polygon   Processing Area CRS: {crs or 'Unknown'}"
+
+
+def next_processing_action(*, engine_ready: bool, source_ready: bool, area_required: bool, area_ready: bool, prerun_ready: bool, processing: bool = False) -> str:
+    """Return one authoritative next action for the Process page."""
+    if processing:
+        return "Processing is running"
+    if not engine_ready:
+        return "Install or repair the Processing Engine"
+    if not source_ready:
+        return "Choose LiDAR data"
+    if area_required and not area_ready:
+        return "Choose and adopt a processing area"
+    if not prerun_ready:
+        return "Run Prerun Check"
+    return "Process LiDAR"
 
 MISSION_WORKFLOW_STEPS: tuple[str, ...] = (
     "Check environment",

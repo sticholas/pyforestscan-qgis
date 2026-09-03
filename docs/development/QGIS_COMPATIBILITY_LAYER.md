@@ -32,10 +32,16 @@ Each wrapper returns a structured result with `success`, `message`, and optional
   conditionals through Mission Control pages.
 - Do not use compatibility checks to alter QGIS Python, QGIS install folders, or user environment variables.
 
-## Phase 32X Evidence
+## Phase 32Y Evidence
 
-QGIS 3.44.13 LTR with Qt 5.15.13 passed live Mission Control construction and
-the scientific-settings sizing matrix. A local QGIS 4.0.0 Qt 6 spike reached
+QGIS 3.44.13 LTR with Qt 5.15.13 passed live Mission Control construction,
+provider API detection, the scientific-settings sizing matrix, semantic help,
+and initial processing-area state checks. A local QGIS 4.0.0 Qt 6 spike reached
 Mission Control dock construction after scoped-enum compatibility repairs, but
-the full interaction harness did not finish. QGIS 4.2.1 remains untested and
+the full interaction harness did not finish. QGIS 4.2.2 remains untested and
 QGIS 4 support therefore remains unqualified.
+
+Official release metadata was checked on 2026-09-03. The current published
+versions were QGIS 3.44.14 LTR and QGIS 4.2.2 stable. Neither exact point build
+was installed on the Phase 32Y host, so evidence is reported against the exact
+runtime used rather than inferred across versions.

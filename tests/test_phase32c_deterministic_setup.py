@@ -116,8 +116,8 @@ class DeterministicSetupTests(unittest.TestCase):
             self.assertEqual(service.state(quick=True).status, ProcessingEngineState.REPAIR_REQUIRED)
 
     def test_setup_action_is_always_visible_and_recheck_is_removed(self):
-        self.assertEqual(processing_engine_setup_action("READY"), (True, "Repair"))
-        self.assertEqual(processing_engine_setup_action("SETUP_REQUIRED"), (True, "Set Up Processing Engine"))
+        self.assertEqual(processing_engine_setup_action("READY"), (True, "Reinstall / Repair"))
+        self.assertEqual(processing_engine_setup_action("SETUP_REQUIRED"), (True, "Install Processing Engine"))
         pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
         settings = pages[pages.index("class SettingsPage"):pages.index("def _processing_lifecycle_stage")]
         self.assertNotIn('QPushButton("Recheck Processing Engine")', settings)

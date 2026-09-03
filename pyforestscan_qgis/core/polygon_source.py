@@ -75,6 +75,7 @@ class NormalizedPolygonSelection:
     bounds: Bounds2D
     area: float
     warnings: tuple[str, ...] = field(default_factory=tuple)
+    area_hectares: float | None = None
 
     def to_polygon_selection(self) -> PolygonSelection:
         """Return the legacy planner selection object."""

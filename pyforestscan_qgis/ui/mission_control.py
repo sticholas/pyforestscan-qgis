@@ -1076,7 +1076,14 @@ class MissionControlDock(QDockWidget):
         self.ui.datasetStatusLabel.setText(f"LiDAR: {repo}")
         area = f"{self.session_state.polygon_area / 10000:.3g} ha" if self.session_state.polygon_area is not None else "Not selected"
         self.ui.planningStatusLabel.setText(f"Area: {area}")
-        status = self.session_state.processing_status.title() if self.session_state.processing_status != "idle" else ("Ready" if environment_is_ready(self.state.environment_status) and self.session_state.repository_path else "Needs setup")
+        if self.session_state.processing_status != "idle":
+            status = self.session_state.processing_status.title()
+        elif not availability.processing_available:
+            status = "Setup required"
+        elif not self.session_state.repository_path:
+            status = "Ready for input"
+        else:
+            status = "Ready"
         self.ui.readyStatusLabel.setText(f"Status: {status}")
         compact = self.width() < 620
         self.ui.datasetStatusLabel.setVisible(not compact)

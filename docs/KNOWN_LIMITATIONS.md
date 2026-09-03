@@ -150,11 +150,17 @@ This document records current limitations for the internal release candidate. It
 
 Cross-platform recognition is not cross-platform release qualification. The
 current tested managed-engine target is Windows x86_64 with QGIS 3.44.13 LTR.
-QGIS 4.2.1, macOS Intel/ARM, and Linux desktop combinations remain unqualified
+The current official QGIS 3.44.14 LTR and QGIS 4.2.2 stable point releases,
+macOS Intel/ARM, and Linux desktop combinations remain unqualified
 until the plugin, managed engine, and science canary pass there. Micromamba is
 still configured as `latest` with empty platform artifact hashes; fixed version
 and exact archive digests remain an RC blocker. See the
 [Compatibility Matrix](COMPATIBILITY.md).
+
+Phase 32Y corrected initial processing-area projection and geodesic area
+measurement, but selected-feature area QA must still be repeated on current
+QGIS 3.44.14 and 4.2.2. Layer CRS, project CRS, and the first available feature
+are no longer projected as an adopted processing area.
 
 The PyForestScan Backend Manager can run backend installation for Windows internal beta builds only. Linux and macOS installer execution remain planned/experimental until clean platform smoke testing is complete. PBM installs only into the user-local PyForestScan backend folder and must not install into QGIS Python, modify QGIS folders, require administrator privileges, change user environment variables, or enable External Worker mode.
 

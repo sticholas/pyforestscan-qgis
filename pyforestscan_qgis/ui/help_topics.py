@@ -109,7 +109,7 @@ SEMANTIC_CONTEXT_HELP: dict[str, str] = {
     "parameter.point_density.per_area": "Divide return counts by horizontal cell area to report density per square source-map unit.",
     "parameter.chm.interpolation": "Controls how gaps between measured canopy-height cells are filled. Linear interpolation estimates values from nearby valid cells and is the PyForestScan default.",
     "parameter.restore_defaults": "Restore the supported PyForestScan scientific defaults without changing the selected data, products, or output folder.",
-    "parameter.calculation_reference": "Open the official PyForestScan calculation reference for definitions, parameters, defaults, and calculation behavior.",
+    "parameter.calculation_reference": "Open the official PyForestScan calculation documentation describing the scientific products, parameters, defaults, and calculation methods.",
     "tools.fallback_crs": "Optional CRS to assume when a LiDAR dataset has no usable coordinate reference information. It never replaces a valid source CRS. Only set this when you know the coordinate system of otherwise unreferenced data.",
 }
 
@@ -133,6 +133,10 @@ SEMANTIC_ACTION_HELP: dict[str, str] = {
     "Build Plan": "Validate selected products and parameters, then build the processing and output plan.",
     "Prerun Check": "Validate engine, source, area, coordinate systems, products, storage, and workload before dispatch.",
     "Set Up Processing Engine": "Install and verify the isolated user-local scientific runtime without modifying QGIS Python.",
+    "Install Processing Engine": "Install the isolated scientific runtime PyForestScan QGIS uses for LiDAR processing, including its required Python and geospatial dependencies.",
+    "Repair Processing Engine": "Rebuild or repair the Processing Engine when required dependencies or runtime files are missing or damaged.",
+    "Reinstall / Repair": "Recreate or repair the Processing Engine using the currently supported runtime definition.",
+    "Update Processing Engine": "Replace an incompatible Processing Engine with the runtime definition supported by this plugin build.",
     "Load into QGIS": "Add registered output rasters and supported tables to the current QGIS project without regenerating them.",
     "Open Output Folder": "Open the folder containing the current run's generated products and provenance files.",
     "Open Folder": "Open the current result folder in the desktop file manager.",

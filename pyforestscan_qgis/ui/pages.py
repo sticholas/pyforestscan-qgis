@@ -122,6 +122,8 @@ install_enum_aliases(QFormLayout, "RowWrapPolicy", ("DontWrapRows", "WrapAllRows
 install_enum_aliases(QLayout, "SizeConstraint", ("SetNoConstraint",))
 install_enum_aliases(QComboBox, "SizeAdjustPolicy", ("AdjustToMinimumContentsLengthWithIcon",))
 install_enum_aliases(QMessageBox, "StandardButton", ("No", "Yes"))
+install_enum_aliases(QStyle, "StandardPixmap", ("SP_ArrowForward", "SP_BrowserReload", "SP_DialogApplyButton", "SP_DialogCancelButton", "SP_DialogDiscardButton", "SP_DialogHelpButton", "SP_DialogOpenButton", "SP_DialogSaveButton", "SP_DirOpenIcon", "SP_DriveHDIcon", "SP_FileDialogContentsView", "SP_FileDialogDetailedView", "SP_FileDialogNewFolder", "SP_FileIcon", "SP_MediaPlay", "SP_MessageBoxInformation", "SP_MessageBoxWarning"))
+install_enum_aliases(QEvent, "Type", ("Enter", "FocusIn", "FocusOut", "Leave"))
 install_enum_aliases(Qt, "AlignmentFlag", ("AlignLeft", "AlignTop"))
 install_enum_aliases(Qt, "ArrowType", ("DownArrow", "RightArrow"))
 install_enum_aliases(Qt, "CheckState", ("Checked", "Unchecked"))
@@ -156,7 +158,7 @@ from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_
 from .qgis_spatial_actions import add_repository_coverage_to_qgis, add_selected_lidar_to_qgis, combine_bounds, preview_spatial_alignment_in_qgis, preview_spatial_selection_in_qgis, remove_spatial_preview_layers, zoom_canvas_to_bounds
 from .polygon_source_selector import normalize_qgis_layer_selection, normalize_vector_file_selection, polygon_layer_items, vector_file_layer_options
 from .raster_styling import apply_generated_raster_renderer, layer_display_name
-from .ux_summary import action_icon_intent, backend_summary_from_environment, button_role_for_label, design_spacing_tokens, empty_state_message, environment_headline, home_environment_action_label, home_environment_readiness, primary_action_label, processing_engine_setup_action, qgis_fallback_summary, readiness_status_text, routed_products_summary, status_badge_label, status_badge_tone, status_display_word, workflow_action_labels
+from .ux_summary import action_icon_intent, backend_summary_from_environment, button_role_for_label, design_spacing_tokens, empty_state_message, environment_headline, home_environment_action_label, home_environment_readiness, next_processing_action, primary_action_label, processing_area_summary, processing_engine_setup_action, qgis_fallback_summary, readiness_status_text, routed_products_summary, scientific_form_column_count, status_badge_label, status_badge_tone, status_display_word, workflow_action_labels
 
 ActivityCallback = Callable[[str, str], None]
 
@@ -2172,6 +2174,8 @@ class BatchPage(MissionPage):
         self._job_token_factory = None
         self._current_job_token = None
         self.iface = iface
+        self._adopted_polygon_selection = None
+        self._engine_ready = False
         self.discovered_paths: list[Path] = []
         self.latest_result: object | None = None
         self.batch_items: list[object] = []
@@ -2322,7 +2326,7 @@ class BatchPage(MissionPage):
         polygon_layout.addLayout(polygon_form)
         self.polygon_catalog_status_label = _details_label("Status: choose LiDAR data.")
         polygon_layout.addWidget(self.polygon_catalog_status_label)
-        self.polygon_summary_label = _body_label("Area: Not selected   Geometry: Not selected   CRS: Unknown")
+        self.polygon_summary_label = _body_label(processing_area_summary())
         self.polygon_summary_label.setAccessibleName("Processing area summary")
         self.polygon_summary_label.setProperty("contextHelp", "The Processing Engine automatically aligns coordinate systems, prepares bounded inputs, subdivides large areas, and clips final outputs.")
         polygon_layout.addWidget(self.polygon_summary_label)
@@ -2452,7 +2456,7 @@ class BatchPage(MissionPage):
         self.polygon_layer_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.polygon_layer_combo.setMinimumContentsLength(12)
         self.polygon_layer_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-        self.polygon_layer_combo.currentIndexChanged.connect(self._update_selected_polygon_layer_status)
+        self.polygon_layer_combo.currentIndexChanged.connect(self._on_polygon_layer_changed)
         self.polygon_refresh_layers_button = QPushButton("Refresh")
         self.polygon_refresh_layers_button.setProperty("contextHelp", semantic_help("process.polygon.refresh"))
         self.polygon_refresh_layers_button.clicked.connect(self.refresh_polygon_layers)
@@ -2469,6 +2473,12 @@ class BatchPage(MissionPage):
         _apply_button_role(self.use_selected_features_button, "secondary")
         self.use_selected_features_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         polygon_area_actions.addWidget(self.use_selected_features_button, 0, 1)
+        self.use_entire_layer_button = QPushButton("Use Entire Layer")
+        self.use_entire_layer_button.clicked.connect(self.use_entire_polygon_layer)
+        self.use_entire_layer_button.setProperty("contextHelp", "Adopt every usable polygon feature in the chosen layer as the processing area. Source features are not modified.")
+        _apply_button_role(self.use_entire_layer_button, "secondary")
+        self.use_entire_layer_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        polygon_area_actions.addWidget(self.use_entire_layer_button, 0, 2)
         self.polygon_layer_mode_combo = QComboBox()
         self.polygon_layer_mode_combo.addItem("Selected features", "selected")
         self.polygon_layer_mode_combo.addItem("Entire layer", "full")
@@ -2614,8 +2624,11 @@ class BatchPage(MissionPage):
         # resizable page scroll area to distribute surplus height into the body.
         self.advanced_product_settings_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         settings_form = QFormLayout()
-        settings_form.setVerticalSpacing(SECTION_SPACING)
+        settings_form.setVerticalSpacing(max(SPACING_SM, SECTION_SPACING))
         settings_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
+        secondary_settings_form = QFormLayout()
+        secondary_settings_form.setVerticalSpacing(max(SPACING_SM, SECTION_SPACING))
+        secondary_settings_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self.resolution_spin = QDoubleSpinBox()
         self.resolution_spin.setDecimals(3)
         self.resolution_spin.setMinimum(0.01)
@@ -2700,25 +2713,31 @@ class BatchPage(MissionPage):
         settings_form.addRow("", self.point_density_per_area_check)
         settings_form.addRow("CHM interpolation", self.chm_interpolation_combo)
         self.product_settings_form = settings_form
+        self.product_settings_secondary_form = secondary_settings_form
+        self._scientific_column_count = 1
         self.product_setting_rows = (
-            ("Grid resolution", self.resolution_spin),
-            ("Height bin size", self.height_bin_spin),
-            ("Canopy cover threshold", self.canopy_threshold_spin),
-            ("Canopy cover maximum", self.canopy_max_height_spin),
-            ("Extinction coefficient", self.canopy_extinction_spin),
-            ("Beer-Lambert coefficient", self.pad_beer_lambert_spin),
-            ("", self.pad_drop_ground_check),
-            ("PAI minimum height", self.pai_min_height_spin),
-            ("PAI maximum height", self.pai_max_height_spin),
-            ("FHD minimum height", self.fhd_min_height_spin),
-            ("FHD maximum height", self.fhd_max_height_spin),
-            ("Rumple minimum height", self.rumple_min_height_spin),
-            ("", self.point_density_per_area_check),
-            ("CHM interpolation", self.chm_interpolation_combo),
+            ("Shared settings", "Grid resolution", self.resolution_spin),
+            ("Shared settings", "Height bin size", self.height_bin_spin),
+            ("CHM", "Interpolation", self.chm_interpolation_combo),
+            ("PAD", "Beer-Lambert coefficient", self.pad_beer_lambert_spin),
+            ("PAD", "", self.pad_drop_ground_check),
+            ("PAI", "Minimum height", self.pai_min_height_spin),
+            ("PAI", "Maximum height", self.pai_max_height_spin),
+            ("FHD", "Minimum height", self.fhd_min_height_spin),
+            ("FHD", "Maximum height", self.fhd_max_height_spin),
+            ("Canopy Cover", "Height threshold", self.canopy_threshold_spin),
+            ("Canopy Cover", "Maximum height", self.canopy_max_height_spin),
+            ("Canopy Cover", "Extinction coefficient", self.canopy_extinction_spin),
+            ("Rumple", "Minimum height", self.rumple_min_height_spin),
+            ("Point Density", "", self.point_density_per_area_check),
         )
-        settings_layout.addLayout(settings_form)
+        self.scientific_form_columns = QHBoxLayout()
+        self.scientific_form_columns.setSpacing(SPACING_LG)
+        self.scientific_form_columns.addLayout(settings_form, 1)
+        self.scientific_form_columns.addLayout(secondary_settings_form, 1)
+        settings_layout.addLayout(self.scientific_form_columns)
         settings_footer = QHBoxLayout()
-        self.calculation_reference_button = QPushButton("Calculation Reference")
+        self.calculation_reference_button = QPushButton("PyForestScan Calculation Guide ↗")
         self.calculation_reference_button.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl("https://pyforestscan.sefa.ai/api/calculate/"))
         )
@@ -2884,6 +2903,9 @@ class BatchPage(MissionPage):
         prerun_layout.addWidget(self.cancel_preflight_button)
         self.preflight_summary_label = _body_label("Needs attention: choose data, products, and an output folder.")
         prerun_layout.addWidget(self.preflight_summary_label)
+        self.next_action_label = _details_label("Next action: check the Processing Engine.")
+        self.next_action_label.setProperty("workflowGuidance", True)
+        prerun_layout.addWidget(self.next_action_label)
         self.preflight_text = QTextEdit()
         self.preflight_text.setObjectName("compactTechnicalReport")
         self.preflight_text.setReadOnly(True)
@@ -3081,6 +3103,7 @@ class BatchPage(MissionPage):
         for button in (
             self.polygon_refresh_layers_button,
             self.use_selected_features_button,
+            self.use_entire_layer_button,
             self.zoom_polygon_button,
         ):
             _take_layout_widget(self.polygon_area_actions, button)
@@ -3088,12 +3111,14 @@ class BatchPage(MissionPage):
             self.polygon_area_actions.addWidget(self.polygon_refresh_layers_button, 0, 0)
             self.polygon_area_actions.addWidget(self.zoom_polygon_button, 0, 1)
             self.polygon_area_actions.addWidget(self.use_selected_features_button, 1, 0, 1, 2)
+            self.polygon_area_actions.addWidget(self.use_entire_layer_button, 2, 0, 1, 2)
             self.polygon_area_actions.setColumnStretch(2, 1)
         else:
             self.polygon_area_actions.addWidget(self.polygon_refresh_layers_button, 0, 0)
             self.polygon_area_actions.addWidget(self.use_selected_features_button, 0, 1)
-            self.polygon_area_actions.addWidget(self.zoom_polygon_button, 0, 2)
-            self.polygon_area_actions.setColumnStretch(3, 1)
+            self.polygon_area_actions.addWidget(self.use_entire_layer_button, 0, 2)
+            self.polygon_area_actions.addWidget(self.zoom_polygon_button, 0, 3)
+            self.polygon_area_actions.setColumnStretch(4, 1)
         if columns != self._product_column_count:
             self._product_column_count = columns
             for check in self.product_checks.values():
@@ -3103,6 +3128,14 @@ class BatchPage(MissionPage):
         self.product_settings_form.setRowWrapPolicy(
             QFormLayout.DontWrapRows if width >= 720 else QFormLayout.WrapAllRows
         )
+        column_count = scientific_form_column_count(width)
+        for form in (self.product_settings_form, self.product_settings_secondary_form):
+            form.setRowWrapPolicy(QFormLayout.DontWrapRows if width >= 720 else QFormLayout.WrapAllRows)
+            form.setVerticalSpacing(SPACING_SM if column_count == 2 else SPACING_MD)
+        if column_count != self._scientific_column_count:
+            self._scientific_column_count = column_count
+            selected = {product for product, check in self.product_checks.items() if check.isChecked()}
+            self._rebuild_product_settings_form(selected)
         self._process_column_mode = mode
 
     def resizeEvent(self, event: object) -> None:  # noqa: N802 - Qt API
@@ -3110,6 +3143,12 @@ class BatchPage(MissionPage):
         super().resizeEvent(event)
         if hasattr(self, "process_workspace"):
             self._apply_process_layout(self.scroll_area.viewport().width())
+
+    def showEvent(self, event: object) -> None:  # noqa: N802 - Qt API
+        """Refresh responsive controls after a previously hidden page is shown."""
+        super().showEvent(event)
+        if hasattr(self, "process_workspace"):
+            QTimer.singleShot(0, lambda: self._apply_process_layout(self.scroll_area.viewport().width()))
 
     def set_job_token_factory(self,factory) -> None:
         self._job_token_factory=factory
@@ -3122,7 +3161,11 @@ class BatchPage(MissionPage):
         """Show one compact setup action without discarding current selections."""
         ready = bool(getattr(engine, "ready_for_processing", False))
         repair = bool(getattr(engine, "repair_needed", False))
-        self.engine_setup_button.setText("Repair / Reload Processing Engine" if repair else "Set Up Processing Engine")
+        status = str(getattr(getattr(engine, "status", None), "value", "SETUP_REQUIRED"))
+        action_visible, action_label = processing_engine_setup_action(status)
+        self._engine_ready = ready
+        self.engine_setup_button.setText(action_label)
+        self.engine_setup_button.setProperty("contextHelp", semantic_action_help(action_label))
         self.engine_setup_button.setVisible(not ready)
         self.engine_status_label.setText("Processing Engine: Ready" if ready else ("Processing Engine: Needs repair" if repair else "Processing Engine: Setup required"))
         if not ready:
@@ -3263,23 +3306,22 @@ class BatchPage(MissionPage):
         geometry_signature = ""
         area = None
         crs = ""
+        polygon = None
         if mode == "polygon":
             source = str(self.polygon_source_combo.currentData() or "")
-            try:
-                polygon = self._normalized_polygon_selection()
+            polygon = self._adopted_polygon_selection
+            if polygon is not None:
                 feature_count = int(polygon.feature_count)
                 geometry_signature = __import__("hashlib").sha256(polygon.geometry_wkt.encode()).hexdigest()
-                area = float(polygon.area)
+                hectares = getattr(polygon, "area_hectares", None)
+                area = float(hectares) * 10000.0 if hectares is not None else None
                 crs = polygon.processing_crs or polygon.source_crs
-            except Exception:
-                pass
         if hasattr(self, "polygon_summary_label"):
-            area_text = f"{area / 10000:.3g} ha" if area is not None else "Not selected"
-            geometry_text = "Valid Polygon" if geometry_signature else "Not selected"
-            selection_text = f"{feature_count} feature{'s' if feature_count != 1 else ''}" if feature_count else "Not selected"
-            self.polygon_summary_label.setText(
-                f"Selection: {selection_text}   Area: {area_text}   Geometry: {geometry_text}   CRS: {crs or 'Unknown'}"
-            )
+            hectares = getattr(polygon, "area_hectares", None) if polygon is not None else None
+            self.polygon_summary_label.setText(processing_area_summary(
+                feature_count=feature_count, area_hectares=hectares, crs=crs,
+                adopted=polygon is not None,
+            ))
         products = tuple(PRODUCT_LABELS[p] for p, check in self.product_checks.items() if check.isChecked())
         signature = workflow_input_signature({
             "mode": mode, "repository": repository, "polygon_source": source,
@@ -3363,8 +3405,7 @@ class BatchPage(MissionPage):
             _set_form_field_visible(self.product_settings_form, self.rumple_min_height_spin, ProductType.RUMPLE in selected)
             _set_form_field_visible(self.product_settings_form, self.point_density_per_area_check, ProductType.POINT_DENSITY in selected)
             _set_form_field_visible(self.product_settings_form, self.chm_interpolation_combo, ProductType.CHM in selected)
-            if not callable(getattr(self.product_settings_form, "setRowVisible", None)):
-                self._rebuild_product_settings_form(selected)
+            self._rebuild_product_settings_form(selected)
             if self.advanced_product_settings_group.isChecked():
                 _fit_collapsible_to_visible_content(self.advanced_product_settings_group)
         visibility = batch_control_visibility(
@@ -3384,13 +3425,14 @@ class BatchPage(MissionPage):
 
     def _rebuild_product_settings_form(self, selected: set[ProductType]) -> None:
         """Rebuild active rows when Qt cannot remove hidden QFormLayout geometry."""
-        form = self.product_settings_form
-        fields = {field for _label, field in self.product_setting_rows}
-        while form.count():
-            item = form.takeAt(0)
-            widget = item.widget()
-            if widget is not None and widget not in fields:
-                widget.deleteLater()
+        forms = (self.product_settings_form, self.product_settings_secondary_form)
+        fields = {field for _group, _label, field in self.product_setting_rows}
+        for form in forms:
+            while form.count():
+                item = form.takeAt(0)
+                widget = item.widget()
+                if widget is not None and widget not in fields:
+                    widget.deleteLater()
         raster_products = set(ProductType)
         binned_products = {ProductType.PAD, ProductType.PAI, ProductType.FHD}
         pad_family = {ProductType.PAD, ProductType.PAI, ProductType.CANOPY_COVER}
@@ -3410,13 +3452,28 @@ class BatchPage(MissionPage):
             self.point_density_per_area_check: ProductType.POINT_DENSITY in selected,
             self.chm_interpolation_combo: ProductType.CHM in selected,
         }
-        for label, field in self.product_setting_rows:
-            visible = active[field]
-            field.setVisible(visible)
-            if visible:
+        groups: list[tuple[str, list[tuple[str, QWidget]]]] = []
+        for group_name in dict.fromkeys(group for group, _label, _field in self.product_setting_rows):
+            rows = [(label, field) for group, label, field in self.product_setting_rows if group == group_name and active[field]]
+            if rows:
+                groups.append((group_name, rows))
+        loads = [0, 0]
+        for group_name, rows in groups:
+            column = 0 if self._scientific_column_count == 1 else min(range(2), key=lambda index: loads[index])
+            form = forms[column]
+            heading = _details_label(group_name)
+            heading.setProperty("scientificGroupHeading", True)
+            form.addRow(heading)
+            for label, field in rows:
+                field.setVisible(True)
                 form.addRow(label, field)
-        form.invalidate()
-        form.activate()
+            loads[column] += len(rows) + 1
+        for field in fields:
+            if not active[field]:
+                field.setVisible(False)
+        for form in forms:
+            form.invalidate()
+            form.activate()
 
     def _update_adaptive_visibility(self, *_args: object) -> None:
         """Compatibility alias for callers retained during workflow consolidation."""
@@ -3976,6 +4033,7 @@ class BatchPage(MissionPage):
             self._refresh_polygon_vector_layers(path)
 
     def refresh_polygon_layers(self) -> None:
+        self._adopted_polygon_selection = None
         previous = self.polygon_layer_combo.currentData()
         previous_id = getattr(previous, "layer_id", None)
         self.polygon_layer_combo.blockSignals(True)
@@ -4014,6 +4072,7 @@ class BatchPage(MissionPage):
         self.polygon_layer_status_label.setText(f"{item.name}: {selected}; CRS {item.crs or 'unknown'}. {guidance}")
         self.polygon_layer_status_label.setVisible(not bool(getattr(item, "selected_feature_count", 0)))
         self.use_selected_features_button.setEnabled(bool(getattr(item, "selected_feature_count", 0)))
+        self.use_entire_layer_button.setEnabled(bool(getattr(item, "feature_count", 0)))
 
     def use_selected_polygon_features(self) -> None:
         """Adopt the current lightweight QGIS feature selection without planning."""
@@ -4023,14 +4082,26 @@ class BatchPage(MissionPage):
             self.polygon_layer_mode_combo.setCurrentIndex(
                 self.polygon_layer_mode_combo.findData("selected")
             )
+            self._adopted_polygon_selection = self._normalized_polygon_selection()
             self._on_session_input_changed()
             self._publish_session_state()
         self._update_selected_polygon_layer_status()
+
+    def use_entire_polygon_layer(self) -> None:
+        """Explicitly adopt the entire chosen QGIS polygon layer."""
+        item = self.polygon_layer_combo.currentData()
+        if item is None:
+            return
+        self.polygon_layer_mode_combo.setCurrentIndex(self.polygon_layer_mode_combo.findData("full"))
+        self._adopted_polygon_selection = self._normalized_polygon_selection()
+        self._on_session_input_changed()
+        self._publish_session_state()
 
     def _update_polygon_source_visibility(self, *_args: object) -> None:
         if not hasattr(self, "polygon_source_combo"):
             return
         mode = self.polygon_source_combo.currentData()
+        self._adopted_polygon_selection = None
         container_visible = self._current_batch_mode() == "polygon"
         self.polygon_qgis_source_frame.setVisible(container_visible and mode == "qgis")
         self.polygon_vector_source_frame.setVisible(container_visible and mode == "file")
@@ -4100,6 +4171,7 @@ class BatchPage(MissionPage):
 
     def reset_polygon_batch(self) -> None:
         self.preflight_report = None
+        self._adopted_polygon_selection = None
         self.batch_items = []
         self.failed_paths = []
         self.batch_results.clear()
@@ -4107,6 +4179,7 @@ class BatchPage(MissionPage):
         removed = remove_spatial_preview_layers(self.iface)
         self.preflight_text.setPlainText(f"Polygon Batch reset. {removed.message} Cleared current plan and source selection. Catalog and generated outputs were preserved.")
         _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: Not set up - run the Prerun Check.")
+        self._publish_session_state()
         self._update_run_button_enabled()
 
     def set_default_output_folder(self, folder: Path | None) -> None:
@@ -4340,6 +4413,13 @@ class BatchPage(MissionPage):
         self.preflight_summary_label.setText("Prerun cancelled." if cancelled else "Prerun failed. Review the diagnostic artifact.")
         self.preflight_report = None
         self._update_run_button_enabled()
+        self._publish_session_state()
+
+    def _on_polygon_layer_changed(self, *_args: object) -> None:
+        self._adopted_polygon_selection = None
+        self.preflight_report = None
+        self._update_selected_polygon_layer_status()
+        self._publish_session_state()
         self.preflight_button.setEnabled(True)
         self.cancel_preflight_button.setVisible(False)
         self._update_processing_density(ProcessingUiState.FAILED)
@@ -4682,9 +4762,21 @@ class BatchPage(MissionPage):
     def _update_run_button_enabled(self) -> None:
         """Enable Process from continuous basic readiness; click performs final validation."""
         report = self.preflight_report
+        polygon_mode = self._current_batch_mode() == "polygon"
+        source_ready = bool(self.polygon_lidar_folder_edit.text().strip()) if polygon_mode else bool(self.input_folder_edit.text().strip())
+        action = next_processing_action(
+            engine_ready=self._engine_ready, source_ready=source_ready,
+            area_required=polygon_mode, area_ready=(self._adopted_polygon_selection is not None),
+            prerun_ready=report is not None,
+            processing=self.processing_ui_state in {ProcessingUiState.STARTING, ProcessingUiState.RUNNING, ProcessingUiState.FINALIZING},
+        )
+        if hasattr(self, "next_action_label"):
+            self.next_action_label.setText(f"Next action: {action}.")
+        _apply_button_role(self.preflight_button, "primary" if action == "Run Prerun Check" else "neutral")
+        _apply_button_role(self.run_button, "primary" if action == "Process LiDAR" else "neutral")
         if report is None:
             products=any(check.isChecked() for check in self.product_checks.values());output=bool(self.output_folder_edit.text().strip())
-            source=bool(self.polygon_lidar_folder_edit.text().strip()) if self._current_batch_mode()=="polygon" else bool(self.input_folder_edit.text().strip())
+            source=source_ready
             self.run_button.setEnabled(products and output and source);self.resume_button.setEnabled(False);self.resume_button.setVisible(False);return
         if self._current_batch_mode() == "polygon":
             selected = getattr(report, "selected_sources", ()) if report is not None else ()
@@ -4804,7 +4896,10 @@ class BatchPage(MissionPage):
         self.result_filter_combo.setVisible(False)
         self.batch_results.setVisible(False)
         if state is ProcessingUiState.IDLE:
-            self.status_label.setText("Ready for Prerun" if self.preflight_report is None else "Prerun ready")
+            if not self._engine_ready:
+                _set_status_badge(self.status_label, "NOT CONFIGURED", "Processing Engine: Setup required")
+            else:
+                self.status_label.setText("Ready for Prerun" if self.preflight_report is None else "Prerun ready")
         elif terminal:
             self.recent_error_group.setVisible(False)
         elif failed:
@@ -5481,9 +5576,6 @@ class SettingsPage(MissionPage):
         browse.clicked.connect(self.browse_default_output_folder)
         folder_row.addWidget(browse)
         form.addRow("Default output folder", folder_row)
-        self.open_on_startup_check = QCheckBox("Open Mission Control when QGIS starts")
-        self.open_on_startup_check.setChecked(False)
-        form.addRow("Startup", self.open_on_startup_check)
         self.fallback_crs_edit = QLineEdit()
         self.fallback_crs_edit.setReadOnly(True)
         self.fallback_crs_edit.setPlaceholderText("Not set")
@@ -5499,6 +5591,10 @@ class SettingsPage(MissionPage):
         fallback_row.addWidget(self.choose_fallback_crs_button)
         fallback_row.addWidget(self.clear_fallback_crs_button)
         form.addRow("Fallback CRS", fallback_row)
+        self.open_on_startup_check = QCheckBox("Open Mission Control when QGIS starts")
+        self.open_on_startup_check.setChecked(False)
+        self.open_on_startup_check.setProperty("contextHelp", "Open Mission Control automatically after the plugin loads. This does not start processing or install the Processing Engine.")
+        form.addRow("Startup", self.open_on_startup_check)
         defaults.addLayout(form)
         self.fallback_crs_explanation = _details_label(semantic_help("tools.fallback_crs"))
         defaults.addWidget(self.fallback_crs_explanation)
@@ -5708,6 +5804,7 @@ class SettingsPage(MissionPage):
             action_visible, action_label = processing_engine_setup_action(status)
             self.install_backend_button.setVisible(action_visible)
             self.install_backend_button.setText(action_label)
+            self.install_backend_button.setProperty("contextHelp", semantic_action_help(action_label))
             self.install_backend_button.setEnabled(action_visible and self.backend_service.install_availability().enabled)
             _apply_button_role(self.install_backend_button, "secondary" if ready else "primary")
         self.open_diagnostics_button.setVisible(repair or status in {"FAILED", "INCOMPATIBLE"})
@@ -5804,7 +5901,7 @@ class SettingsPage(MissionPage):
             "The installer downloads Micromamba, creates the backend, verifies it, and writes settings only under that folder."
         )
         current = self.current_processing_engine_state()
-        action = "Repair / Reload Processing Engine" if current.status.value != "SETUP_REQUIRED" else "Set Up Processing Engine"
+        action = processing_engine_setup_action(current.status.value)[1]
         reply = QMessageBox.question(
             self,
             action,

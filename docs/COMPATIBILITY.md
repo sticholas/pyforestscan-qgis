@@ -3,8 +3,8 @@
 PyForestScan QGIS supports only the combinations listed as tested here. A
 recognized platform is not automatically a supported Processing Engine target.
 
-Official QGIS release information checked on 2026-09-03 lists QGIS 3.44.13
-Solothurn as the LTR and QGIS 4.2.1 Belem do Para as the current release.
+Official QGIS release information checked on 2026-09-03 lists QGIS 3.44.14
+Solothurn as the LTR and QGIS 4.2.2 Belem do Para as the current release.
 QGIS 4 uses Qt 6; QGIS 3.44 LTR uses Qt 5.
 
 ## Support tiers
@@ -16,15 +16,15 @@ QGIS 4 uses Qt 6; QGIS 3.44 LTR uses Qt 5.
 
 | OS | Architecture | QGIS | Plugin | Processing Engine | Tested | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| Windows | x86_64 | 3.44.13 LTR | Tested | Tested internal beta | 2026-09-03 | Primary release gate; Phase 32X revalidation required after packaging. |
-| Windows | x86_64 | 4.2.1 | Unqualified | Unqualified | Not tested | Current stable Qt 6 build needs complete live QA. |
+| Windows | x86_64 | 3.44.13 LTR | SUPPORTED WITH LIMITATIONS | SUPPORTED WITH LIMITATIONS | 2026-09-03 | Phase 32Y live Mission Control/package QA passed on the installed prior point release; current 3.44.14 remains to be repeated. |
+| Windows | x86_64 | 4.2.2 | NOT TESTED | NOT TESTED | Not tested | Current stable Qt 6 build needs complete live QA. |
 | Windows | x86_64 | 4.0.0 | Unqualified spike | Unqualified | 2026-09-03 | Mission Control construction reached the live dock path after scoped-enum repairs; a full interaction run did not complete. |
-| macOS | Intel | current LTR/stable | Unqualified | Planned | Not tested | Package solve, subprocess, permissions, and Gatekeeper behavior remain open. |
-| macOS | Apple Silicon | current LTR/stable | Unqualified | Planned | Not tested | `osx-arm64` is recognized; no engine lock or live test exists. |
-| Linux | x86_64 | current LTR/stable | Unqualified | Experimental | QGIS-free core only | Native-package QGIS needs live plugin/engine QA. |
-| Linux | ARM64 | current LTR/stable | Unqualified | Planned | QGIS-free mapping only | Dependency solve and QGIS availability are unverified. |
-| Linux Flatpak | any | any | Unsupported claim | Unsupported claim | Not tested | Sandbox filesystem and subprocess rules require a dedicated design. |
-| BSD | any | any | Experimental | Unavailable | Not tested | Not a first-release target. |
+| macOS | Intel | current LTR/stable | NOT TESTED | NOT TESTED | Not tested | Package solve, subprocess, permissions, and Gatekeeper behavior remain open. |
+| macOS | Apple Silicon | current LTR/stable | NOT TESTED | NOT TESTED | Not tested | `osx-arm64` is recognized; no engine lock or live test exists. |
+| Linux | x86_64 | current LTR/stable | EXPERIMENTAL | EXPERIMENTAL | QGIS-free core only | Native-package QGIS needs live plugin/engine QA. |
+| Linux | ARM64 | current LTR/stable | EXPERIMENTAL | NOT TESTED | QGIS-free mapping only | Dependency solve and QGIS availability are unverified. |
+| Linux Flatpak | any | any | UNSUPPORTED | UNSUPPORTED | Not tested | Sandbox filesystem and subprocess rules require a dedicated design. |
+| BSD | any | any | EXPERIMENTAL | UNSUPPORTED | Not tested | Not a first-release target. |
 
 QField and mobile QGIS are outside the desktop Mission Control scope.
 
@@ -82,6 +82,10 @@ profiles.
 CI should eventually cover Windows, Linux, and macOS against current LTR and
 stable QGIS where runners are practical. New QGIS releases trigger a Qt/API
 audit and package/engine/science smoke before support is declared.
+
+The executable release matrix is currently Windows QGIS 3.44.x only. Expanding
+it requires real QGIS 4.2, macOS Apple Silicon, and Linux runners or manual
+gates; QGIS-free unit tests alone do not promote a target to supported.
 
 Sources: [QGIS Download](https://qgis.org/download/), [QGIS Installation
 Guide](https://qgis.org/resources/installation-guide/), and the [official

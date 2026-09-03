@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32Y - Scientific UX and release hardening
+
+- Made Advanced Scientific Settings responsive and content-sized with readable semantic groups and one/two-column layouts.
+- Replaced implicit polygon adoption with explicit ownership and QGIS geodesic area measurement, eliminating stale square-degree-to-hectare summaries.
+- Added state-driven next-action guidance, state-sensitive Processing Engine actions, semantic help, and consistent status-strip projections.
+- Clarified the official PyForestScan Calculation Guide action and placed Fallback CRS between output and startup preferences.
+- Revalidated Mission Control in QGIS 3.44.13/Qt 5 and narrowed release claims: QGIS 4.2.2, macOS, Linux GUI, exact platform locks, and pinned Micromamba archives remain release gates.
+
 ## Phase 32X - Scientific UX and portability foundation
 
 - Fixed Advanced Scientific Settings to follow the live visible-row size hint instead of absorbing spare scroll-area height.
