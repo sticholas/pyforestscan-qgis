@@ -9,22 +9,26 @@ QGIS 4 uses Qt 6; QGIS 3.44 LTR uses Qt 5.
 
 ## Support tiers
 
-- Tier 1: current QGIS LTR after plugin, engine, science, and package QA.
-- Tier 1: current stable QGIS after the same QA has passed.
-- Tier 2: previous LTR where technically feasible and explicitly tested.
-- Unqualified: recognized or planned combinations without complete evidence.
+- SUPPORTED: plugin, Processing Engine, and science evidence passed.
+- SUPPORTED WITH LIMITATIONS: the tested chain passed with documented scope.
+- UI-COMPATIBLE: plugin/UI matrix passed; engine/science chain is incomplete.
+- EXPERIMENTAL: partial or QGIS-free evidence only.
+- NOT TESTED: recognized target without executable evidence.
+- UNSUPPORTED: outside current product scope or blocked by known constraints.
 
-| OS | Architecture | QGIS | Plugin | Processing Engine | Tested | Notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| Windows | x86_64 | 3.44.13 LTR | SUPPORTED WITH LIMITATIONS | SUPPORTED WITH LIMITATIONS | 2026-09-03 | Phase 32Y live Mission Control/package QA passed on the installed prior point release; current 3.44.14 remains to be repeated. |
-| Windows | x86_64 | 4.2.2 | NOT TESTED | NOT TESTED | Not tested | Current stable Qt 6 build needs complete live QA. |
-| Windows | x86_64 | 4.0.0 | Unqualified spike | Unqualified | 2026-09-03 | Mission Control construction reached the live dock path after scoped-enum repairs; a full interaction run did not complete. |
-| macOS | Intel | current LTR/stable | NOT TESTED | NOT TESTED | Not tested | Package solve, subprocess, permissions, and Gatekeeper behavior remain open. |
-| macOS | Apple Silicon | current LTR/stable | NOT TESTED | NOT TESTED | Not tested | `osx-arm64` is recognized; no engine lock or live test exists. |
-| Linux | x86_64 | current LTR/stable | EXPERIMENTAL | EXPERIMENTAL | QGIS-free core only | Native-package QGIS needs live plugin/engine QA. |
-| Linux | ARM64 | current LTR/stable | EXPERIMENTAL | NOT TESTED | QGIS-free mapping only | Dependency solve and QGIS availability are unverified. |
-| Linux Flatpak | any | any | UNSUPPORTED | UNSUPPORTED | Not tested | Sandbox filesystem and subprocess rules require a dedicated design. |
-| BSD | any | any | EXPERIMENTAL | UNSUPPORTED | Not tested | Not a first-release target. |
+| OS | Architecture | QGIS | Qt | Plugin UI | Processing Engine | Science canary | Status | Test date | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Windows | x86_64 | 3.34.x | Qt 5 | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | - | Official release/API generation investigated; no runnable 3.34 installation was available. |
+| Windows | x86_64 | 3.40.x | Qt 5 | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | 2026-09-03 | Local 3.40.5/3.40.15 directories contain setup stubs only, not a runnable QGIS application. |
+| Windows | x86_64 | 3.44.13 | Qt 5.15.13 | PASS | PASS | PASS | SUPPORTED WITH LIMITATIONS | 2026-09-03 | Phase 32Z 24-case scientific UI matrix passed; established Windows CHM canary remains exact. Current 3.44.14 still needs repetition. |
+| Windows | x86_64 | 4.0.0 | Qt 6 | PASS | NOT TESTED | NOT TESTED | UI-COMPATIBLE | 2026-09-03 | Isolated 24-case Mission Control scientific matrix passed with no empty groups, overflow, or value migration. Full Prerun/engine/science/unload gate remains open. |
+| Windows | x86_64 | 4.2.2 | Qt 6 | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | - | Current stable build was not installed on the test host. |
+| macOS | Apple Silicon | current 3.x/4.x | Qt 5/6 | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | - | Native fonts, notarization, engine install/repair, and science remain open. |
+| macOS | Intel | current 3.x/4.x | Qt 5/6 | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | - | Viability depends on current upstream package availability. |
+| Linux | x86_64 | current 3.x/4.x | Qt 5/6 | EXPERIMENTAL | NOT TESTED | NOT TESTED | EXPERIMENTAL | 2026-09-03 | QGIS-free tests pass; native QGIS and engine gates were unavailable. |
+| Linux | ARM64 | current | varies | EXPERIMENTAL | NOT TESTED | NOT TESTED | EXPERIMENTAL | 2026-09-03 | Platform mapping only. |
+| Linux Flatpak | any | any | varies | NOT TESTED | UNSUPPORTED | NOT TESTED | UNSUPPORTED | - | Sandbox filesystem and subprocess behavior need a dedicated design. |
+| BSD | any | any | varies | EXPERIMENTAL | UNSUPPORTED | NOT TESTED | UNSUPPORTED | - | Not a first-release target. |
 
 QField and mobile QGIS are outside the desktop Mission Control scope.
 
@@ -35,8 +39,9 @@ Application code imports Qt through `qgis.PyQt`; no direct PyQt5 dependency is
 used. `compat/qt.py` resolves Qt 5 unscoped and Qt 6 scoped enums at the UI
 boundary. A local QGIS 4.0.0 spike exposed and repaired dock-area, dock-feature,
 size-policy, frame, form-layout, cursor, focus, and keyboard enum differences.
-That spike is compatibility evidence, not a support claim. QGIS 4 remains
-unqualified until Mission Control construction, Processing
+Phase 32Z promoted QGIS 4.0 from a construction spike to UI-COMPATIBLE after an
+isolated 24-case scientific-layout matrix. QGIS 4 remains unqualified for
+engine/science support until Processing
 provider registration, settings, layer loading, tasks/signals, CRS selection,
 engine verification, and a deterministic science canary pass on a real build.
 `metadata.txt` declares QGIS 3.28 as the minimum and intentionally has no
@@ -59,6 +64,11 @@ additional platform, and a production RC, require a fixed artifact version,
 archive SHA-256 values verified against the exact downloaded bytes, and
 platform-specific solved locks. The installer must fail closed when a release
 requires a checksum that is absent.
+
+Phase 32Z attempted isolated Micromamba 2.8.1 dry-run solves for `win-64`,
+`linux-64`, `osx-arm64`, and `osx-64`. Resolution did not complete within the
+bounded test window and was stopped without creating an environment. This is
+an attempted test, not lock or engine-install evidence.
 
 ## Process policy
 
@@ -83,9 +93,10 @@ CI should eventually cover Windows, Linux, and macOS against current LTR and
 stable QGIS where runners are practical. New QGIS releases trigger a Qt/API
 audit and package/engine/science smoke before support is declared.
 
-The executable release matrix is currently Windows QGIS 3.44.x only. Expanding
-it requires real QGIS 4.2, macOS Apple Silicon, and Linux runners or manual
-gates; QGIS-free unit tests alone do not promote a target to supported.
+The supported release matrix is currently Windows QGIS 3.44.x only. QGIS 4.0
+is UI-COMPATIBLE, not fully supported. Expanding support requires real QGIS
+4.2, macOS Apple Silicon, and Linux runners or manual gates; QGIS-free unit
+tests alone do not promote a target to supported.
 
 Sources: [QGIS Download](https://qgis.org/download/), [QGIS Installation
 Guide](https://qgis.org/resources/installation-guide/), and the [official

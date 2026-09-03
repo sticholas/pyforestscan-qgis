@@ -97,6 +97,7 @@ Supported and unqualified QGIS/platform combinations are listed in the
 - [QGIS Compatibility Layer](development/QGIS_COMPATIBILITY_LAYER.md)
 - [Phase 32X Scientific UX and Portability Audit](development/PHASE_32X_SCIENTIFIC_UX_AND_PORTABILITY.md)
 - [Phase 32Y Release Hardening](development/PHASE_32Y_RELEASE_HARDENING.md)
+- [Phase 32Z Scientific Grouping and Compatibility](development/PHASE_32Z_SCIENTIFIC_GROUPING_AND_COMPATIBILITY.md)
 - [Mission Control UX Standard](development/MISSION_CONTROL_UX_STANDARD.md)
 - [Phase 28A Productization UX Audit](development/PHASE_28A_PRODUCTIZATION_UX_AUDIT.md)
 - [PyForestScan Design System](development/PYFORESTSCAN_DESIGN_SYSTEM.md)

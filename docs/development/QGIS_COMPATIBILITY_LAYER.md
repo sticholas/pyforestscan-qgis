@@ -41,6 +41,12 @@ Mission Control dock construction after scoped-enum compatibility repairs, but
 the full interaction harness did not finish. QGIS 4.2.2 remains untested and
 QGIS 4 support therefore remains unqualified.
 
+Phase 32Z completed the 24-case narrow/normal/wide scientific UI matrix under
+QGIS 4.0.0/Qt 6 with no construction errors, empty groups, horizontal overflow,
+or value migration. QGIS 4.0 is therefore UI-COMPATIBLE. Processing Engine,
+Prerun, science, Results, and unload/reload gates remain incomplete, so this is
+not a full QGIS 4 support claim. Current QGIS 4.2.2 was unavailable.
+
 Official release metadata was checked on 2026-09-03. The current published
 versions were QGIS 3.44.14 LTR and QGIS 4.2.2 stable. Neither exact point build
 was installed on the Phase 32Y host, so evidence is reported against the exact

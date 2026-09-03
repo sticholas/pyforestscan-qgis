@@ -110,7 +110,7 @@ def build_qgis_compatibility_report(
     elif major < 3:
         warnings.append("QGIS versions earlier than 3.x are not supported targets.")
     elif major == 4:
-        warnings.append("QGIS 4.x uses Qt 6 and remains unqualified until plugin construction, provider, and processing smoke tests pass on the listed release.")
+        warnings.append("QGIS 4.x uses Qt 6. QGIS 4.0 UI compatibility has been demonstrated on Windows, but Processing Engine and science support remain unqualified.")
     elif major > 4:
         warnings.append(f"QGIS {major}.x is outside the tested compatibility target range.")
     if not processing_provider_compatible:
@@ -141,6 +141,7 @@ def format_qgis_compatibility_report(report: QgisCompatibilityReport) -> str:
     lines = [
         "QGIS Compatibility",
         f"Status: {report.summary()}",
+        f"Release qualification: {qgis_release_qualification(report)}",
         f"QGIS version: {report.qgis_version}",
         f"Major version: {report.major_version if report.major_version is not None else 'Unknown'}",
         f"Python version: {report.python_version}",
@@ -156,6 +157,19 @@ def format_qgis_compatibility_report(report: QgisCompatibilityReport) -> str:
         lines.append("Warnings:")
         lines.extend(f"- {warning}" for warning in report.warnings)
     return "\n".join(lines)
+
+
+def qgis_release_qualification(report: QgisCompatibilityReport) -> str:
+    """Classify only combinations backed by the checked-in release evidence."""
+    version = report.qgis_version.strip()
+    platform_name = report.platform.lower()
+    if "windows" in platform_name and version.startswith("3.44"):
+        return "SUPPORTED WITH LIMITATIONS"
+    if "windows" in platform_name and version.startswith("4.0"):
+        return "UI-COMPATIBLE - Processing Engine and science not yet qualified"
+    if report.supported_target:
+        return "NOT TESTED - APIs detected, complete release evidence unavailable"
+    return "UNSUPPORTED OR UNAVAILABLE"
 
 
 def add_raster_layer(path: str, name: str, project: Any | None = None) -> QgisOperationResult:

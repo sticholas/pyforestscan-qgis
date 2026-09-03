@@ -24,7 +24,8 @@ class Phase32UProcessCompositionTests(unittest.TestCase):
         responsive = PAGES[PAGES.index("def _apply_process_layout"):PAGES.index("def resizeEvent")]
         self.assertIn("columns = 4 if width >= 720 else 2", responsive)
         self.assertIn("self.product_grid.addWidget", responsive)
-        self.assertIn("self.product_settings_form.setRowWrapPolicy", responsive)
+        self.assertIn("self.scientific_groups.values()", responsive)
+        self.assertIn("form.setRowWrapPolicy", responsive)
         self.assertNotIn("self.process_workspace_layout.addWidget", responsive)
 
     def test_products_advanced_output_order_is_explicit(self) -> None:

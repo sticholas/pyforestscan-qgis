@@ -21,8 +21,8 @@ class Phase32YReleaseHardeningTests(unittest.TestCase):
     def test_scientific_form_is_readable_and_responsive(self) -> None:
         self.assertEqual(1, scientific_form_column_count(759))
         self.assertEqual(2, scientific_form_column_count(760))
-        self.assertIn("product_settings_secondary_form", PAGES)
-        self.assertIn('("Shared settings", "Grid resolution"', PAGES)
+        self.assertIn("self.scientific_groups", PAGES)
+        self.assertIn('("shared.grid_resolution", "Shared Settings", "Grid resolution"', PAGES)
         self.assertIn("setVerticalSpacing(max(SPACING_SM", PAGES)
 
     def test_initial_processing_area_is_explicitly_unselected(self) -> None:

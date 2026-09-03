@@ -155,6 +155,20 @@ def semantic_action_help(label: str) -> str:
     return SEMANTIC_ACTION_HELP.get(str(label).replace("&", "").strip(), "")
 
 
+def scientific_group_help(group: str) -> str:
+    """Return product-owned context for an Advanced scientific group."""
+    return {
+        "Shared Settings": "Settings used by more than one selected scientific product.",
+        "CHM": "Settings controlling Canopy Height Model interpolation.",
+        "PAD": "Settings controlling the Plant Area Density calculation.",
+        "PAI": "Settings controlling the vertical range integrated for Plant Area Index.",
+        "FHD": "Settings controlling the vertical range used to calculate Foliage Height Diversity.",
+        "Canopy Cover": "Settings controlling the height range and extinction coefficient used to estimate canopy cover.",
+        "Rumple": "Settings controlling the canopy-height threshold used for Rumple Index.",
+        "Point Density": "Settings controlling Point Density output normalization.",
+    }.get(group, f"Advanced settings for {group}.")
+
+
 def get_help_topic(key: str) -> HelpTopic:
     """Return a registered topic or raise a useful KeyError."""
     try:

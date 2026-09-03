@@ -303,6 +303,7 @@ class MissionControlDock(QDockWidget):
             #advisorCardTitle { font-size: 15px; font-weight: 700; color: #283840; }
             #advisorBodyText { font-size: 13px; line-height: 1.35; color: #30414a; }
             #advisorDetailsText { font-size: 12px; line-height: 1.35; color: #52656d; background: #fbfcfd; border: 1px solid #edf2f4; border-radius: 5px; padding: 8px; }
+            #scientificGroupHeading { font-size: 12px; font-weight: 600; color: palette(text); background: transparent; border: 0; padding: 3px 0 1px 0; }
             #advisorMetric { font-size: 15px; background: #f8fafb; border: 1px solid #e1e9ec; border-radius: 6px; padding: 12px; color: #22323a; }
             QLabel#statusBadge { font-size: 14px; font-weight: 600; border: 1px solid #dfe6e9; border-left: 4px solid #9eacb3; border-radius: 6px; padding: 10px 12px; background: #f8fafb; color: #22323a; }
             QLabel#statusBadge[tone="success"] { border-left-color: #3f7f52; background: #f5faf6; }

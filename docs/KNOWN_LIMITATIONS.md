@@ -162,6 +162,13 @@ measurement, but selected-feature area QA must still be repeated on current
 QGIS 3.44.14 and 4.2.2. Layer CRS, project CRS, and the first available feature
 are no longer projected as an adopted processing area.
 
+Phase 32Z passed the scientific-layout matrix under Windows QGIS 4.0/Qt 6, so
+that keystone is classified as UI-COMPATIBLE. It is not Processing Engine or
+science qualified. Runnable QGIS 3.34, QGIS 3.40, current QGIS 4.2, macOS, and
+Linux GUI environments were unavailable. Cross-platform Micromamba dry-run
+solves were attempted but did not finish in the bounded validation window;
+exact locks and bootstrap archive hashes remain unresolved release blockers.
+
 The PyForestScan Backend Manager can run backend installation for Windows internal beta builds only. Linux and macOS installer execution remain planned/experimental until clean platform smoke testing is complete. PBM installs only into the user-local PyForestScan backend folder and must not install into QGIS Python, modify QGIS folders, require administrator privileges, change user environment variables, or enable External Worker mode.
 
 PBM verification can report the managed backend as `Ready`, and Environment Check reports overall `READY` for PBM-routed execution while listing QGIS Python scientific packages as optional fallback status. Phase 23D/23E routes Dataset Explorer local point-cloud inspection, CHM, Canopy Cover, PAD, PAI, FHD, Rumple, DTM, Point Density, and Voxel Statistic through PBM when ready. Phase 23F isolates PBM subprocesses from QGIS profile Python paths and installs PyPI-only backend packages through managed backend Python. Phase 23G verifies staged backend paths before promotion and strict final paths after config write. Phase 23H adds exact dependency diagnostics for staged verification failures; Phase 23I adds backend-local conda DLL/executable discovery for Windows; Phase 23J adds tighter Windows beta GDAL/rasterio/numpy ranges, `pip install --no-deps` for PyPI-only packages, and conda package-build diagnostics for rasterio DLL compatibility; Phase 23K adds explicit conda-forge PyForestScan runtime dependencies before PyForestScan smoke verification; Phase 23L adds tqdm and backend-local GDAL/PROJ data env wiring. If Windows/Python 3.12 package availability still blocks `python-pdal`, `pdal.exe`, `gdalinfo.exe`, `osgeo.gdal`, or `rasterio`, the diagnostic output is the source of truth for the next manifest pinning decision. Height Above Ground point-cloud export and Preprocess Point Cloud still execute inside QGIS Python until their runner payloads are validated separately. QGIS 3.x is the supported target; QGIS 4.x compatibility is prepared defensively but must be tested when available.

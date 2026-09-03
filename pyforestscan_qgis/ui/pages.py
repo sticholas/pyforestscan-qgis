@@ -151,7 +151,7 @@ from ..core.workspace import (
 )
 from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
 from .help import info_badge, info_help_button
-from .help_topics import semantic_action_help, semantic_help
+from .help_topics import scientific_group_help, semantic_action_help, semantic_help
 from .output_loading import LoadableOutput, collect_loadable_outputs, compact_dataset_summary_lines, output_loading_summary
 from .state import ProjectSummary
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
@@ -2623,12 +2623,6 @@ class BatchPage(MissionPage):
         # Keep the disclosure content-sized. A Minimum policy here allowed the
         # resizable page scroll area to distribute surplus height into the body.
         self.advanced_product_settings_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-        settings_form = QFormLayout()
-        settings_form.setVerticalSpacing(max(SPACING_SM, SECTION_SPACING))
-        settings_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
-        secondary_settings_form = QFormLayout()
-        secondary_settings_form.setVerticalSpacing(max(SPACING_SM, SECTION_SPACING))
-        secondary_settings_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self.resolution_spin = QDoubleSpinBox()
         self.resolution_spin.setDecimals(3)
         self.resolution_spin.setMinimum(0.01)
@@ -2698,44 +2692,62 @@ class BatchPage(MissionPage):
             self.chm_interpolation_combo,
         ):
             control.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-        settings_form.addRow("Grid resolution", self.resolution_spin)
-        settings_form.addRow("Height bin size", self.height_bin_spin)
-        settings_form.addRow("Canopy cover threshold", self.canopy_threshold_spin)
-        settings_form.addRow("Canopy cover maximum", self.canopy_max_height_spin)
-        settings_form.addRow("Extinction coefficient", self.canopy_extinction_spin)
-        settings_form.addRow("Beer-Lambert coefficient", self.pad_beer_lambert_spin)
-        settings_form.addRow("", self.pad_drop_ground_check)
-        settings_form.addRow("PAI minimum height", self.pai_min_height_spin)
-        settings_form.addRow("PAI maximum height", self.pai_max_height_spin)
-        settings_form.addRow("FHD minimum height", self.fhd_min_height_spin)
-        settings_form.addRow("FHD maximum height", self.fhd_max_height_spin)
-        settings_form.addRow("Rumple minimum height", self.rumple_min_height_spin)
-        settings_form.addRow("", self.point_density_per_area_check)
-        settings_form.addRow("CHM interpolation", self.chm_interpolation_combo)
-        self.product_settings_form = settings_form
-        self.product_settings_secondary_form = secondary_settings_form
+            control.setMinimumHeight(control.sizeHint().height())
         self._scientific_column_count = 1
         self.product_setting_rows = (
-            ("Shared settings", "Grid resolution", self.resolution_spin),
-            ("Shared settings", "Height bin size", self.height_bin_spin),
-            ("CHM", "Interpolation", self.chm_interpolation_combo),
-            ("PAD", "Beer-Lambert coefficient", self.pad_beer_lambert_spin),
-            ("PAD", "", self.pad_drop_ground_check),
-            ("PAI", "Minimum height", self.pai_min_height_spin),
-            ("PAI", "Maximum height", self.pai_max_height_spin),
-            ("FHD", "Minimum height", self.fhd_min_height_spin),
-            ("FHD", "Maximum height", self.fhd_max_height_spin),
-            ("Canopy Cover", "Height threshold", self.canopy_threshold_spin),
-            ("Canopy Cover", "Maximum height", self.canopy_max_height_spin),
-            ("Canopy Cover", "Extinction coefficient", self.canopy_extinction_spin),
-            ("Rumple", "Minimum height", self.rumple_min_height_spin),
-            ("Point Density", "", self.point_density_per_area_check),
+            ("shared.grid_resolution", "Shared Settings", "Grid resolution", self.resolution_spin),
+            ("shared.height_bin_size", "Shared Settings", "Height bin size", self.height_bin_spin),
+            ("chm.interpolation", "CHM", "Interpolation", self.chm_interpolation_combo),
+            ("pad.beer_lambert_constant", "PAD", "Beer-Lambert coefficient", self.pad_beer_lambert_spin),
+            ("pad.drop_ground", "PAD", "", self.pad_drop_ground_check),
+            ("pai.min_height", "PAI", "Minimum height", self.pai_min_height_spin),
+            ("pai.max_height", "PAI", "Maximum height", self.pai_max_height_spin),
+            ("fhd.min_height", "FHD", "Minimum height", self.fhd_min_height_spin),
+            ("fhd.max_height", "FHD", "Maximum height", self.fhd_max_height_spin),
+            ("canopy_cover.min_height", "Canopy Cover", "Height threshold", self.canopy_threshold_spin),
+            ("canopy_cover.max_height", "Canopy Cover", "Maximum height", self.canopy_max_height_spin),
+            ("canopy_cover.k", "Canopy Cover", "Extinction coefficient", self.canopy_extinction_spin),
+            ("rumple.min_height", "Rumple", "Minimum height", self.rumple_min_height_spin),
+            ("point_density.per_area", "Point Density", "", self.point_density_per_area_check),
         )
-        self.scientific_form_columns = QHBoxLayout()
-        self.scientific_form_columns.setSpacing(SPACING_LG)
-        self.scientific_form_columns.addLayout(settings_form, 1)
-        self.scientific_form_columns.addLayout(secondary_settings_form, 1)
-        settings_layout.addLayout(self.scientific_form_columns)
+        self.scientific_group_order = ("Shared Settings", "CHM", "DTM", "PAD", "PAI", "FHD", "Canopy Cover", "Rumple", "Point Density")
+        self.scientific_groups: dict[str, tuple[QWidget, tuple[QFormLayout, QFormLayout], tuple[QWidget, QWidget]]] = {}
+        for group_name in self.scientific_group_order:
+            group_widget = QWidget()
+            group_widget.setProperty("scientificParameterGroup", group_name)
+            group_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+            group_layout = QVBoxLayout(group_widget)
+            group_layout.setContentsMargins(0, SPACING_XS, 0, SPACING_SM)
+            group_layout.setSpacing(SPACING_XS)
+            heading = _details_label(group_name)
+            heading.setObjectName("scientificGroupHeading")
+            heading.setProperty("scientificGroupHeading", True)
+            heading.setAccessibleName(f"{group_name} scientific settings")
+            heading.setProperty("contextHelp", scientific_group_help(group_name))
+            group_layout.addWidget(heading)
+            columns = QHBoxLayout()
+            columns.setContentsMargins(0, 0, 0, 0)
+            columns.setSpacing(SPACING_LG)
+            form_widgets = (QWidget(), QWidget())
+            forms = (QFormLayout(form_widgets[0]), QFormLayout(form_widgets[1]))
+            for form_widget, form in zip(form_widgets, forms):
+                form.setContentsMargins(0, 0, 0, 0)
+                form.setVerticalSpacing(max(SPACING_SM, SECTION_SPACING))
+                form.setRowWrapPolicy(QFormLayout.WrapLongRows)
+                columns.addWidget(form_widget, 1)
+            group_layout.addLayout(columns)
+            settings_layout.addWidget(group_widget)
+            self.scientific_groups[group_name] = (group_widget, forms, form_widgets)
+        self.scientific_row_labels: dict[str, QLabel | None] = {}
+        for key, group_name, label_text, field in self.product_setting_rows:
+            field.setProperty("scientificParameterKey", key)
+            field.setAccessibleName(f"{group_name} {label_text or field.text()}".strip())
+            label = QLabel(label_text) if label_text else None
+            if label is not None:
+                label.setBuddy(field)
+                label.setAccessibleName(f"{group_name} {label_text}")
+            self.scientific_row_labels[key] = label
+        self._rebuild_product_settings_form({ProductType.CHM})
         settings_footer = QHBoxLayout()
         self.calculation_reference_button = QPushButton("PyForestScan Calculation Guide ↗")
         self.calculation_reference_button.clicked.connect(
@@ -3125,13 +3137,11 @@ class BatchPage(MissionPage):
                 _take_layout_widget(self.product_grid, check)
             for index, definition in enumerate(MISSION_CONTROL_PRODUCTS):
                 self.product_grid.addWidget(self.product_checks[definition.product], index // columns, index % columns)
-        self.product_settings_form.setRowWrapPolicy(
-            QFormLayout.DontWrapRows if width >= 720 else QFormLayout.WrapAllRows
-        )
         column_count = scientific_form_column_count(width)
-        for form in (self.product_settings_form, self.product_settings_secondary_form):
-            form.setRowWrapPolicy(QFormLayout.DontWrapRows if width >= 720 else QFormLayout.WrapAllRows)
-            form.setVerticalSpacing(SPACING_SM if column_count == 2 else SPACING_MD)
+        for _group_widget, forms, _form_widgets in self.scientific_groups.values():
+            for form in forms:
+                form.setRowWrapPolicy(QFormLayout.DontWrapRows if width >= 720 else QFormLayout.WrapAllRows)
+                form.setVerticalSpacing(SPACING_SM if column_count == 2 else SPACING_MD)
         if column_count != self._scientific_column_count:
             self._scientific_column_count = column_count
             selected = {product for product, check in self.product_checks.items() if check.isChecked()}
@@ -3387,24 +3397,7 @@ class BatchPage(MissionPage):
         """Project one idempotent semantic visibility model onto durable widgets."""
         selected = {product for product, check in self.product_checks.items() if check.isChecked()}
         self.advanced_product_settings_group.setVisible(bool(selected))
-        if hasattr(self, 'product_settings_form'):
-            raster_products = set(ProductType)
-            binned_products = {ProductType.PAD, ProductType.PAI, ProductType.FHD}
-            _set_form_field_visible(self.product_settings_form, self.resolution_spin, bool(selected & raster_products))
-            _set_form_field_visible(self.product_settings_form, self.height_bin_spin, bool(selected & binned_products))
-            _set_form_field_visible(self.product_settings_form, self.canopy_threshold_spin, ProductType.CANOPY_COVER in selected)
-            _set_form_field_visible(self.product_settings_form, self.canopy_max_height_spin, ProductType.CANOPY_COVER in selected)
-            _set_form_field_visible(self.product_settings_form, self.canopy_extinction_spin, ProductType.CANOPY_COVER in selected)
-            pad_family = {ProductType.PAD, ProductType.PAI, ProductType.CANOPY_COVER}
-            _set_form_field_visible(self.product_settings_form, self.pad_beer_lambert_spin, bool(selected & pad_family))
-            _set_form_field_visible(self.product_settings_form, self.pad_drop_ground_check, bool(selected & pad_family))
-            _set_form_field_visible(self.product_settings_form, self.pai_min_height_spin, ProductType.PAI in selected)
-            _set_form_field_visible(self.product_settings_form, self.pai_max_height_spin, ProductType.PAI in selected)
-            _set_form_field_visible(self.product_settings_form, self.fhd_min_height_spin, ProductType.FHD in selected)
-            _set_form_field_visible(self.product_settings_form, self.fhd_max_height_spin, ProductType.FHD in selected)
-            _set_form_field_visible(self.product_settings_form, self.rumple_min_height_spin, ProductType.RUMPLE in selected)
-            _set_form_field_visible(self.product_settings_form, self.point_density_per_area_check, ProductType.POINT_DENSITY in selected)
-            _set_form_field_visible(self.product_settings_form, self.chm_interpolation_combo, ProductType.CHM in selected)
+        if hasattr(self, "scientific_groups"):
             self._rebuild_product_settings_form(selected)
             if self.advanced_product_settings_group.isChecked():
                 _fit_collapsible_to_visible_content(self.advanced_product_settings_group)
@@ -3424,26 +3417,18 @@ class BatchPage(MissionPage):
         _refresh_layout_geometry(self.advanced_batch_section)
 
     def _rebuild_product_settings_form(self, selected: set[ProductType]) -> None:
-        """Rebuild active rows when Qt cannot remove hidden QFormLayout geometry."""
-        forms = (self.product_settings_form, self.product_settings_secondary_form)
-        fields = {field for _group, _label, field in self.product_setting_rows}
-        for form in forms:
-            while form.count():
-                item = form.takeAt(0)
-                widget = item.widget()
-                if widget is not None and widget not in fields:
-                    widget.deleteLater()
+        """Project stable semantic rows into stacked product-owned groups."""
+        fields = {field for _key, _group, _label, field in self.product_setting_rows}
         raster_products = set(ProductType)
-        binned_products = {ProductType.PAD, ProductType.PAI, ProductType.FHD}
-        pad_family = {ProductType.PAD, ProductType.PAI, ProductType.CANOPY_COVER}
+        binned_products = {ProductType.PAD, ProductType.PAI, ProductType.FHD, ProductType.CANOPY_COVER}
         active = {
             self.resolution_spin: bool(selected & raster_products),
             self.height_bin_spin: bool(selected & binned_products),
             self.canopy_threshold_spin: ProductType.CANOPY_COVER in selected,
             self.canopy_max_height_spin: ProductType.CANOPY_COVER in selected,
             self.canopy_extinction_spin: ProductType.CANOPY_COVER in selected,
-            self.pad_beer_lambert_spin: bool(selected & pad_family),
-            self.pad_drop_ground_check: bool(selected & pad_family),
+            self.pad_beer_lambert_spin: ProductType.PAD in selected,
+            self.pad_drop_ground_check: ProductType.PAD in selected,
             self.pai_min_height_spin: ProductType.PAI in selected,
             self.pai_max_height_spin: ProductType.PAI in selected,
             self.fhd_min_height_spin: ProductType.FHD in selected,
@@ -3452,28 +3437,43 @@ class BatchPage(MissionPage):
             self.point_density_per_area_check: ProductType.POINT_DENSITY in selected,
             self.chm_interpolation_combo: ProductType.CHM in selected,
         }
-        groups: list[tuple[str, list[tuple[str, QWidget]]]] = []
-        for group_name in dict.fromkeys(group for group, _label, _field in self.product_setting_rows):
-            rows = [(label, field) for group, label, field in self.product_setting_rows if group == group_name and active[field]]
-            if rows:
-                groups.append((group_name, rows))
-        loads = [0, 0]
-        for group_name, rows in groups:
-            column = 0 if self._scientific_column_count == 1 else min(range(2), key=lambda index: loads[index])
-            form = forms[column]
-            heading = _details_label(group_name)
-            heading.setProperty("scientificGroupHeading", True)
-            form.addRow(heading)
-            for label, field in rows:
+        for group_name in self.scientific_group_order:
+            group_widget, forms, form_widgets = self.scientific_groups[group_name]
+            group_widget.setMinimumHeight(0)
+            for form in forms:
+                while form.count():
+                    form.takeAt(0)
+            rows = [
+                (key, label, field)
+                for key, group, label, field in self.product_setting_rows
+                if group == group_name and active[field]
+            ]
+            group_widget.setVisible(bool(rows))
+            internal_columns = self._scientific_column_count if len(rows) > 1 else 1
+            form_widgets[1].setVisible(internal_columns == 2)
+            for index, (key, _label_text, field) in enumerate(rows):
+                form = forms[index % internal_columns]
                 field.setVisible(True)
-                form.addRow(label, field)
-            loads[column] += len(rows) + 1
+                label = self.scientific_row_labels[key]
+                if label is None:
+                    form.addRow(field)
+                else:
+                    label.setVisible(True)
+                    form.addRow(label, field)
         for field in fields:
             if not active[field]:
                 field.setVisible(False)
-        for form in forms:
-            form.invalidate()
-            form.activate()
+        for group_widget, forms, _form_widgets in self.scientific_groups.values():
+            for form in forms:
+                form.invalidate()
+                form.activate()
+            if group_widget.isVisible():
+                layout = group_widget.layout()
+                if layout is not None:
+                    layout.invalidate()
+                    layout.activate()
+                    group_widget.setMinimumHeight(layout.sizeHint().height())
+            group_widget.updateGeometry()
 
     def _update_adaptive_visibility(self, *_args: object) -> None:
         """Compatibility alias for callers retained during workflow consolidation."""
@@ -6512,6 +6512,7 @@ def _fit_collapsible_to_visible_content(group: CompactCollapsibleSection) -> Non
         return
     layout = content.layout()
     if layout is not None:
+        content.setMaximumHeight(16777215)
         layout.invalidate()
         layout.activate()
         content.setMaximumHeight(max(0, layout.sizeHint().height()))

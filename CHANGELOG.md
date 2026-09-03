@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32Z - Scientific grouping and compatibility evidence
+
+- Replaced global balancing of unrelated parameter groups with persistent, vertically stacked product-owned scientific groups.
+- Added stable semantic parameter keys, product-qualified accessibility names, group help, zero-height empty groups, and theme-derived control/group minimum sizes.
+- Kept responsive two-column presentation inside individual groups while preserving values and stable scientific order across toggles.
+- Passed 24-case narrow/normal/wide visual matrices in Windows QGIS 3.44.13/Qt 5 and QGIS 4.0.0/Qt 6; QGIS 4.0 is UI-COMPATIBLE, not engine/science qualified.
+- Investigated QGIS 3.34/3.40 and cross-platform engine solves without overstating unavailable or incomplete evidence.
+
 ## Phase 32Y - Scientific UX and release hardening
 
 - Made Advanced Scientific Settings responsive and content-sized with readable semantic groups and one/two-column layouts.
