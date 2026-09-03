@@ -8,6 +8,10 @@ PyForestScan remains the scientific engine. This repository provides the QGIS ap
 
 Current internal beta release candidate: `0.1.0-beta.3`. Build artifacts are `dist/pyforestscan_qgis-v0.1.0-beta.3.zip` and `dist/pyforestscan_qgis.zip` after running `python3 scripts/package_plugin.py`.
 
+The tested QGIS and operating-system combinations are maintained in the
+[compatibility matrix](docs/COMPATIBILITY.md). The plugin does not claim support
+for every QGIS version merely because the package can be installed.
+
 ## Current Capabilities
 
 - **Mission Control** guided workflow for single datasets and batch runs.
@@ -141,6 +145,7 @@ Key entry points:
 - [PBM Processing Execution](docs/backend/PBM_PROCESSING_EXECUTION.md)
 - [PBM Runner Protocol](docs/backend/PBM_RUNNER_PROTOCOL.md)
 - [QGIS Compatibility Layer](docs/development/QGIS_COMPATIBILITY_LAYER.md)
+- [Compatibility Matrix](docs/COMPATIBILITY.md)
 - [Mission Control UX Standard](docs/development/MISSION_CONTROL_UX_STANDARD.md)
 - [PyForestScan Design System](docs/development/PYFORESTSCAN_DESIGN_SYSTEM.md)
 - [Release Roadmap](docs/releases/RELEASE_ROADMAP.md)

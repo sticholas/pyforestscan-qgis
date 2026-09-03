@@ -11,6 +11,9 @@ from qgis.PyQt.QtCore import QByteArray, Qt, QTimer, QUrl
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import QDockWidget, QFileDialog, QSizePolicy, QWidget
 
+from ..compat.qt import install_enum_aliases, qt_enum
+install_enum_aliases(QSizePolicy, "Policy", ("Expanding", "Minimum"))
+install_enum_aliases(Qt, "ScrollBarPolicy", ("ScrollBarAlwaysOff",))
 from ..core.adapter import PyForestScanAdapter
 from ..core.active_job import ActiveProcessingJobController,CurrentJobToken
 from ..core.dataset_report import report_to_dict as dataset_report_to_dict
@@ -87,8 +90,12 @@ class MissionControlDock(QDockWidget):
         self.ui.setupUi(self.root_widget)
         self.setWidget(self.root_widget)
         self.setObjectName("PyForestScanMissionControlDock")
-        self.setAllowedAreas(Qt.AllDockWidgetAreas)
-        self.setFeatures(self.features() | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetMovable)
+        self.setAllowedAreas(qt_enum(Qt, "AllDockWidgetAreas", "DockWidgetArea"))
+        self.setFeatures(
+            self.features()
+            | qt_enum(QDockWidget, "DockWidgetFloatable", "DockWidgetFeature")
+            | qt_enum(QDockWidget, "DockWidgetMovable", "DockWidgetFeature")
+        )
         self.setMinimumSize(420, 480)
         self.root_widget.setMinimumSize(420, 480)
         self.root_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)

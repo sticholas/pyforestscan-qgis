@@ -8,7 +8,12 @@ from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QKeyEvent
 from qgis.PyQt.QtWidgets import QMessageBox, QToolButton, QWidget
 
+from ..compat.qt import install_enum_aliases
 from .help_topics import HelpTopic, get_help_topic
+
+install_enum_aliases(Qt, "CursorShape", ("PointingHandCursor",))
+install_enum_aliases(Qt, "FocusPolicy", ("StrongFocus",))
+install_enum_aliases(Qt, "Key", ("Key_Enter", "Key_Return", "Key_Space"))
 
 INFO_BADGE_STYLESHEET = """
 QToolButton[infoBadge="true"] {

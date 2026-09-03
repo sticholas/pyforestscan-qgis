@@ -110,7 +110,7 @@ def build_qgis_compatibility_report(
     elif major < 3:
         warnings.append("QGIS versions earlier than 3.x are not supported targets.")
     elif major == 4:
-        warnings.append("QGIS 4.x is a defensive compatibility target and must be validated when available.")
+        warnings.append("QGIS 4.x uses Qt 6 and remains unqualified until plugin construction, provider, and processing smoke tests pass on the listed release.")
     elif major > 4:
         warnings.append(f"QGIS {major}.x is outside the tested compatibility target range.")
     if not processing_provider_compatible:

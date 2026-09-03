@@ -28,6 +28,9 @@ For current engineering architecture, begin with the [Current Architecture Map](
 
 This documentation is organized for users, scientists, developers, maintainers, and release reviewers.
 
+Supported and unqualified QGIS/platform combinations are listed in the
+[Compatibility Matrix](COMPATIBILITY.md).
+
 ## Getting Started
 
 - [Getting Started Overview](getting-started/README.md)
@@ -92,6 +95,7 @@ This documentation is organized for users, scientists, developers, maintainers, 
 - [Phase 31C Unreferenced LiDAR Matrix](testing/PHASE_31C_UNREFERENCED_LIDAR_MATRIX.md)
 - [Phase 31C Large LAS Completion](testing/PHASE_31C_LARGE_LAS_COMPLETION.md)
 - [QGIS Compatibility Layer](development/QGIS_COMPATIBILITY_LAYER.md)
+- [Phase 32X Scientific UX and Portability Audit](development/PHASE_32X_SCIENTIFIC_UX_AND_PORTABILITY.md)
 - [Mission Control UX Standard](development/MISSION_CONTROL_UX_STANDARD.md)
 - [Phase 28A Productization UX Audit](development/PHASE_28A_PRODUCTIZATION_UX_AUDIT.md)
 - [PyForestScan Design System](development/PYFORESTSCAN_DESIGN_SYSTEM.md)

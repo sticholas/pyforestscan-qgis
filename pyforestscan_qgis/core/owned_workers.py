@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import signal
+import subprocess
 import threading
 import time
 import json
@@ -53,7 +55,28 @@ class OwnedWorkerRegistry:
             workers = tuple(self._workers.values())
         for process, _stage, _peak in workers:
             if process.poll() is None:
-                process.terminate()
+                terminate_process_tree(process)
+
+
+def terminate_process_tree(process, os_name: str | None = None) -> None:
+    """Terminate one owned worker and its process group without touching QGIS."""
+    platform_name = os_name or os.name
+    if process.poll() is not None:
+        return
+    if platform_name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                check=False, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            return
+        except OSError:
+            process.terminate()
+            return
+    try:
+        os.killpg(os.getpgid(int(process.pid)), signal.SIGTERM)
+    except (AttributeError, OSError, ProcessLookupError):
+        process.terminate()
 
 
 class GlobalWorkerLease:

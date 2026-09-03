@@ -142,7 +142,7 @@ def resolve_effective_source_spatial_profile(
     )
     effective_crs = context.effective_crs if allow_polygon_fallback else resolution.resolved_crs
     status = resolution.status
-    if context.mode is EffectiveSpatialMode.ASSUMED_MATCHING_COORDINATE_SPACE:
+    if context.mode in {EffectiveSpatialMode.ASSUMED_MATCHING_COORDINATE_SPACE, EffectiveSpatialMode.USER_FALLBACK_CRS}:
         status = SpatialReferenceStatus.RESOLVED_USER_ASSIGNMENT
     return EffectiveSourceSpatialProfile(
         metadata.path,

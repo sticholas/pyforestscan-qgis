@@ -76,6 +76,81 @@ HELP_TOPICS: dict[str, HelpTopic] = {
 }
 
 
+SEMANTIC_CONTEXT_HELP: dict[str, str] = {
+    "process.folder.discover": "Scan the selected folder for supported LiDAR datasets and list them for processing. Source files are not modified.",
+    "process.folder.select_all": "Select every discovered supported LiDAR dataset in this folder for the next processing request.",
+    "process.folder.clear": "Clear the currently discovered LiDAR files from this processing selection. This does not delete or modify the source files.",
+    "process.folder.search_subfolders": "Include supported LiDAR datasets found inside subfolders when discovering files.",
+    "process.polygon.layer": "Choose the loaded QGIS polygon layer that defines the area to process. Selected features from this layer can be adopted as the processing area.",
+    "process.polygon.use_selection": "Use the features currently selected on the QGIS map as the processing area. The original layer and features are not modified.",
+    "process.polygon.refresh": "Refresh the polygon layers, current feature count, area, geometry validity, and CRS after the QGIS map selection changes.",
+    "process.polygon.zoom": "Zoom the QGIS map canvas to the current processing area.",
+    "product.chm": "Canopy Height Model: maximum height above ground within each horizontal output cell.",
+    "product.canopy_cover": "Estimates canopy cover above a height threshold from PAD using the Beer-Lambert relation.",
+    "product.pad": "Plant Area Density: estimates plant material density through vertical canopy layers.",
+    "product.pai": "Plant Area Index: integrates Plant Area Density through a selected vertical height range.",
+    "product.fhd": "Foliage Height Diversity: measures how LiDAR returns are distributed through vertical canopy layers.",
+    "product.rumple": "Measures canopy-surface complexity as surface area relative to horizontal area.",
+    "product.point_density": "Summarizes LiDAR return density over the output grid.",
+    "product.voxel_stat": "Summarizes a selected point attribute within the three-dimensional voxel grid.",
+    "product.dtm": "Digital Terrain Model: estimates ground-surface elevation.",
+    "parameter.grid_resolution": "Horizontal output-cell size in source map units. Smaller cells preserve finer detail but increase processing time and raster size.",
+    "parameter.voxel_height": "Vertical height of each voxel layer. Smaller layers preserve finer vertical structure but require more memory and processing time.",
+    "parameter.canopy.threshold": "Lowest height above ground counted as canopy when estimating canopy cover.",
+    "parameter.canopy.max_height": "Highest canopy layer included in canopy cover. Automatic uses the available vertical extent.",
+    "parameter.canopy.extinction": "Controls conversion from integrated plant area to canopy cover in the Beer-Lambert relationship. PyForestScan defaults to 0.5.",
+    "parameter.pad.beer_lambert": "Coefficient used by the Beer-Lambert transformation when estimating Plant Area Density.",
+    "parameter.pad.drop_ground": "Exclude the lowest voxel layer from PAD so ground returns are not interpreted as plant material.",
+    "parameter.pai.min_height": "Lowest height above ground included when integrating Plant Area Density into Plant Area Index.",
+    "parameter.pai.max_height": "Highest height above ground included in PAI. Automatic uses the full available canopy height.",
+    "parameter.fhd.min_height": "Lowest height above ground included in the FHD calculation. Returns below this threshold are excluded.",
+    "parameter.fhd.max_height": "Highest height above ground included in FHD. Automatic uses the available canopy height.",
+    "parameter.rumple.min_height": "Ignore canopy-height cells below this threshold when calculating surface complexity.",
+    "parameter.point_density.per_area": "Divide return counts by horizontal cell area to report density per square source-map unit.",
+    "parameter.chm.interpolation": "Controls how gaps between measured canopy-height cells are filled. Linear interpolation estimates values from nearby valid cells and is the PyForestScan default.",
+    "parameter.restore_defaults": "Restore the supported PyForestScan scientific defaults without changing the selected data, products, or output folder.",
+    "parameter.calculation_reference": "Open the official PyForestScan calculation reference for definitions, parameters, defaults, and calculation behavior.",
+    "tools.fallback_crs": "Optional CRS to assume when a LiDAR dataset has no usable coordinate reference information. It never replaces a valid source CRS. Only set this when you know the coordinate system of otherwise unreferenced data.",
+}
+
+
+def semantic_help(key: str) -> str:
+    """Return explicit contextual help; stable keys prevent placeholder prose."""
+    try:
+        return SEMANTIC_CONTEXT_HELP[key]
+    except KeyError as exc:
+        raise KeyError(f"Unknown semantic context-help key: {key}") from exc
+
+
+SEMANTIC_ACTION_HELP: dict[str, str] = {
+    "Browse": "Open a file or folder chooser for the adjacent path field. Choosing a path does not modify source data.",
+    "Continue": "Move to the next ready step while preserving the selections already made on this page.",
+    "Check Environment": "Check QGIS and the managed Processing Engine, then report whether routed products can run.",
+    "Refresh Summary": "Re-read the current project, workspace, dataset, output, and Processing Engine state.",
+    "Select Dataset": "Choose the LiDAR dataset Mission Control will inspect and use for the guided workflow.",
+    "Open Backend Settings": "Open Processing Engine setup, verification, repair, and diagnostic controls.",
+    "Open Processing Toolbox": "Open QGIS Processing Toolbox to the expert PyForestScan algorithms.",
+    "Build Plan": "Validate selected products and parameters, then build the processing and output plan.",
+    "Prerun Check": "Validate engine, source, area, coordinate systems, products, storage, and workload before dispatch.",
+    "Set Up Processing Engine": "Install and verify the isolated user-local scientific runtime without modifying QGIS Python.",
+    "Load into QGIS": "Add registered output rasters and supported tables to the current QGIS project without regenerating them.",
+    "Open Output Folder": "Open the folder containing the current run's generated products and provenance files.",
+    "Open Folder": "Open the current result folder in the desktop file manager.",
+    "Refresh": "Re-read the nearby QGIS or filesystem state without changing source data.",
+    "Recheck": "Run Processing Engine readiness verification again and update the displayed state.",
+    "Open Diagnostics": "Show technical engine identity, verification, paths, and failure details for troubleshooting.",
+    "Cancel Processing": "Request a controlled stop for remaining owned processing work; completed checkpoints are retained.",
+    "Pause After Current Step": "Stop dispatching new work after active units finish so the durable job can be resumed.",
+    "Clear Current Run": "Remove the current run from the Results view without deleting generated output files.",
+    "New Run": "Clear the current result selection and prepare Mission Control for another processing request.",
+}
+
+
+def semantic_action_help(label: str) -> str:
+    """Return explicit help for a reusable action label, or an empty string."""
+    return SEMANTIC_ACTION_HELP.get(str(label).replace("&", "").strip(), "")
+
+
 def get_help_topic(key: str) -> HelpTopic:
     """Return a registered topic or raise a useful KeyError."""
     try:

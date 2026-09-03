@@ -21,7 +21,8 @@ class Phase32VCompactDensityTests(unittest.TestCase):
         helper = PAGES[PAGES.index("class CompactCollapsibleSection"):PAGES.index("def _set_layout_visible")]
         self.assertIn('setProperty("compactCollapsible", True)', helper)
         self.assertIn('setFixedHeight(28)', helper)
-        self.assertIn("content.setMaximumHeight(16777215 if visible else 0)", helper)
+        self.assertIn("content.setMaximumHeight(0)", helper)
+        self.assertIn("layout.sizeHint().height()", helper)
         self.assertIn("content.setVisible(visible)", helper)
 
     def test_compact_spacing_and_help_bounds(self) -> None:
@@ -64,7 +65,7 @@ class Phase32VCompactDensityTests(unittest.TestCase):
     def test_product_visibility_reflows_only_when_expanded(self) -> None:
         refresh = PAGES[PAGES.index("def _refresh_batch_option_visibility"):PAGES.index("def _update_adaptive_visibility")]
         self.assertIn("if self.advanced_product_settings_group.isChecked()", refresh)
-        self.assertIn("_refresh_layout_geometry(self.advanced_product_settings_group)", refresh)
+        self.assertIn("_fit_collapsible_to_visible_content(self.advanced_product_settings_group)", refresh)
 
     def test_scientific_advanced_excludes_repository_maintenance(self) -> None:
         start = PAGES.index('"Advanced Scientific Settings"')

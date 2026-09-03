@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 32X - Scientific UX and portability foundation
+
+- Fixed Advanced Scientific Settings to follow the live visible-row size hint instead of absorbing spare scroll-area height.
+- Added the official PyForestScan Calculation Reference and explicit semantic help for products, scientific parameters, folder discovery, polygon selection, and destructive-sounding actions.
+- Added a user-local Fallback CRS preference with authoritative-CRS precedence, explicit assumed-CRS provenance, and coordinate-compatibility blocking.
+- Added architecture-aware platform mapping, POSIX/Windows owned-process termination policy, and a formal tested-versus-unqualified compatibility matrix.
+- Documented the managed runtime inventory and retained fixed Micromamba version/archive digests as an explicit release blocker rather than overstating portability.
+
 ## Phase 32W - Collapsible affordance and adaptive status density
 
 - Replaced weak checkable-group headers with a reusable 28 px disclosure row featuring native arrows, accessible names, contextual help, and subtle hover/focus treatment.

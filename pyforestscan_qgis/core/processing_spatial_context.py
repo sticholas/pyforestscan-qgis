@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
@@ -42,6 +43,7 @@ class EffectiveSpatialMode(str, Enum):
     REPOSITORY_ASSIGNED = "REPOSITORY_ASSIGNED"
     SOURCE_LOCAL_ASSUMED_UNITS = "SOURCE_LOCAL_ASSUMED_UNITS"
     ASSUMED_MATCHING_COORDINATE_SPACE = "ASSUMED_MATCHING_COORDINATE_SPACE"
+    USER_FALLBACK_CRS = "USER_FALLBACK_CRS"
     UNRESOLVED = "UNRESOLVED"
     CONFLICT = "CONFLICT"
 
@@ -54,6 +56,8 @@ class SourceLocalFallbackPolicy:
     default_units: SourceLocalFallbackChoice = SourceLocalFallbackChoice.METERS
     version: int = 1
     polygon_alignment: PolygonAlignmentFallbackChoice = PolygonAlignmentFallbackChoice.AUTOMATIC_WHEN_COMPATIBLE
+    fallback_crs: str = ""
+    fallback_crs_configured_at: str = ""
 
     @property
     def linear_unit(self) -> LinearUnit | None:
@@ -116,6 +120,8 @@ class EffectiveSpatialContext:
     compatibility: CoordinateSpaceCompatibility | None = None
     warnings: tuple[str, ...] = ()
     blockers: tuple[str, ...] = ()
+    fallback_crs_configured_at: str = ""
+    fallback_reason: str = ""
 
     def to_dict(self) -> dict[str, object]:
         payload = asdict(self)
@@ -136,15 +142,34 @@ class SourceLocalFallbackPolicyStore:
             value = json.loads(self.path.read_text(encoding="utf-8"))
             choice = SourceLocalFallbackChoice(str(value.get("source_local_default_units", SourceLocalFallbackChoice.METERS.value)))
             polygon = PolygonAlignmentFallbackChoice(str(value.get("unreferenced_polygon_alignment", PolygonAlignmentFallbackChoice.AUTOMATIC_WHEN_COMPATIBLE.value)))
-            return SourceLocalFallbackPolicy(choice, int(value.get("version", 1)), polygon)
+            return SourceLocalFallbackPolicy(
+                choice, int(value.get("version", 1)), polygon,
+                str(value.get("fallback_crs", "")).strip(),
+                str(value.get("fallback_crs_configured_at", "")).strip(),
+            )
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
             return SourceLocalFallbackPolicy()
 
     def write(self, policy: SourceLocalFallbackPolicy) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
-        temporary.write_text(json.dumps({"version": policy.version, "source_local_default_units": policy.default_units.value, "unreferenced_polygon_alignment": policy.polygon_alignment.value}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        temporary.write_text(json.dumps({
+            "version": policy.version,
+            "source_local_default_units": policy.default_units.value,
+            "unreferenced_polygon_alignment": policy.polygon_alignment.value,
+            "fallback_crs": policy.fallback_crs,
+            "fallback_crs_configured_at": policy.fallback_crs_configured_at,
+        }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         temporary.replace(self.path)
+
+
+def policy_with_fallback_crs(policy: SourceLocalFallbackPolicy, crs: str) -> SourceLocalFallbackPolicy:
+    """Return a policy with an explicitly selected fallback CRS and timestamp."""
+    normalized = str(crs or "").strip()
+    return SourceLocalFallbackPolicy(
+        policy.default_units, policy.version, policy.polygon_alignment, normalized,
+        datetime.now(timezone.utc).isoformat() if normalized else "",
+    )
 
 
 def default_source_local_policy_store() -> SourceLocalFallbackPolicyStore:
@@ -253,6 +278,17 @@ def resolve_effective_spatial_context(
             "polygon_coordinate_space_fallback", False, True, compatibility,
             (f"The LiDAR has no CRS metadata. Its coordinates strongly match the polygon coordinate space and will be interpreted as {polygon_crs} without reprojection.",),
         )
+    fallback_crs = str(active_policy.fallback_crs or "").strip()
+    if fallback_crs and (not polygon_alignment_required or (compatibility is not None and compatibility.strong)):
+        units = assess_source_coordinate_units(fallback_crs, explicit_units).linear_unit
+        warning = f"CRS assumed from your Fallback CRS preference: {fallback_crs}."
+        return EffectiveSpatialContext(
+            EffectiveSpatialMode.USER_FALLBACK_CRS, raw_crs, fallback_crs, fallback_crs, units,
+            "user_fallback_crs", SpatialUnitBasis.USER_ASSIGNED, "USER_PREFERENCE", "ASSUMED",
+            True, True, False, "CRS ASSUMED FROM USER FALLBACK", False, True, compatibility,
+            (warning,), fallback_crs_configured_at=active_policy.fallback_crs_configured_at,
+            fallback_reason="The selected LiDAR source had no usable CRS metadata.",
+        )
     if polygon_alignment_required:
         reason = compatibility.reason if compatibility else "Raw coordinate compatibility could not be evaluated."
         return EffectiveSpatialContext(EffectiveSpatialMode.UNRESOLVED, raw_crs, "", "", None, "unresolved", SpatialUnitBasis.UNRESOLVED, "", "NONE", False, False, False, "unresolved", compatibility=compatibility, blockers=(f"This LiDAR needs a coordinate system before polygon alignment. {reason}",))
@@ -282,5 +318,5 @@ def _blocked(message: str) -> ProcessingSpatialContext:
 __all__ = [
     "CoordinateSpaceCompatibility", "EffectiveSpatialContext", "EffectiveSpatialMode", "PolygonAlignmentFallbackChoice", "ProcessingSpatialContext", "SOURCE_LOCAL_FALLBACK_PRODUCTS", "SourceLocalFallbackChoice",
     "SourceLocalFallbackPolicy", "SourceLocalFallbackPolicyStore", "SpatialUnitBasis",
-    "default_source_local_policy_store", "evaluate_coordinate_space_compatibility", "processing_spatial_context_from_dict", "resolve_effective_spatial_context", "resolve_processing_spatial_context",
+    "default_source_local_policy_store", "evaluate_coordinate_space_compatibility", "policy_with_fallback_crs", "processing_spatial_context_from_dict", "resolve_effective_spatial_context", "resolve_processing_spatial_context",
 ]

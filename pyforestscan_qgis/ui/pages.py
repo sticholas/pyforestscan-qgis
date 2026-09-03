@@ -113,11 +113,27 @@ from ..core.product_plan import (
     write_plan_html,
     write_plan_json,
 )
+
+from ..compat.qt import install_enum_aliases
+
+install_enum_aliases(QSizePolicy, "Policy", ("Expanding", "Fixed", "Ignored", "Maximum", "Minimum", "Preferred"))
+install_enum_aliases(QFrame, "Shape", ("StyledPanel",))
+install_enum_aliases(QFormLayout, "RowWrapPolicy", ("DontWrapRows", "WrapAllRows", "WrapLongRows"))
+install_enum_aliases(QLayout, "SizeConstraint", ("SetNoConstraint",))
+install_enum_aliases(QComboBox, "SizeAdjustPolicy", ("AdjustToMinimumContentsLengthWithIcon",))
+install_enum_aliases(QMessageBox, "StandardButton", ("No", "Yes"))
+install_enum_aliases(Qt, "AlignmentFlag", ("AlignLeft", "AlignTop"))
+install_enum_aliases(Qt, "ArrowType", ("DownArrow", "RightArrow"))
+install_enum_aliases(Qt, "CheckState", ("Checked", "Unchecked"))
+install_enum_aliases(Qt, "ItemFlag", ("ItemIsUserCheckable",))
+install_enum_aliases(Qt, "ScrollBarPolicy", ("ScrollBarAlwaysOff",))
+install_enum_aliases(Qt, "TextInteractionFlag", ("LinksAccessibleByMouse", "TextSelectableByMouse"))
+install_enum_aliases(Qt, "ToolButtonStyle", ("ToolButtonTextBesideIcon",))
 from ..core.product_registry import MISSION_CONTROL_PRODUCTS
 from ..core.types import ProductType
 from ..core.spatial_assignment import AssignmentScope, LinearUnit
 from ..core.spatial_reference_resolver import default_spatial_assignment_store
-from ..core.processing_spatial_context import default_source_local_policy_store
+from ..core.processing_spatial_context import default_source_local_policy_store, policy_with_fallback_crs
 from ..core.processing_ui_state import ProcessingUiState, control_policy, reconcile_ui_state, terminal_state_from_result
 from ..core.durable_errors import DurableErrorRecord, read_recent_error, write_recent_error
 from ..core.completed_job_summary import CompletedJobSummary, completed_job_summary, format_completed_job_summary
@@ -133,6 +149,7 @@ from ..core.workspace import (
 )
 from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
 from .help import info_badge, info_help_button
+from .help_topics import semantic_action_help, semantic_help
 from .output_loading import LoadableOutput, collect_loadable_outputs, compact_dataset_summary_lines, output_loading_summary
 from .state import ProjectSummary
 from .qgis_footprint import FootprintPreview, add_footprint_layer, preview_from_report, zoom_to_footprint
@@ -2215,6 +2232,7 @@ class BatchPage(MissionPage):
         folder_row.addWidget(input_browse, 0)
         repository_layout.addLayout(folder_row)
         self.recursive_check = QCheckBox("Search subfolders")
+        self.recursive_check.setProperty("contextHelp", semantic_help("process.folder.search_subfolders"))
         repository_layout.addWidget(self.recursive_check)
         self.spatial_assignment_frame = QFrame()
         assignment_layout = QVBoxLayout(self.spatial_assignment_frame)
@@ -2251,12 +2269,15 @@ class BatchPage(MissionPage):
         repository_layout.addWidget(self.spatial_assignment_frame)
         discover_row = QHBoxLayout()
         self.discover_button = QPushButton("Discover Files")
+        self.discover_button.setProperty("contextHelp", semantic_help("process.folder.discover"))
         self.discover_button.clicked.connect(self.discover_files)
         _apply_button_role(self.discover_button, "primary")
         select_all = QPushButton("Select All")
+        select_all.setProperty("contextHelp", semantic_help("process.folder.select_all"))
         select_all.clicked.connect(lambda: self._set_all_files(True))
         _apply_button_role(select_all, "neutral")
         clear_all = QPushButton("Clear")
+        clear_all.setProperty("contextHelp", semantic_help("process.folder.clear"))
         clear_all.clicked.connect(lambda: self._set_all_files(False))
         _apply_button_role(clear_all, "neutral")
         discover_row.addWidget(self.discover_button)
@@ -2427,11 +2448,13 @@ class BatchPage(MissionPage):
         qgis_layer_row = QGridLayout()
         self.qgis_layer_row = qgis_layer_row
         self.polygon_layer_combo = QComboBox()
+        self.polygon_layer_combo.setProperty("contextHelp", semantic_help("process.polygon.layer"))
         self.polygon_layer_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.polygon_layer_combo.setMinimumContentsLength(12)
         self.polygon_layer_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.polygon_layer_combo.currentIndexChanged.connect(self._update_selected_polygon_layer_status)
         self.polygon_refresh_layers_button = QPushButton("Refresh")
+        self.polygon_refresh_layers_button.setProperty("contextHelp", semantic_help("process.polygon.refresh"))
         self.polygon_refresh_layers_button.clicked.connect(self.refresh_polygon_layers)
         self.polygon_refresh_layers_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         _apply_button_role(self.polygon_refresh_layers_button, "neutral")
@@ -2442,10 +2465,7 @@ class BatchPage(MissionPage):
         polygon_area_actions.addWidget(self.polygon_refresh_layers_button, 0, 0)
         self.use_selected_features_button = QPushButton("Use Selected Features")
         self.use_selected_features_button.clicked.connect(self.use_selected_polygon_features)
-        self.use_selected_features_button.setProperty(
-            "contextHelp",
-            "Use the features currently selected with QGIS map-selection tools as the processing area.",
-        )
+        self.use_selected_features_button.setProperty("contextHelp", semantic_help("process.polygon.use_selection"))
         _apply_button_role(self.use_selected_features_button, "secondary")
         self.use_selected_features_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         polygon_area_actions.addWidget(self.use_selected_features_button, 0, 1)
@@ -2513,6 +2533,7 @@ class BatchPage(MissionPage):
         self.preview_spatial_alignment_button.clicked.connect(self.preview_polygon_spatial_alignment)
         _apply_button_role(self.preview_spatial_alignment_button, "secondary")
         self.zoom_polygon_button = QPushButton("Zoom to Polygon")
+        self.zoom_polygon_button.setProperty("contextHelp", semantic_help("process.polygon.zoom"))
         self.zoom_polygon_button.clicked.connect(lambda: self._show_spatial_action("Zoom to Polygon"))
         _apply_button_role(self.zoom_polygon_button, "neutral")
         self.zoom_repository_button = QPushButton("Zoom to Repository Extent")
@@ -2530,7 +2551,7 @@ class BatchPage(MissionPage):
         _wire_collapsible_group(self.advanced_spatial_section)
         self.advanced_spatial_section.setVisible(False)
         self.zoom_polygon_button.setText("Zoom to Area")
-        self.zoom_polygon_button.setProperty("contextHelp", "Center the QGIS map on the selected processing area.")
+        self.zoom_polygon_button.setProperty("contextHelp", semantic_help("process.polygon.zoom"))
         self.zoom_polygon_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         polygon_area_actions.addWidget(self.zoom_polygon_button, 0, 2)
         polygon_area_actions.setColumnStretch(3, 1)
@@ -2563,8 +2584,13 @@ class BatchPage(MissionPage):
             product = definition.product
             check = QCheckBox(definition.short_name)
             check.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-            check.setToolTip(definition.description)
-            check.setProperty("contextHelp", definition.description)
+            product_help_key = f"product.{product.value}"
+            try:
+                product_help = semantic_help(product_help_key)
+            except KeyError:
+                product_help = definition.description
+            check.setToolTip(product_help)
+            check.setProperty("contextHelp", product_help)
             if product is ProductType.CHM:
                 check.setChecked(True)
             self.product_checks[product] = check
@@ -2584,7 +2610,9 @@ class BatchPage(MissionPage):
         self.select_recommended_products_button.setVisible(False)
         self.clear_products_button.setVisible(False)
         self.advanced_product_settings_group, settings_layout = _collapsible_section(products_layout, "Advanced Scientific Settings", checked=False)
-        self.advanced_product_settings_group.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Minimum)
+        # Keep the disclosure content-sized. A Minimum policy here allowed the
+        # resizable page scroll area to distribute surplus height into the body.
+        self.advanced_product_settings_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         settings_form = QFormLayout()
         settings_form.setVerticalSpacing(SECTION_SPACING)
         settings_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
@@ -2592,7 +2620,7 @@ class BatchPage(MissionPage):
         self.resolution_spin.setDecimals(3)
         self.resolution_spin.setMinimum(0.01)
         self.resolution_spin.setValue(1.0)
-        self.resolution_spin.setProperty("contextHelp", "Override output grid resolution only when the scientific or delivery requirement calls for a different cell size.")
+        self.resolution_spin.setProperty("contextHelp", semantic_help("parameter.grid_resolution"))
         self.height_bin_spin = QDoubleSpinBox()
         self.height_bin_spin.setDecimals(3)
         self.height_bin_spin.setMinimum(0.0)
@@ -2622,6 +2650,24 @@ class BatchPage(MissionPage):
         self.point_density_per_area_check.setChecked(True)
         self.chm_interpolation_combo = QComboBox()
         self.chm_interpolation_combo.addItems(("linear", "nearest", "cubic"))
+        self.chm_interpolation_combo.currentTextChanged.connect(self._update_chm_interpolation_help)
+        semantic_controls = {
+            self.height_bin_spin: "parameter.voxel_height",
+            self.canopy_threshold_spin: "parameter.canopy.threshold",
+            self.canopy_max_height_spin: "parameter.canopy.max_height",
+            self.canopy_extinction_spin: "parameter.canopy.extinction",
+            self.pad_beer_lambert_spin: "parameter.pad.beer_lambert",
+            self.pad_drop_ground_check: "parameter.pad.drop_ground",
+            self.pai_min_height_spin: "parameter.pai.min_height",
+            self.pai_max_height_spin: "parameter.pai.max_height",
+            self.fhd_min_height_spin: "parameter.fhd.min_height",
+            self.fhd_max_height_spin: "parameter.fhd.max_height",
+            self.rumple_min_height_spin: "parameter.rumple.min_height",
+            self.point_density_per_area_check: "parameter.point_density.per_area",
+            self.chm_interpolation_combo: "parameter.chm.interpolation",
+        }
+        for control, help_key in semantic_controls.items():
+            control.setProperty("contextHelp", semantic_help(help_key))
         for control in (
             self.resolution_spin,
             self.height_bin_spin,
@@ -2654,13 +2700,40 @@ class BatchPage(MissionPage):
         settings_form.addRow("", self.point_density_per_area_check)
         settings_form.addRow("CHM interpolation", self.chm_interpolation_combo)
         self.product_settings_form = settings_form
+        self.product_setting_rows = (
+            ("Grid resolution", self.resolution_spin),
+            ("Height bin size", self.height_bin_spin),
+            ("Canopy cover threshold", self.canopy_threshold_spin),
+            ("Canopy cover maximum", self.canopy_max_height_spin),
+            ("Extinction coefficient", self.canopy_extinction_spin),
+            ("Beer-Lambert coefficient", self.pad_beer_lambert_spin),
+            ("", self.pad_drop_ground_check),
+            ("PAI minimum height", self.pai_min_height_spin),
+            ("PAI maximum height", self.pai_max_height_spin),
+            ("FHD minimum height", self.fhd_min_height_spin),
+            ("FHD maximum height", self.fhd_max_height_spin),
+            ("Rumple minimum height", self.rumple_min_height_spin),
+            ("", self.point_density_per_area_check),
+            ("CHM interpolation", self.chm_interpolation_combo),
+        )
         settings_layout.addLayout(settings_form)
-        self.restore_scientific_defaults_button = QPushButton("Restore PyForestScan Defaults")
+        settings_footer = QHBoxLayout()
+        self.calculation_reference_button = QPushButton("Calculation Reference")
+        self.calculation_reference_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl("https://pyforestscan.sefa.ai/api/calculate/"))
+        )
+        self.calculation_reference_button.setProperty("contextHelp", semantic_help("parameter.calculation_reference"))
+        self.calculation_reference_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.restore_scientific_defaults_button = QPushButton("Restore Defaults")
         self.restore_scientific_defaults_button.clicked.connect(self._restore_scientific_defaults)
-        self.restore_scientific_defaults_button.setProperty("contextHelp", "Restore supported scientific parameters without changing data, products, or output selections.")
-        self.restore_scientific_defaults_button.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-        settings_layout.addWidget(self.restore_scientific_defaults_button)
+        self.restore_scientific_defaults_button.setProperty("contextHelp", semantic_help("parameter.restore_defaults"))
+        self.restore_scientific_defaults_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        settings_footer.addWidget(self.calculation_reference_button)
+        settings_footer.addStretch(1)
+        settings_footer.addWidget(self.restore_scientific_defaults_button)
+        settings_layout.addLayout(settings_footer)
         _wire_collapsible_group(self.advanced_product_settings_group)
+        self._update_chm_interpolation_help(self.chm_interpolation_combo.currentText())
         self.advanced_batch_section, advanced_batch = _collapsible_section(self.content_layout, "Advanced Batch Options", checked=False)
         advanced_form = QFormLayout()
         advanced_form.setVerticalSpacing(SECTION_SPACING)
@@ -2694,7 +2767,7 @@ class BatchPage(MissionPage):
         self.advanced_batch_form = advanced_form
         self.max_workers_row = max_workers_row
         advanced_batch.addLayout(advanced_form)
-        advanced_batch.addWidget(_details_label("Scheduling is automatic; this value is only an upper limit. External Worker is disabled."))
+        advanced_batch.addWidget(_details_label("Scheduling is automatic; Maximum parallel workers is an upper limit. External Worker is disabled."))
         self.stop_on_error_check = QCheckBox("Stop batch when a file fails")
         self.skip_completed_check = QCheckBox("Skip already-completed files on resume")
         self.skip_completed_check.setChecked(True)
@@ -3106,6 +3179,18 @@ class BatchPage(MissionPage):
         self.chm_interpolation_combo.setCurrentText("linear")
         self._on_product_selection_changed()
 
+    def _update_chm_interpolation_help(self, method: str) -> None:
+        """Explain the selected interpolation method rather than its widget label."""
+        descriptions = {
+            "nearest": "Fills gaps using the nearest valid canopy-height cell. This preserves observed values but can create blockier transitions.",
+            "linear": "Estimates gaps from surrounding valid cells, producing smoother transitions while remaining less aggressive than cubic interpolation.",
+            "cubic": "Uses a smoother higher-order interpolation that may produce smoother surfaces but can be more sensitive around sparse data.",
+            "none": "Leaves cells without valid canopy-height observations as gaps instead of estimating values.",
+        }
+        text = descriptions.get(str(method).casefold(), semantic_help("parameter.chm.interpolation"))
+        self.chm_interpolation_combo.setProperty("contextHelp", text)
+        self.chm_interpolation_combo.setProperty("resolvedContextHelp", text)
+
     def _set_all_products(self, checked: bool) -> None:
         for product_check in self.product_checks.values():
             product_check.setChecked(checked)
@@ -3278,8 +3363,10 @@ class BatchPage(MissionPage):
             _set_form_field_visible(self.product_settings_form, self.rumple_min_height_spin, ProductType.RUMPLE in selected)
             _set_form_field_visible(self.product_settings_form, self.point_density_per_area_check, ProductType.POINT_DENSITY in selected)
             _set_form_field_visible(self.product_settings_form, self.chm_interpolation_combo, ProductType.CHM in selected)
+            if not callable(getattr(self.product_settings_form, "setRowVisible", None)):
+                self._rebuild_product_settings_form(selected)
             if self.advanced_product_settings_group.isChecked():
-                _refresh_layout_geometry(self.advanced_product_settings_group)
+                _fit_collapsible_to_visible_content(self.advanced_product_settings_group)
         visibility = batch_control_visibility(
             profile=str(self.processing_profile_combo.currentData() or "recommended"),
             execution_mode=str(self.execution_mode_combo.currentData() or SEQUENTIAL_MODE),
@@ -3294,6 +3381,42 @@ class BatchPage(MissionPage):
         self.advanced_spatial_section.setVisible(False)
         self.advanced_batch_section.setVisible(False)
         _refresh_layout_geometry(self.advanced_batch_section)
+
+    def _rebuild_product_settings_form(self, selected: set[ProductType]) -> None:
+        """Rebuild active rows when Qt cannot remove hidden QFormLayout geometry."""
+        form = self.product_settings_form
+        fields = {field for _label, field in self.product_setting_rows}
+        while form.count():
+            item = form.takeAt(0)
+            widget = item.widget()
+            if widget is not None and widget not in fields:
+                widget.deleteLater()
+        raster_products = set(ProductType)
+        binned_products = {ProductType.PAD, ProductType.PAI, ProductType.FHD}
+        pad_family = {ProductType.PAD, ProductType.PAI, ProductType.CANOPY_COVER}
+        active = {
+            self.resolution_spin: bool(selected & raster_products),
+            self.height_bin_spin: bool(selected & binned_products),
+            self.canopy_threshold_spin: ProductType.CANOPY_COVER in selected,
+            self.canopy_max_height_spin: ProductType.CANOPY_COVER in selected,
+            self.canopy_extinction_spin: ProductType.CANOPY_COVER in selected,
+            self.pad_beer_lambert_spin: bool(selected & pad_family),
+            self.pad_drop_ground_check: bool(selected & pad_family),
+            self.pai_min_height_spin: ProductType.PAI in selected,
+            self.pai_max_height_spin: ProductType.PAI in selected,
+            self.fhd_min_height_spin: ProductType.FHD in selected,
+            self.fhd_max_height_spin: ProductType.FHD in selected,
+            self.rumple_min_height_spin: ProductType.RUMPLE in selected,
+            self.point_density_per_area_check: ProductType.POINT_DENSITY in selected,
+            self.chm_interpolation_combo: ProductType.CHM in selected,
+        }
+        for label, field in self.product_setting_rows:
+            visible = active[field]
+            field.setVisible(visible)
+            if visible:
+                form.addRow(label, field)
+        form.invalidate()
+        form.activate()
 
     def _update_adaptive_visibility(self, *_args: object) -> None:
         """Compatibility alias for callers retained during workflow consolidation."""
@@ -5361,7 +5484,24 @@ class SettingsPage(MissionPage):
         self.open_on_startup_check = QCheckBox("Open Mission Control when QGIS starts")
         self.open_on_startup_check.setChecked(False)
         form.addRow("Startup", self.open_on_startup_check)
+        self.fallback_crs_edit = QLineEdit()
+        self.fallback_crs_edit.setReadOnly(True)
+        self.fallback_crs_edit.setPlaceholderText("Not set")
+        self.fallback_crs_edit.setProperty("contextHelp", semantic_help("tools.fallback_crs"))
+        fallback_row = QHBoxLayout()
+        fallback_row.addWidget(self.fallback_crs_edit, 1)
+        self.choose_fallback_crs_button = QPushButton("Choose CRS")
+        self.choose_fallback_crs_button.clicked.connect(self.choose_fallback_crs)
+        self.choose_fallback_crs_button.setProperty("contextHelp", semantic_help("tools.fallback_crs"))
+        self.clear_fallback_crs_button = QPushButton("Clear")
+        self.clear_fallback_crs_button.clicked.connect(self.clear_fallback_crs)
+        self.clear_fallback_crs_button.setProperty("contextHelp", "Clear the optional Fallback CRS preference. Valid source CRS metadata and saved source assignments are not changed.")
+        fallback_row.addWidget(self.choose_fallback_crs_button)
+        fallback_row.addWidget(self.clear_fallback_crs_button)
+        form.addRow("Fallback CRS", fallback_row)
         defaults.addLayout(form)
+        self.fallback_crs_explanation = _details_label(semantic_help("tools.fallback_crs"))
+        defaults.addWidget(self.fallback_crs_explanation)
         self.default_output_preview_label = _details_label("Global preferences apply to new runs. Job-specific scientific settings stay on Process.")
         defaults.addWidget(self.default_output_preview_label)
         _wire_collapsible_group(defaults_group)
@@ -5481,7 +5621,43 @@ class SettingsPage(MissionPage):
         technical_layout.addWidget(self.backend_technical_log)
         _wire_collapsible_group(self.backend_technical_log_group)
         self.set_processing_engine_state(None)
+        self._load_fallback_crs_preference()
         self.content_layout.addStretch(1)
+
+    def _load_fallback_crs_preference(self) -> None:
+        policy = default_source_local_policy_store().read()
+        self.fallback_crs_edit.setText(policy.fallback_crs)
+        self.clear_fallback_crs_button.setEnabled(bool(policy.fallback_crs))
+
+    def choose_fallback_crs(self) -> None:
+        """Select an optional fallback through QGIS's native CRS dialog."""
+        try:
+            from qgis.core import QgsCoordinateReferenceSystem
+            from qgis.gui import QgsProjectionSelectionDialog
+            dialog = QgsProjectionSelectionDialog(self)
+            current = self.fallback_crs_edit.text().strip()
+            if current:
+                dialog.setCrs(QgsCoordinateReferenceSystem(current))
+            execute = getattr(dialog, "exec", None) or getattr(dialog, "exec_", None)
+            if not callable(execute) or not execute():
+                return
+            crs = dialog.crs()
+            value = crs.authid() or crs.toWkt()
+            if not crs.isValid() or not value:
+                QMessageBox.warning(self, "Fallback CRS", "Choose a valid coordinate reference system.")
+                return
+        except Exception as exc:  # noqa: BLE001 - settings must fail gracefully outside QGIS.
+            QMessageBox.warning(self, "Fallback CRS", f"The QGIS CRS selector is unavailable: {exc}")
+            return
+        store = default_source_local_policy_store()
+        store.write(policy_with_fallback_crs(store.read(), value))
+        self._load_fallback_crs_preference()
+
+    def clear_fallback_crs(self) -> None:
+        """Remove only the optional fallback CRS preference."""
+        store = default_source_local_policy_store()
+        store.write(policy_with_fallback_crs(store.read(), ""))
+        self._load_fallback_crs_preference()
 
     def set_workspace_session(self, session: WorkspaceSession) -> None:
         """Display persisted workspace session preferences."""
@@ -5941,24 +6117,11 @@ def _take_layout_widget(layout: object, widget: QWidget) -> None:
 
 
 def _default_context_help(widget: QWidget) -> str:
-    """Return concise fallback help for otherwise-unregistered interactive controls."""
+    """Return structural help only; interactive controls require explicit semantics."""
     if isinstance(widget, QGroupBox) and widget.isCheckable():
         return f"Expand or collapse {widget.title()} settings."
-    if isinstance(widget, (QPushButton, QCheckBox)):
-        label = widget.text().replace("&", "").strip()
-        if isinstance(widget, QCheckBox):
-            return f"Turn {label} on or off for the current workflow." if label else ""
-        return f"Use {label} to continue this page action." if label else ""
-    if isinstance(widget, QComboBox):
-        label = widget.accessibleName().strip() or widget.currentText().strip() or "this option"
-        return f"Choose {label} for the current workflow."
-    if isinstance(widget, (QLineEdit, QSpinBox, QDoubleSpinBox)):
-        label = widget.accessibleName().strip()
-        if isinstance(widget, QLineEdit):
-            label = label or widget.placeholderText().strip()
-        return f"Set {label or 'this value'} for the current workflow."
-    if isinstance(widget, QListWidget):
-        return "Review or select items in this list."
+    if isinstance(widget, QPushButton):
+        return semantic_action_help(widget.text())
     return ""
 
 
@@ -6237,8 +6400,24 @@ def _wire_collapsible_group(group: CompactCollapsibleSection) -> None:
 def _set_collapsible_content_visible(group: CompactCollapsibleSection, visible: bool) -> None:
     content = getattr(group, "_content_widget", None)
     if isinstance(content, QWidget):
-        content.setMaximumHeight(16777215 if visible else 0)
         content.setVisible(visible)
+        if visible:
+            _fit_collapsible_to_visible_content(group)
+        else:
+            content.setMaximumHeight(0)
+            _refresh_layout_geometry(group)
+
+
+def _fit_collapsible_to_visible_content(group: CompactCollapsibleSection) -> None:
+    """Cap an expanded body at the live layout hint from currently visible rows."""
+    content = getattr(group, "_content_widget", None)
+    if not isinstance(content, QWidget):
+        return
+    layout = content.layout()
+    if layout is not None:
+        layout.invalidate()
+        layout.activate()
+        content.setMaximumHeight(max(0, layout.sizeHint().height()))
     _refresh_layout_geometry(group)
 
 
@@ -6267,7 +6446,11 @@ def _set_layout_visible(layout: object, visible: bool) -> None:
             _set_layout_visible(child_layout, visible)
 
 def _set_form_field_visible(form: QFormLayout, field: QWidget, visible: bool) -> None:
-    """Toggle a form field and label without relying on newer Qt row APIs."""
+    """Toggle a complete form row so hidden parameters contribute no geometry."""
+    set_row_visible = getattr(form, "setRowVisible", None)
+    if callable(set_row_visible):
+        set_row_visible(field, visible)
+        return
     label = form.labelForField(field)
     if label is not None:
         label.setVisible(visible)

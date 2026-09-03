@@ -7,6 +7,7 @@ from typing import Any
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QAction
 
+from .compat.qt import qt_enum
 from .core.qgis_compat import open_or_raise_mission_control, register_processing_provider, report_message, unregister_processing_provider
 from .processing_provider import PyForestScanProvider
 from .resources import plugin_icon
@@ -99,7 +100,7 @@ class PyForestScanPlugin:
         """Create, show, and raise the floating Mission Control window."""
         if self.mission_control is None:
             self.mission_control = MissionControlDock(self.iface, self.iface.mainWindow())
-            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.mission_control)
+            self.iface.addDockWidget(qt_enum(Qt, "RightDockWidgetArea", "DockWidgetArea"), self.mission_control)
             self.mission_control.setFloating(True)
             self.mission_control.resize(1400, 900)
         result = open_or_raise_mission_control(self.mission_control)

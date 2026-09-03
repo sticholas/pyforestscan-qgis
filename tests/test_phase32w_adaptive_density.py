@@ -16,7 +16,8 @@ class Phase32WAdaptiveDensityTests(unittest.TestCase):
         self.assertIn("setFixedHeight(28)", helper)
         self.assertIn("Qt.RightArrow", helper)
         self.assertIn("Qt.DownArrow", helper)
-        self.assertIn("content.setMaximumHeight(16777215 if visible else 0)", helper)
+        self.assertIn("content.setMaximumHeight(0)", helper)
+        self.assertIn("layout.sizeHint().height()", helper)
 
     def test_disclosure_has_subtle_hover_and_focus_treatment(self) -> None:
         self.assertIn("QToolButton#compactCollapsibleHeader:hover", STYLES)
