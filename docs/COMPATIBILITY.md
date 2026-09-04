@@ -21,7 +21,7 @@ QGIS 4 uses Qt 6; QGIS 3.44 LTR uses Qt 5.
 | Windows | x86_64 | 3.34.x | Qt 5 | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | - | Official release/API generation investigated; no runnable 3.34 installation was available. |
 | Windows | x86_64 | 3.40.x | Qt 5 | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | 2026-09-03 | Local 3.40.5/3.40.15 directories contain setup stubs only, not a runnable QGIS application. |
 | Windows | x86_64 | 3.44.13 | Qt 5.15.13 | PASS | PASS | PASS | SUPPORTED WITH LIMITATIONS | 2026-09-03 | Phase 32Z 24-case scientific UI matrix passed; established Windows CHM canary remains exact. Current 3.44.14 still needs repetition. |
-| Windows | x86_64 | 4.0.0 | Qt 6 | PASS | NOT TESTED | NOT TESTED | UI-COMPATIBLE | 2026-09-03 | Isolated 24-case Mission Control scientific matrix passed with no empty groups, overflow, or value migration. Full Prerun/engine/science/unload gate remains open. |
+| Windows | x86_64 | 4.0.0 | Qt 6 | PASS | NOT TESTED | NOT TESTED | UI-COMPATIBLE | 2026-09-03 | Scientific matrix plus 100 construction/unload and 100 navigation/state cycles passed from a clean extracted ZIP. Full provider/Prerun/engine/science gate remains open. |
 | Windows | x86_64 | 4.2.2 | Qt 6 | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | - | Current stable build was not installed on the test host. |
 | macOS | Apple Silicon | current 3.x/4.x | Qt 5/6 | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | - | Native fonts, notarization, engine install/repair, and science remain open. |
 | macOS | Intel | current 3.x/4.x | Qt 5/6 | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED | - | Viability depends on current upstream package availability. |

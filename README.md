@@ -1,12 +1,12 @@
 # PyForestScan QGIS
 
-Contributor architecture starts at [the Current Architecture Map](docs/development/CURRENT_ARCHITECTURE_MAP.md). Release hardening status and pending live checks are recorded in the Phase 29E audit and clean-machine matrix.
+Contributor architecture starts at [the Current Architecture Map](docs/development/CURRENT_ARCHITECTURE_MAP.md). The authoritative Phase 33A product map and evidence-based release scorecard record current ownership and open qualification gates.
 
 PyForestScan QGIS is a professional QGIS interface for [PyForestScan](https://pyforestscan.sefa.ai/), an open-source Python library for deriving forest structural products from airborne LiDAR. The plugin provides a guided desktop workflow for GIS users and an expert Processing Toolbox surface for analysts who need direct PyForestScan parameter control.
 
 PyForestScan remains the scientific engine. This repository provides the QGIS application layer: environment diagnostics, dataset inspection, product planning, processing orchestration, output loading, batch execution, workspace history, and documentation.
 
-Current internal beta release candidate: `0.1.0-beta.3`. Build artifacts are `dist/pyforestscan_qgis-v0.1.0-beta.3.zip` and `dist/pyforestscan_qgis.zip` after running `python3 scripts/package_plugin.py`.
+Current development beta: `0.2.0-beta.1`. Build artifacts are `dist/pyforestscan_qgis-v0.2.0-beta.1.zip` and `dist/pyforestscan_qgis.zip` after running `python3 scripts/package_plugin.py`. This is not RC1: see the [Phase 33A scorecard](docs/release/PHASE_33A_RELEASE_READINESS_SCORECARD.md).
 
 The tested QGIS and operating-system combinations are maintained in the
 [compatibility matrix](docs/COMPATIBILITY.md). The plugin does not claim support

@@ -19,6 +19,7 @@ from typing import Callable
 from qgis.PyQt.QtCore import QEvent, QObject, QSize, Qt, QThread, QTimer, QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
+    QAbstractButton,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -750,6 +751,7 @@ class DatasetPage(MissionPage):
         self.dataset_path_edit = QLineEdit()
         self.dataset_path_edit.setPlaceholderText("Choose LAS, LAZ, COPC, or ept.json")
         self.browse_dataset_button = QPushButton("Select Dataset")
+        self.dataset_path_edit.setProperty("contextHelp", "Choose the LAS, LAZ, COPC, or EPT dataset to inspect and process. Reading metadata does not modify the source.")
         self.browse_dataset_button.clicked.connect(self.browse_dataset)
         row.addWidget(self.dataset_path_edit)
         row.addWidget(self.browse_dataset_button)
@@ -759,6 +761,7 @@ class DatasetPage(MissionPage):
         self.output_folder_edit = QLineEdit()
         self.output_folder_edit.setPlaceholderText("Choose output folder")
         output_browse = QPushButton("Browse")
+        self.output_folder_edit.setProperty("contextHelp", "Folder where Dataset Explorer reports and subsequent run outputs will be written. Choosing it does not move or modify source LiDAR.")
         output_browse.clicked.connect(self.browse_output_folder)
         output_row.addWidget(self.output_folder_edit)
         output_row.addWidget(output_browse)
@@ -1430,6 +1433,7 @@ class PlanningPage(MissionPage):
         product_grid.setVerticalSpacing(SPACING_SM)
         for index, (product, label) in enumerate(PRODUCT_LABELS.items()):
             check = QCheckBox(label)
+            check.setProperty("contextHelp", semantic_help(f"product.{product.value}"))
             check.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
             if product is ProductType.CHM:
                 check.setChecked(True)
@@ -1467,7 +1471,9 @@ class PlanningPage(MissionPage):
         self.height_bin_spin.setSpecialValueText("Not specified")
         self.height_bin_spin.setValue(1.0)
         shared_form.addRow("Grid resolution", self.resolution_spin)
+        self.resolution_spin.setProperty("contextHelp", semantic_help("parameter.grid_resolution"))
         shared_form.addRow("Height bin size", self.height_bin_spin)
+        self.height_bin_spin.setProperty("contextHelp", semantic_help("parameter.voxel_height"))
         shared.addLayout(shared_form)
 
         product_params_group, product_params = _collapsible_section(self.content_layout, "Advanced Product Settings", checked=False)
@@ -1711,6 +1717,7 @@ class ProcessingPage(MissionPage):
         self.job_title_edit = QLineEdit("Mission Control Product Job")
         self.job_title_edit.setPlaceholderText("Optional run label")
         overview.addWidget(self.job_title_edit)
+        self.job_title_edit.setProperty("contextHelp", "Optional descriptive name stored with this run's logs and provenance. It does not change scientific calculations or output contents.")
 
         button_row = QHBoxLayout()
         button_row.setSpacing(ACTION_ROW_SPACING)
@@ -2230,6 +2237,7 @@ class BatchPage(MissionPage):
         folder_row = QHBoxLayout()
         self.input_folder_edit = QLineEdit()
         self.input_folder_edit.setPlaceholderText("Choose a folder containing LAS, LAZ, COPC, or EPT datasets")
+        self.input_folder_edit.setProperty("contextHelp", "Choose the folder or EPT root Mission Control will inspect for supported LiDAR sources. Discovery reads source metadata but does not modify source files.")
         input_browse = QPushButton("Browse")
         input_browse.clicked.connect(self.browse_input_folder)
         folder_row.addWidget(self.input_folder_edit, 1)
@@ -6199,6 +6207,11 @@ def register_context_help(widget: QWidget, text: str, owner: MissionPage) -> Non
     if not resolved:
         return
     widget.setProperty("resolvedContextHelp", resolved)
+    if not widget.toolTip():
+        widget.setToolTip(resolved)
+    if not widget.accessibleName():
+        label = widget.text() if isinstance(widget, QAbstractButton) else widget.objectName()
+        widget.setAccessibleName(str(label or type(widget).__name__).replace("_", " ").strip())
     widget.installEventFilter(owner)
 
 

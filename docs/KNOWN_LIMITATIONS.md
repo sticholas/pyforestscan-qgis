@@ -8,7 +8,7 @@
   oscillation. Network workers four and five are not a release assumption.
 - The final clean-package product/cancel/pause/resume matrix and a packaged
   medium/large Polygon smoke remain RC blockers. The plugin version therefore
-  remains `0.1.0-beta.3`.
+  is now `0.2.0-beta.1`; it remains a beta with the Phase 33A RC blockers documented in the release scorecard.
 - The managed installer still needs a release-pinned Micromamba artifact digest
   before public distribution.
 - Point-cloud viewing/editing and candidate feature extraction are deferred and

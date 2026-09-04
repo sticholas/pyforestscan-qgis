@@ -13,6 +13,7 @@ Release documentation describes how to package, validate, and evaluate PyForestS
 - [Repository Release Audit](REPOSITORY_RELEASE_AUDIT.md)
 - [Release Notes Template](RELEASE_NOTES_TEMPLATE.md)
 - [v0.1.0-beta.3 Release Notes](v0.1.0-beta.3.md)
+- [v0.2.0-beta.1 Release Notes](v0.2.0-beta.1.md)
 - [v0.1.0-beta.2 Release Notes](v0.1.0-beta.2.md)
 - [v0.1.0-beta.1 Release Notes](v0.1.0-beta.1.md)
 - [Clean Machine ZIP Smoke Test](CLEAN_MACHINE_SMOKE_TEST.md)

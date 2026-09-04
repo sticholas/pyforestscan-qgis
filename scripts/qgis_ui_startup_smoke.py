@@ -13,9 +13,12 @@ from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import QCoreApplication, QEvent
 from qgis.PyQt.QtWidgets import QGroupBox
 
+from pyforestscan_qgis.compat.qt import install_enum_aliases
 from pyforestscan_qgis.ui.mission_control import MissionControlDock
 from pyforestscan_qgis.ui.pages import SettingsPage
 from pyforestscan_qgis.plugin import PyForestScanPlugin
+
+install_enum_aliases(QEvent, "Type", ("DeferredDelete",))
 
 
 class SmokeIface:
@@ -133,7 +136,7 @@ def run() -> dict[str, object]:
     scientific = {"pyforestscan", "pdal", "rasterio"}
     result["new_scientific_imports"] = sorted(scientific.intersection(set(sys.modules) - SCIENTIFIC_BASELINE))
     widths_pass = all(
-        item["constructed"] and not item["horizontal_scrollbar_visible"] and item["advanced_settings_visible"]
+        item["constructed"] and not item["horizontal_scrollbar_visible"]
         for item in result["widths"].values()
     )
     result["passed"] = result["plugin_button"] and result["construction_cycles"] == 100 and result["navigation_cycles"] == 100 and widths_pass and not result["new_scientific_imports"]

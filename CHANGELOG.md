@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-beta.1 - 2026-09-03
+
+- Completed an evidence-based product and release audit without changing PyForestScan calculations, Processing Engine behavior, or scheduling policy.
+- Added an installed-QGIS semantic control inventory and reached 100 percent hover/focus help and accessible-name coverage for 84 visible default-state Mission Control controls in QGIS 3.44.13 and 4.0.0.
+- Repaired the QGIS 4 lifecycle smoke harness and passed 100 construction/unload plus 100 navigation/state cycles on both installed keystone runtimes.
+- Added the authoritative Phase 33A product map, readiness scorecard, explicit blocker matrix, and honest beta release notes.
+- Kept RC1 blocked on fresh full-product, source/mode, long-job, failure-injection, clean-engine-install, and cross-platform evidence.
+
 ## Phase 32Z - Scientific grouping and compatibility evidence
 
 - Replaced global balancing of unrelated parameter groups with persistent, vertically stacked product-owned scientific groups.
