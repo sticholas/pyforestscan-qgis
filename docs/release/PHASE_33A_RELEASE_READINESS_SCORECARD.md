@@ -55,9 +55,10 @@ Point-cloud viewer/editor, AI segmentation, automatic COPC conversion, and riche
 - QGIS 3.44.13: clean extracted starting ZIP, 100 construction/unload cycles, 100 navigation/state cycles, four engine states, and 420-800 px geometry, PASS.
 - QGIS 4.0.0: same installed-package lifecycle matrix after correcting the Qt 6 audit harness, PASS.
 - Both runtimes: 84 visible default-state controls, 100% semantic help/accessibility coverage, zero generic phrases.
+- Final `0.2.0-beta.1` package with the existing READY managed engine: the frozen 4,393,782-point bounded EPT CHM canary completed in 27.54 recorded seconds and reproduced SHA-256 `9c8d9c3ad11cebde5814c5df0222dca63c37326a78617058919d38756dfcdcee` exactly.
 - QGIS-free suite at audit start: 992 passed, 7 skipped.
 
-No fresh real LiDAR processing, engine installation, screenshot-based human review, long job, or failure injection was completed. Historical reports are supporting context, not fresh evidence.
+No fresh all-product workflow, engine installation, screenshot-based human review, substantial long job, or failure injection was completed. Historical reports are supporting context, not fresh evidence.
 
 ## Mandatory Matrix
 
@@ -65,7 +66,7 @@ No fresh real LiDAR processing, engine installation, screenshot-based human revi
 | --- | --- | --- |
 | Sources | LAS / LAZ / COPC / EPT | NOT TESTED fresh |
 | Modes | Folder / Polygon | NOT TESTED fresh end-to-end |
-| Products | CHM / DTM / PAD / PAI / FHD / Canopy Cover / Rumple / Point Density | contracts PASS; real outputs NOT TESTED fresh |
+| Products | CHM / DTM / PAD / PAI / FHD / Canopy Cover / Rumple / Point Density | CHM canary PASS exact; other real outputs NOT TESTED fresh |
 | Controls | Prerun / Process / Pause / Resume / Cancel / Recovery / Results loading | contracts PASS; live workflow NOT TESTED fresh |
 | Spatial | same / differing / unknown / fallback CRS | automated matrix PASS; live data NOT TESTED fresh |
 | Sizes | small / medium / large | historical only; NOT TESTED fresh |
