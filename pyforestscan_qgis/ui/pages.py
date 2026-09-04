@@ -51,6 +51,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ..core.adapter import PyForestScanAdapter
 from ..core.backend import BackendService
+from ..core.backend.system_summary import format_system_summary
 from ..core.build_identity import PLUGIN_CORRUPT, PLUGIN_MIXED_INSTALL, plugin_root, verify_session_files_unchanged
 from ..core.launch_attempt import LaunchAttempt, append_attempt_stage, create_launch_attempt, read_attempt_status
 from ..core.qgis_compat import build_qgis_compatibility_report, format_qgis_compatibility_report
@@ -104,6 +105,7 @@ from ..core.job_manager import JobExecutionError, JobManager
 from ..core.knowledge import RecommendationReport
 from ..core.jobs import JobRecord, JobStatus
 from ..core.processing_footprint import ProcessingFootprint, footprint_from_plan_file
+from ..core.processing_history import ProcessingHistoryEntry, format_recent_result
 from ..core.product_plan import (
     PRODUCT_LABELS,
     ProductPlanError,
@@ -526,7 +528,7 @@ class WorkspacePage(MissionPage):
         notes.addWidget(save_notes)
         _wire_collapsible_group(notes_group)
 
-        reset_group, reset = _collapsible_section(self.content_layout, "Troubleshooting: reset workspace", checked=False)
+        reset_group, reset = _collapsible_section(self.content_layout, "Workspace Reset", checked=False)
         self.reset_section = reset_group
         reset.addWidget(_body_label("Clear the current workspace from Mission Control or reset its progress/history. Workspace files remain local."))
         self.reset_button = QPushButton("Clear / Reset Current Workspace")
@@ -2174,6 +2176,8 @@ class BatchPage(MissionPage):
     logicalJobStarted = pyqtSignal(object)
     loadCurrentOutputsRequested = pyqtSignal()
     openCurrentOutputFolderRequested = pyqtSignal()
+    loadResultOutputsRequested = pyqtSignal(object)
+    resultNavigationFailed = pyqtSignal(str)
     clearCurrentResultRequested = pyqtSignal()
     sessionStateChanged = pyqtSignal(object)
     processingEngineSetupRequested = pyqtSignal()
@@ -2214,6 +2218,10 @@ class BatchPage(MissionPage):
         self._active_launch_attempt: LaunchAttempt | None = None
         self._last_launch_heartbeat_ms = 0
         self._last_session_state: MissionControlSessionState | None = None
+        self._recent_results: tuple[ProcessingHistoryEntry, ...] = ()
+        self._current_result_paths: tuple[Path, ...] = ()
+        self._current_output_folder: Path | None = None
+        self._current_report_path: Path | None = None
 
         self.mode_section, mode_layout = self.create_section("Processing Mode")
         self.batch_mode_combo = QComboBox()
@@ -2587,9 +2595,10 @@ class BatchPage(MissionPage):
         self.output_row = output_row
         self.output_folder_edit = QLineEdit()
         self.output_folder_edit.setPlaceholderText("Choose one output folder for the batch")
-        self.output_folder_edit.setProperty("contextHelp", "Choose where final product rasters and provenance will be written. Internal checkpoints remain in the managed job workspace.")
+        self.output_folder_edit.setProperty("contextHelp", "Folder for this job's final scientific outputs and human-readable processing report. Internal checkpoints remain in the managed workspace.")
         output_browse = QPushButton("Browse")
         output_browse.clicked.connect(self.browse_output_folder)
+        output_browse.setProperty("contextHelp", "Choose this job's output folder using the system folder picker.")
         output_row.addWidget(self.output_folder_edit, 1)
         output_row.addWidget(output_browse, 0)
         output_layout.addLayout(output_row)
@@ -3017,24 +3026,53 @@ class BatchPage(MissionPage):
         self.result_filter_combo.setVisible(False)
         self.batch_results.setVisible(False)
         process_layout.addWidget(self.batch_results)
-        self.current_result_section, current_result_layout = self.create_section("Current Result")
+        self.current_result_section, current_result_layout = self.create_section("Recent Results")
         self.current_result_label = _body_label("No current result. Configure the workflow and select Process LiDAR.")
         current_result_layout.addWidget(self.current_result_label)
         current_result_buttons = QHBoxLayout()
         self.load_current_result_button = QPushButton("Load into QGIS")
-        self.load_current_result_button.clicked.connect(self.loadCurrentOutputsRequested.emit)
+        self.load_current_result_button.clicked.connect(self.load_current_result)
+        self.load_current_result_button.setProperty("contextHelp", "Load the newest job's registered raster and table outputs into the current QGIS project.")
+        self.load_current_result_button.setAccessibleName("Load newest job outputs into QGIS")
         _apply_button_role(self.load_current_result_button,"primary")
-        self.open_current_result_button = QPushButton("Open Folder")
-        self.open_current_result_button.clicked.connect(self.openCurrentOutputFolderRequested.emit)
+        self.open_current_result_button = QPushButton("Open Outputs")
+        self.open_current_result_button.clicked.connect(self.open_current_outputs)
+        self.open_current_result_button.setProperty("contextHelp", "Open the folder containing the newest job's final scientific outputs.")
+        self.open_current_result_button.setAccessibleName("Open newest job output folder")
         _apply_button_role(self.open_current_result_button,"secondary")
+        self.open_current_report_button = QPushButton("Open Report")
+        self.open_current_report_button.clicked.connect(self.open_current_report)
+        self.open_current_report_button.setProperty("contextHelp", "Open the newest job's human-readable processing report.")
+        self.open_current_report_button.setAccessibleName("Open newest job processing report")
+        _apply_button_role(self.open_current_report_button,"secondary")
         self.clear_current_result_button = QPushButton("New Run")
         self.clear_current_result_button.clicked.connect(self.clearCurrentResultRequested.emit)
+        self.clear_current_result_button.setProperty("contextHelp", "Reset the current workflow inputs while preserving Recent Results.")
+        self.clear_current_result_button.setAccessibleName("Start a new run and preserve result history")
         _apply_button_role(self.clear_current_result_button,"neutral")
-        for button in (self.load_current_result_button,self.open_current_result_button,self.clear_current_result_button):current_result_buttons.addWidget(button)
+        for button in (self.load_current_result_button,self.open_current_result_button,self.open_current_report_button,self.clear_current_result_button):current_result_buttons.addWidget(button)
         current_result_buttons.addStretch(1);current_result_layout.addLayout(current_result_buttons)
         self.set_current_result(())
-        self.previous_runs_group,self.previous_runs_layout=_collapsible_section(self.content_layout,"Previous Runs",checked=False)
+        self.previous_runs_group,self.previous_runs_layout=_collapsible_section(self.content_layout,"Earlier Results",checked=False)
         self.previous_runs_list=QListWidget();self.previous_runs_list.setMaximumHeight(120);self.previous_runs_layout.addWidget(self.previous_runs_list)
+        self.previous_runs_list.setProperty("contextHelp", "Select an earlier registered processing result. Selecting it does not change the current workflow or job.")
+        self.previous_runs_list.setAccessibleName("Earlier processing results")
+        self.previous_runs_list.currentRowChanged.connect(self._update_historical_result_actions)
+        previous_actions = QHBoxLayout()
+        self.load_historical_result_button = QPushButton("Load Successful Outputs")
+        self.load_historical_result_button.clicked.connect(self.load_selected_historical_result)
+        self.load_historical_result_button.setProperty("contextHelp", "Load the selected historical job's successful outputs without changing the current job.")
+        self.open_historical_outputs_button = QPushButton("Open Outputs")
+        self.open_historical_outputs_button.clicked.connect(self.open_selected_historical_outputs)
+        self.open_historical_outputs_button.setProperty("contextHelp", "Open the selected historical job's final output folder.")
+        self.open_historical_report_button = QPushButton("Open Report")
+        self.open_historical_report_button.clicked.connect(self.open_selected_historical_report)
+        self.open_historical_report_button.setProperty("contextHelp", "Open the selected historical job's processing or error report.")
+        for button in (self.load_historical_result_button, self.open_historical_outputs_button, self.open_historical_report_button):
+            _apply_button_role(button, "secondary")
+            previous_actions.addWidget(button)
+        previous_actions.addStretch(1)
+        self.previous_runs_layout.addLayout(previous_actions)
         self.previous_runs_group.setVisible(False);_wire_collapsible_group(self.previous_runs_group)
         self._process_column_mode = ""
         self._product_column_count = 0
@@ -3100,7 +3138,6 @@ class BatchPage(MissionPage):
         self.content_layout.insertWidget(0, self.process_workspace)
         for section in self._routine_process_sections:
             self.process_workspace_layout.addWidget(section)
-        self.process_workspace_layout.addStretch(1)
         self._apply_process_layout(760)
 
     def _apply_process_layout(self, width: int) -> None:
@@ -3212,15 +3249,82 @@ class BatchPage(MissionPage):
         self._current_job_token=token;self.logicalJobStarted.emit(token);self.set_current_result(());return token
 
     def set_previous_runs(self,records) -> None:
-        self.previous_runs_list.clear()
-        for record in records:self.previous_runs_list.addItem(f"{record.token.created_at} - {record.state} - {record.token.logical_job_id[:8]}")
-        self.previous_runs_group.setVisible(bool(records))
+        """Retained compatibility hook; durable Recent Results owns presentation."""
 
-    def set_current_result(self,paths,output_folder=None) -> None:
-        paths=tuple(Path(path) for path in paths);has_result=bool(paths)
+    def set_current_result(self,paths,output_folder=None,report_path=None) -> None:
+        paths=tuple(Path(path) for path in paths);has_result=bool(paths or output_folder or report_path)
+        self._current_result_paths = paths
+        self._current_output_folder = Path(output_folder) if output_folder else None
+        self._current_report_path = Path(report_path) if report_path else None
         self.current_result_section.setVisible(has_result)
-        self.current_result_label.setText((f"{len(paths)} current output(s) ready: "+", ".join(path.name for path in paths)) if has_result else "No current result.")
-        self.load_current_result_button.setEnabled(has_result);self.open_current_result_button.setEnabled(bool(output_folder));self.clear_current_result_button.setEnabled(has_result)
+        self.current_result_label.setText(_compact_output_summary(paths) if paths else ("No successful outputs. Open the report for details." if has_result else "No recent results."))
+        self.load_current_result_button.setEnabled(bool(paths))
+        self.open_current_result_button.setEnabled(bool(self._current_output_folder))
+        self.open_current_report_button.setEnabled(bool(self._current_report_path))
+        self.clear_current_result_button.setEnabled(has_result)
+        if not has_result:
+            self.open_current_report_button.setText("Open Report")
+
+    def set_recent_results(self, entries: tuple[ProcessingHistoryEntry, ...]) -> None:
+        """Project bounded registry history without changing active workflow state."""
+        self._recent_results = tuple(entries[:15])
+        self.previous_runs_list.clear()
+        if self._recent_results:
+            newest = self._recent_results[0]
+            report_path = newest.error_report_path or newest.report_path
+            self.set_current_result(newest.outputs, newest.output_folder, report_path)
+            self.open_current_report_button.setText("View Error" if newest.error_report_path else "Open Report")
+        else:
+            self.set_current_result(())
+        for entry in self._recent_results[1:]:
+            self.previous_runs_list.addItem(format_recent_result(entry))
+        self.previous_runs_group.setVisible(len(self._recent_results) > 1)
+        if self.previous_runs_list.count():
+            self.previous_runs_list.setCurrentRow(0)
+        self._update_historical_result_actions()
+
+    def _selected_historical_result(self) -> ProcessingHistoryEntry | None:
+        row = self.previous_runs_list.currentRow()
+        return self._recent_results[row + 1] if 0 <= row < len(self._recent_results) - 1 else None
+
+    def _update_historical_result_actions(self, _row: int = -1) -> None:
+        entry = self._selected_historical_result()
+        self.load_historical_result_button.setEnabled(bool(entry and entry.outputs))
+        self.open_historical_outputs_button.setEnabled(bool(entry and entry.output_folder))
+        self.open_historical_report_button.setEnabled(bool(entry and (entry.error_report_path or entry.report_path)))
+        self.open_historical_report_button.setText("View Error" if entry and entry.error_report_path else "Open Report")
+
+    def load_selected_historical_result(self) -> None:
+        entry = self._selected_historical_result()
+        if entry is not None:
+            self.loadResultOutputsRequested.emit(tuple(Path(path) for path in entry.outputs))
+
+    def load_current_result(self) -> None:
+        if self._current_result_paths:
+            self.loadResultOutputsRequested.emit(self._current_result_paths)
+
+    def open_current_outputs(self) -> None:
+        self._open_result_path(self._current_output_folder, "output folder")
+
+    def open_current_report(self) -> None:
+        self._open_result_path(self._current_report_path, "processing report")
+
+    def open_selected_historical_outputs(self) -> None:
+        entry = self._selected_historical_result()
+        self._open_result_path(Path(entry.output_folder) if entry and entry.output_folder else None, "output folder")
+
+    def open_selected_historical_report(self) -> None:
+        entry = self._selected_historical_result()
+        value = entry.error_report_path or entry.report_path if entry else ""
+        self._open_result_path(Path(value) if value else None, "processing report")
+
+    def _open_result_path(self, path: Path | None, label: str) -> bool:
+        if path is None or not path.exists() or not QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))):
+            shown = str(path) if path is not None else "Unavailable"
+            message = f"Could not open the {label}. Path: {shown}"
+            self.resultNavigationFailed.emit(message)
+            return False
+        return True
 
     def _select_recommended_products(self) -> None:
         """Apply the concise guided default without requiring Advisor."""
@@ -4826,9 +4930,13 @@ class BatchPage(MissionPage):
             failed_names = ", ".join(product.product for item in getattr(result, "items", ()) for product in getattr(item, "product_results", ()) if product.status == "FAILED")
             if outcome == "PARTIAL_SUCCESS":
                 summary = f"Completed with issues - {succeeded} products succeeded; {failed} failed" + (f" ({failed_names})" if failed_names else "") + f"; {skipped} skipped. Successful outputs were preserved."
+            elif outcome == "SUCCEEDED":
+                completed_count = succeeded or getattr(result, "success_count", 0)
+                noun = "product" if completed_count == 1 else "products"
+                summary = f"Complete - {completed_count} {noun} created successfully."
             else:
                 summary = f"{status_display_word(completion_badge)} - {succeeded or getattr(result, 'success_count', 0)} completed; {failed or getattr(result, 'failure_count', 0)} failed."
-            _set_status_badge(self.status_label, completion_badge, f"Status: {summary} Report: {getattr(result, 'summary_html', '')}")
+            _set_status_badge(self.status_label, completion_badge, f"Status: {summary}")
             self._set_batch_summary(result)
             self.open_batch_folder_button.setEnabled(True)
             self.open_batch_folder_button.setVisible(True)
@@ -5493,6 +5601,19 @@ class ResultsPage(MissionPage):
         paths.extend(self._job_result_paths)
         return tuple(dict.fromkeys(paths))
 
+    def load_specific_outputs_to_qgis(self, paths: object) -> None:
+        """Load a historical registry entry without changing current-job identity."""
+        all_candidates = collect_loadable_outputs(tuple(Path(path) for path in paths), primary_only=True)
+        existing = tuple(self._loaded_output_paths) + self._project_layer_sources()
+        candidates = collect_loadable_outputs(tuple(output.path for output in all_candidates), existing_sources=existing, primary_only=True)
+        loaded = 0
+        for output in candidates:
+            if self._load_output(output):
+                self._loaded_output_paths.add(output.path)
+                loaded += 1
+        message = output_loading_summary(loaded,len(all_candidates),already_loaded_count=max(0,len(all_candidates)-len(candidates)),failed_count=max(0,len(candidates)-loaded))
+        self.outputsLoaded.emit(message,loaded,len(all_candidates))
+
     def _project_layer_sources(self) -> tuple[str, ...]:
         """Return existing QGIS layer source paths, if QGIS APIs are available."""
         try:
@@ -5593,10 +5714,12 @@ class SettingsPage(MissionPage):
         form = QFormLayout()
         self.default_output_folder = QLineEdit()
         self.default_output_folder.editingFinished.connect(self.emit_default_output_folder)
+        self.default_output_folder.setProperty("contextHelp", "Default folder where PyForestScan saves final scientific outputs and human-readable reports. Internal checkpoints and worker files use the managed workspace.")
         folder_row = QHBoxLayout()
         folder_row.addWidget(self.default_output_folder)
         browse = QPushButton("Browse")
         browse.clicked.connect(self.browse_default_output_folder)
+        browse.setProperty("contextHelp", "Choose the default output folder using the system folder picker.")
         folder_row.addWidget(browse)
         form.addRow("Default output folder", folder_row)
         self.fallback_crs_edit = QLineEdit()
@@ -5733,7 +5856,7 @@ class SettingsPage(MissionPage):
         self.backend_details.setPlainText("Processing Engine diagnostics appear here after Recheck or Open Diagnostics.")
         backend_detail_layout.addWidget(self.backend_details)
         self.backend_technical_log_group, technical_layout = _collapsible_section(
-            backend_detail_layout, "Technical log", checked=False
+            backend_detail_layout, "Technical Log", checked=False
         )
         self.backend_technical_log = QTextEdit()
         self.backend_technical_log.setReadOnly(True)
@@ -5892,11 +6015,7 @@ class SettingsPage(MissionPage):
         self.backend_install_readiness_label.setText(engine.message)
         if self.backend_install_running:
             return
-        self.backend_details.setPlainText(
-            f"{state.message}\n\n"
-            "The managed Processing Engine is user-local and does not modify QGIS Python, system Python, PATH, shell profiles, or QGIS folders. "
-            "Compatibility, setup details, paths, and logs are collected here automatically."
-        )
+        self.backend_details.setPlainText(format_system_summary(engine.status.value,self.backend_service.plugin_version,registry,engine.message))
 
     def verify_qgis_compatibility(self) -> None:
         """Display defensive QGIS compatibility details."""
@@ -5973,7 +6092,7 @@ class SettingsPage(MissionPage):
             self.backend_details.setPlainText(
                 "Processing Engine setup is running in the background.\n\n"
                 "Installation is running. Please wait for this step to finish.\n"
-                "Step progress is estimated. Technical logs are hidden under Troubleshooting."
+                "Step progress is estimated. Open Technical Log for detailed setup information."
             )
         else:
             self.backend_install_timer.stop()
@@ -6046,7 +6165,7 @@ class SettingsPage(MissionPage):
             f"Status: {status_value}\n"
             f"Log path: {getattr(result, 'log_path', None) or self.backend_service.paths.install_log}\n"
             f"Message: {getattr(result, 'message', '')}\n\n"
-            "Technical logs are available under Troubleshooting."
+            "Open Technical Log for detailed setup and runtime information."
         )
         self._refresh_backend_technical_log()
         notice = "Processing Engine is ready." if success else "Processing Engine setup needs review."
@@ -6064,7 +6183,7 @@ class SettingsPage(MissionPage):
             "Processing Engine Setup Result\n\n"
             "Final state: Install Failed\n"
             f"Message: {message}\n\n"
-            "Open Diagnostics under Troubleshooting for technical details."
+            "Open Technical Log for detailed setup and runtime information."
         )
         self._refresh_backend_technical_log()
         self.processingEngineStateChanged.emit(self.backend_service.processing_engine_state(quick=True))
@@ -6500,7 +6619,7 @@ class CompactCollapsibleSection(QWidget):
 def _collapsible_help_text(title: str) -> str:
     if title == "Advanced Scientific Settings":
         return "Adjust optional scientific parameters for the products you selected."
-    if title in {"Details", "Technical Details", "Troubleshooting"}:
+    if title in {"Details", "Technical Details", "Technical Log"}:
         return "Show additional technical information about the current operation."
     return f"Show or hide {title.lower()}."
 
@@ -6598,6 +6717,40 @@ def _size_text_edit_to_content(widget: QTextEdit, *, visible_lines: int = 6) -> 
     height = min(lines, visible_lines) * 19 + 14
     widget.setMinimumHeight(height)
     widget.setMaximumHeight(height)
+    widget.updateGeometry()
+    parent = widget.parentWidget()
+    while parent is not None and not isinstance(parent, CompactCollapsibleSection):
+        parent = parent.parentWidget()
+    if isinstance(parent, CompactCollapsibleSection):
+        parent._content_widget.setMaximumHeight(16777215)
+        _refresh_layout_geometry(parent)
+        if parent.isChecked():
+            QTimer.singleShot(0, lambda group=parent: _fit_collapsible_to_visible_content(group))
+
+
+def _compact_output_summary(paths: tuple[Path, ...]) -> str:
+    """Prefer product names over an unbounded raw filename list."""
+    labels = {
+        "chm": "CHM", "dtm": "DTM", "pad": "PAD", "pai": "PAI", "fhd": "FHD",
+        "canopy_cover": "Canopy Cover", "rumple": "Rumple", "point_density": "Point Density",
+        "voxel_statistic": "Voxel Statistic",
+    }
+    products: list[str] = []
+    secondary: list[str] = []
+    for path in paths:
+        stem = path.stem.lower()
+        if stem == "rumple_summary":
+            secondary.append("Rumple summary")
+            continue
+        label = labels.get(stem, stem.replace("_", " ").title())
+        if label not in products:
+            products.append(label)
+    line = f"{len(paths)} outputs ready"
+    if products:
+        line += "\n" + " · ".join(products)
+    if secondary:
+        line += "\n+ " + " · ".join(secondary)
+    return line
 
 
 def _height_spin(value: float) -> QDoubleSpinBox:

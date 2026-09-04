@@ -238,7 +238,7 @@ class MissionControlUxTests(unittest.TestCase):
         self.assertNotIn('_collapsible_section(self.content_layout, "Batch Footprint Estimate"', source)
         self.assertIn('Technical Report', source)
         self.assertIn('_collapsible_section(self.content_layout, "Details", checked=False)', source)
-        self.assertIn('backend_detail_layout, "Technical log", checked=False', source)
+        self.assertIn('backend_detail_layout, "Technical Log", checked=False', source)
         self.assertIn('self.recommendations_card.setVisible(bool(report.suggested_next_actions))', source)
         self.assertIn('self.warnings_card.setVisible(bool(report.warnings))', source)
         self.assertIn('self.jobs_section.setVisible(False)', source)

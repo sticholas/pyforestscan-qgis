@@ -35,7 +35,7 @@ class Phase29AProductizationUiTests(unittest.TestCase):
         self.assertNotIn('"Additional Tools", checked=False', PAGES)
         self.assertIn('QPushButton("Open Diagnostics")', PAGES)
         self.assertIn('backend_detail_layout.addLayout(backend_troubleshooting_actions)', PAGES)
-        self.assertIn('backend_detail_layout, "Technical log", checked=False', PAGES)
+        self.assertIn('backend_detail_layout, "Technical Log", checked=False', PAGES)
 
     def test_live_status_strip_is_responsive_and_textual(self):
         self.assertIn('self.ui.statusFrame.setVisible(True)', MISSION)

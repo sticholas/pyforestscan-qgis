@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import platform
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
@@ -21,6 +23,12 @@ class ProcessingHistoryEntry:
     status: str
     elapsed_seconds: float
     outputs: tuple[str, ...]
+    output_folder: str = ""
+    report_path: str = ""
+    error_report_path: str = ""
+    plan_signature: str = ""
+    area_hectares: float | None = None
+    crs: str = ""
 
     def to_dict(self) -> dict[str, object]:
         data = asdict(self)
@@ -49,8 +57,46 @@ def read_processing_history(path: Path | str) -> tuple[ProcessingHistoryEntry, .
         return ()
     entries = []
     for item in payload.get("runs", ()):
-        entries.append(ProcessingHistoryEntry(**{**item, "products": tuple(item.get("products", ())), "outputs": tuple(item.get("outputs", ())) }))
+        fields = ProcessingHistoryEntry.__dataclass_fields__
+        values = {key: value for key, value in item.items() if key in fields}
+        entries.append(ProcessingHistoryEntry(**{**values, "products": tuple(item.get("products", ())), "outputs": tuple(item.get("outputs", ())) }))
     return tuple(entries)
 
 
-__all__ = ["ProcessingHistoryEntry", "append_processing_history", "read_processing_history"]
+def default_processing_history_path(environ: dict[str, str] | None = None, home: Path | None = None) -> Path:
+    """Return the cross-platform user-local history index without creating it."""
+    env = environ if environ is not None else os.environ
+    base_home = home or Path.home()
+    system = platform.system().lower()
+    if system.startswith("win"):
+        base = Path(env.get("LOCALAPPDATA") or base_home / "AppData" / "Local") / "PyForestScan"
+    elif system == "darwin":
+        base = base_home / "Library" / "Application Support" / "PyForestScan"
+    else:
+        base = Path(env.get("XDG_DATA_HOME") or base_home / ".local" / "share") / "PyForestScan"
+    return base / "jobs" / "processing_history.json"
+
+
+def format_recent_result(entry: ProcessingHistoryEntry) -> str:
+    """Return a compact product-oriented result summary."""
+    status = {
+        "SUCCEEDED": "Complete",
+        "complete": "Complete",
+        "PARTIAL_SUCCESS": "Completed with issues",
+        "partial_success": "Completed with issues",
+        "FAILED": "Failed",
+        "failed": "Failed",
+        "CANCELLED": "Cancelled",
+        "cancelled": "Cancelled",
+    }.get(entry.status, entry.status.replace("_", " ").title())
+    labels = {
+        "chm": "CHM", "dtm": "DTM", "pad": "PAD", "pai": "PAI", "fhd": "FHD",
+        "canopy_cover": "Canopy Cover", "rumple": "Rumple", "point_density": "Point Density",
+    }
+    products = " · ".join(labels.get(item, item.replace("_", " ").title()) for item in entry.products) or "No completed products"
+    area = f" · {entry.area_hectares:.1f} ha" if entry.area_hectares is not None else ""
+    source = Path(entry.source).parent.name if Path(entry.source).name.lower() == "ept.json" else Path(entry.source).name
+    return f"{status} · {len(entry.outputs)} outputs{area} · {entry.date}\n{source or 'Processing job'}\n{products}"
+
+
+__all__ = ["ProcessingHistoryEntry", "append_processing_history", "read_processing_history", "default_processing_history_path", "format_recent_result"]

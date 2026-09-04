@@ -14,7 +14,7 @@ class Phase32VCompactDensityTests(unittest.TestCase):
         self.assertIn("self.content_layout.setSizeConstraint(QLayout.SetNoConstraint)", PAGES[batch_start:batch_start + 300])
         install = PAGES[PAGES.index("def _install_process_workspace"):PAGES.index("def _apply_process_layout")]
         self.assertIn("QSizePolicy.Expanding, QSizePolicy.Maximum", install)
-        self.assertIn("self.process_workspace_layout.addStretch(1)", install)
+        self.assertNotIn("self.process_workspace_layout.addStretch(1)", install)
         self.assertIn("setSizeConstraint(QLayout.SetNoConstraint)", install)
 
     def test_collapsible_body_has_true_zero_height(self) -> None:

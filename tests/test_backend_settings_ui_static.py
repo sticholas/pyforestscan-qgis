@@ -50,7 +50,7 @@ class BackendSettingsUiStaticTests(unittest.TestCase):
         self.assertIn("Elapsed time:", source)
         self.assertIn("Latest message:", source)
         self.assertIn("Step progress is estimated.", source)
-        self.assertIn('backend_detail_layout, "Technical log", checked=False', source)
+        self.assertIn('backend_detail_layout, "Technical Log", checked=False', source)
 
     def test_install_running_state_disables_backend_action_buttons(self) -> None:
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")

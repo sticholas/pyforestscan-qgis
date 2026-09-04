@@ -1,5 +1,15 @@
 # Changelog
 
+## Phase 33C - Results workspace and diagnostic navigation
+
+- Removed the Process workspace stretch that produced a large blank terminal area.
+- Added a durable, newest-first Recent Results view capped at 15 registered jobs.
+- Repaired Qt-native Open Outputs and Open Report navigation with visible failures.
+- Fixed first-expansion sizing for updated Prerun Details content.
+- Added a registry-derived system summary ahead of the collapsed Technical Log.
+- Added semantic help for output paths and result actions and standardized terminal
+  wording on **Complete** rather than pre-run **Ready**.
+
 ## Phase 33B - All-product execution hardening
 
 - Corrected the PyForestScan 0.4.1 DTM integration contract by preserving its list of structured point arrays; the captured 64.3 ha bounded EPT request now produces a valid EPSG:6635 DTM.

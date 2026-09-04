@@ -1,5 +1,15 @@
 # Mission Control
 
+## Recent Results
+
+The Process page ends with a compact Recent Results area. It shows up to 15
+registry-backed jobs, newest first, without scanning output folders. Each entry can
+load its registered outputs into QGIS or open its final output folder and
+human-readable report. Starting a new run preserves this history.
+
+The Processing section expands only while useful activity is running and returns to
+a compact **Complete** or **Completed with issues** summary at terminal state.
+
 ## Process page
 
 Process follows one continuous sequence: choose Mode, LiDAR Data, Processing Area, Products, optional Advanced Scientific Settings, Output, then run Prerun Check and Process LiDAR. Major sections remain in this order at every dock width. Products and Advanced adapt internally to available width without splitting the workflow.

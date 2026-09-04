@@ -19,6 +19,7 @@ from ..core.active_job import ActiveProcessingJobController,CurrentJobToken
 from ..core.dataset_report import report_to_dict as dataset_report_to_dict
 from ..core.knowledge import KnowledgeEngine
 from ..core.jobs import JobRecord, JobStatus
+from ..core.processing_history import ProcessingHistoryEntry, append_processing_history, default_processing_history_path, read_processing_history
 from ..core.workspace import RunContext, WorkspaceHistoryRun, WorkspaceManager, WorkspaceSession, WorkspaceStatus, summarize_recent_workspaces
 from ..resources import plugin_root
 from .pages import (
@@ -83,6 +84,7 @@ class MissionControlDock(QDockWidget):
         self.loaded_result_paths: set[Path] = set()
         self.session_state = MissionControlSessionState()
         self.active_job_controller = ActiveProcessingJobController()
+        self.processing_history_path = default_processing_history_path()
         self._mission_session_id = __import__("uuid").uuid4().hex
         self.session_events = SessionStateEvents(self)
         self.root_widget = QWidget(self)
@@ -151,6 +153,7 @@ class MissionControlDock(QDockWidget):
         self._populate_navigation()
         self._wire_signals()
         self._restore_workspace_session()
+        self._refresh_recent_results()
         self._refresh_home()
         self._update_status_bar()
         self._ui_lifecycle = UiInitializationState.READY
@@ -266,7 +269,8 @@ class MissionControlDock(QDockWidget):
         self.batch_page.jobUpdatedForJob.connect(self._set_job_status_for_job)
         self.batch_page.batchCompletedForJob.connect(self._set_batch_status_for_job)
         self.batch_page.loadCurrentOutputsRequested.connect(self.results_page.load_outputs_to_qgis)
-        self.batch_page.openCurrentOutputFolderRequested.connect(self.results_page.open_output_folder)
+        self.batch_page.loadResultOutputsRequested.connect(self.results_page.load_specific_outputs_to_qgis)
+        self.batch_page.resultNavigationFailed.connect(lambda message: self._notify(message, "warning"))
         self.batch_page.clearCurrentResultRequested.connect(self._clear_current_run_state)
         self.batch_page.sessionStateChanged.connect(self._set_session_state)
         self.batch_page.processingEngineSetupRequested.connect(self.settings_page.install_backend_internal_beta)
@@ -543,7 +547,7 @@ class MissionControlDock(QDockWidget):
     def _begin_current_job(self):
         token=CurrentJobToken.create(self._project_identity(),self._mission_session_id,self.session_state.plan_signature,self.session_state.repository_path,self.session_state.polygon_geometry_signature)
         self.active_job_controller.begin(token)
-        self.results_page.begin_current_job();self.batch_page.set_current_result(());self.batch_page.set_previous_runs(self.active_job_controller.history)
+        self.results_page.begin_current_job();self._refresh_recent_results()
         self.job_history=();self.loaded_result_paths=set()
         return token
 
@@ -555,6 +559,7 @@ class MissionControlDock(QDockWidget):
         outcome=str(getattr(result,"scientific_outcome","FAILED"))
         state={"SUCCEEDED":"complete","PARTIAL_SUCCESS":"partial_success","CANCELLED":"cancelled"}.get(outcome,"failed")
         if not self.active_job_controller.update(token,state,outputs):return
+        self._record_processing_history(result,token)
         self.session_state = self.session_state.with_updates(
             processing_status=state,
             generated_outputs=tuple(str(path) for path in outputs),
@@ -562,7 +567,8 @@ class MissionControlDock(QDockWidget):
         )
         self._set_batch_status(result)
         output_folder=Path(outputs[0]).parent if outputs else None
-        self.batch_page.set_current_result(outputs,output_folder)
+        self.batch_page.set_current_result(outputs,output_folder,getattr(result,"summary_html",None))
+        self._refresh_recent_results()
 
     def _set_job_status(self, job: JobRecord) -> None:
         existing = tuple(item for item in self.job_history if item.job_id != job.job_id)
@@ -654,7 +660,7 @@ class MissionControlDock(QDockWidget):
     def _clear_current_run_state(self) -> None:
         """Clear active run state after the Results page is reset."""
         self.state = self.state.without_active_run().with_activity("Results cleared", "Current run cleared")
-        self.active_job_controller.clear_current();self.batch_page.set_current_result(());self.batch_page.set_previous_runs(self.active_job_controller.history)
+        self.active_job_controller.clear_current();self._refresh_recent_results()
         self.job_history = ()
         self.loaded_result_paths = set()
         self.session_state = MissionControlSessionState()
@@ -664,6 +670,57 @@ class MissionControlDock(QDockWidget):
         self._refresh_home()
         self._update_status_bar()
         self._notify("Current run cleared.", "info")
+
+    def _record_processing_history(self, result: object, token: CurrentJobToken) -> None:
+        """Persist one bounded result record without scanning output folders."""
+        items = tuple(getattr(result, "items", ()))
+        product_results = tuple(product for item in items for product in getattr(item, "product_results", ()))
+        products = tuple(dict.fromkeys(
+            str(getattr(product.product, "value", product.product))
+            for product in product_results
+        ))
+        if not products:
+            products = tuple(dict.fromkeys(
+                str(getattr(product, "value", product))
+                for item in items
+                for product in getattr(item, "requested_products", ())
+            ))
+        outputs = tuple(str(path) for item in items for path in getattr(item, "outputs", ()) if Path(path).exists())
+        source = str(getattr(items[0], "dataset_path", "")) if items else ""
+        error_report = ""
+        for item in items:
+            run_folder_value = getattr(getattr(item, "run_context", None), "run_folder", "")
+            if not run_folder_value:
+                continue
+            run_folder = Path(run_folder_value)
+            candidate = run_folder / "diagnostics" / "error_report.html"
+            if candidate.is_file():
+                error_report = str(candidate)
+                break
+        entry = ProcessingHistoryEntry(
+            job_id=token.logical_job_id,
+            attempt_id=token.attempt_id,
+            date=str(getattr(result, "finished_at", "") or token.created_at),
+            source=source,
+            source_mode="polygon" if self.session_state.polygon_geometry_signature else "folder",
+            products=products,
+            status=str(getattr(result, "scientific_outcome", "FAILED")),
+            elapsed_seconds=0.0,
+            outputs=outputs,
+            output_folder=str(Path(outputs[0]).parent) if outputs else "",
+            report_path=str(getattr(result, "summary_html", "") or ""),
+            error_report_path=error_report,
+            plan_signature=token.plan_signature,
+            area_hectares=(self.session_state.polygon_area / 10000.0 if self.session_state.polygon_area is not None else None),
+        )
+        try:
+            append_processing_history(self.processing_history_path, entry, limit=15)
+        except OSError as exc:
+            self._notify(f"Processing completed, but Recent Results could not be updated: {exc}", "warning")
+
+    def _refresh_recent_results(self) -> None:
+        """Project the bounded authoritative history index."""
+        self.batch_page.set_recent_results(read_processing_history(self.processing_history_path)[:15])
 
     def _set_backend_page_status(self, status: str, message: str) -> None:
         """Keep Environment and Home synchronized after Backend page actions."""
