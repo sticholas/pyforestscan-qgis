@@ -419,6 +419,8 @@ class AdvancedProcessingTests(unittest.TestCase):
         fake_filters.filter_select_ground = lambda arrays: calls.append("filter_select_ground") or arrays  # type: ignore[attr-defined]
 
         def generate_dtm(points, resolution=2.0):
+            self.assertIsInstance(points, list)
+            self.assertIs(points[0], point_array)
             calls.append(f"generate_dtm:{resolution}")
             return np.ones((1, 1), dtype="f8"), [0.0, 1.0, 0.0, 1.0]
 

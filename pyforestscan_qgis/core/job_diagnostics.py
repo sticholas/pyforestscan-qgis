@@ -6,11 +6,15 @@ import json
 import os
 import platform
 import traceback as traceback_module
+from html import escape
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from zipfile import ZIP_DEFLATED, ZipFile
+
+from .batch import BatchResult
 
 
 class JobErrorCode(str, Enum):
@@ -29,6 +33,7 @@ class JobErrorCode(str, Enum):
     PYFORESTSCAN_EXECUTION_FAILED = "PYFORESTSCAN_EXECUTION_FAILED"
     PDAL_PIPELINE_FAILED = "PDAL_PIPELINE_FAILED"
     PRODUCT_CALCULATION_FAILED = "PRODUCT_CALCULATION_FAILED"
+    PRODUCT_EXECUTION_FAILED = "PRODUCT_EXECUTION_FAILED"
     OUTPUT_WRITE_FAILED = "OUTPUT_WRITE_FAILED"
     OUTPUT_MASK_FAILED = "OUTPUT_MASK_FAILED"
     HAG_COLLINEAR_INPUT = "HAG_COLLINEAR_INPUT"
@@ -133,6 +138,17 @@ def classify_exception(exc: BaseException, *, stage: str = "Processing") -> Stru
         "preparation_validation_failed": (JobErrorCode.PREPARATION_VALIDATION_FAILED.value, "The prepared height values did not pass scientific quality checks.", ("Review preparation diagnostics and provide a DTM if appropriate.",)),
         "height above ground pipeline failed": (JobErrorCode.HAG_GENERATION_FAILED.value, "Height normalization failed during LiDAR preparation.", ("Review ground classification or provide a compatible DTM.",)),
     }
+    if "dtm generation failed" in lowered or "invalid index to scalar" in lowered:
+        return StructuredJobError(
+            code=JobErrorCode.PRODUCT_EXECUTION_FAILED.value,
+            user_message="DTM could not be generated because the ground-surface calculation returned an unexpected data structure.",
+            technical_message=text,
+            stage="DTM",
+            exception_type=type(exc).__name__,
+            traceback=traceback_text,
+            suggested_actions=("Review DTM product diagnostics.", "Retry with the corrected plugin build."),
+            retryable=True,
+        )
     if "scientific_runtime_boundary" in lowered or "required dependency is not importable" in lowered:
         return StructuredJobError(
             code=JobErrorCode.ENGINE_DEPENDENCY_MISSING.value,
@@ -254,6 +270,47 @@ def support_summary(
 
 def sanitized_export_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return _json_ready({key: _redact(value) for key, value in payload.items()})
+
+
+def write_failure_artifacts(result: BatchResult, diagnostics_dir: Path) -> tuple[Path, Path] | None:
+    """Write one readable error report and one bounded technical bundle."""
+    if result.scientific_outcome == "SUCCEEDED":
+        return None
+    diagnostics_dir.mkdir(parents=True, exist_ok=True)
+    error_report = diagnostics_dir / "error_report.html"
+    bundle = diagnostics_dir / "technical_diagnostics.zip"
+    products = tuple(product for item in result.items for product in item.product_results)
+    rows = "".join(
+        "<tr>"
+        f"<td>{escape(product.product)}</td><td>{escape(product.status)}</td>"
+        f"<td>{escape(product.message)}</td><td>{escape(product.error_code or 'None')}</td>"
+        "</tr>"
+        for product in products
+    )
+    successful = ", ".join(product.product for product in products if product.status == "SUCCEEDED") or "None"
+    failed = ", ".join(product.product for product in products if product.status == "FAILED") or "None"
+    write_text(
+        error_report,
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>PyForestScan processing issue</title>"
+        "<style>body{font-family:Arial,sans-serif;margin:24px;color:#23313a;max-width:1000px}"
+        "table{border-collapse:collapse;width:100%}td,th{border:1px solid #dfe6e9;padding:8px;text-align:left}"
+        "th{background:#eef3f4}</style></head><body>"
+        f"<h1>{escape(result.scientific_outcome.replace('_', ' ').title())}</h1>"
+        f"<p><strong>Successful products:</strong> {escape(successful)}<br>"
+        f"<strong>Failed products:</strong> {escape(failed)}<br>"
+        f"<strong>Output folder:</strong> {escape(str(result.batch_folder))}</p>"
+        "<p>Successful outputs were preserved. Attach the technical diagnostics ZIP when reporting a problem.</p>"
+        f"<table><tr><th>Product</th><th>Status</th><th>Explanation</th><th>Error code</th></tr>{rows}</table>"
+        "</body></html>",
+    )
+    with ZipFile(bundle, "w", ZIP_DEFLATED) as archive:
+        for path in sorted(diagnostics_dir.rglob("*")):
+            if path.is_file() and path != bundle:
+                archive.write(path, path.relative_to(diagnostics_dir))
+        for path in (result.summary_json, result.summary_html):
+            if path.is_file():
+                archive.write(path, Path("report") / path.name)
+    return error_report, bundle
 
 
 def _redact(value: Any) -> Any:

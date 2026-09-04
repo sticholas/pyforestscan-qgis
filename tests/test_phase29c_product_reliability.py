@@ -42,9 +42,10 @@ class CurrentAttemptUiContracts(unittest.TestCase):
         loader = self.control[self.control.index("def _load_job_outputs"):self.control.index("def _layer_name")]
         self.assertIn("if job.status != JobStatus.COMPLETED", loader)
 
-    def test_partial_batch_does_not_register_successful_item_outputs(self) -> None:
+    def test_partial_batch_registers_successful_item_outputs(self) -> None:
         method = self.control[self.control.index("def _set_batch_status"):self.control.index("def _set_outputs_loaded_status")]
-        self.assertIn("registered_outputs = output_paths if failure_count == 0 else ()", method)
+        self.assertIn("registered_outputs = output_paths", method)
+        self.assertIn('{"completed", "partial_success"}', method)
 
     def test_input_change_clears_active_run_context(self) -> None:
         invalidation = self.control[self.control.index("def _invalidate_current_workflow_outputs"):self.control.index("def _set_environment_status")]

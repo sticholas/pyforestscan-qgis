@@ -112,11 +112,13 @@ def append_attempt_stage(attempt: LaunchAttempt | None, stage: str, **details: A
                     stages.append(entry)
                 if len(stages) > 256:
                     payload["stages"] = [stages[0], *stages[-255:]]
-            if stage == "FAILED": payload["outcome"] = "FAILED"
+            if stage in {"FAILED", "SCIENTIFIC_FAILED"}: payload["outcome"] = "FAILED"
             elif stage == "CANCELLED": payload["outcome"] = "CANCELLED"
+            elif stage == "PARTIAL_SUCCESS": payload["outcome"] = "PARTIAL_SUCCESS"
+            elif stage == "SCIENTIFIC_SUCCEEDED": payload["outcome"] = "SUCCEEDED"
             elif stage in {"COORDINATOR_PROCESS_CREATED", "COORDINATOR_STARTED", "FIRST_WORKER_STARTED"}: payload["outcome"] = "RUNNING"
             elif stage == "FINALIZING": payload["outcome"] = "FINALIZING"
-            elif stage == "COMPLETED": payload["outcome"] = "COMPLETED"
+            elif stage == "COMPLETED": payload["outcome"] = "SUCCEEDED"
             elif payload.get("outcome") in {None, "STARTING"}: payload["outcome"] = "LAUNCHING"
             _write(attempt.trace_path, payload)
             latest_payload = {

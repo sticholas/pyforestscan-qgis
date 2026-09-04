@@ -1,5 +1,7 @@
 # Documentation Index
 
+Phase 33B live failure evidence: [all-product attempt reconstruction and DTM corrective replay](development/PHASE_33B_LIVE_ALL_PRODUCT_FAILURE_RECONSTRUCTION.md).
+
 Phase 33A release audit: [authoritative product map](development/PHASE_33A_RELEASE_PRODUCT_MAP.md), [readiness scorecard](release/PHASE_33A_RELEASE_READINESS_SCORECARD.md), and [0.2.0-beta.1 notes](releases/v0.2.0-beta.1.md).
 
 Release-candidate productization: [Quick Start](getting-started/QUICK_START.md),

@@ -551,17 +551,18 @@ class MissionControlDock(QDockWidget):
         if self.active_job_controller.accepts(token):self._set_job_status(job)
 
     def _set_batch_status_for_job(self,result,token) -> None:
-        outputs=tuple(Path(output) for item in getattr(result,"items",()) if getattr(item,"status","")=="completed" for output in getattr(item,"outputs",()) if Path(output).exists())
-        state="complete" if getattr(result,"failure_count",0)==0 else "failed"
+        outputs=tuple(Path(output) for item in getattr(result,"items",()) if getattr(item,"status","") in {"completed","partial_success"} for output in getattr(item,"outputs",()) if Path(output).exists())
+        outcome=str(getattr(result,"scientific_outcome","FAILED"))
+        state={"SUCCEEDED":"complete","PARTIAL_SUCCESS":"partial_success","CANCELLED":"cancelled"}.get(outcome,"failed")
         if not self.active_job_controller.update(token,state,outputs):return
         self.session_state = self.session_state.with_updates(
             processing_status=state,
-            generated_outputs=tuple(str(path) for path in outputs) if state == "complete" else (),
+            generated_outputs=tuple(str(path) for path in outputs),
             loaded_outputs=(),
         )
         self._set_batch_status(result)
         output_folder=Path(outputs[0]).parent if outputs else None
-        self.batch_page.set_current_result(outputs if state=="complete" else (),output_folder if state=="complete" else None)
+        self.batch_page.set_current_result(outputs,output_folder)
 
     def _set_job_status(self, job: JobRecord) -> None:
         existing = tuple(item for item in self.job_history if item.job_id != job.job_id)
@@ -594,17 +595,24 @@ class MissionControlDock(QDockWidget):
         success_count = getattr(result, "success_count", 0)
         failure_count = getattr(result, "failure_count", 0)
         skipped_count = getattr(result, "skipped_count", 0)
-        self.batch_status = f"Completed {success_count}; failed {failure_count}; skipped {skipped_count}"
+        product_success = getattr(result, "product_success_count", 0)
+        product_failure = getattr(result, "product_failure_count", 0)
+        product_skipped = getattr(result, "product_skipped_count", 0)
+        self.batch_status = (
+            f"{product_success} products completed; {product_failure} failed; {product_skipped} skipped"
+            if product_success or product_failure or product_skipped
+            else f"Completed {success_count}; failed {failure_count}; skipped {skipped_count}"
+        )
         state = self.state.with_activity("Batch complete", self.batch_status)
         output_paths = tuple(
             Path(output)
             for item in getattr(result, "items", ())
-            if getattr(item, "status", "") == "completed"
+            if getattr(item, "status", "") in {"completed", "partial_success"}
             for output in getattr(item, "outputs", ())
             if Path(output).exists()
         )
         registry_path = getattr(result, "output_registry_path", None)
-        registered_outputs = output_paths if failure_count == 0 else ()
+        registered_outputs = output_paths
         for path in (*registered_outputs, summary_html, summary_csv, summary_json):
             if isinstance(path, Path):
                 state = state.with_report_path(path)
@@ -616,14 +624,20 @@ class MissionControlDock(QDockWidget):
                 self._record_workspace_recent("batch_report", path, path.name)
         if registered_outputs:
             self.results_page.set_report_paths(registered_outputs)
-        if failure_count == 0 and isinstance(registry_path, Path):
+        if isinstance(registry_path, Path):
             self.results_page.set_report_paths((registry_path,))
-        if getattr(result, "load_outputs_after_completion", False) and failure_count == 0:
+        if getattr(result, "load_outputs_after_completion", False) and output_paths:
             self.results_page.load_outputs_to_qgis(primary_only=True)
         self._save_workspace_session()
         self._refresh_home()
         self._update_status_bar()
-        self._notify("Batch completed." if failure_count == 0 else "Batch completed with files to review.", "success" if failure_count == 0 else "warning")
+        outcome = str(getattr(result, "scientific_outcome", "FAILED"))
+        if outcome == "SUCCEEDED":
+            self._notify("Batch completed.", "success")
+        elif outcome == "PARTIAL_SUCCESS":
+            self._notify("Processing completed with issues. Successful outputs were preserved.", "warning")
+        else:
+            self._notify("Processing failed. Open the processing report for details.", "error")
 
     def _set_outputs_loaded_status(self, message: str, loaded_count: int, candidate_count: int) -> None:
         """Record Load Outputs feedback and show a lightweight notification."""

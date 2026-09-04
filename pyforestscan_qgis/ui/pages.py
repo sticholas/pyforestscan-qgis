@@ -2076,9 +2076,15 @@ class _PolygonBatchExecutionWorker(QObject):
             append_attempt_stage(self.launch_attempt, terminal_stage, reason=str(exc))
             self.failed.emit(f"Unexpected polygon batch failure: {exc}")
             return
-        append_attempt_stage(self.launch_attempt, "TERMINAL_RESULT_VALIDATED")
-        append_attempt_stage(self.launch_attempt, "FINALIZING")
-        append_attempt_stage(self.launch_attempt, "COMPLETED")
+        outcome = str(getattr(result, "scientific_outcome", "FAILED"))
+        if outcome not in {"SUCCEEDED", "PARTIAL_SUCCESS", "FAILED", "CANCELLED"}:
+            append_attempt_stage(self.launch_attempt, "FAILED", reason=f"INTERNAL_TERMINAL_STATE_MISMATCH: unsupported scientific outcome {outcome}.")
+            self.failed.emit(f"INTERNAL_TERMINAL_STATE_MISMATCH: unsupported scientific outcome {outcome}.")
+            return
+        append_attempt_stage(self.launch_attempt, "TERMINAL_RESULT_VALIDATED", scientific_outcome=outcome)
+        append_attempt_stage(self.launch_attempt, "FINALIZING", scientific_outcome=outcome)
+        terminal_stage = {"SUCCEEDED": "SCIENTIFIC_SUCCEEDED", "PARTIAL_SUCCESS": "PARTIAL_SUCCESS", "FAILED": "SCIENTIFIC_FAILED", "CANCELLED": "CANCELLED"}[outcome]
+        append_attempt_stage(self.launch_attempt, terminal_stage, scientific_outcome=outcome)
         self.completed.emit(result)
 
 
@@ -4803,8 +4809,9 @@ class BatchPage(MissionPage):
     def _on_batch_complete(self, result: object) -> None:
         """Finalize UI state after a worker-thread batch completes."""
         self.latest_result = result
-        self._last_durable_state = "failed" if getattr(result, "failure_count", 0) else "complete"
-        terminal = terminal_state_from_result(failed=int(getattr(result, "failure_count", 0)))
+        outcome = str(getattr(result, "scientific_outcome", "FAILED"))
+        self._last_durable_state = {"SUCCEEDED": "complete", "PARTIAL_SUCCESS": "partial_success", "CANCELLED": "interrupted"}.get(outcome, "failed")
+        terminal = {"SUCCEEDED": ProcessingUiState.COMPLETE, "PARTIAL_SUCCESS": ProcessingUiState.COMPLETE_WITH_WARNING, "CANCELLED": ProcessingUiState.INTERRUPTED}.get(outcome, ProcessingUiState.FAILED)
         try:
             self._completed_job_summary=completed_job_summary(result,self.preflight_report,processing_profile=self._active_processing_profile)
             self.batch_items=list(getattr(result,"items",()))
@@ -4812,8 +4819,16 @@ class BatchPage(MissionPage):
             self._refresh_batch_results()
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(100 if getattr(result, "items", ()) else 0)
-            completion_badge = "READY" if terminal is ProcessingUiState.COMPLETE else "WARNING"
-            _set_status_badge(self.status_label, completion_badge, f"Status: {status_display_word(completion_badge)} - batch complete. Completed {getattr(result, 'success_count', 0)}; failed {getattr(result, 'failure_count', 0)}. Summary: {getattr(result, 'summary_html', '')}")
+            completion_badge = "READY" if terminal is ProcessingUiState.COMPLETE else ("WARNING" if terminal is ProcessingUiState.COMPLETE_WITH_WARNING else "FAILED")
+            succeeded = int(getattr(result, "product_success_count", 0))
+            failed = int(getattr(result, "product_failure_count", 0))
+            skipped = int(getattr(result, "product_skipped_count", 0))
+            failed_names = ", ".join(product.product for item in getattr(result, "items", ()) for product in getattr(item, "product_results", ()) if product.status == "FAILED")
+            if outcome == "PARTIAL_SUCCESS":
+                summary = f"Completed with issues - {succeeded} products succeeded; {failed} failed" + (f" ({failed_names})" if failed_names else "") + f"; {skipped} skipped. Successful outputs were preserved."
+            else:
+                summary = f"{status_display_word(completion_badge)} - {succeeded or getattr(result, 'success_count', 0)} completed; {failed or getattr(result, 'failure_count', 0)} failed."
+            _set_status_badge(self.status_label, completion_badge, f"Status: {summary} Report: {getattr(result, 'summary_html', '')}")
             self._set_batch_summary(result)
             self.open_batch_folder_button.setEnabled(True)
             self.open_batch_folder_button.setVisible(True)
@@ -5092,7 +5107,7 @@ class BatchPage(MissionPage):
         run_folder = getattr(getattr(item, "run_context"), "run_folder")
         bounds = getattr(item, "bounds_summary", "Unavailable")
         self._update_file_row(Path(getattr(item, "dataset_path")), status, getattr(item, "bounds_summary", "Unavailable"), message)
-        if status == "failed":
+        if status in {"failed", "partial_success"}:
             self.failed_paths.append(Path(getattr(item, "dataset_path")))
         self._refresh_batch_results()
         _set_status_badge(self.status_label, "RUNNING", f"Status: Running - Datasets: {self._processed_items} / {total} complete.")

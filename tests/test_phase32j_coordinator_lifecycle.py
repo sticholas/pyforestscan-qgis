@@ -171,7 +171,9 @@ class Phase32JCoordinatorLifecycleTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
         worker = source[source.index("class _PolygonBatchExecutionWorker"):source.index("class _BackendInstallWorker")]
         self.assertLess(worker.index('"TERMINAL_RESULT_VALIDATED"'), worker.index('"FINALIZING"'))
-        self.assertLess(worker.index('"FINALIZING"'), worker.index('"COMPLETED"'))
+        self.assertLess(worker.index('"FINALIZING"'), worker.rindex("append_attempt_stage(self.launch_attempt, terminal_stage"))
+        self.assertIn('"PARTIAL_SUCCESS"', worker)
+        self.assertIn('"SCIENTIFIC_FAILED"', worker)
 
     def test_product_progress_does_not_create_dataset_rows(self):
         source = (Path(__file__).resolve().parents[1] / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")

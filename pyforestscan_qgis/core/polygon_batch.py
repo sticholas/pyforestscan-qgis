@@ -9,13 +9,14 @@ import pickle
 import subprocess
 import re
 import time
+import traceback
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
 from .adapter import PyForestScanAdapter
-from .batch import BatchItemResult, BatchProductSettings, BatchRequest, BatchResult, batch_run_context, create_batch_folder
+from .batch import BatchItemResult, BatchProductSettings, BatchRequest, BatchResult, ProductExecutionResult, batch_run_context, create_batch_folder
 from .batch_options import BatchExecutionOptions, PolygonBatchOptions, polygon_option_applicability, requested_effective_concurrency
 from .batch_results import write_batch_summaries
 from .batch_executor import BatchExecutor
@@ -48,6 +49,7 @@ from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, HagNo
 from .backend.processing_engine import ProcessingRuntimeToken
 from .backend.process_env import hidden_subprocess_kwargs
 from .coordinator_lifecycle import CoordinatorHandle, CoordinatorTerminalResult, bounded_process_output
+from .job_diagnostics import write_failure_artifacts
 from .source_alternatives import SourceRelationship, canonicalize_source_alternatives
 
 POLYGON_MANIFEST_NAME = "polygon_batch_manifest.json"
@@ -1373,6 +1375,7 @@ def _execute_logical_spatial_batch(
     for child in ("inputs", "staging", "outputs", "logs", "diagnostics"):
         (job_folder / child).mkdir(parents=True, exist_ok=True)
     outputs: list[Path] = []
+    product_results: list[ProductExecutionResult] = []
     stages = _polygon_progress_stages(report.request.products)
     scalable_plan = build_source_aware_chm_plan(report)
     scalable_products = set(report.request.products)
@@ -1385,16 +1388,35 @@ def _execute_logical_spatial_batch(
     try:
         _emit_polygon_stage(item_callback, source, context, "Preparing Inputs", "Preparing durable polygon job workspace.")
         write_polygon_batch_manifest(report, [{"source": str(source.path), "clipped": "native", "points": str(source.point_count or "unknown"), "bounds_used": str(report.query_geometry.ept_bounds), "job_folder": str(job_folder)}], batch_folder=batch_folder)
-        for product in report.request.products:
+        for product_number, product in enumerate(report.request.products, start=1):
             _emit_polygon_stage(item_callback, source, context, "Generating Product", f"Generating {product.value}.")
             result_path = _logical_product_output_path(context.outputs_dir, product)
             request = _logical_product_request(product, source.path, result_path, report)
-            result = _run_logical_product(adapter, product, request)
-            outputs.append(Path(getattr(result, "output_path")))
+            try:
+                result = _run_logical_product(adapter, product, request)
+                output = Path(getattr(result, "output_path"))
+                outputs.append(output)
+                product_results.append(ProductExecutionResult(product.value, "SUCCEEDED", f"{product.value} created.", (output,)))
+                _emit_polygon_stage(item_callback, source, context, "Product Complete", f"{product_number} of {len(report.request.products)}: {output.name} created ({output.stat().st_size} bytes).")
+            except Exception as exc:  # noqa: BLE001 - independent products honor continue-on-error.
+                terminal_status = _product_terminal_status(exc)
+                error_code = "NO_DATA" if terminal_status == "NO_DATA" else "PRODUCT_EXECUTION_FAILED"
+                product_results.append(ProductExecutionResult(product.value, terminal_status, _friendly_product_error(product, str(exc)), (), error_code, f"{type(exc).__name__}: {exc}"))
+                _write_product_failure_diagnostic(context.run_folder / "diagnostics", product, request, exc)
+                _emit_polygon_stage(item_callback, source, context, "Product Failed", f"{product_number} of {len(report.request.products)}: {product.value} failed.")
+                if not _shared_options(report).continue_on_error:
+                    for remaining in report.request.products[product_number:]:
+                        product_results.append(ProductExecutionResult(remaining.value, "CANCELLED", f"Not run because stop-on-error was enabled after {product.value} failed."))
+                    break
         _emit_polygon_stage(item_callback,source,context,"Clipping to selected area","Applying the exact selected-area mask.")
         mask_results = _mask_paths(outputs, report)
-        status = "completed"
+        failed_products = [entry for entry in product_results if entry.status == "FAILED"]
+        succeeded_products = [entry for entry in product_results if entry.status == "SUCCEEDED"]
+        incomplete_products = [entry for entry in product_results if entry.status != "SUCCEEDED"]
+        status = "completed" if not incomplete_products else ("partial_success" if succeeded_products else "failed")
         message = "Logical EPT/COPC source processed through PBM backend and exact polygon finalization."
+        if failed_products:
+            message = f"Completed with issues: {len(succeeded_products)} of {len(product_results)} products succeeded; {len(failed_products)} failed ({', '.join(entry.product for entry in failed_products)})."
         failures = [item for item in mask_results if item.status == "failed"]
         if ProductType.RUMPLE in report.request.products and not failures:
             rumple_path=next((path for path in outputs if Path(path).stem.lower()=="rumple"),None)
@@ -1406,12 +1428,22 @@ def _execute_logical_spatial_batch(
                     message=f"{message} Rumple raster is valid, but the secondary scalar summary could not be written: {exc}"
                     write_recent_error(context.run_folder,DurableErrorRecord("RUMPLE_SUMMARY_WRITE_FAILED","OUTPUT","Rumple completed with a warning.",str(exc),"secondary_output",job_id="polygon-logical",product="rumple",recommended_action="Use the Rumple raster; retry summary registration from diagnostics if needed."))
         if failures and report.request.polygon_options.mask_failure_policy == "fail_product":
-            status = "failed"
+            failed_mask_paths = {Path(failure.path) for failure in failures}
+            outputs = [output for output in outputs if Path(output) not in failed_mask_paths]
+            product_results = [
+                replace(entry, status="FAILED", message="Exact polygon mask failed; this output is not presented as final.", outputs=(), error_code="OUTPUT_MASK_FAILED")
+                if any(Path(path) in failed_mask_paths for path in entry.outputs)
+                else entry
+                for entry in product_results
+            ]
+            status = "partial_success" if outputs else "failed"
             message = "; ".join(item.message for item in failures)
-        item = BatchItemResult(Path(source.path), context, status, message, tuple(outputs), _requested_extent_summary(report))
+        item = BatchItemResult(Path(source.path), context, status, message, tuple(outputs), _requested_extent_summary(report), tuple(product.value for product in report.request.products), tuple(product_results))
     except Exception as exc:  # noqa: BLE001
         mask_results = ()
-        item = BatchItemResult(Path(source.path), context, "failed", _friendly_polygon_execution_error(str(exc)), tuple(outputs), _requested_extent_summary(report))
+        recorded = {entry.product for entry in product_results}
+        product_results.extend(ProductExecutionResult(product.value, "FAILED", "Processing stopped before this product reached a terminal result.", (), "PRODUCT_EXECUTION_FAILED", str(exc)) for product in report.request.products if product.value not in recorded)
+        item = BatchItemResult(Path(source.path), context, "partial_success" if outputs else "failed", _friendly_polygon_execution_error(str(exc)), tuple(outputs), _requested_extent_summary(report), tuple(product.value for product in report.request.products), tuple(product_results))
     finished_at = datetime.now(timezone.utc).isoformat()
     result = BatchResult(
         "polygon-logical",
@@ -1422,14 +1454,16 @@ def _execute_logical_spatial_batch(
         (item,),
         batch_folder / "batch_summary.json",
         batch_folder / "batch_summary.csv",
-        batch_folder / "batch_summary.html",
+        context.reports_dir / "processing_report.html",
         load_outputs_after_completion=_shared_options(report).load_outputs_after_completion,
     )
     result = _register_polygon_outputs_recoverably(result, report, mask_results, context.run_folder)
     write_polygon_batch_manifest(report, [{"source": str(source.path), "clipped": "native", "points": str(source.point_count or "unknown"), "bounds_used": str(report.query_geometry.ept_bounds), "job_folder": str(context.run_folder)}], batch_folder=batch_folder, mask_records=[_mask_record(item) for item in mask_results])
     if item_callback is not None:
         item_callback(item)
-    return write_batch_summaries(result)
+    result = write_batch_summaries(result)
+    write_failure_artifacts(result, context.run_folder / "diagnostics")
+    return result
 
 
 
@@ -2264,6 +2298,42 @@ def _friendly_polygon_execution_error(message: str) -> str:
     return message
 
 
+def _friendly_product_error(product: ProductType, message: str) -> str:
+    if product == ProductType.DTM and "invalid index to scalar" in message.lower():
+        return "DTM could not be generated because the ground-surface calculation returned an unexpected data structure."
+    return _friendly_polygon_execution_error(message)
+
+
+def _product_terminal_status(exc: Exception) -> str:
+    text = str(exc).lower()
+    if any(marker in text for marker in ("no point data", "no points were returned", "empty point", "no ground points")):
+        return "NO_DATA"
+    return "FAILED"
+
+
+def _write_product_failure_diagnostic(diagnostics_dir: Path, product: ProductType, request, exc: Exception) -> Path:
+    """Persist bounded per-product evidence without serializing point arrays."""
+    from .atomic_state import atomic_write_json
+
+    path = diagnostics_dir / f"{product.value}_failure.json"
+    parameters = {
+        key: str(value) if isinstance(value, Path) else value
+        for key, value in vars(request).items()
+        if key != "polygon_execution_input"
+    }
+    atomic_write_json(path, {
+        "product": product.value,
+        "status": "FAILED",
+        "error_code": "PRODUCT_EXECUTION_FAILED",
+        "exception_type": type(exc).__name__,
+        "exception": str(exc),
+        "pyforestscan_function": "generate_dtm" if product == ProductType.DTM else product.value,
+        "parameters": parameters,
+        "traceback": traceback.format_exc(),
+    })
+    return path
+
+
 def _readable_point_estimate(value: int | None, confidence: str | None) -> str:
     if value is None:
         return "Not available for this repository"
@@ -2350,7 +2420,7 @@ def _register_polygon_outputs(result: BatchResult, report: PolygonBatchPreflight
     outputs = []
     group_name = f"PyForestScan/{report.request.polygon.source_description or 'Polygon Area'}"
     for item in result.items:
-        if item.status != "completed":
+        if item.status not in {"completed", "partial_success"}:
             continue
         for output in item.outputs:
             path = Path(output)

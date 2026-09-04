@@ -1,5 +1,13 @@
 # Changelog
 
+## Phase 33B - All-product execution hardening
+
+- Corrected the PyForestScan 0.4.1 DTM integration contract by preserving its list of structured point arrays; the captured 64.3 ha bounded EPT request now produces a valid EPSG:6635 DTM.
+- Added durable per-product terminal states, independent continue-on-error execution, partial-success output registration/loading, and product-level failure diagnostics.
+- Made attempt terminal outcomes derive from scientific results, preventing a failed or partial batch from being recorded as completed.
+- Added a human processing report, failure report, and portable technical diagnostics ZIP while retaining bounded traceback evidence.
+- Kept the installed-ZIP all-eight-product QGIS run and screenshots as explicit remaining live release gates.
+
 ## 0.2.0-beta.1 - 2026-09-03
 
 - Completed an evidence-based product and release audit without changing PyForestScan calculations, Processing Engine behavior, or scheduling policy.

@@ -1,5 +1,11 @@
 # Known Limitations
 
+## Phase 33B all-product gate
+
+- The captured 64.3 ha EPT DTM failure was reproduced and repaired against PyForestScan 0.4.1; the corrected real-data DTM replay passed with a valid EPSG:6635 raster.
+- Automated product isolation, terminal-state, partial registration, and diagnostics coverage does not replace the remaining installed-ZIP QGIS all-eight-product run, failure-injection screenshots, and partial-autoload observation.
+- Internal workspace relocation to platform application-data storage remains incomplete. Polygon jobs now present clean `outputs`, `reports`, and `diagnostics` folders, but some durable orchestration evidence remains beneath the selected batch root for recovery compatibility.
+
 ## Phase 32R release-candidate gate
 
 - Network EPT retains two workers as the measured safe baseline. A third worker

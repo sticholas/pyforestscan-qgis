@@ -71,6 +71,18 @@ class BatchRequest:
 
 
 @dataclass(frozen=True)
+class ProductExecutionResult:
+    """Terminal scientific outcome for one requested product."""
+
+    product: str
+    status: str
+    message: str
+    outputs: tuple[Path, ...] = ()
+    error_code: str = ""
+    technical_detail: str = ""
+
+
+@dataclass(frozen=True)
 class BatchItemResult:
     """Result for one dataset in a batch run."""
 
@@ -81,6 +93,7 @@ class BatchItemResult:
     outputs: tuple[Path, ...]
     bounds_summary: str = "Not inspected"
     requested_products: tuple[str, ...] = ()
+    product_results: tuple[ProductExecutionResult, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -115,9 +128,40 @@ class BatchResult:
         return len([item for item in self.items if item.status == "skipped"])
 
     @property
+    def scientific_outcome(self) -> str:
+        """Derive the job outcome from durable product terminal states."""
+        products = tuple(product for item in self.items for product in item.product_results)
+        if products:
+            succeeded = sum(product.status == "SUCCEEDED" for product in products)
+            failed = sum(product.status == "FAILED" for product in products)
+            cancelled = sum(product.status == "CANCELLED" for product in products)
+            if succeeded == len(products):
+                return "SUCCEEDED"
+            if succeeded:
+                return "PARTIAL_SUCCESS"
+            if cancelled and not failed:
+                return "CANCELLED"
+            return "FAILED"
+        if self.failure_count:
+            return "FAILED"
+        return "SUCCEEDED"
+
+    @property
     def total_output_count(self) -> int:
         """Return the number of output artifacts recorded by all items."""
         return sum(len(item.outputs) for item in self.items)
+
+    @property
+    def product_success_count(self) -> int:
+        return sum(product.status == "SUCCEEDED" for item in self.items for product in item.product_results)
+
+    @property
+    def product_failure_count(self) -> int:
+        return sum(product.status == "FAILED" for item in self.items for product in item.product_results)
+
+    @property
+    def product_skipped_count(self) -> int:
+        return sum(product.status == "SKIPPED_DEPENDENCY_FAILED" for item in self.items for product in item.product_results)
 
     @property
     def total_estimated_output_bytes(self) -> int:

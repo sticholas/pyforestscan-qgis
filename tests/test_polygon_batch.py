@@ -113,6 +113,49 @@ class PolygonBatchPreflightTests(unittest.TestCase):
         self.assertIsNotNone(fake_adapter.last_request.polygon_execution_input)
         self.assertIsNotNone(fake_adapter.last_request.bounds)
 
+    def test_logical_products_continue_after_independent_dtm_failure(self) -> None:
+        class Result:
+            def __init__(self, path: Path) -> None:
+                self.output_path = path
+
+        class FakeAdapter:
+            def __init__(self):
+                self.calls = []
+
+            def create_chm(self, request):
+                return self._succeed("chm", request)
+
+            def generate_dtm(self, request):
+                self.calls.append("dtm")
+                raise RuntimeError("DTM generation failed")
+
+            def create_pad(self, request):
+                return self._succeed("pad", request)
+
+            def _succeed(self, name, request):
+                self.calls.append(name)
+                Path(request.output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(request.output_path).write_text(name, encoding="utf-8")
+                return Result(Path(request.output_path))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "ept.json").write_text(json.dumps({"bounds": [0, 0, 0, 5, 5, 5], "points": 100, "srs": {"authority": "EPSG:32610"}}), encoding="utf-8")
+            build_lidar_catalog(root)
+            products = (ProductType.CHM, ProductType.DTM, ProductType.PAD)
+            base = self._request(root)
+            request = PolygonBatchRequest(base.lidar_folder, base.output_folder, base.polygon, products, BatchProductSettings(products=products, grid_resolution=1.0))
+            report = run_polygon_batch_preflight(request, backend_probe=lambda: (True, "PBM backend is ready."))
+            adapter = FakeAdapter()
+            result = execute_polygon_batch(report, adapter=adapter)
+
+            self.assertEqual(["chm", "dtm", "pad"], adapter.calls)
+            self.assertEqual("PARTIAL_SUCCESS", result.scientific_outcome)
+            self.assertEqual(("SUCCEEDED", "FAILED", "SUCCEEDED"), tuple(item.status for item in result.items[0].product_results))
+            self.assertEqual(2, result.total_output_count)
+            self.assertIsNotNone(result.output_registry_path)
+            self.assertTrue((result.items[0].run_context.run_folder / "diagnostics" / "technical_diagnostics.zip").is_file())
+
 
 class PolygonBatchUiStaticTests(unittest.TestCase):
     def test_dataset_no_longer_contains_polygon_folder_workflow(self) -> None:

@@ -914,7 +914,7 @@ class PyForestScanAdapter:
             self._progress.update(30, "Point cloud loaded")
             arrays = filters.classify_ground_points(point_cloud) if request.classify_ground else point_cloud
             ground_arrays = filters.filter_select_ground(arrays)
-            ground_points = _merge_point_cloud_arrays(ground_arrays)
+            ground_points = _point_cloud_array_sequence(ground_arrays, operation="DTM generation")
             self._progress.update(60, "Ground points selected")
             dtm, extent = pyforestscan.generate_dtm(ground_points, resolution=request.resolution)
             self._progress.update(80, "DTM array calculated")
@@ -1851,6 +1851,31 @@ def _merge_point_cloud_arrays(point_cloud: object) -> object:
         numpy = _import_required("numpy", ProcessingError)
         return numpy.concatenate(arrays)
     return point_cloud
+
+
+def _point_cloud_array_sequence(point_cloud: object, *, operation: str) -> list[object]:
+    """Normalize PyForestScan point data to its public list-of-arrays contract."""
+    candidates = list(point_cloud) if isinstance(point_cloud, (list, tuple)) else [point_cloud]
+    arrays = [
+        array
+        for array in candidates
+        if getattr(array, "size", len(array) if hasattr(array, "__len__") else 0) > 0
+    ]
+    if not arrays:
+        raise ProcessingError(f"PyForestScan returned no point arrays for {operation}.")
+    for index, array in enumerate(arrays):
+        fields = getattr(getattr(array, "dtype", None), "names", None)
+        if fields is None:
+            raise ProcessingError(
+                f"PyForestScan returned an invalid point array for {operation} at index {index}: "
+                f"type={type(array).__name__}."
+            )
+        missing = sorted({"X", "Y", "Z"}.difference(fields))
+        if missing:
+            raise ProcessingError(
+                f"PyForestScan point array for {operation} is missing fields: {', '.join(missing)}."
+            )
+    return arrays
 
 
 def _detect_format(path: str) -> DatasetFormat | None:

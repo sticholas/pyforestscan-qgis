@@ -25,6 +25,9 @@ def batch_result_to_dict(result: BatchResult) -> dict[str, Any]:
         "total_files": len(result.items),
         "total_output_count": result.total_output_count,
         "total_estimated_output_bytes": result.total_estimated_output_bytes,
+        "product_success_count": result.product_success_count,
+        "product_failure_count": result.product_failure_count,
+        "product_skipped_count": result.product_skipped_count,
         "items": [
             {
                 "dataset_path": str(item.dataset_path),
@@ -33,6 +36,17 @@ def batch_result_to_dict(result: BatchResult) -> dict[str, Any]:
                 "message": item.message,
                 "bounds_summary": item.bounds_summary,
                 "outputs": [str(path) for path in item.outputs],
+                "product_results": [
+                    {
+                        "product": product.product,
+                        "status": product.status,
+                        "message": product.message,
+                        "outputs": [str(path) for path in product.outputs],
+                        "error_code": product.error_code,
+                        "technical_detail": product.technical_detail,
+                    }
+                    for product in item.product_results
+                ],
             }
             for item in result.items
         ],
@@ -41,6 +55,7 @@ def batch_result_to_dict(result: BatchResult) -> dict[str, Any]:
         "summary_html": str(result.summary_html),
         "output_registry_path": str(result.output_registry_path) if result.output_registry_path else None,
         "load_outputs_after_completion": result.load_outputs_after_completion,
+        "scientific_outcome": result.scientific_outcome,
     }
 
 
@@ -87,13 +102,25 @@ def write_batch_summary_html(result: BatchResult, path: Path | str | None = None
         "</tr>"
         for item in result.items
     ) or '<tr><td colspan="6">No datasets processed.</td></tr>'
+    product_rows = "".join(
+        "<tr>"
+        f"<td>{escape(product.product)}</td><td>{escape(product.status)}</td>"
+        f"<td>{escape(product.message)}</td><td>{escape(', '.join(str(item) for item in product.outputs) or 'None')}</td>"
+        "</tr>"
+        for item in result.items
+        for product in item.product_results
+    ) or '<tr><td colspan="4">No product-level results were recorded.</td></tr>'
     html = f"""<!doctype html>
 <html><head><meta charset=\"utf-8\"><title>{escape(result.title)}</title>
 <style>body{{font-family:Arial,sans-serif;margin:24px;color:#23313a}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #dfe6e9;padding:8px;text-align:left}}th{{background:#eef3f4}}</style>
 </head><body>
 <h1>{escape(result.title)}</h1>
+<h2>Status: {escape(result.scientific_outcome.replace('_', ' ').title())}</h2>
 <p>Started: {escape(result.started_at)}<br>Finished: {escape(result.finished_at)}<br>Batch folder: {escape(str(result.batch_folder))}</p>
 <p>Total files: {len(result.items)} &nbsp; Completed: {result.success_count} &nbsp; Failed: {result.failure_count} &nbsp; Skipped: {result.skipped_count}<br>Total outputs: {result.total_output_count} &nbsp; Observed output storage: {_format_bytes(result.total_estimated_output_bytes)}</p>
+<h2>Products</h2>
+<table><tr><th>Product</th><th>Status</th><th>Message</th><th>Outputs</th></tr>{product_rows}</table>
+<h2>Sources</h2>
 <table><tr><th>Dataset</th><th>Status</th><th>Message</th><th>Bounds</th><th>Run folder</th><th>Outputs</th></tr>{rows}</table>
 </body></html>"""
     output.write_text(html, encoding="utf-8")
