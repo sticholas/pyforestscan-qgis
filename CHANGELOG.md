@@ -1,5 +1,15 @@
 # Changelog
 
+## Phase 34A1 - Point cloud safety contracts (intermediate)
+
+- Recorded the protected 0.2.0-beta.1 baseline and initial upstream research.
+- Added QGIS-free source fingerprints, full-resolution box selection contracts,
+  non-destructive classification/noise journals and atomic session save/reopen.
+- Added runtime method probes that do not mistake C++ API documentation for
+  available QGIS Python editing bindings.
+- Viewer UI, polygon selection, managed export and the 0.3.0-beta.1 package
+  remain pending; this is not a viewer/editor release. Process is unchanged.
+
 ## Phase 33C - Results workspace and diagnostic navigation
 
 - Removed the Process workspace stretch that produced a large blank terminal area.
