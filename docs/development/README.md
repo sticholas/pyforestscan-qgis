@@ -4,6 +4,8 @@ This directory contains implementation notes for contributors working on PyFores
 
 ## Current Topics
 
+- [Phase 34A3 Selection Core and Qualification](PHASE_34A3_SELECTION_CORE.md)
+
 - [Rumple Raster Architecture](RUMPLE_RASTER_ARCHITECTURE.md)
 - [Rumple CHM Dependency](RUMPLE_CHM_DEPENDENCY.md)
 - [Rumple Product Audit](RUMPLE_PRODUCT_AUDIT.md)

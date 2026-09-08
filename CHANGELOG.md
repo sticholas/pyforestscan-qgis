@@ -1,5 +1,16 @@
 # Changelog
 
+## Phase 34A3 - Source-resolved selection core (intermediate)
+
+- Added worker-only immutable polygon selections and source-based streamed
+  statistics with Replace/Add/Subtract, class/Z/HAG/attribute filters and
+  explicit CRS/fingerprint checks. Rendered LOD indices are never authority.
+- Qualified real EPT viewport streaming on Qt5/Qt6 and a bounded selection
+  against the 104.8M-point Olaa COPC, matching full-resolution PDAL crop counts.
+- Editing UI, overlays, durable EPT identity, journal integration and validated
+  new-file export remain pending. No editor release or version bump is claimed.
+
+
 ## Phase 34A2 - Interactive point cloud viewer milestone (experimental)
 
 - Added an embedded Point Cloud page backed by a separate managed QtQuick/
