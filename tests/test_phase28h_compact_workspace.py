@@ -5,8 +5,8 @@ ROOT=Path(__file__).resolve().parents[1]
 class CompactWorkspaceTests(unittest.TestCase):
  @classmethod
  def setUpClass(cls):cls.mission=(ROOT/'pyforestscan_qgis/ui/mission_control.py').read_text();cls.pages=(ROOT/'pyforestscan_qgis/ui/pages.py').read_text();cls.form=(ROOT/'pyforestscan_qgis/ui/forms/mission_control.ui').read_text()
- def test_only_two_visible_navigation_destinations(self):
-  self.assertIn('PAGE_NAMES = ("Process", "Tools & Setup")',self.mission)
+ def test_product_focused_navigation_destinations(self):
+  self.assertIn('PAGE_NAMES = ("Process", "Point Cloud", "Tools & Setup")',self.mission)
   page_contract=self.mission.split('PAGE_NAMES = ',1)[1].split('\n',1)[0]
   self.assertNotIn('Results',page_contract);self.assertNotIn('Environment',page_contract)
  def test_process_combines_current_results(self):

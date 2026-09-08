@@ -1,5 +1,22 @@
 # Known Limitations
 
+## Experimental Point Cloud Viewer
+
+- The embedded Windows viewer has passed Qt5/Qt6 renderer, session and failure
+  isolation harnesses. Mouse orbit/pan/zoom were human-confirmed in installed
+  QGIS 3.44; installed-QGIS Qt6 acceptance remains separate.
+- Large indexed COPC viewing is qualified on a real 104.8M-point derived cloud.
+  Normal large unindexed LAS/LAZ preparation is still blocked above two million
+  points; the measured Untwine conversion is a qualification harness only.
+- EPT qualification/tree identity, authoritative polygon selection, HAG
+  filtering and full editing remain unfinished. Observed classes are a streamed
+  subset, not a complete source census.
+- Optional viewer setup is separate from Process readiness. No failure in the
+  viewer should direct users to repair the scientific engine unless that
+  engine is independently the failing dependency.
+- See [viewer acceptance evidence](development/PHASE_34A2_INTERACTIVE_ACCEPTANCE.md)
+  for measured performance, exact boundaries and remaining gates.
+
 ## Phase 33B all-product gate
 
 - The captured 64.3 ha EPT DTM failure was reproduced and repaired against PyForestScan 0.4.1; the corrected real-data DTM replay passed with a valid EPSG:6635 raster.

@@ -1,5 +1,11 @@
 # PyForestScan QGIS
 
+The optional **Point Cloud** workspace is currently experimental. Local
+LAS/LAZ/COPC viewing, display filters and source-verified sessions are available
+on the qualified Windows adapter; authoritative point selection/editing and
+automatic large-LAS indexing are not yet complete. See the
+[viewer acceptance evidence](docs/development/PHASE_34A2_INTERACTIVE_ACCEPTANCE.md).
+
 Contributor architecture starts at [the Current Architecture Map](docs/development/CURRENT_ARCHITECTURE_MAP.md). The authoritative Phase 33A product map and evidence-based release scorecard record current ownership and open qualification gates.
 
 PyForestScan QGIS is a professional QGIS interface for [PyForestScan](https://pyforestscan.sefa.ai/), an open-source Python library for deriving forest structural products from airborne LiDAR. The plugin provides a guided desktop workflow for GIS users and an expert Processing Toolbox surface for analysts who need direct PyForestScan parameter control.

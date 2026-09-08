@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "capability": "point_cloud_viewer",
+  "runtime_protocol": 1,
+  "python": "3.12",
+  "packages": ["PySide6==6.11.2"],
+  "supported_setup_platforms": ["windows"],
+  "license": "PySide6: LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only; Qt/Chromium notices supplied by the installed wheels",
+  "distribution": "OPTIONAL_CAPABILITY",
+  "download_estimate": "Approximately 250 MB of PySide6 wheels plus isolated Python; exact platform size varies.",
+  "verification": ["PySide6.QtCore", "PySide6.QtQuick", "PySide6.QtWebEngineQuick"],
+  "failure_behavior": "Viewer setup required; scientific Processing remains independent."
+}

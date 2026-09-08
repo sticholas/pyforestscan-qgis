@@ -1,5 +1,18 @@
 # Changelog
 
+## Phase 34A2 - Interactive point cloud viewer milestone (experimental)
+
+- Added an embedded Point Cloud page backed by a separate managed QtQuick/
+  WebEngine process, without changing QGIS Python or the scientific engine.
+- Added read-only LAS/LAZ viewing caches, bounded COPC streaming, adaptive
+  display budgets, classification/Z filters, and existing-session persistence.
+- Diagnosed the interrupted harness exit as a deleted Qt worker reference;
+  retained per-attempt logs now distinguish failures and normal shutdown.
+- Qualified LAS/LAZ/COPC under Qt5/Qt6 and a 104.8M-point derived Olaa COPC.
+  Human orbit, pan and zoom were confirmed in the installed Qt5 viewer.
+- Authoritative polygon selection, EPT qualification and automatic large-LAS
+  indexing remain unfinished. This is not a completed 34A2 or editor release.
+
 ## Phase 34A1 - Point cloud safety contracts (intermediate)
 
 - Recorded the protected 0.2.0-beta.1 baseline and initial upstream research.

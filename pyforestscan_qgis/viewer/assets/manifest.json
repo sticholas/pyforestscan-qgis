@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "upstream": "https://github.com/potree/potree",
+  "commit": "5636cd471d9eb464969e758be45c44d7613d3859",
+  "build": "gulp shaders workers; rollup -c (runtime-only selection)",
+  "ept_encodings": [
+    "laszip",
+    "binary"
+  ],
+  "files": {
+    "notices/BinaryHeap-MIT.txt": {
+      "sha256": "e1b8bd2676c4c4de6d16d0322b81ad89c72c5730e6122068da7eab6a73c062de",
+      "bytes": 1328
+    },
+    "build/potree/potree.js": {
+      "sha256": "92a61d96890e0bcb22f8adc42f60b5170a8df53a72e9280d2df3155d5cc12888",
+      "bytes": 2370067
+    },
+    "build/potree/workers/EptLaszipDecoderWorker.js": {
+      "sha256": "5de17bcb0a1d96142ff61fdd54eb1255d3c49ca1f0b4cc0b443500887ec0fa1d",
+      "bytes": 95732
+    },
+    "build/potree/workers/EptBinaryDecoderWorker.js": {
+      "sha256": "c3dc01884e40adbf58d9aeafe295626103812d73c476d56738c0e81e98b1a335",
+      "bytes": 6320
+    },
+    "build/potree/workers/laz-perf.wasm": {
+      "sha256": "b0888b3b852d835131b0aee9ca88a70b4d4858417d8a3a2fa730ad55e183920f",
+      "bytes": 214568
+    },
+    "libs/jquery/jquery-3.1.1.min.js": {
+      "sha256": "1cf30e59d21d4ae560af7143f5913efcc8222bcaa4fcc7508eb802b5faa9e94e",
+      "bytes": 86713
+    },
+    "libs/jquery-ui/jquery-ui.min.js": {
+      "sha256": "9b0815cea5e57315634e85747c1a8f656815a1daf6a171fd237d44593cc04d81",
+      "bytes": 253680
+    },
+    "libs/other/BinaryHeap.js": {
+      "sha256": "a77f4c6948e128d8578a2116a0003480ea05a3430cb978611ca6b4307b125a82",
+      "bytes": 3979
+    },
+    "libs/tween/tween.min.js": {
+      "sha256": "13ceb8b6e922d1e1f956b0a541f26e97c9328769fe42e6e6d82b7c69f7d013f9",
+      "bytes": 5767
+    },
+    "libs/d3/d3.js": {
+      "sha256": "4c24e83b0afa54aab67138c28289d611e7c008f65c1a142b2f5ab83cbc7fa420",
+      "bytes": 345899
+    },
+    "libs/proj4/proj4.js": {
+      "sha256": "3744bf6f4563dc03f246454cfdc0e7fdd556ef14492baf99da0bfe1563b44d8d",
+      "bytes": 71974
+    },
+    "libs/copc/index.js": {
+      "sha256": "28cc52c5842bb282dc5fe00760c73af722137fab5cb9318fe86dfa074c79629f",
+      "bytes": 89317
+    },
+    "LICENSE": {
+      "sha256": "9eeaf3b193a3094da7269ec86c16dd9d3be87d4c7c7fdbe9d8671f9acdece3ba",
+      "bytes": 1604
+    },
+    "libs/d3/LICENSE": {
+      "sha256": "69ec4d610532d153dc6102f86ba4bdc7c50b409ae41eb3d269065ae0e401ac5f",
+      "bytes": 1455
+    },
+    "libs/jquery-ui/LICENSE.txt": {
+      "sha256": "5f86ebcb644862d0e925d389786b0caff1093a6622b413379ab482141600ca93",
+      "bytes": 1860
+    },
+    "libs/json5-2.1.3/LICENSE.md": {
+      "sha256": "4d1f83bd5bd1987f8e22024bbeb484a5edbbc4934d56fa846bcfcbabc74e16bc",
+      "bytes": 1168
+    },
+    "libs/proj4/LICENSE.md": {
+      "sha256": "99c585753f9f986bfbe7759f2b820395f3f7856ca83db26bb910123bfa18b55e",
+      "bytes": 1483
+    },
+    "libs/three.js/LICENSE": {
+      "sha256": "d89afe4e660ac9a701218bbd82de0de96ab3b7b2f169ef7cbcc73badd22f6d5f",
+      "bytes": 1102
+    },
+    "libs/tween/LICENSE.txt": {
+      "sha256": "34e53dda5265b1a1a8dd624f798cc56e50b8d457fe470d438c48a58c88e0ee1a",
+      "bytes": 1106
+    },
+    "resources/textures/navigation/B.png": {
+      "sha256": "2e7b87602ee1ba66bc19ebc11276e6e0f58acc5d48cdf48a298bd8202dc7bd95",
+      "bytes": 1223
+    },
+    "resources/textures/navigation/D.png": {
+      "sha256": "42ebdb8ff6dc7ff0ad6bc778c59a35c4224a5aee5e4958295a9d1d83b4547b2f",
+      "bytes": 1068
+    },
+    "resources/textures/navigation/F.png": {
+      "sha256": "dee026e64cebe9d9081c74f5b2f17820432444a6c78f2cec7a27e7dca062e537",
+      "bytes": 510
+    },
+    "resources/textures/navigation/L.png": {
+      "sha256": "d10ae5b77b510e9160ed2f42ad619cef2a4723a48091bfbc5f728ad3837b5e36",
+      "bytes": 421
+    },
+    "resources/textures/navigation/R.png": {
+      "sha256": "11959ca8d9c311890b98255298fcf005c04eaf1567aaca357478dc185703eaa6",
+      "bytes": 1206
+    },
+    "resources/textures/navigation/U.png": {
+      "sha256": "cfcf8a4ad7b9e225b10a728f808929f8b8737d2ee0189a53519c284fc05e6004",
+      "bytes": 840
+    },
+    "resources/images/compas.svg": {
+      "sha256": "9fb5209593d2f9643493fbb44627bee807e2ef10b7333936c47c7d95df09d32b",
+      "bytes": 9247
+    },
+    "notices/copc-MIT.txt": {
+      "sha256": "8fb5b4508a39ae3e34be45065c2eacbd5353961870e98eba5906c256669fb794",
+      "bytes": 1071,
+      "notice_source": "https://raw.githubusercontent.com/connormanning/copc/master/license"
+    },
+    "notices/laz-perf-Apache-2.0.txt": {
+      "sha256": "959f77033ba56a3b146faf5c02f9162071f2d0bff4b8b6f1c2193a4b41127d39",
+      "bytes": 11347,
+      "notice_source": "https://raw.githubusercontent.com/hobuinc/laz-perf/master/COPYING"
+    },
+    "notices/jquery-MIT.txt": {
+      "sha256": "f980a306a01e5881cc8004115f7e6dde44e7f5296477237d37d169a86ce7c094",
+      "bytes": 1606,
+      "notice_source": "https://raw.githubusercontent.com/jquery/jquery/3.1.1/LICENSE.txt"
+    }
+  }
+}

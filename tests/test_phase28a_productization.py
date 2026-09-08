@@ -14,7 +14,7 @@ class Phase28AProductizationTests(unittest.TestCase):
         cls.pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
 
     def test_primary_sidebar_is_product_focused(self):
-        self.assertIn('PAGE_NAMES = ("Process", "Tools & Setup")', self.mission)
+        self.assertIn('PAGE_NAMES = ("Process", "Point Cloud", "Tools & Setup")', self.mission)
         contract = self.mission.split("PAGE_NAMES = ", 1)[1].splitlines()[0]
         self.assertNotIn("Batch", contract)
 

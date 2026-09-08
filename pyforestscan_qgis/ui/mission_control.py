@@ -42,6 +42,7 @@ from .state import MissionControlState, ProjectSummary, build_project_summary
 from .session_state import MissionControlSessionState
 from .smart_status import build_smart_status
 from .session_events import SessionStateEvents
+from .point_cloud_page import PointCloudPage
 from .ux_summary import environment_is_ready, guided_next_step, guided_workflow_indicator, guided_workflow_status_lines, guided_workflow_pages, readiness_marker_label
 
 FORM_CLASS, _ = uic.loadUiType(str(plugin_root() / "ui" / "forms" / "mission_control.ui"))
@@ -63,7 +64,7 @@ class MissionControlDock(QDockWidget):
         "Settings",
         "Advanced Toolbox",
     )
-    PAGE_NAMES = ("Process", "Tools & Setup")
+    PAGE_NAMES = ("Process", "Point Cloud", "Tools & Setup")
 
     def __init__(self, iface: Any, parent: QWidget | None = None) -> None:
         """Create the Mission Control dock and wire page navigation."""
@@ -145,6 +146,8 @@ class MissionControlDock(QDockWidget):
             self.advanced_toolbox_page,
         )
         self.page_by_name = dict(zip(self.INTERNAL_PAGE_NAMES, self.pages))
+        self.point_cloud_page = PointCloudPage()
+        self.page_by_name["Point Cloud"] = self.point_cloud_page
         self.page_by_name.update({"Process":self.batch_page,"Tools & Setup":self.settings_page})
         self.batch_page.set_job_token_factory(self._begin_current_job)
         self._last_content_navigation_row = 0
@@ -180,6 +183,7 @@ class MissionControlDock(QDockWidget):
     def prepare_for_unload(self) -> None:
         """Reject late state projections before Qt destroys child widgets."""
         self._ui_lifecycle = UiInitializationState.DESTROYING
+        self.point_cloud_page.prepare_for_unload()
         for timer in (
             getattr(self.batch_page, "_processing_watchdog", None),
             getattr(self.settings_page, "backend_install_timer", None),
@@ -240,6 +244,7 @@ class MissionControlDock(QDockWidget):
             self._navigate_to(session.last_page)
 
     def _populate_navigation(self) -> None:
+        self.ui.pageStack.addWidget(self.point_cloud_page)
         for page in self.pages:
             self.ui.pageStack.addWidget(page)
         for name in self.PAGE_NAMES:

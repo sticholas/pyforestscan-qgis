@@ -1,5 +1,25 @@
 # PyForestScan QGIS User Guide
 
+## Experimental Point Cloud Workspace
+
+Open **Point Cloud**, then **Set Up Viewer** if the optional graphics runtime
+is missing. Setup requires confirmation and uses a separate user-local runtime;
+it does not install graphics packages into QGIS Python or the scientific engine.
+Open a local LAS, LAZ or COPC. Unindexed sources over two million points are
+currently refused; use an existing COPC until automatic out-of-core indexing
+is integrated. EPT qualification remains pending.
+
+Fit, Top, Front, Orbit/Pan and color modes affect only the view. Expand
+**Display filters** to show/hide or solo observed classes and limit source Z.
+Observed classes come from streamed nodes, not a full-source classification
+inventory. These filters never edit the source or add journal operations.
+
+Save Session preserves camera, colors and filters using the existing session
+format and a verified source fingerprint. Open Session checks that identity
+before restoring; changed sources require an explicit recovery choice.
+Viewer Diagnostics exposes attempt logs. Reload Viewer restarts only the
+graphics process. Polygon selection and point editing are not yet available.
+
 ## Set up or reload the Processing Engine
 
 Open **Tools & Setup** and select **Set Up Processing Engine**. When the status is Ready, the same location provides **Repair / Reload Processing Engine** for deliberate reconciliation after an update or failure. The action manages only the user-local isolated environment and does not load PyForestScan, PDAL, or GDAL into QGIS Python. A valid existing environment is verified and reused instead of needlessly reinstalled.

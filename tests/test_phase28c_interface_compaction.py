@@ -7,8 +7,8 @@ PAGES = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 MISSION = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text(encoding="utf-8")
 
 class Phase28CInterfaceCompactionTests(unittest.TestCase):
-    def test_two_workspace_sidebar_and_process_default_are_preserved(self):
-        self.assertIn('PAGE_NAMES = ("Process", "Tools & Setup")', MISSION)
+    def test_primary_sidebar_and_process_default_are_preserved(self):
+        self.assertIn('PAGE_NAMES = ("Process", "Point Cloud", "Tools & Setup")', MISSION)
         self.assertIn("self.ui.pageStack.setCurrentWidget(self.batch_page)", MISSION)
 
     def test_hidden_pages_remain_absent_from_primary_sidebar(self):

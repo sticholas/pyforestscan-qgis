@@ -1,0 +1,17 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<style>
+html,body,#view{width:100%;height:100%;margin:0;overflow:hidden;background:#202427}
+#message{position:absolute;bottom:8px;left:8px;right:8px;color:white;font:12px sans-serif;pointer-events:none}
+</style></head>
+<body><div id="view"></div><div id="message">Opening point cloud</div>
+<script src="assets/libs/jquery/jquery-3.1.1.min.js"></script>
+<script src="assets/libs/jquery-ui/jquery-ui.min.js"></script>
+<script src="assets/libs/other/BinaryHeap.js"></script>
+<script src="assets/libs/tween/tween.min.js"></script>
+<script src="assets/libs/d3/d3.js"></script>
+<script src="assets/libs/proj4/proj4.js"></script>
+<script src="assets/libs/copc/index.js"></script>
+<script src="assets/build/potree/potree.js"></script>
+<script src="viewer.js"></script></body></html>
