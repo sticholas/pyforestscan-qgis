@@ -19,6 +19,7 @@ def main():
     parser.add_argument("--hag", action="store_true")
     parser.add_argument("--detach", action="store_true")
     parser.add_argument("--transfer-cycles", type=int, default=0)
+    parser.add_argument("--selection-hag", nargs=2, type=float)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=False)
     from qgis.core import QgsApplication, Qgis
@@ -77,6 +78,14 @@ def main():
         page.view_tabs.setCurrentIndex(next(i for i in range(page.view_tabs.count()) if page.view_tabs.tabData(i)==key))
         page.send({"action":"snapshot", "request_id":"warm-"+key})
 
+    def apply_limits():
+        if args.selection_hag:
+            limits = page.linked.limits
+            limits.mode.setCurrentIndex(limits.mode.findData("hag_filter"))
+            limits.minimum.setValue(args.selection_hag[0])
+            limits.maximum.setValue(args.selection_hag[1])
+            assert page.linked.depth == {"hag_filter": args.selection_hag}
+
     def tick():
         nonlocal step,detail,profile,original_worker,previous,transferred_worker,transfer_started,cycle_stage,cycles
         try:
@@ -93,6 +102,11 @@ def main():
             if original_worker:
                 assert editor.worker is original_worker, "Linked view replaced authoritative editor"
             if step == 0:
+                page.linked.set_depth({"z_filter": [20, 10]})
+                assert not editor.tool.isEnabled()
+                page.linked.set_depth({})
+                apply_limits()
+                report["requested_hag_limits"] = args.selection_hag
                 with patch.object(page.linked, "draw") as draw:
                     page.linked.area_button.click()
                     draw.assert_called_with("Rectangle", "CREATE_AREA")
@@ -118,6 +132,9 @@ def main():
                     return
                 assert result["resolved_point_count"] > 0
                 report["area_selection"] = result
+                if args.selection_hag:
+                    assert result["hag_min"] >= args.selection_hag[0]
+                    assert result["hag_max"] <= args.selection_hag[1]
                 editor.stage("Classification",2)
             elif step == 3:
                 assert editor.state["edits"] == 1
@@ -140,6 +157,9 @@ def main():
                     return
                 assert result["resolved_point_count"] > 0
                 report["slice_selection"] = result
+                if args.selection_hag:
+                    assert result["hag_min"] >= args.selection_hag[0]
+                    assert result["hag_max"] <= args.selection_hag[1]
                 editor.stage("Classification",7)
             elif step == 6:
                 assert editor.state["edits"] == 2
@@ -184,6 +204,8 @@ def main():
                 assert page.view_tabs.count() == 3
                 original_worker = editor.worker
                 report["restored_selection"] = editor.state["selection"]
+                if args.selection_hag:
+                    assert page.linked.depth == {"hag_filter": args.selection_hag}, "Saved limits were not restored"
                 editor.send("export",path=str(args.output_dir/"edited.laz"))
             elif step == 13:
                 if not editor.state.get("exported"):
@@ -227,6 +249,9 @@ def main():
                     return
             elif step == 16:
                 window = page.linked.detached[profile]
+                if args.selection_hag:
+                    assert window.limits.minimum.value() == args.selection_hag[0]
+                    assert window.limits.maximum.value() == args.selection_hag[1]
                 assert window.worker is transferred_worker, "Detaching restarted the renderer"
                 if getattr(window.worker, "_surface_transfer", None):
                     return

@@ -6,7 +6,6 @@ from qgis.PyQt.QtWidgets import (QTabBar, QDialog, QVBoxLayout, QHBoxLayout,
                                 QToolButton, QComboBox, QInputDialog)
 from ..compat.qt import qt_enum
 from ..core.point_cloud.linked_query import view_ring
-from ..core.point_cloud.linked_selection import linked_constraints
 from .point_cloud_widgets import StableViewerStatus, StableViewerHelp
 
 
@@ -65,6 +64,8 @@ class DetachedView(QDialog):
         self.event_id = None
         self.context_sent = False
         self.closing = False
+        self.selection_error = ""
+        controller.limitsChanged.connect(self.clear_selection_error)
         self.resident_state = entry
         self.setWindowTitle(controller.page.workspace.views[view_id].title)
         self.resize(960,720)
@@ -98,6 +99,9 @@ class DetachedView(QDialog):
         dock.clicked.connect(lambda:self.dockRequested.emit(self.view_id))
         row.addWidget(dock)
         layout.addLayout(row)
+        from .point_cloud_selection_limits import SelectionLimits
+        self.limits = SelectionLimits(controller, view_id, self)
+        layout.addWidget(self.limits)
         self.surface = ViewerSurface(self)
         layout.addWidget(self.surface,1)
         self.status = StableViewerStatus("Opening linked view...")
@@ -124,6 +128,9 @@ class DetachedView(QDialog):
     def send(self, value):
         if self.worker and not self.closing:
             self.worker.send(value)
+
+    def clear_selection_error(self):
+        self.selection_error = ""
 
     def action(self, action):
         if action in ("undo","redo"):
@@ -167,13 +174,18 @@ class DetachedView(QDialog):
             self.context_sent = True
         acknowledged = telemetry["editor"].get("view_id") == self.view_id
         editor = self.controller.page.editor
+        self.limits.refresh()
+        self.tool.setEnabled(not editor.busy and not self.controller.depth_error and bool(editor.state.get("ready")))
         event = telemetry["editor"].get("event")
         if acknowledged and event and event["id"] != self.event_id:
             self.event_id = event["id"]
+            self.selection_error = ""
             if event.get("geometry") and not editor.busy:
-                constraints = linked_constraints(asdict(view),profile_geometry=event.get("profile_geometry"),
-                    select_filtered=self.controller.select_filtered.isChecked(),display=telemetry,**self.controller.depth)
-                editor.send("select",geometry=event["geometry"],mode=event["mode"],constraints=constraints)
+                try:
+                    constraints = self.controller.selection_values_for(view, event, telemetry)
+                    editor.send("select",geometry=event["geometry"],mode=event["mode"],constraints=constraints)
+                except ValueError as error:
+                    self.selection_error = str(error)
             elif event.get("action") in ("undo","redo"):
                 editor.send(event["action"])
             self.tool.blockSignals(True)
@@ -188,7 +200,8 @@ class DetachedView(QDialog):
             self.send({"action":"editor_overlay","path":signature[0]})
             self.overlay = signature
         selected = (editor.state.get("selection") or {}).get("resolved_point_count",0)
-        self.status.setText(f"Selected: {selected:,} source points | {editor.state.get('edits',0)} staged edits")
+        self.status.setText(self.selection_error or
+            f"Selected: {selected:,} source points | {editor.state.get('edits',0)} staged edits")
         self.controller.coordinate_resources()
 
     def finished(self):

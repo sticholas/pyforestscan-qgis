@@ -240,6 +240,9 @@ class EditorPanel(QWidget):
         ready = bool(self.state.get("ready")) and not self.busy and self.viewer_ready
         for control in (self.tool, self.mode, self.clear):
             control.setEnabled(ready)
+        if hasattr(self.page, "linked"):
+            self.page.linked.limits.refresh()
+            self.tool.setEnabled(ready and not self.page.linked.depth_error)
         self.edit_controls.setVisible(bool((self.state.get("selection") or {}).get("resolved_point_count")))
         self.edit_controls.setEnabled(ready)
         self.undo_button.setEnabled(ready and self.state.get("can_undo", False))
@@ -309,7 +312,7 @@ class EditorPanel(QWidget):
             self.refresh_controls()
 
     def change_tool(self, tool):
-        if self.viewer_ready:
+        if self.viewer_ready and not self.page.linked.depth_error:
             self.page.send({"action": "selection_tool", "tool": tool, "mode": self.mode.currentText().upper()})
 
     def observe(self, telemetry):

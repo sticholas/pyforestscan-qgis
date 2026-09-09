@@ -1,6 +1,21 @@
 """Value-only selection adapters: local display state is never implicit authority."""
+import math
 from .linked_query import area_ring
 from .workspace import AreaGeometry, SliceGeometry
+
+
+def selection_limit_values(values):
+    """Validate saved UI limits, retaining inverted bounds for visible correction."""
+    if not isinstance(values, dict) or set(values) - {"z_filter", "hag_filter"}:
+        raise ValueError("Invalid saved selection limits.")
+    result = {}
+    for key, limits in values.items():
+        if (not isinstance(limits, (tuple, list)) or len(limits) != 2 or
+                any(isinstance(v, bool) or not isinstance(v, (int, float)) or
+                    not math.isfinite(v) for v in limits)):
+            raise ValueError("Selection heights must be two finite numbers.")
+        result[key] = list(limits)
+    return result
 
 
 def linked_constraints(view, *, profile_geometry=None, select_filtered=False,

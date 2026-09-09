@@ -51,6 +51,8 @@ Evidence directory on the test machine:
 | surface-transfer-20 | Passed on QGIS 3.44.13 | Twenty repeated detach/redock cycles plus final shared edit/export; same renderer retained |
 | surface-transfer-qgis4-01 | Passed on QGIS 4.0.0 | Three repeated transfers plus final shared edit/export; original SHA256 unchanged |
 | direct-tools-01 | Passed on QGIS 3.44.13 | Rectangle/Polygon buttons in main and detached views; three transfer cycles, shared edits and export; 69.30 s |
+| inline-hag-limits-01 | Passed on QGIS 3.44.13 | Inline HAG 8-18 controls and source-bound checks; test reapplied limits after reload |
+| inline-hag-limits-02 | Passed on QGIS 3.44.13 | HAG 8-18 automatically restored from workspace; linked selection, transfers, undo/redo, export; 69.69 s |
 
 For resident-hag-02, both warm returns completed by the next 250 ms test
 poll. This is a polling upper bound, not a precision frame-latency benchmark.
@@ -72,6 +74,33 @@ gesture/decoder lifecycle tests passed. The real QGIS canary covers scientific
 selection/export unavailable in the skipped WSL tests.
 
 ## In progress / next
+
+Selection limits are now an inline control beside the editor tools in both
+main and detached views, not a hidden depth dialog. Choices are Full column,
+Elevation range (original Z), and Height above ground (stored HAG, when present).
+Slice defaults explicitly say Within slice thickness and show its width.
+Minimum/maximum fields are inclusive; changing limits affects the next
+selection, not existing selections or staged operations. Display filters remain
+opt-in. The controls share the existing workspace global-filter store and
+save/reopen with that workspace; no second selection state or journal exists.
+Source changes clear next-selection limits without writing that reset into the
+previous session. Saved height values are validated before restoration.
+
+Invalid ranges disable drawing and explain the error; missing HAG is not
+silently presented as Full column. Disjoint view/filter intersections are
+reported before selection dispatch. Numeric typing is protected from telemetry
+refreshes. Height labels deliberately say stored height units rather than
+assuming metres. The first UI capture exposed a clipped HAG label; the combo
+now sizes to its current contents and has a width regression assertion.
+
+The persistent-limits canary resolved 623 area points (HAG 8.02-16.48) and
+246 slice points (HAG 8.06-16.48) from the original 2,287,408-point source.
+Three-edit export preserved all non-edited values, CRS, custom VLRs and source
+SHA256. Export SHA256:
+`e1049d97387b6b4935845244cc347f718e72214c1b8dbf7f407e6e7e1af2e78b`.
+Focused tests: 162 run, 22 optional-runtime skips, no failures. Actual Qt
+control/event tests: 15 pass on each installed Qt generation. These are
+automated checks; human acceptance and full milestone validation remain open.
 
 Pointer/Navigate, Polygon Select and Rectangle Select now use a shared compact
 exclusive icon strip in main and detached views. There is no hidden tool combo.

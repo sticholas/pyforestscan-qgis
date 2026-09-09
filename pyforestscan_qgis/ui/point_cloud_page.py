@@ -681,6 +681,7 @@ class PointCloudPage(QWidget):
             self.status.setText("Select a LAS, LAZ, COPC or local EPT source.")
             return
         if not render_only:
+            self.linked.set_depth({}, persist=False)
             self.linked.residents.clear()
         if self.worker is not None:
             self._pending_source = path

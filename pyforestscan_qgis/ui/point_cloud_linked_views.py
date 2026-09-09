@@ -4,17 +4,19 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-from qgis.PyQt.QtCore import QObject, Qt
+from qgis.PyQt.QtCore import QObject, Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (QToolButton, QMenu, QInputDialog, QCheckBox, QDialog,
     QFormLayout, QDialogButtonBox, QDoubleSpinBox, QComboBox, QStyle)
 from ..compat.qt import qt_enum
 from ..core.point_cloud.workspace import ViewType
 from ..core.point_cloud.linked_query import view_ring
-from ..core.point_cloud.linked_selection import linked_constraints
+from ..core.point_cloud.linked_selection import linked_constraints, selection_limit_values
 from .point_cloud_editor import EditorWorker, _WORKERS
 
 
 class LinkedViews(QObject):
+    limitsChanged = pyqtSignal()
+
     def __init__(self, page, toolbar):
         super().__init__(page)
         self.page = page
@@ -72,7 +74,34 @@ class LinkedViews(QObject):
         page.view_tabs.tabCloseRequested.connect(self.close_tab)
         page.view_tabs.tabMoved.connect(lambda *_: self.persist())
         page.view_tabs.detachRequested.connect(self.detach)
+        from .point_cloud_selection_limits import SelectionLimits
+        self.limits = SelectionLimits(self, parent=page.editor)
+        page.editor.layout().insertWidget(1, self.limits)
         self.sync_tabs()
+
+    @property
+    def depth(self):
+        return self.page.workspace.global_filters.get("selection_limits", {})
+
+    @depth.setter
+    def depth(self, values):
+        self.page.workspace.global_filters["selection_limits"] = selection_limit_values(values)
+
+    def set_depth(self, values, *, persist=True):
+        self.depth = values
+        self.limitsChanged.emit()
+        self.page.editor.refresh_controls()
+        if persist:
+            self.persist()
+
+    @property
+    def depth_error(self):
+        for key, limits in self.depth.items():
+            if limits[0] > limits[1]:
+                return "Minimum exceeds maximum"
+            elif key == "hag_filter" and "HeightAboveGround" not in self.page.editor.state.get("dimensions", []):
+                return "Source has no stored HAG"
+        return ""
 
     def active(self):
         return self.page.workspace.views[self.page.workspace.active_view_id]
@@ -261,24 +290,8 @@ class LinkedViews(QObject):
         form.addRow(buttons)
 
     def adjust_depth(self):
-        dialog = QDialog(self.page)
-        dialog.setWindowTitle("Authoritative selection depth")
-        form = QFormLayout(dialog)
-        axis = QComboBox()
-        axis.addItem("Absolute elevation", "z_filter")
-        if "HeightAboveGround" in self.page.editor.state.get("dimensions", []):
-            axis.addItem("Height above ground", "hag_filter")
-        form.addRow("Height dimension",axis)
-        key = next(iter(self.depth),"z_filter")
-        axis.setCurrentIndex(max(0,axis.findData(key)))
-        enabled,low,high = self.range_controls(form,self.depth.get(key))
-        self.dialog_buttons(form,dialog)
-        if dialog.exec() if hasattr(dialog,"exec") else dialog.exec_():
-            if enabled.isChecked() and low.value() >= high.value():
-                self.page.status.setText("Height minimum must be below maximum.")
-                return
-            self.depth = {axis.currentData():[low.value(),high.value()]} if enabled.isChecked() else {}
-            self.page.status.setText("Selection depth: custom height range" if self.depth else "Selection depth: full column within the active region")
+        self.limits.mode.setFocus()
+        self.limits.mode.showPopup()
 
     def activate_tab(self, index):
         if index < 0 or self.closing:
@@ -407,8 +420,18 @@ class LinkedViews(QObject):
     def selection_values(self, event):
         if self.rendered_id != self.page.workspace.active_view_id:
             raise ValueError("Wait for the active linked view to finish opening.")
-        return linked_constraints(asdict(self.active()), profile_geometry=event.get("profile_geometry"),
-            select_filtered=self.select_filtered.isChecked(),display=self.page._view_state,**self.depth)
+        return self.selection_values_for(self.active(), event, self.page._view_state)
+
+    def selection_values_for(self, view, event, telemetry):
+        if self.depth_error:
+            raise ValueError(self.depth_error)
+        values = linked_constraints(asdict(view), profile_geometry=event.get("profile_geometry"),
+            select_filtered=self.select_filtered.isChecked(),display=telemetry,**self.depth)
+        for key in ("z_filter", "hag_filter"):
+            limits = values.get(key)
+            if limits is not None and limits[0] > limits[1]:
+                raise ValueError("Selection limits do not overlap the active view or filters.")
+        return values
 
     def close_tab(self, index):
         key = self.page.view_tabs.tabData(index)

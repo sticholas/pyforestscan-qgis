@@ -289,4 +289,10 @@ class PointCloudWorkspaceModel:
             result.update_view(key, **raw)
         result.activate(payload["active_view_id"])
         result.global_filters = deepcopy(payload.get("global_filters", {}))
+        if not isinstance(result.global_filters, dict):
+            raise ValueError("Workspace global filters must be an object.")
+        if "selection_limits" in result.global_filters:
+            from .linked_selection import selection_limit_values
+            result.global_filters["selection_limits"] = selection_limit_values(
+                result.global_filters["selection_limits"])
         return result
