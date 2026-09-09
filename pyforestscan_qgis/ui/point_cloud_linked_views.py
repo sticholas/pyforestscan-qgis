@@ -152,7 +152,8 @@ class LinkedViews(QObject):
         page.workspace.update_view(self.rendered_id, camera=state.get("camera", {}),
             render_mode=state.get("mode","Classification"),
             display_filters={"classes":state.get("classes"),"height_filter":state.get("height_filter")},
-            lod={"quality":state.get("quality","Automatic")})
+            lod={"quality":state.get("quality","Automatic"),
+                 "point_style":state.get("point_style","Circular"), "point_size":state.get("point_size",0)})
 
     def persist(self):
         page = self.page
@@ -398,6 +399,8 @@ class LinkedViews(QObject):
         if view.view_type != ViewType.OVERVIEW_3D:
             context["corridor"] = view_ring(context)
         self.page.send({"action":"linked_view","view":context})
+        self.page.send({"action":"point_display","style":view.lod.get("point_style","Circular"),
+                        "size":view.lod.get("point_size",0)})
         self.page._restore_after_open = {"camera":view.camera or telemetry["camera"],
             "mode":view.render_mode,"classes":view.display_filters.get("classes"),
             "height_filter":view.display_filters.get("height_filter"),

@@ -81,6 +81,9 @@ class DetachedView(QDialog):
         self.mode.addItems(("Classification","Elevation","RGB","Intensity"))
         self.mode.currentTextChanged.connect(lambda value:self.send({"action":"mode","mode":value}))
         row.addWidget(self.mode)
+        from .point_cloud_appearance import PointAppearance
+        self.appearance = PointAppearance(self.send, self)
+        row.addWidget(self.appearance)
         from .point_cloud_tools import SelectionTools
         self.tool = SelectionTools(self)
         self.tool.currentTextChanged.connect(lambda value:self.send({
@@ -157,6 +160,7 @@ class DetachedView(QDialog):
         if not telemetry.get("ready") or not telemetry.get("editor",{}).get("ready"):
             return
         self.telemetry = telemetry
+        self.appearance.sync(telemetry)
         view = self.controller.page.workspace.views.get(self.view_id)
         if view is None:
             return
@@ -194,7 +198,9 @@ class DetachedView(QDialog):
         if acknowledged:
             self.controller.page.workspace.update_view(self.view_id,camera=telemetry.get("camera",{}),
                 render_mode=telemetry.get("mode","Classification"),
-                display_filters={"classes":telemetry.get("classes"),"height_filter":telemetry.get("height_filter")})
+                display_filters={"classes":telemetry.get("classes"),"height_filter":telemetry.get("height_filter")},
+                lod={"quality":telemetry.get("quality","Automatic"),
+                     "point_style":telemetry.get("point_style","Circular"),"point_size":telemetry.get("point_size",0)})
         signature = (editor.state.get("overlay"),editor.state.get("revision"))
         if signature[0] and signature != self.overlay:
             self.send({"action":"editor_overlay","path":signature[0]})

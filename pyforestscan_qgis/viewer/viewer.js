@@ -13,6 +13,18 @@ function fitProfile() {
 }
 let priorView = null, cameraVelocity = 0, lastMotion = 0, evictions = 0;
 const recentNodes = new WeakMap();
+state.point_style = "Circular";
+state.point_size = 0;
+function pointDisplay(style, manual) {
+    const display = viewerRenderPolicy.appearance(style, manual);
+    cloud.material.shape = style === "Circular" ? Potree.PointShape.CIRCLE : Potree.PointShape.SQUARE;
+    cloud.material.pointSizeType = manual === 0 ? Potree.PointSizeType.ADAPTIVE : Potree.PointSizeType.FIXED;
+    cloud.material.size = display.material.scale;
+    cloud.material.minSize = display.material.minimum;
+    cloud.material.maxSize = display.material.maximum;
+    state.point_style = style;
+    state.point_size = manual;
+}
 let residentLimit = 2000000;
 const observedClasses = new Set(), scannedClasses = new WeakMap();
 let rgbChecked = 0, rgbNonzero = false;
@@ -109,6 +121,7 @@ window.command = function(command) {
     if (!cloud) return;
     try {
         const action = command.action;
+        if (action === "point_display") pointDisplay(command.style, command.size);
         if (action === "linked_view") {
             linkedContext = command.view || null;
             if (linkedContext && linkedContext.view_type === "VERTICAL_SLICE") {
@@ -217,7 +230,8 @@ window.snapshot = function() {
         resident_points: Potree.lru ? Potree.lru.numPoints : null,
         pending_nodes: Potree.numNodesLoading, node_pixel_threshold: cloud.minimumNodePixelSize,
         viewer_node_threshold: viewer.minNodeSize, point_size: cloud.material.size,
-        point_size_type: cloud.material.pointSizeType, root_points: root ? root.numPoints : null,
+        point_size_type: cloud.material.pointSizeType, point_shape: cloud.material.shape,
+        root_points: root ? root.numPoints : null,
         lod_min: levels.length ? Math.min(...levels) : null, lod_max: levels.length ? Math.max(...levels) : null,
         fps: 1000 / frameMs, viewport_pixels: viewer.renderer.domElement.width * viewer.renderer.domElement.height,
         near: viewer.scene.getActiveCamera().near, far: viewer.scene.getActiveCamera().far,
@@ -288,11 +302,7 @@ try {
         cloud = event.pointcloud;
         viewer.scene.addPointCloud(cloud);
         cloud.material.activeAttributeName = "classification";
-        cloud.material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
-        const size = viewerRenderPolicy.size();
-        cloud.material.size = size.scale;
-        cloud.material.minSize = size.minimum;
-        cloud.material.maxSize = size.maximum;
+        pointDisplay(state.point_style, state.point_size);
         cloud.updateMatrixWorld(true);
         const bounds = cloud.boundingBox.clone().applyMatrix4(cloud.matrixWorld);
         state.z_range = [bounds.min.z, bounds.max.z];

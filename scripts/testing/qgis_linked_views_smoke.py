@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--detach", action="store_true")
     parser.add_argument("--transfer-cycles", type=int, default=0)
     parser.add_argument("--selection-hag", nargs=2, type=float)
+    parser.add_argument("--appearance-check", action="store_true")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=False)
     from qgis.core import QgsApplication, Qgis
@@ -45,6 +46,9 @@ def main():
     transfer_started = None
     cycle_stage = "detach"
     cycles = 0
+    appearance_cases = [(style, size, mode) for style in ("Circular", "Square")
+                        for size in (0, 8) for mode in ("Classification", "Elevation", "RGB", "Intensity")] if args.appearance_check else []
+    appearance_started = None
     x,y = args.center
     d = args.width/4
     ending = False
@@ -87,7 +91,7 @@ def main():
             assert page.linked.depth == {"hag_filter": args.selection_hag}
 
     def tick():
-        nonlocal step,detail,profile,original_worker,previous,transferred_worker,transfer_started,cycle_stage,cycles
+        nonlocal step,detail,profile,original_worker,previous,transferred_worker,transfer_started,cycle_stage,cycles,appearance_started
         try:
             if time.monotonic()-started > 480:
                 raise TimeoutError(page.status.text()+" | "+page.editor.summary.text())
@@ -101,6 +105,32 @@ def main():
                 return
             if original_worker:
                 assert editor.worker is original_worker, "Linked view replaced authoritative editor"
+            if step == 0 and appearance_cases:
+                style, size, mode = appearance_cases[0]
+                if appearance_started is None:
+                    page.appearance.style_combo.setCurrentText(style)
+                    page.appearance.size_spin.setValue(size)
+                    page.mode.setCurrentText(mode)
+                    page.send({"action":"orbit"})
+                    appearance_started = time.monotonic()
+                    return
+                state = page._view_state
+                if (state.get("point_style"), state.get("point_size"), state.get("mode")) != (style, size, mode):
+                    return
+                if time.monotonic()-appearance_started < 2:
+                    return
+                assert state["render_diagnostics"]["point_shape"] == (1 if style == "Circular" else 0)
+                assert state["render_diagnostics"]["point_size_type"] == (2 if size == 0 else 0)
+                name = f"appearance-{style}-{size}-{mode}"
+                page.send({"action":"capture","name":name})
+                report.setdefault("appearance_cases", []).append({
+                    "style":style,"size":size,"mode":mode,"frame_ms":state.get("frame_ms"),
+                    "rendered_points":state["render_diagnostics"]["rendered_points"],
+                    "rgb_status":state.get("rgb_diagnostic",{}).get("status"),
+                    "capture":str(page.worker.run_record.folder/(name+".png"))})
+                appearance_cases.pop(0)
+                appearance_started = None
+                return
             if step == 0:
                 page.linked.set_depth({"z_filter": [20, 10]})
                 assert not editor.tool.isEnabled()
@@ -143,6 +173,9 @@ def main():
                      "vertical_axis":"HeightAboveGround" if args.hag else "Z"})
             elif step == 4:
                 if page.linked.rendered_id != profile:
+                    return
+                if args.appearance_check and page._view_state.get("point_size") != 8:
+                    page.appearance.size_spin.setValue(8)
                     return
                 page.grab().save(str(args.output_dir/"slice.png"))
                 report["slice_telemetry"] = page._view_state
@@ -200,6 +233,8 @@ def main():
             elif step == 12:
                 if page.linked.rendered_id != profile:
                     return
+                if args.appearance_check and page._view_state.get("point_size") != 8:
+                    return
                 assert editor.state["edits"] == 2
                 assert page.view_tabs.count() == 3
                 original_worker = editor.worker
@@ -249,6 +284,10 @@ def main():
                     return
             elif step == 16:
                 window = page.linked.detached[profile]
+                if args.appearance_check and (window.telemetry.get("point_style"),window.telemetry.get("point_size")) != ("Square",4):
+                    window.appearance.style_combo.setCurrentText("Square")
+                    window.appearance.size_spin.setValue(4)
+                    return
                 if args.selection_hag:
                     assert window.limits.minimum.value() == args.selection_hag[0]
                     assert window.limits.maximum.value() == args.selection_hag[1]
@@ -282,6 +321,9 @@ def main():
                     return
                 report["dock_seconds"] = time.monotonic()-transfer_started
                 report["dock_ack_seconds"] = page.worker.surface_transfer_seconds
+                if args.appearance_check:
+                    assert page._view_state["point_style"] == "Square"
+                    assert page._view_state["point_size"] == 4
                 page.send({"action":"capture","name":"redocked-profile"})
                 assert page.view_tabs.count() == 3
                 assert not page.linked.detached

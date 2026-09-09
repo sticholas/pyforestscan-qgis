@@ -12,6 +12,7 @@ try:
     from pyforestscan_qgis.ui.point_cloud_tools import SelectionTools
     from pyforestscan_qgis.ui.point_cloud_linked_views import LinkedViews
     from pyforestscan_qgis.ui.point_cloud_selection_limits import SelectionLimits
+    from pyforestscan_qgis.ui.point_cloud_appearance import PointAppearance
 except ImportError:
     QApplication = None
 
@@ -209,6 +210,33 @@ class SelectionLimitsTests(unittest.TestCase):
         with patch.object(self.limits.minimum, "hasFocus", return_value=True):
             self.limits.refresh()
         self.assertEqual(self.limits.minimum.lineEdit().text(), "Min 12.")
+
+
+@unittest.skipIf(QApplication is None, "Requires QGIS Qt")
+class PointAppearanceControlTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.send = Mock()
+        self.control = PointAppearance(self.send)
+
+    def tearDown(self):
+        self.control.deleteLater()
+        self.app.processEvents()
+
+    def test_display_commands_do_not_contain_edit_actions(self):
+        self.control.style_combo.setCurrentText("Square")
+        self.control.size_spin.setValue(8)
+        self.send.assert_called_with({"action": "point_display", "style": "Square", "size": 8})
+        self.assertTrue(callable(self.control.style))
+        self.assertTrue(callable(self.control.size))
+
+    def test_telemetry_sync_does_not_echo_commands(self):
+        self.control.sync({"point_style": "Square", "point_size": 6})
+        self.assertEqual(self.control.size_spin.value(), 6)
+        self.send.assert_not_called()
 
 
 if __name__ == "__main__":

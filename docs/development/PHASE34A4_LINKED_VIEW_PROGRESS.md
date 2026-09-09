@@ -159,6 +159,38 @@ help topics remain; no missing used topics or generic placeholders reported).
 3. Faster first creation, session/window restoration, resource-pressure and
    large-source qualification.
 
+## Point appearance slice
+
+Main and detached views now expose Circular/Square point sprites and an
+Automatic or 1-16 screen-pixel size control in the existing display row.
+Automatic retains the adaptive 2-5 pixel policy. These settings affect display
+only, not density, selection depth, source attributes, or exports. Appearance
+is view-local and restored with the linked editing workspace.
+
+The isolated QGIS 3.44 point-appearance-01 canary passed in 95.55 seconds on
+the 2,287,408-point small LAZ. Sixteen combinations of shape, size (Automatic
+and 8 px), and Classification/Elevation/RGB/Intensity passed renderer material
+checks. Native screenshots show nonblank circular points and shared selection
+in the HAG profile. Frame-time samples were approximately 16.66-16.67 ms;
+these short, vsync-limited samples are not a sustained performance benchmark.
+This source has all-zero RGB, reported explicitly rather than treated as
+usable color. A second tiny fixture passed all sixteen appearance combinations
+with constant RGB; varied RGB on a large source remains a qualification gate.
+
+HAG-limited area/profile selection, shared edits, reopen, detach/dock, and
+validated export passed. Appearance persisted across reopen and native surface
+transfer. Detach/dock host acknowledgments were 62/15 ms in this run; initial
+view creation still takes seconds and is not represented by those timings.
+The original source was unchanged, all 2,287,408 points were retained, and the
+three-edit export SHA256 remained
+e1049d97387b6b4935845244cc347f718e72214c1b8dbf7f407e6e7e1af2e78b.
+
+Validation: 167 focused tests ran with 24 dependency skips, 17 Qt control tests
+passed on each installed QGIS 3.44 and QGIS 4.0 runtime, and JavaScript render
+policy, compilation, undefined-name, and documentation-link checks passed.
+Human interaction retesting, read-only EPT session appearance persistence,
+large-source rendering, resource stress, and sustained soak remain open.
+
 ## Blocked gates / package status
 
 No access blocker currently prevents development. Release gates remain open:

@@ -341,7 +341,12 @@ class PointCloudPage(QWidget):
         self.navigation_mode.setToolTip("Orbit turns around the cloud. Pan moves over a picked source surface without rotating it.")
         self.navigation_mode.currentTextChanged.connect(lambda value: self.send({"action": "navigation", "mode": value}))
         toolbar.addWidget(self.navigation_mode, 1)
-        layout.addWidget(self.mode)
+        display_row = QHBoxLayout()
+        display_row.addWidget(self.mode, 1)
+        from .point_cloud_appearance import PointAppearance
+        self.appearance = PointAppearance(self.send, self)
+        display_row.addWidget(self.appearance)
+        layout.addLayout(display_row)
         self.filter_toggle = QToolButton()
         self.filter_toggle.setText("Display filters")
         self.filter_toggle.setCheckable(True)
@@ -636,6 +641,7 @@ class PointCloudPage(QWidget):
         for button in self.view_buttons:
             button.setEnabled(ready)
         self.mode.setEnabled(ready)
+        self.appearance.setEnabled(ready)
         self.navigation_mode.setEnabled(ready)
         self.apply_filters_button.setEnabled(ready)
         self.clear_filters_button.setEnabled(ready)
@@ -754,6 +760,7 @@ class PointCloudPage(QWidget):
         telemetry = value.get("telemetry", {})
         if telemetry.get("ready"):
             self._view_state = telemetry
+            self.appearance.sync(telemetry)
             self.linked.observe(telemetry)
             self.editor.observe(telemetry)
             self.linked.coordinate_resources()

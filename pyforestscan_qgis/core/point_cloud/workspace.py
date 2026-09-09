@@ -230,6 +230,8 @@ class PointCloudWorkspaceModel:
             AreaGeometry(**candidate.geometry)
         if candidate.render_mode not in ("Classification", "RGB", "Elevation", "Intensity"):
             raise ValueError("Unknown display mode.")
+        from .point_appearance import point_appearance
+        point_appearance(candidate.lod.get("point_style", "Circular"), candidate.lod.get("point_size", 0))
         self._views[view_id] = candidate
 
     def accept_editor_snapshot(self, snapshot):

@@ -20,7 +20,15 @@
             if (visible.some(child => child.startsWith(name))) return true;
             return now - lastSeen < 1000 && residentPoints < limit * 1.25;
         },
-        size() { return {minimum: 2, maximum: 5, scale: 1}; }
+        size(manual = 0) {
+            if (!Number.isInteger(manual) || manual < 0 || manual > 16) throw new RangeError("Point size must be Automatic or 1-16 pixels.");
+            return manual === 0 ? {minimum: 2, maximum: 5, scale: 1} :
+                {minimum: manual, maximum: manual, scale: manual};
+        },
+        appearance(style, size) {
+            if (!["Circular", "Square"].includes(style)) throw new RangeError("Unknown point style.");
+            return {style, size, material: this.size(size)};
+        }
     };
     root.viewerRenderPolicy = policy;
     if (typeof module !== 'undefined') module.exports = policy;
