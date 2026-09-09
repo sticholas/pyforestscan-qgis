@@ -327,6 +327,17 @@ source/destination rechecks. See the
 [preparation audit](POINT_CLOUD_PREPARATION_WORKSPACE_AUDIT.md).
 Managed execution, validated publication, and workspace controls remain open.
 
+## Preparation publication boundary
+
+Attempt-owned staging and no-replacement output/provenance publication are
+implemented and tested on Linux and Windows. Concurrent outputs are preserved,
+owned reports are retracted on output-link failure, and unrelated staging
+collisions are not cleaned up. Source identity is verified again after
+the caller's scientific validation.
+See [publication limits](POINT_CLOUD_PREPARATION_WORKSPACE_AUDIT.md), including
+hard-crash orphan-report handling still needed in the managed job layer.
+Scientific execution and workspace integration remain open.
+
 ## Blocked gates / package status
 
 No access blocker currently prevents development. Release gates remain open:

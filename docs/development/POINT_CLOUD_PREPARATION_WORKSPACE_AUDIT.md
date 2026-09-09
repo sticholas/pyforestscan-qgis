@@ -96,5 +96,28 @@ the validated result first. It reads the existing journal and never changes
 undo/redo history. Source identity/options/output form the deterministic
 request signature. Schema validation rejects unknown request fields.
 
-Thinning and normalization remain open Phase 34A4 requirements. This request
-layer does not yet execute preparation or enable production controls.
+## Publication Boundary
+
+`core/point_cloud/preparation_publication.py` adds attempt-owned staging and
+exclusive hard-link publication, matching the existing editor export
+primitive. The caller supplies scientific/file validation; only a VALIDATED
+result can proceed. Input identity and destination availability are rechecked,
+and the output hash and request signature are recorded in provenance.
+Only attempt-created staging names are cleaned up.
+
+Each published file is atomic and no-replacement. The output/provenance pair
+is not a single filesystem transaction: a hard crash between the two links
+can leave an orphan provenance file, which must not be mistaken for a
+completed output. Unsupported hard-link filesystems fail closed rather than
+fall back to overwriting. Managed-job recovery remains to be wired.
+
+Tests cover success, failed validation, cancellation, source mutation,
+concurrent output creation, staging-name collisions, directory retargeting,
+and unsupported filesystems. Eight tests passed on Linux; seven passed on
+Windows with one symlink-privilege skip. The first Windows run exposed an
+fsync failure on a read-only handle; owned staging now uses r+b for flushing.
+The focused suite ran 199 tests with 26 dependency skips and no failures.
+These publication tests use byte fixtures, not scientific LAS validation.
+
+Thinning and normalization remain open Phase 34A4 requirements. Request and
+publication layers do not yet execute preparation or enable production controls.
