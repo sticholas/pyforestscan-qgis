@@ -1,0 +1,187 @@
+"""Detachable linked view windows; editor authority stays in the owning workspace."""
+from dataclasses import asdict
+from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtWidgets import (QTabBar, QDialog, QVBoxLayout, QHBoxLayout,
+                                QToolButton, QComboBox, QInputDialog)
+from ..compat.qt import qt_enum
+from ..core.point_cloud.linked_query import view_ring
+from ..core.point_cloud.linked_selection import linked_constraints
+from .point_cloud_widgets import StableViewerStatus, StableViewerHelp
+
+
+class LinkedTabBar(QTabBar):
+    detachRequested = pyqtSignal(str, object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.drag_id = None
+
+    def mousePressEvent(self, event):
+        point = event.position().toPoint() if hasattr(event,"position") else event.pos()
+        index = self.tabAt(point)
+        self.drag_id = self.tabData(index) if index >= 0 and event.button() == qt_enum(Qt,"LeftButton","MouseButton") else None
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        point = event.position().toPoint() if hasattr(event,"position") else event.pos()
+        key, self.drag_id = self.drag_id, None
+        outside = not self.rect().adjusted(-24,-36,24,36).contains(point)
+        super().mouseReleaseEvent(event)
+        if key and outside:
+            position = event.globalPosition().toPoint() if hasattr(event,"globalPosition") else event.globalPos()
+            self.detachRequested.emit(key,position)
+
+
+class DetachedView(QDialog):
+    dockRequested = pyqtSignal(str)
+
+    def __init__(self, controller, view_id, source):
+        super().__init__(controller.page, qt_enum(Qt,"Window","WindowType"))
+        from .point_cloud_page import ViewerSurface, ViewerWorker, _ACTIVE_WORKERS
+        self.controller, self.view_id = controller, view_id
+        self.worker = None
+        self.telemetry = {}
+        self.overlay = None
+        self.event_id = None
+        self.context_sent = False
+        self.closing = False
+        self.setWindowTitle(controller.page.workspace.views[view_id].title)
+        self.resize(960,720)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8,8,8,8)
+        row = QHBoxLayout()
+        for text, action in (("Fit","fit"),("Undo","undo"),("Redo","redo")):
+            button = QToolButton()
+            button.setText(text)
+            button.clicked.connect(lambda _=False,a=action:self.action(a))
+            row.addWidget(button)
+        self.mode = QComboBox()
+        self.mode.addItems(("Classification","Elevation","RGB","Intensity"))
+        self.mode.currentTextChanged.connect(lambda value:self.send({"action":"mode","mode":value}))
+        row.addWidget(self.mode)
+        self.tool = QComboBox()
+        self.tool.addItems(("Pointer","Polygon","Rectangle"))
+        self.tool.currentTextChanged.connect(lambda value:self.send({
+            "action":"selection_tool","tool":value,"mode":self.selection_mode.currentText().upper()}))
+        row.addWidget(self.tool)
+        self.selection_mode = QComboBox()
+        self.selection_mode.addItems(("Replace","Add","Subtract"))
+        row.addWidget(self.selection_mode)
+        classify = QToolButton()
+        classify.setText("Classify")
+        classify.clicked.connect(self.classify)
+        row.addWidget(classify)
+        dock = QToolButton()
+        dock.setText("Dock to tabs")
+        dock.setToolTip("Return this view to the workspace tabs without changing selection or edits.")
+        dock.clicked.connect(lambda:self.dockRequested.emit(self.view_id))
+        row.addWidget(dock)
+        layout.addLayout(row)
+        self.surface = ViewerSurface(self)
+        layout.addWidget(self.surface,1)
+        self.status = StableViewerStatus("Opening linked view...")
+        layout.addWidget(self.status)
+        self.help = StableViewerHelp(self)
+        self.help.set_help("This window shares the original source, selection and edit journal. Dock to tabs returns it to the workspace.")
+        layout.addWidget(self.help)
+        self.surface.resized.connect(lambda w,h:self.send({"action":"resize","width":w,"height":h}))
+        self.surface.visibility.connect(lambda visible:self.send({"action":"visible","visible":visible}))
+        self.show()
+        worker = ViewerWorker(source=source,parent_handle=int(self.surface.winId()))
+        self.worker = worker
+        worker.update.connect(self.update_view)
+        worker.finished.connect(self.finished)
+        _ACTIVE_WORKERS.add(worker)
+        worker.finished.connect(lambda:_ACTIVE_WORKERS.discard(worker))
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+
+    def send(self, value):
+        if self.worker and not self.closing:
+            self.worker.send(value)
+
+    def action(self, action):
+        if action in ("undo","redo"):
+            self.controller.page.editor.send(action)
+        else:
+            self.send({"action":action})
+
+    def classify(self):
+        editor = self.controller.page.editor
+        if editor.busy or not editor.state.get("selection"):
+            return
+        value,ok = QInputDialog.getInt(self,"Classification","New LAS classification",editor.code.value(),0,255)
+        if ok:
+            editor.stage("Classification",value)
+
+    def update_view(self,value):
+        if self.closing:
+            return
+        if value.get("started"):
+            self.send({"action":"resize","width":self.surface.width(),"height":self.surface.height()})
+        if value.get("error"):
+            self.status.setText(value["error"])
+        telemetry = value.get("telemetry",{})
+        if not telemetry.get("ready") or not telemetry.get("editor",{}).get("ready"):
+            return
+        self.telemetry = telemetry
+        view = self.controller.page.workspace.views.get(self.view_id)
+        if view is None:
+            return
+        if not self.context_sent:
+            context = asdict(view)
+            if view.view_type != "OVERVIEW_3D":
+                context["corridor"] = view_ring(context)
+            self.send({"action":"linked_view","view":context})
+            if view.camera:
+                self.send({"action":"camera","camera":view.camera})
+            self.mode.setCurrentText(view.render_mode)
+            self.send({"action":"mode","mode":view.render_mode})
+            if view.display_filters.get("classes") is not None:
+                self.send({"action":"classes","classes":view.display_filters["classes"]})
+            self.context_sent = True
+        acknowledged = telemetry["editor"].get("view_id") == self.view_id
+        editor = self.controller.page.editor
+        event = telemetry["editor"].get("event")
+        if acknowledged and event and event["id"] != self.event_id:
+            self.event_id = event["id"]
+            if event.get("geometry") and not editor.busy:
+                constraints = linked_constraints(asdict(view),profile_geometry=event.get("profile_geometry"),
+                    select_filtered=self.controller.select_filtered.isChecked(),display=telemetry,**self.controller.depth)
+                editor.send("select",geometry=event["geometry"],mode=event["mode"],constraints=constraints)
+            elif event.get("action") in ("undo","redo"):
+                editor.send(event["action"])
+            self.tool.blockSignals(True)
+            self.tool.setCurrentText("Pointer")
+            self.tool.blockSignals(False)
+        if acknowledged:
+            self.controller.page.workspace.update_view(self.view_id,camera=telemetry.get("camera",{}),
+                render_mode=telemetry.get("mode","Classification"),
+                display_filters={"classes":telemetry.get("classes"),"height_filter":telemetry.get("height_filter")})
+        signature = (editor.state.get("overlay"),editor.state.get("revision"))
+        if signature[0] and signature != self.overlay:
+            self.send({"action":"editor_overlay","path":signature[0]})
+            self.overlay = signature
+        selected = (editor.state.get("selection") or {}).get("resolved_point_count",0)
+        self.status.setText(f"Selected: {selected:,} source points | {editor.state.get('edits',0)} staged edits")
+        self.controller.coordinate_resources()
+
+    def finished(self):
+        self.worker = None
+
+    def shutdown(self):
+        if self.closing:
+            return
+        self.closing = True
+        if self.worker:
+            self.worker.update.disconnect(self.update_view)
+            self.worker.finished.connect(self.deleteLater)
+            self.worker.stop("linked_window_close")
+        else:
+            self.deleteLater()
+
+    def closeEvent(self,event):
+        if not self.closing:
+            self.dockRequested.emit(self.view_id)
+        self.shutdown()
+        event.accept()

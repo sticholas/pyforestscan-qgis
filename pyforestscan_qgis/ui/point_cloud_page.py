@@ -139,14 +139,16 @@ class ViewerWorker(QThread):
             if self.stop_event.is_set():
                 return
             if source.name.lower() == "ept.json":
-                with source.open(encoding="utf-8") as stream:
+                with source.open(encoding="utf-8", newline="") as stream:
                     raw = stream.read(2 * 1024 * 1024 + 1)
                 if len(raw) > 2 * 1024 * 1024:
                     raise RuntimeError("EPT metadata exceeds the viewer limit.")
                 metadata = json.loads(raw)
                 if metadata.get("dataType") not in ("laszip", "binary"):
                     raise RuntimeError("Viewer currently supports LASzip/binary EPT; this EPT encoding is not yet packaged.")
-                self.update.emit({"source_info": {"point_count": metadata.get("points"), "metadata": metadata}})
+                import hashlib
+                self.update.emit({"source_info": {"point_count": metadata.get("points"), "metadata": metadata,
+                    "source_identity":{"path":str(source),"sha256":hashlib.sha256(raw.encode("utf-8")).hexdigest(),"source_type":"EPT"}}})
             service.root.mkdir(parents=True, exist_ok=True)
             with (self.run_record.folder / "stderr.log").open("a", encoding="utf-8") as log:
                 process = subprocess.Popen(
@@ -292,6 +294,8 @@ class PointCloudPage(QWidget):
         super().__init__(parent)
         self.worker = None
         self._pending_source = None
+        self._pending_render_only = False
+        self._render_only = False
         self._filter_bounds_initialized = False
         self._session_worker = None
         self._edit_session = None
@@ -397,19 +401,16 @@ class PointCloudPage(QWidget):
         self.filters_panel.setVisible(False)
         self.filter_toggle.toggled.connect(self._toggle_filters)
         self.surface = ViewerSurface(self)
-        self.surface.resized.connect(lambda w, h: self.send({"action": "resize", "width": w, "height": h}))
-        self.surface.visibility.connect(lambda value: self.send({"action": "visible", "visible": value}))
         from ..core.point_cloud.workspace import PointCloudWorkspaceModel
         self.workspace = PointCloudWorkspaceModel()
         self.overview_id = self.workspace.register(view_id="overview")
-        self.view_tabs = QTabWidget(self)
-        self.view_tabs.setDocumentMode(True)
+        from .point_cloud_detached import LinkedTabBar
+        self.view_tabs = LinkedTabBar(self)
+        self.view_tabs.setExpanding(False)
+        self.view_tabs.setMovable(True)
         self.view_tabs.setTabsClosable(True)
-        self.view_tabs.addTab(self.surface, "3D Overview")
-        # The workspace always retains its Overview; future derived tabs are closeable.
-        self.view_tabs.tabBar().setTabButton(0, qt_enum(QTabBar, "RightSide", "ButtonPosition"), None)
-        self.view_tabs.tabBar().setTabButton(0, qt_enum(QTabBar, "LeftSide", "ButtonPosition"), None)
-        layout.addWidget(self.view_tabs, 1)
+        layout.addWidget(self.view_tabs)
+        layout.addWidget(self.surface, 1)
         from .point_cloud_widgets import StableViewerStatus
         self.status = StableViewerStatus("Open a source. Viewer setup is separate from scientific processing.")
         layout.addWidget(self.status)
@@ -451,6 +452,8 @@ class PointCloudPage(QWidget):
         from .point_cloud_editor import EditorPanel
         self.editor = EditorPanel(self)
         self.workspace.bind_editor(self.editor.send)
+        from .point_cloud_linked_views import LinkedViews
+        self.linked = LinkedViews(self, toolbar)
         layout.addWidget(self.editor)
         from .point_cloud_widgets import StableViewerHelp
         self.filter_help = StableViewerHelp(self.filters_panel)
@@ -640,6 +643,10 @@ class PointCloudPage(QWidget):
         self.solo_class_button.setEnabled(ready)
         self.show_classes_button.setEnabled(ready)
         self.save_session_button.setEnabled(ready and self._session_worker is None and self._pending_save is None)
+        if hasattr(self,"linked") and self.linked.active().view_type == "VERTICAL_SLICE":
+            self.navigation_mode.setEnabled(False)
+            for button in self.view_buttons[1:]:
+                button.setEnabled(False)
 
     def send(self, command):
         if self.worker:
@@ -650,6 +657,16 @@ class PointCloudPage(QWidget):
             self.status.setText("Close the current viewer before starting another operation.")
             return
         self.worker = worker
+        self.linked.residents.started()
+        surface = self.surface
+        resize = lambda w, h: worker.send({"action": "resize", "width": w, "height": h})
+        visibility = lambda value: worker.send({"action": "visible", "visible": value})
+        surface.resized.connect(resize)
+        surface.visibility.connect(visibility)
+        def disconnect_surface():
+            surface.resized.disconnect(resize)
+            surface.visibility.disconnect(visibility)
+        worker.finished.connect(disconnect_surface)
         self.open_button.setEnabled(False)
         self.reload_button.setEnabled(False)
         self.setup_button.setEnabled(False)
@@ -666,18 +683,29 @@ class PointCloudPage(QWidget):
             self.source.setText(path)
             self.start_source(path)
 
-    def start_source(self, path):
+    def start_source(self, path, *, render_only=False):
         if not path.strip():
             self.status.setText("Select a LAS, LAZ, COPC or local EPT source.")
             return
+        if not render_only:
+            self.linked.residents.clear()
         if self.worker is not None:
             self._pending_source = path
+            self._pending_render_only = render_only
             self.editor.observe({})
             self._controls(False)
             self.worker.stop()
             self.status.setText("Closing previous viewer")
             return
         self._controls(False)
+        self._render_only = render_only
+        self.linked.context_sent = False
+        if not render_only:
+            self.linked.request_id = None
+            self.linked.waiting = False
+            self.linked.rendered_id = self.overview_id
+            self.workspace.activate(self.overview_id)
+            self.linked.sync_tabs()
         self._filter_bounds_initialized = False
         self._view_state = None
         self._pending_save = None
@@ -698,7 +726,8 @@ class PointCloudPage(QWidget):
             self.session_status.setText("Session: Not saved")
         self.clear_filters()
         self._start(ViewerWorker(source=path, parent_handle=int(self.surface.winId())))
-        self.editor.attach(path)
+        if not render_only:
+            self.editor.attach(path)
         if self.editor.restored_view:
             self._restore_after_open = self.editor.restored_view
             self.editor.restored_view = None
@@ -717,6 +746,8 @@ class PointCloudPage(QWidget):
             self.last_run_folder = value["diagnostics_path"]
         if value.get("source_info"):
             self._source_info = value["source_info"]
+            if not self._render_only:
+                self.linked.original_info = value["source_info"]
         if value.get("started"):
             self.open_button.setEnabled(True)
             self.reload_button.setEnabled(True)
@@ -729,7 +760,9 @@ class PointCloudPage(QWidget):
         telemetry = value.get("telemetry", {})
         if telemetry.get("ready"):
             self._view_state = telemetry
+            self.linked.observe(telemetry)
             self.editor.observe(telemetry)
+            self.linked.coordinate_resources()
             self._observe_classes(telemetry.get("observed_classes", []), telemetry.get("classes"))
             self._controls(True)
             if self._session_worker is None:
@@ -793,10 +826,11 @@ class PointCloudPage(QWidget):
             self.setup_button.setEnabled(True)
             if self._pending_source:
                 path, self._pending_source = self._pending_source, None
-                self.start_source(path)
+                self.start_source(path, render_only=self._pending_render_only)
 
     def prepare_for_unload(self):
         self._closing = True
+        self.linked.close()
         self.filters_panel.close()
         self.editor.close_editor()
         if self._session_worker:

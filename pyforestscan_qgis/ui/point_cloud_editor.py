@@ -22,13 +22,15 @@ _WORKERS = set()
 class EditorWorker(QThread):
     update = pyqtSignal(object)
 
-    def __init__(self, initial):
+    def __init__(self, initial, *, script_name="editor_worker.py", namespace="editor-runs"):
         super().__init__()
         self.initial = initial
         self.commands = queue.Queue(maxsize=32)
         self.stopping = threading.Event()
         self.stopped_event = threading.Event()
         self.folder = None
+        self.script_name = script_name
+        self.namespace = namespace
 
     def send(self, value):
         try:
@@ -48,10 +50,10 @@ class EditorWorker(QThread):
             engine = BackendService().processing_engine_service()
             token = engine.runtime_token_for(("dataset_inspection",))
             engine.validate_runtime_token_for_launch(token, ("dataset_inspection",))
-            self.folder = ViewerRuntimeService().root / "editor-runs" / uuid4().hex
+            self.folder = ViewerRuntimeService().root / self.namespace / uuid4().hex
             self.folder.mkdir(parents=True, exist_ok=False)
             self.update.emit({"folder": str(self.folder)})
-            script = Path(__file__).resolve().parents[1] / "viewer" / "editor_worker.py"
+            script = Path(__file__).resolve().parents[1] / "viewer" / self.script_name
             with (self.folder / "stderr.log").open("w", encoding="utf-8") as errors:
                 process = subprocess.Popen([token.executable, "-I", str(script), "--folder", str(self.folder)],
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors,
@@ -264,6 +266,7 @@ class EditorPanel(QWidget):
         self.start({"action": "open", "source": source})
 
     def start(self, initial):
+        self.page.linked.dock_all(shutdown=True)
         self.page.workspace.detach_editor()
         if self.worker:
             self.pending_initial = initial
@@ -293,6 +296,9 @@ class EditorPanel(QWidget):
         if action not in ("cancel",) and self.busy:
             return
         command = {"action": action, **values}
+        self.page.linked.capture()
+        if self.state.get("ready"):
+            command["workspace"] = self.page.workspace.to_dict()
         if self.page._view_state:
             command["view"] = self.page._view_state
         if self.page._source_info:
@@ -312,12 +318,21 @@ class EditorPanel(QWidget):
             self.viewer_worker = self.page.worker
             self.sent_overlay = None
             self.event_id = None
+            self.page.linked.event_id = None
         self.viewer_ready = bool(telemetry.get("ready") and telemetry.get("editor", {}).get("ready"))
         event = telemetry.get("editor", {}).get("event")
+        self.viewer_ready = (self.viewer_ready and not self.page.linked.waiting and
+                             self.page.linked.rendered_id == self.page.workspace.active_view_id)
         if event and event["id"] != self.event_id:
             self.event_id = event["id"]
-            if event.get("geometry"):
-                self.send("select", geometry=event["geometry"], mode=event["mode"])
+            if self.page.linked.event(event):
+                pass
+            elif event.get("geometry"):
+                try:
+                    constraints = self.page.linked.selection_values(event)
+                    self.send("select", geometry=event["geometry"], mode=event["mode"], constraints=constraints)
+                except ValueError as error:
+                    self.summary.setText(str(error))
             elif event.get("action") in ("undo", "redo"):
                 self.send(event["action"])
             elif event.get("error"):
@@ -360,6 +375,7 @@ class EditorPanel(QWidget):
             self.state = value
             self.state["exported"] = value.get("exported") or old_export
             self.page.workspace.accept_editor_snapshot(self.state)
+            self.page.linked.sync_tabs()
             self.busy = False
             self.source = value["source"]
             selection = value.get("selection") or {}
@@ -374,6 +390,8 @@ class EditorPanel(QWidget):
                 self.restored_view = value["restored"]
                 self.page.source.setText(value["source"])
                 self.page.start_source(value["source"])
+                if value.get("linked_workspace"):
+                    self.page.linked.restore(value["linked_workspace"])
             if value.get("exported"):
                 report = value["exported"]
                 changed = report.get("attribute_changes", {}).get("classification_changed", 0)
