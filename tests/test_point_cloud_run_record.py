@@ -79,7 +79,10 @@ class ViewerRunRecordTests(unittest.TestCase):
     def test_harness_never_polls_deleted_qt_worker(self):
         root = Path(__file__).resolve().parents[1]
         text = (root / "scripts/testing/qgis_point_cloud_viewer_smoke.py").read_text()
-        self.assertIn("stopped.is_set()", text)
+        self.assertIn("all(event.is_set() for event in stopped)", text)
+        self.assertIn("page.editor.worker", text)
+        self.assertIn("page.linked.query_worker", text)
+        self.assertIn("w.stopped_event for w in owned", text)
         self.assertNotIn(".isRunning()", text)
 
 

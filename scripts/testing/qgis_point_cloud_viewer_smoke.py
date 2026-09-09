@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--seconds", type=int, default=65)
     parser.add_argument("--no-captures", action="store_true")
+    parser.add_argument("--point-sizes", nargs="+", type=int, choices=range(17))
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     from qgis.core import QgsApplication, Qgis
@@ -66,6 +67,10 @@ def main():
         ("filtered", {"action": "height", "minimum": 2, "maximum": 6}),
         ("clear_filter", {"action": "clear_filters"}),
     ]
+    if args.point_sizes:
+        commands.append(("rgb", {"action": "mode", "mode": "RGB"}))
+        commands.extend((f"points-{size}", {"action": "point_display", "style": "Circular", "size": size})
+                        for size in args.point_sizes)
 
     def save():
         atomic_write_json(args.output_dir / "harness_run.json", report)
@@ -113,8 +118,14 @@ def main():
                 passed = any(abs(a - b) > .01 for a, b in zip(camera["position"], previous["camera"]["position"]))
             elif name == "zoom":
                 passed = camera["radius"] < previous["camera"]["radius"] * .95
-            elif name in ("classification", "elevation"):
+            elif name in ("classification", "elevation", "rgb"):
                 passed = telemetry["mode"] == command["mode"]
+            elif name.startswith("points-"):
+                material = telemetry.get("render_diagnostics", {})
+                passed = (telemetry.get("point_size") == command["size"] and
+                          material.get("point_shape") == 1 and
+                          material.get("point_size_type") == (2 if command["size"] == 0 else 0) and
+                          (command["size"] == 0 or material.get("point_size") == command["size"]))
             report["steps"].append({"name": name, "passed": passed, "before": previous, "after": telemetry})
             if not args.no_captures:
                 page.send({"action": "capture", "name": name})
@@ -126,7 +137,7 @@ def main():
             pending = commands[action_index]
             sample = 0
             page.send(pending[1])
-        if action_index == len(commands) and (args.no_captures or "clear_filter" in captures):
+        if action_index == len(commands) and (args.no_captures or all(name in captures for name, _ in commands)):
             finish()
 
     def finish():
@@ -138,12 +149,15 @@ def main():
         report["sha256_after"] = fingerprint()
         report["duration"] = round(time.monotonic() - started, 3)
         report["status"] = page.status.text()
-        stopped = worker.stopped_event if worker else None
+        owned = [w for w in (page.worker, page.editor.worker, page.linked.query_worker,
+                 *(entry["worker"] for entry in page.linked.residents.parked.values()),
+                 *(view.worker for view in page.linked.detached.values())) if w]
+        stopped = [w.stopped_event for w in owned]
         page.prepare_for_unload()
         save()
         closing_started = time.monotonic()
         def complete():
-            if stopped is not None and not stopped.is_set():
+            if not all(event.is_set() for event in stopped):
                 if time.monotonic() - closing_started > 15:
                     report["errors"].append("Worker shutdown exceeded 15 seconds.")
                     save()

@@ -277,6 +277,37 @@ The updated user goal explicitly prioritizes smaller point sprites.
 The current fixed-size control reaches 1 pixel versus Automatic's 2-5 pixels;
 dense-canopy appearance and any finer size policy still require qualification.
 
+## Fine-point canopy qualification
+
+The native renderer canary now accepts `--point-sizes 1 2 4 0`, checks the
+actual material shape/size mode, and waits for every requested capture.
+Shutdown waits on all owned worker events, not only the renderer.
+The initial focused test failed because it required the old single-worker
+wait spelling; it now requires the all-worker wait and retains the check
+against polling deleted Qt wrappers.
+
+`canopy-point-sizes-01` passed all 15 checks on QGIS 3.44 in 19.766 seconds.
+The input was the 200,000-point bounded Olaa canopy display sample, not the
+whole 104.8-million-point source. The 1/2/4-pixel and Automatic captures had
+identical cameras, 200,000 rendered points, and valid variable RGB.
+Native 1-pixel and 4-pixel captures were inspected: 1 pixel retains finer
+canopy edges and less filled-in coverage; 4 pixels intentionally fills more
+screen area. Sizes affect sprites only, not density, selection, or export.
+The input SHA256 remained
+`f023ce58a003aa536a5d673cbc711304e5a11de5ac35b09b820e0b7082c7aed9`.
+Short frame samples were approximately 16.66-16.67 ms; not a sustained
+performance or human motion test. Automatic remains adaptive 2-5 pixels.
+There is no claim of useful subpixel rendering.
+The same 15-check run passed on QGIS 4.0 in 18.235 seconds
+(`canopy-point-sizes-qgis4-01`), with the same unchanged input hash.
+Focused validation: 180 tests, 26 dependency skips, no failures.
+
+The updated goal also requires dataset thinning and normalization. These
+remain open workspace capabilities: reuse existing scientific processing
+contracts, preserve the original cloud, publish derived datasets, and
+qualify provenance and subsequent editing. Display sampling is not dataset
+thinning, and a display height filter is not normalization.
+
 ## Blocked gates / package status
 
 No access blocker currently prevents development. Release gates remain open:
