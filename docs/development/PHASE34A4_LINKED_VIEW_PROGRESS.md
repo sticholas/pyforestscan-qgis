@@ -255,6 +255,16 @@ seconds with source unchanged, all 20,000 points retained, and the same
 The focused tier ran 178 tests with 24 dependency skips and no failures;
 compilation and undefined-name checks passed.
 
+## Large-source qualification
+
+See [Large-source evidence](PHASE34A4_LARGE_SOURCE_EVIDENCE.md) for the complete
+104.8-million-point Olaa COPC linked-view/edit/reopen/detach/export canary and
+bounded queries against the 110-billion-point EPT repository.
+The COPC native canary passed in 398.406 seconds and both full-source exports
+validated without changing the original. EPT evidence is read-only extraction,
+not live linked-session or edit acceptance. The focused suite remains green:
+178 tests, 24 dependency skips.
+
 ## Blocked gates / package status
 
 No access blocker currently prevents development. Release gates remain open:
