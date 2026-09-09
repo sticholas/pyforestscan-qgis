@@ -8,7 +8,7 @@ try:
     from qgis.PyQt.QtGui import QMouseEvent
     from qgis.PyQt.QtWidgets import QApplication
     from pyforestscan_qgis.compat.qt import qt_enum
-    from pyforestscan_qgis.ui.point_cloud_detached import LinkedTabBar
+    from pyforestscan_qgis.ui.point_cloud_detached import LinkedTabBar, DetachedView
     from pyforestscan_qgis.ui.point_cloud_tools import SelectionTools
     from pyforestscan_qgis.ui.point_cloud_linked_views import LinkedViews
     from pyforestscan_qgis.ui.point_cloud_selection_limits import SelectionLimits
@@ -19,6 +19,32 @@ except ImportError:
 
 @unittest.skipIf(QApplication is None, "Requires QGIS Qt")
 class TabDetachTests(unittest.TestCase):
+    def test_detached_controls_require_authoritative_editor(self):
+        editor = SimpleNamespace(worker=None, busy=False, state={"ready": True,
+            "can_undo": True, "can_redo": True, "selection": {"resolved_point_count": 8}})
+        window = SimpleNamespace(controller=SimpleNamespace(page=SimpleNamespace(editor=editor), depth_error=""),
+            tool=Mock(), selection_mode=Mock(), classify_button=Mock(),
+            action_buttons={"undo": Mock(), "redo": Mock()})
+        DetachedView.refresh_edit_controls(window)
+        for button in (window.tool, window.selection_mode, window.classify_button,
+                       *window.action_buttons.values()):
+            button.setEnabled.assert_called_with(False)
+
+    def test_detached_controls_follow_busy_selection_and_journal(self):
+        editor = SimpleNamespace(worker=object(), busy=False, state={"ready": True,
+            "can_undo": True, "can_redo": False, "selection": {"resolved_point_count": 8}})
+        window = SimpleNamespace(controller=SimpleNamespace(page=SimpleNamespace(editor=editor), depth_error=""),
+            tool=Mock(), selection_mode=Mock(), classify_button=Mock(),
+            action_buttons={"undo": Mock(), "redo": Mock()})
+        DetachedView.refresh_edit_controls(window)
+        window.classify_button.setEnabled.assert_called_with(True)
+        window.action_buttons["undo"].setEnabled.assert_called_with(True)
+        window.action_buttons["redo"].setEnabled.assert_called_with(False)
+        editor.busy = True
+        DetachedView.refresh_edit_controls(window)
+        window.tool.setEnabled.assert_called_with(False)
+        window.classify_button.setEnabled.assert_called_with(False)
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])

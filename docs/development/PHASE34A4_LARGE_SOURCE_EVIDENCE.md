@@ -84,14 +84,37 @@ performance benchmark.
 
 EPT identity verification covers metadata only, not every repository node.
 EPT remains read-only; these queries do not authorize editing or export
-of the original repository. Live linked EPT window/session qualification
-remains open.
+of the original repository. Read-only EPT session persistence remains open.
+
+## Live EPT Views
+
+The new `scripts/testing/qgis_ept_linked_views_smoke.py` exercises the real
+page and native renderers without an authoritative editor. On QGIS 3.44,
+`ept-live-linked-01` passed in 22.656 seconds; on QGIS 4.0,
+`ept-live-linked-qgis4-01` passed in 22.547 seconds. Area Detail displayed
+6,851 points and the profile displayed 1,177. Native captures were nonblank.
+Overview/Profile switching retained renderers, and detach/redock retained the
+same native worker. These are automated operations, not human gestures.
+
+Review identified misleading detached Undo/Redo/Classify availability.
+Detached controls now follow authoritative editor readiness, busy state,
+selection, and journal state from the moment the window is constructed.
+EPT windows show an explicit view-only status. The strengthened QGIS 3.44
+`ept-live-linked-02` canary asserted these controls stay disabled and passed
+in 22.313 seconds. No editor worker started; metadata SHA256 remained
+unchanged. This does not verify every EPT node or enable EPT editing.
+
+All 19 Qt control tests passed on QGIS 3.44 and QGIS 4.0. The focused
+QGIS-free tier ran 180 tests with 26 dependency skips and no failures.
+The local tiny-LAZ `detached-control-editable-01` canary passed on QGIS 4
+in 47.047 seconds, including shared edits and validated export, confirming
+that read-only gating does not disable the supported editable workflow.
 
 ## Remaining Gates
 
 - Human drawing, switching, detach/redock, and editing acceptance.
 - Large raw LAS/LAZ live linked-view and verified view-cache reuse coverage.
-- Live EPT linked views and read-only session persistence.
+- EPT read-only session persistence and human linked-view interaction.
 - Resource pressure, 21 views, 100 creation/deletion cycles, alternating edits.
 - Sixty-minute linked-workspace soak and full milestone validation.
 - Actual scientific processing of an edited export.

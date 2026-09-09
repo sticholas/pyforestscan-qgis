@@ -265,6 +265,18 @@ validated without changing the original. EPT evidence is read-only extraction,
 not live linked-session or edit acceptance. The focused suite remains green:
 178 tests, 24 dependency skips.
 
+## Live EPT qualification
+
+The [large-source evidence](PHASE34A4_LARGE_SOURCE_EVIDENCE.md) now includes
+native EPT Overview/Area/Slice switching and detach/redock on QGIS 3 and 4.
+The read-only test asserts no editor worker starts. Detached editing controls
+now accurately reflect source/editor readiness, and EPT status is explicitly
+view-only. This is not EPT editing support or persistence acceptance.
+
+The updated user goal explicitly prioritizes smaller point sprites.
+The current fixed-size control reaches 1 pixel versus Automatic's 2-5 pixels;
+dense-canopy appearance and any finer size policy still require qualification.
+
 ## Blocked gates / package status
 
 No access blocker currently prevents development. Release gates remain open:

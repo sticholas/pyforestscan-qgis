@@ -72,11 +72,13 @@ class DetachedView(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8,8,8,8)
         row = QHBoxLayout()
+        self.action_buttons = {}
         for text, action in (("Fit","fit"),("Undo","undo"),("Redo","redo")):
             button = QToolButton()
             button.setText(text)
             button.clicked.connect(lambda _=False,a=action:self.action(a))
             row.addWidget(button)
+            self.action_buttons[action] = button
         self.mode = QComboBox()
         self.mode.addItems(("Classification","Elevation","RGB","Intensity"))
         self.mode.currentTextChanged.connect(lambda value:self.send({"action":"mode","mode":value}))
@@ -95,6 +97,7 @@ class DetachedView(QDialog):
         classify = QToolButton()
         classify.setText("Classify")
         classify.clicked.connect(self.classify)
+        self.classify_button = classify
         row.addWidget(classify)
         dock = QToolButton()
         dock.setText("Dock to tabs")
@@ -124,6 +127,7 @@ class DetachedView(QDialog):
         self.mode.blockSignals(True)
         self.mode.setCurrentText(self.telemetry.get("mode", "Classification"))
         self.mode.blockSignals(False)
+        self.refresh_edit_controls()
         worker.update.connect(self.update_view)
         worker.finished.connect(self.finished)
         transfer_surface(worker, self.surface, entry["surface"])
@@ -134,6 +138,16 @@ class DetachedView(QDialog):
 
     def clear_selection_error(self):
         self.selection_error = ""
+
+    def refresh_edit_controls(self):
+        editor = self.controller.page.editor
+        ready = bool(editor.worker and editor.state.get("ready")) and not editor.busy
+        self.tool.setEnabled(ready and not self.controller.depth_error)
+        self.selection_mode.setEnabled(ready)
+        self.classify_button.setEnabled(ready and bool(
+            (editor.state.get("selection") or {}).get("resolved_point_count")))
+        self.action_buttons["undo"].setEnabled(ready and bool(editor.state.get("can_undo")))
+        self.action_buttons["redo"].setEnabled(ready and bool(editor.state.get("can_redo")))
 
     def action(self, action):
         if action in ("undo","redo"):
@@ -179,7 +193,7 @@ class DetachedView(QDialog):
         acknowledged = telemetry["editor"].get("view_id") == self.view_id
         editor = self.controller.page.editor
         self.limits.refresh()
-        self.tool.setEnabled(not editor.busy and not self.controller.depth_error and bool(editor.state.get("ready")))
+        self.refresh_edit_controls()
         event = telemetry["editor"].get("event")
         if acknowledged and event and event["id"] != self.event_id:
             self.event_id = event["id"]
@@ -206,8 +220,9 @@ class DetachedView(QDialog):
             self.send({"action":"editor_overlay","path":signature[0]})
             self.overlay = signature
         selected = (editor.state.get("selection") or {}).get("resolved_point_count",0)
-        self.status.setText(self.selection_error or
-            f"Selected: {selected:,} source points | {editor.state.get('edits',0)} staged edits")
+        read_only = str(editor.source).lower().endswith("ept.json")
+        self.status.setText("EPT view-only | Editing requires an immutable local derivative." if read_only else
+            self.selection_error or f"Selected: {selected:,} source points | {editor.state.get('edits',0)} staged edits")
         self.controller.coordinate_resources()
 
     def finished(self):
