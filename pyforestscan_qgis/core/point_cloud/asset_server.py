@@ -16,6 +16,7 @@ import threading
 from urllib.parse import unquote, urlsplit
 
 MAX_RANGE_BYTES = 32 * 1024 * 1024
+MAX_ASSET_BYTES = 64 * 1024 * 1024
 EPT_NODE = re.compile(r"ept-(?:data|hierarchy)/[0-9]+-[0-9]+-[0-9]+-[0-9]+\.(?:laz|bin|zst|json)\Z")
 
 
@@ -45,13 +46,20 @@ def byte_range(value: str | None, size: int) -> tuple[int, int]:
 class ViewerAssetServer:
     """A short-lived read capability; close() revokes the capability."""
 
-    def __init__(self, *, assets: dict[str, Path], source: Path):
+    def __init__(self, *, assets: dict[str, Path | bytes], source: Path):
         self.assets = {}
+        snapshot_bytes = 0
         for route, path in assets.items():
             if (not route or "\\" in route or route.startswith("/") or
                     any(part in (".", "..") for part in route.split("/"))):
                 raise ValueError("Asset route must be a normalized relative path.")
-            self.assets[route] = Path(path).resolve(strict=True)
+            if isinstance(path, bytes):
+                snapshot_bytes += len(path)
+                if snapshot_bytes > MAX_ASSET_BYTES:
+                    raise ValueError("Viewer asset snapshot exceeds its memory limit.")
+                self.assets[route] = path
+            else:
+                self.assets[route] = Path(path).resolve(strict=True)
         self.source = Path(source).resolve(strict=True)
         self._virtual = {}
         self._direct = False
@@ -135,10 +143,11 @@ class ViewerAssetServer:
                         path = source_file(owner.source.parent, route[7:])
                     else:
                         path = owner.assets[route]
+                    payload = owner._virtual[route] if path is None else path if isinstance(path, bytes) else None
                     # Open before responding: report stale/unreadable files cleanly.
-                    with (io.BytesIO(owner._virtual[route]) if path is None else path.open("rb")) as handle:
+                    with (io.BytesIO(payload) if payload is not None else path.open("rb")) as handle:
                         import os
-                        size = len(owner._virtual[route]) if path is None else os.fstat(handle.fileno()).st_size
+                        size = len(payload) if payload is not None else os.fstat(handle.fileno()).st_size
                         value = self.headers.get("Range")
                         start, stop = byte_range(value, size)
                         is_source = route.startswith("source/")

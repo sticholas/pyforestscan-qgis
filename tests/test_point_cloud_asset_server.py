@@ -3,6 +3,7 @@ import hashlib
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -89,6 +90,25 @@ class AssetServerTests(unittest.TestCase):
         self.server.close()
         self.server.close()
         self.assertFalse(self.server._thread.is_alive())
+
+    def test_snapshot_assets_support_get_head_range_and_empty_content(self):
+        self.server.close()
+        self.server = ViewerAssetServer(assets={"viewer.js": b"verified", "empty.js": b""}, source=self.cloud)
+        self.addCleanup(self.server.close)
+        with self.request("viewer.js", {"Range": "bytes=1-3"}) as response:
+            self.assertEqual(response.read(), b"eri")
+            self.assertEqual(response.headers["Content-Type"], "application/javascript")
+        with self.request("viewer.js", method="HEAD") as response:
+            self.assertEqual(response.headers["Content-Length"], "8")
+            self.assertEqual(response.read(), b"")
+        with self.request("empty.js") as response:
+            self.assertEqual(response.read(), b"")
+        self.assertEqual(self.server.stats()["source_bytes"], 0)
+
+    def test_snapshot_budget_is_aggregate(self):
+        with patch("pyforestscan_qgis.core.point_cloud.asset_server.MAX_ASSET_BYTES", 5):
+            with self.assertRaisesRegex(ValueError, "memory limit"):
+                ViewerAssetServer(assets={"a.js": b"123", "b.js": b"456"}, source=self.cloud)
 
 
 if __name__ == "__main__":

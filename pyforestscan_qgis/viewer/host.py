@@ -15,24 +15,34 @@ import platform
 
 # Executed by the isolated viewer Python with -I; only this plugin is added.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from pyforestscan_qgis.core.point_cloud.asset_server import ViewerAssetServer
+from pyforestscan_qgis.core.point_cloud.asset_server import ViewerAssetServer, MAX_ASSET_BYTES
 from pyforestscan_qgis.core.point_cloud.view_policy import next_view_budget, system_memory_pressure
 
 
-def assets(root=None):
+def assets(root=None, *, snapshot=False):
     root = (Path(root) if root is not None else Path(__file__).parent / "assets").resolve(strict=True)
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     result = {}
+    remaining = MAX_ASSET_BYTES
+    def read_asset(path):
+        nonlocal remaining
+        with path.open("rb") as stream:
+            payload = stream.read(remaining + 1)
+        if len(payload) > remaining:
+            raise ValueError("Viewer asset snapshot exceeds its memory limit.")
+        remaining -= len(payload)
+        return payload
     for name, record in manifest["files"].items():
         path = (root / name).resolve(strict=True)
         if not path.is_relative_to(root):
             raise ValueError("Invalid packaged viewer asset.")
-        if hashlib.sha256(path.read_bytes()).hexdigest() != record["sha256"]:
+        payload = read_asset(path)
+        if hashlib.sha256(payload).hexdigest() != record["sha256"]:
             raise ValueError(f"Viewer asset needs repair: {name}")
         route = "assets/" + name
         if name.startswith("resources/"):
             route = "assets/build/potree/" + name
-        result[route] = path
+        result[route] = payload if snapshot else path
     result["viewer.html"] = Path(__file__).with_name("viewer.html")
     result["viewer.js"] = Path(__file__).with_name("viewer.js")
     result["editor.js"] = Path(__file__).with_name("editor.js")
@@ -43,6 +53,10 @@ def assets(root=None):
     worker_route = "assets/build/potree/workers/EptLaszipDecoderWorker.js"
     result[worker_route.replace(".js", ".vendor.js")] = result[worker_route]
     result[worker_route] = Path(__file__).with_name("full_file_decoder.js")
+    if snapshot:
+        for route, value in result.items():
+            if isinstance(value, Path):
+                result[route] = read_asset(value)
     return result
 
 
@@ -70,7 +84,7 @@ def main():
     if app.platformName() != "windows":
         raise RuntimeError("Embedded viewer platform adapter is not yet qualified on this platform.")
     asset_started = time.monotonic()
-    packaged_assets = assets()
+    packaged_assets = assets(snapshot=True)
     assets_verified = time.monotonic()
     server = ViewerAssetServer(assets=packaged_assets, source=args.source)
     emit({"stage": "VIEWER_ASSETS_LOADED", "host_startup_seconds": {

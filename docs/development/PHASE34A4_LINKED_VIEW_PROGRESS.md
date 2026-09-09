@@ -226,6 +226,35 @@ Compilation and undefined-name checks passed. Next performance work should
 address verified asset delivery and source-preparation overhead without
 weakening runtime isolation or authoritative editing.
 
+## Verified asset delivery slice
+
+Each renderer now serves an immutable in-memory snapshot of its packaged
+assets. Vendor bytes are read once and SHA256-checked before use; the server
+serves those same bytes rather than reopening files after verification.
+Plugin-owned scripts are also snapshotted for session consistency. The
+aggregate snapshot limit is 64 MiB per renderer; the current route payloads
+total 4,891,919 bytes (about 4.7 MiB). This limit is not a claim about total
+renderer memory. LiDAR remains outside this snapshot and retains bounded,
+read-only source streaming.
+
+The asset-snapshot-01 QGIS 3.44 canary passed in 52.55 seconds, versus 64.58
+seconds in startup-timing-02. Recorded Overview/Slice/later detached-view
+first frames were 6.844/6.562/6.391 seconds, versus 8.266/8.688/7.766.
+Asset-server initialization fell to 0-32 ms. These are consecutive individual
+runs on the WSL UNC checkout, not controlled throughput or installed-package
+benchmarks. Cold loading is improved but remains an open acceptance item.
+
+The native slice capture remained nonblank with the shared HAG selection
+highlight. Source hashes were unchanged and the final export retained the
+same validated e1049d97...1af2e78b hash. Tests cover immutable verified bytes,
+aggregate bounds, empty payloads, HTTP HEAD/range/MIME behavior, wrong origin,
+host and token rejection, and unchanged source transport restrictions.
+The QGIS 4.0 asset-snapshot-qgis4-01 tiny-LAZ canary also passed in 45.05
+seconds with source unchanged, all 20,000 points retained, and the same
+887cffb1...0fc818 export hash as the preceding tiny-fixture qualification.
+The focused tier ran 178 tests with 24 dependency skips and no failures;
+compilation and undefined-name checks passed.
+
 ## Blocked gates / package status
 
 No access blocker currently prevents development. Release gates remain open:

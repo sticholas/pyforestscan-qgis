@@ -44,6 +44,17 @@ class AssetVerificationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "needs repair"):
             assets(self.root)
 
+    def test_snapshot_serves_the_verified_bytes_even_if_file_changes(self):
+        result = assets(self.root, snapshot=True)
+        (self.root / self.name).write_bytes(b"changed after verification")
+        self.assertEqual(result["assets/" + self.name.replace(".js", ".vendor.js")], b"verified fixture")
+        self.assertTrue(all(isinstance(value, bytes) for value in result.values()))
+
+    def test_snapshot_read_is_bounded_before_allocating_whole_file(self):
+        with patch("pyforestscan_qgis.viewer.host.MAX_ASSET_BYTES", 4):
+            with self.assertRaisesRegex(ValueError, "memory limit"):
+                assets(self.root, snapshot=True)
+
     def test_parent_escape_rejected_even_with_matching_hash(self):
         outside = self.root.parent / "outside.js"
         outside.write_bytes(b"outside")
