@@ -8,9 +8,19 @@
 - Large indexed COPC viewing is qualified on a real 104.8M-point derived cloud.
   Normal large unindexed LAS/LAZ preparation is still blocked above two million
   points; the measured Untwine conversion is a qualification harness only.
-- EPT qualification/tree identity, authoritative polygon selection, HAG
-  filtering and full editing remain unfinished. Observed classes are a streamed
-  subset, not a complete source census.
+- Local authoritative selections and staged editing/export are implemented.
+  EPT viewing passed its prior qualification, but immutable EPT editing identity
+  remains unresolved. HAG editing controls and human drawing/restart acceptance
+  remain unfinished. Observed classes are not a complete source census.
+- LAS/LAZ export passed a full 104.8M-point COPC-source test. COPC output and
+  waveform formats remain blocked. Export uses disk-backed staging: about
+  278 MB private memory but 6.26 GB working set on that test, not a guarantee of
+  tiny resident memory on smaller machines. A native writer may delay cancellation.
+- Normal export failures clean owned temporaries; abrupt export-worker death
+  and low-memory recovery need broader qualification. Never treat .partial
+  files as completed outputs. Existing destinations are never overwritten.
+- The editor remains EDITOR_EXPERIMENTAL, version 0.2.0-beta.1. See the
+  [editing evidence and remaining gates](development/PHASE_34A3_EDITING_LOOP.md).
 - Optional viewer setup is separate from Process readiness. No failure in the
   viewer should direct users to repair the scientific engine unless that
   engine is independently the failing dependency.

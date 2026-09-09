@@ -1,5 +1,18 @@
 # Changelog
 
+## Phase 34A3 - Non-destructive editing loop (experimental)
+
+- Connected Polygon/Rectangle source selections to the existing journal,
+  staged classification/noise/withheld/removal, undo/redo, autosave and recovery.
+- Added separate resident-node overlays, managed LAS/LAZ export with full
+  dimension/hash validation, and explicit validated-file handoff to Process.
+- Qualified twenty mixed edits, NIR/Extra Bytes/custom VLR preservation,
+  managed CHM, Qt5/Qt6 canaries and a full 104.8M-point Olaa edited export.
+- Fixed large export rejection of empty LAS header IDs and a double-translated
+  Potree bounds error found by comparing overlay and export class totals.
+- Human editing acceptance and safe EPT editing remain gates. Version stays
+  0.2.0-beta.1; see [editing evidence](docs/development/PHASE_34A3_EDITING_LOOP.md).
+
 ## Phase 34A3 - Source-resolved selection core (intermediate)
 
 - Added worker-only immutable polygon selections and source-based streamed

@@ -4311,6 +4311,37 @@ class BatchPage(MissionPage):
         if path:
             self.input_folder_edit.setText(path)
 
+    def use_edited_cloud(self, report: dict) -> None:
+        """Select one validated derivative, retaining output preferences and provenance."""
+        if self.processing_ui_state in {
+            ProcessingUiState.VALIDATING, ProcessingUiState.STARTING,
+            ProcessingUiState.RUNNING, ProcessingUiState.PAUSED, ProcessingUiState.FINALIZING,
+        } or any(getattr(self, name, None) is not None for name in
+                 ("batch_thread", "preflight_thread", "catalog_thread")):
+            raise ValueError("Finish the current Process operation before selecting an edited export.")
+        if report.get("status") != "VALIDATED" or not report.get("original_unchanged"):
+            raise ValueError("Only a validated immutable export can be used in Process.")
+        path = Path(report["output"]).resolve(strict=True)
+        if path.suffix.lower() not in {".las", ".laz"}:
+            raise ValueError("Choose a validated LAS or LAZ export.")
+        self.batch_mode_combo.setCurrentIndex(self.batch_mode_combo.findData("standard"))
+        self.input_folder_edit.setText(str(path.parent))
+        self.discovered_paths = [path]
+        self.file_list.clear()
+        row = QListWidgetItem(f"{path.name}\nStatus: Validated edited {path.suffix[1:].upper()}\n{path}")
+        row.setFlags(row.flags() | Qt.ItemIsUserCheckable)
+        row.setCheckState(Qt.Checked)
+        row.setSizeHint(QSize(0, 72))
+        self.file_list.addItem(row)
+        self.file_list.setVisible(True)
+        self.file_empty_label.setVisible(False)
+        _size_list_to_content(self.file_list, row_height=72)
+        self.preflight_report = None
+        self.editor_input_provenance = dict(report)
+        self.preflight_summary_label.setText("Edited cloud selected. Run Prerun Check before processing.")
+        _set_status_badge(self.status_label, "READY", "Validated edited cloud selected; processing has not started.")
+        self._refresh_footprint_label()
+
     def show_spatial_assignment_prompt(self, visible: bool = True) -> None:
         """Expose the compact resolver only when missing spatial meaning blocks preparation."""
         self.spatial_assignment_frame.setVisible(bool(visible))

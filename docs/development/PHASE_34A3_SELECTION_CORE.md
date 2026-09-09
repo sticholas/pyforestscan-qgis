@@ -1,5 +1,9 @@
 # Phase 34A3 Selection Core and Qualification
 
+Historical selection-only milestone, committed as f72a548. Current continuation
+status and remaining editing gates are in the
+[non-destructive editing record](PHASE_34A3_EDITING_LOOP.md).
+
 Date: 2026-09-08. Starting commit: `0cc668ad972364a899886b7d0398ef272b98d582`.
 Starting tree: clean `develop`. No reset, source edits, runtime installation,
 QGIS profile modification, scientific behavior change or viewer architecture

@@ -19,6 +19,7 @@ def main():
     from qgis.PyQt.QtCore import QTimer
     from pyforestscan_qgis.ui.point_cloud_page import PointCloudPage
     from pyforestscan_qgis.core.point_cloud.view_session import session_view_state
+    from pyforestscan_qgis.core.point_cloud.session import PointCloudEditSession
     from pyforestscan_qgis.core.atomic_state import atomic_write_json
 
     app = QgsApplication([str(value).encode() for value in sys.argv], True)
@@ -43,7 +44,7 @@ def main():
         report["error"] = error
         worker = page.worker
         session_worker = page._session_worker
-        completion = [w.stopped_event for w in (worker, session_worker) if w is not None]
+        completion = [w.stopped_event for w in (worker, session_worker, page.editor.worker) if w is not None]
         page.prepare_for_unload()
         def complete():
             if any(not event.is_set() for event in completion):
@@ -73,14 +74,14 @@ def main():
         elif phase == 1 and now - phase_at > 3:
             page.save_session_to(str(session_path))
             phase = 2
-        elif phase == 2 and page._edit_session is not None and page._session_worker is None:
-            expected = session_view_state(page._edit_session)
+        elif phase == 2 and session_path.is_file() and not page.editor.busy:
+            expected = session_view_state(PointCloudEditSession.load(session_path))
             report["saved_state"] = expected
             report["events"].append("SAVED")
-            retired = page.worker.stopped_event
+            retired = [worker.stopped_event for worker in (page.worker, page.editor.worker) if worker]
             page.prepare_for_unload()
             phase = 3
-        elif phase == 3 and retired.is_set():
+        elif phase == 3 and all(event.is_set() for event in retired):
             page.close()
             page.deleteLater()
             page = PointCloudPage()

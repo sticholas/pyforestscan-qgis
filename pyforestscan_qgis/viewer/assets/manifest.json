@@ -8,6 +8,10 @@
     "binary"
   ],
   "files": {
+    "libs/three.js/three.module.js": {
+      "sha256": "98f756229996942251b191837ccc1532b2a35e7b1e9965ef00cdcd5dacfda760",
+      "bytes": 1252067
+    },
     "notices/BinaryHeap-MIT.txt": {
       "sha256": "e1b8bd2676c4c4de6d16d0322b81ad89c72c5730e6122068da7eab6a73c062de",
       "bytes": 1328

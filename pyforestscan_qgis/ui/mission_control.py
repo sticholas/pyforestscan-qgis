@@ -147,6 +147,7 @@ class MissionControlDock(QDockWidget):
         )
         self.page_by_name = dict(zip(self.INTERNAL_PAGE_NAMES, self.pages))
         self.point_cloud_page = PointCloudPage()
+        self.point_cloud_page.editor.exportReady.connect(self._use_edited_cloud)
         self.page_by_name["Point Cloud"] = self.point_cloud_page
         self.page_by_name.update({"Process":self.batch_page,"Tools & Setup":self.settings_page})
         self.batch_page.set_job_token_factory(self._begin_current_job)
@@ -167,6 +168,14 @@ class MissionControlDock(QDockWidget):
 
     def show_home(self) -> None:
         """Show the primary Mission Control workspace."""
+        self._navigate_to("Process")
+
+    def _use_edited_cloud(self, report: dict) -> None:
+        try:
+            self.batch_page.use_edited_cloud(report)
+        except (ValueError, OSError) as error:
+            self.point_cloud_page.editor.summary.setText(str(error))
+            return
         self._navigate_to("Process")
 
     def resizeEvent(self, event: object) -> None:  # noqa: N802 - Qt API name.

@@ -7,7 +7,8 @@ is missing. Setup requires confirmation and uses a separate user-local runtime;
 it does not install graphics packages into QGIS Python or the scientific engine.
 Open a local LAS, LAZ or COPC. Unindexed sources over two million points are
 currently refused; use an existing COPC until automatic out-of-core indexing
-is integrated. EPT qualification remains pending.
+is integrated. EPT viewing is qualified on the tested Windows Qt adapters,
+but EPT editing remains disabled until a safe immutable source contract exists.
 
 Fit, Top, Front, Orbit/Pan and color modes affect only the view. Expand
 **Display filters** to show/hide or solo observed classes and limit source Z.
@@ -18,7 +19,30 @@ Save Session preserves camera, colors and filters using the existing session
 format and a verified source fingerprint. Open Session checks that identity
 before restoring; changed sources require an explicit recovery choice.
 Viewer Diagnostics exposes attempt logs. Reload Viewer restarts only the
-graphics process. Polygon selection and point editing are not yet available.
+graphics process. Editing requires the separately verified Processing Engine.
+
+Polygon and Rectangle select a top-view source region. Replace/Add/Subtract
+and the active original-class/Z filters define the authoritative selection;
+displayed LOD points are only a preview. Shift/Alt at gesture start choose
+Add/Subtract inside the viewer, and Esc returns to navigation.
+
+With a resolved selection, choose a common class or numeric code and Apply.
+Low Noise (7) and High Noise (18) are distinct choices. Withheld retains points
+with a flag; Remove on Export drops them only from a new exported file.
+Original points are never rewritten. Undo/Redo update the staged overlay.
+
+The journal autosaves in the user-local viewer editor-runs folder. Editing
+Details provides selection statistics, recovery and diagnostics. Save Session
+preserves the journal and view; it does not export a point cloud. Export creates
+a NEW LAS/LAZ plus a validation sidecar, checks dimensions and source hashes,
+and requires temporary disk space. Native compression may finish before a
+cancellation request is acknowledged. PDAL regenerates layout metadata and may
+fill empty header identifiers; the validation report records those changes.
+
+Use in Process verifies and selects the export without starting processing or
+changing the preferred output folder. Active Process work blocks replacement.
+See the [editing acceptance record](development/PHASE_34A3_EDITING_LOOP.md):
+human drawing/restart acceptance remains pending; this is not a 0.3 release.
 
 ## Set up or reload the Processing Engine
 

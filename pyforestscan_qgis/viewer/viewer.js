@@ -4,6 +4,8 @@ const message = document.getElementById("message");
 const state = {ready: false, js_ready: false, source_requested: false, errors: [], mode: "Classification", classes: null, height_filter: null};
 let viewer, cloud, heightVolume, previousCamera = "", lastFrame = performance.now(), frameMs = 16;
 const observedClasses = new Set(), scannedClasses = new WeakMap();
+window.editorSelectionFilters = () => ({classes: state.classes, height_filter: state.height_filter});
+window.editorClassificationColor = code => (viewer.classifications[code] || viewer.classifications.DEFAULT).color;
 function inspectVisibleClasses() {
     // Inspect only resident buffers, with bounded work per telemetry tick.
     let remaining = 50000;
@@ -11,7 +13,7 @@ function inspectVisibleClasses() {
         const geometry = node.geometryNode && node.geometryNode.geometry;
         const attribute = geometry && geometry.getAttribute("classification");
         if (!attribute) continue;
-        const values = attribute.array;
+        const values = window.pointCloudEditor ? window.pointCloudEditor.originalClasses(attribute) : attribute.array;
         let offset = scannedClasses.get(values) || 0;
         const end = Math.min(values.length, offset + remaining);
         for (; offset < end; offset++) observedClasses.add(values[offset]);
@@ -57,6 +59,7 @@ window.command = function(command) {
     if (!cloud) return;
     try {
         const action = command.action;
+        if (window.pointCloudEditor) window.pointCloudEditor.command(command);
         if (action === "snapshot") state.request_id = command.request_id;
         if (action === "orbit") { viewer.orbitControls.yawDelta += .25; viewer.orbitControls.pitchDelta += .1; }
         if (action === "pan") { viewer.orbitControls.panDelta.x += .05; }
@@ -116,6 +119,7 @@ window.command = function(command) {
 };
 window.snapshot = function() {
     if (!state.ready) return state;
+    if (window.pointCloudEditor) state.editor = window.pointCloudEditor.tick({viewer, cloud});
     inspectVisibleClasses();
     const view = viewer.scene.view;
     const camera = {position: view.position.toArray(), yaw: view.yaw, pitch: view.pitch, radius: view.radius};

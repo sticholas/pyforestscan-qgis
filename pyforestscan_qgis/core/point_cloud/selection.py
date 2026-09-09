@@ -156,6 +156,38 @@ def _candidate_chunks(source, items, pdal, np):
                              max(p[0] for p in ring), max(p[1] for p in ring)))
 
 
+def selection_mask(chunk, definitions, shapes=None):
+    """Shared original-attribute membership for resolution and journal replay."""
+    import numpy as np
+    import shapely
+    items = validate_sequence(definitions)
+    shapes = shapes if shapes is not None else [shapely.Polygon(item.geometry) for item in items]
+    if any(not shape.is_valid or shape.is_empty or shape.area <= 0 for shape in shapes):
+        raise ValueError("Selection polygon is empty or invalid; redraw it.")
+    names = set(chunk.dtype.names or ())
+    selected = np.zeros(len(chunk), dtype=bool)
+    for item, shape in zip(items, shapes):
+        mask = shapely.intersects_xy(shape, chunk["X"], chunk["Y"])
+        for dimension, limits in (("Z", item.z_filter), ("HeightAboveGround", item.hag_filter)):
+            if limits is not None:
+                if dimension not in names:
+                    raise ValueError(f"Source does not contain {dimension}.")
+                mask &= (chunk[dimension] >= limits[0]) & (chunk[dimension] <= limits[1])
+        if item.classification_filter is not None:
+            mask &= np.isin(chunk["Classification"], item.classification_filter)
+        for dimension, low, high in item.attribute_filters:
+            if dimension not in names:
+                raise ValueError(f"Source does not contain {dimension}.")
+            mask &= (chunk[dimension] >= low) & (chunk[dimension] <= high)
+        if item.selection_mode == "REPLACE":
+            selected = mask
+        elif item.selection_mode == "ADD":
+            selected |= mask
+        else:
+            selected &= ~mask
+    return selected
+
+
 class SelectionResolver:
     """Worker-only resolver; retain one instance per verified source session.
 
@@ -231,26 +263,7 @@ class SelectionResolver:
             names = set(chunk.dtype.names or ())
             if not {"X", "Y", "Z", "Classification"} <= names:
                 raise ValueError("Source lacks required XYZ/classification dimensions.")
-            selected = np.zeros(len(chunk), dtype=bool)
-            for item, shape in zip(items, shapes):
-                mask = shapely.intersects_xy(shape, chunk["X"], chunk["Y"])
-                for dimension, limits in (("Z", item.z_filter), ("HeightAboveGround", item.hag_filter)):
-                    if limits is not None:
-                        if dimension not in names:
-                            raise ValueError(f"Source does not contain {dimension}.")
-                        mask &= (chunk[dimension] >= limits[0]) & (chunk[dimension] <= limits[1])
-                if item.classification_filter is not None:
-                    mask &= np.isin(chunk["Classification"], item.classification_filter)
-                for dimension, low, high in item.attribute_filters:
-                    if dimension not in names:
-                        raise ValueError(f"Source does not contain {dimension}.")
-                    mask &= (chunk[dimension] >= low) & (chunk[dimension] <= high)
-                if item.selection_mode == "REPLACE":
-                    selected = mask
-                elif item.selection_mode == "ADD":
-                    selected |= mask
-                else:
-                    selected &= ~mask
+            selected = selection_mask(chunk, items, shapes)
             candidates += len(chunk)
             matched = chunk[selected]
             count += len(matched)

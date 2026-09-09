@@ -391,6 +391,9 @@ class PointCloudPage(QWidget):
         session_actions.addWidget(self.load_session_button)
         session_actions.addWidget(self.diagnostics_button)
         layout.addLayout(session_actions)
+        from .point_cloud_editor import EditorPanel
+        self.editor = EditorPanel(self)
+        layout.addWidget(self.editor)
         from .pages import ContextHelpBanner
         self.context_help = ContextHelpBanner(self)
         layout.addWidget(self.context_help)
@@ -418,6 +421,9 @@ class PointCloudPage(QWidget):
             self.save_session_to(path)
 
     def save_session_to(self, path):
+        if self.editor.worker:
+            self.editor.save_to(path)
+            return
         if not self.worker or not self._view_state or self._session_worker:
             return
         if self.source.text().lower().endswith("ept.json"):
@@ -436,6 +442,10 @@ class PointCloudPage(QWidget):
             self.load_session_from(path)
 
     def load_session_from(self, path):
+        self.editor.load(path)
+        return
+
+    def _load_view_only_session_from(self, path):
         if self._session_worker is None:
             self._start_session_worker(ViewerSessionWorker("load", path))
 
@@ -590,6 +600,8 @@ class PointCloudPage(QWidget):
             return
         if self.worker is not None:
             self._pending_source = path
+            self.editor.observe({})
+            self._controls(False)
             self.worker.stop()
             self.status.setText("Closing previous viewer")
             return
@@ -614,6 +626,10 @@ class PointCloudPage(QWidget):
             self.session_status.setText("Session: Not saved")
         self.clear_filters()
         self._start(ViewerWorker(source=path, parent_handle=int(self.surface.winId())))
+        self.editor.attach(path)
+        if self.editor.restored_view:
+            self._restore_after_open = self.editor.restored_view
+            self.editor.restored_view = None
 
     def setup_viewer(self):
         answer = QMessageBox.question(self, "Set up optional viewer",
@@ -623,7 +639,7 @@ class PointCloudPage(QWidget):
             self._start(ViewerWorker(setup=True))
 
     def _update(self, value):
-        if self._closing:
+        if self._closing or self._pending_source:
             return
         if value.get("diagnostics_path"):
             self.last_run_folder = value["diagnostics_path"]
@@ -641,6 +657,7 @@ class PointCloudPage(QWidget):
         telemetry = value.get("telemetry", {})
         if telemetry.get("ready"):
             self._view_state = telemetry
+            self.editor.observe(telemetry)
             self._observe_classes(telemetry.get("observed_classes", []), telemetry.get("classes"))
             self._controls(True)
             if self._session_worker is None:
@@ -652,6 +669,8 @@ class PointCloudPage(QWidget):
                 self._filter_bounds_initialized = True
             if self._restore_after_open:
                 restored, self._restore_after_open = self._restore_after_open, None
+                if not restored.get("camera"):
+                    restored = dict(restored, camera=telemetry["camera"])
                 self._restore_expected = restored
                 self.send({"action": "camera", "camera": restored["camera"]})
                 self.mode.setCurrentText(restored["mode"])
@@ -685,6 +704,7 @@ class PointCloudPage(QWidget):
 
     def _finished(self):
         self.worker = None
+        self.editor.observe({})
         self._view_state = None
         self._pending_save = None
         self._controls(False)
@@ -698,6 +718,7 @@ class PointCloudPage(QWidget):
 
     def prepare_for_unload(self):
         self._closing = True
+        self.editor.close_editor()
         if self._session_worker:
             self._session_worker.cancelled.set()
             try:

@@ -124,11 +124,11 @@ class PointCloudEditSession:
     filters: dict = field(default_factory=dict)
     review_notes: list[str] = field(default_factory=list)
     export_history: list[dict] = field(default_factory=list)
-    _journal: list[EditOperation] = field(default_factory=list, repr=False)
+    _journal: list[EditOperation | AttributeEditOperation] = field(default_factory=list, repr=False)
     _cursor: int = field(default=0, repr=False)
 
     @property
-    def operations(self) -> tuple[EditOperation, ...]:
+    def operations(self) -> tuple[EditOperation | AttributeEditOperation, ...]:
         return tuple(self._journal[:self._cursor])
 
     @property
@@ -144,6 +144,24 @@ class PointCloudEditSession:
             raise ValueError("Selection does not belong to this source and CRS.")
         operation = EditOperation(uuid4().hex, _now(), selection, classification,
                                   "MARK_NOISE" if noise else "SET_CLASSIFICATION", note)
+        self._journal[self._cursor:] = [operation]
+        self._cursor += 1
+        self.modified = _now()
+        return operation
+
+    def stage_resolved(self, definitions, result, attribute, value, *, note=""):
+        from .selection import validate_sequence
+        items = validate_sequence(definitions)
+        first = items[0]
+        if (first.session_id != self.session_id or first.source_fingerprint != self.source.sha256
+                or first.geometry_crs != self.source_crs or first.source_type != self.source.source_type):
+            raise ValueError("Selection does not belong to this session/source.")
+        if result.resolution_status != "RESOLVED" or result.selection_id != items[-1].selection_id:
+            raise ValueError("Resolve the current selection before staging edits.")
+        if result.resolved_point_count <= 0:
+            raise ValueError("No source points are selected.")
+        operation = AttributeEditOperation(uuid4().hex, _now(), items, attribute, value,
+                                           result.resolved_point_count, note=note)
         self._journal[self._cursor:] = [operation]
         self._cursor += 1
         self.modified = _now()
@@ -171,13 +189,13 @@ class PointCloudEditSession:
         if destination.suffix.lower() != ".json":
             raise ValueError("Session files must use the .json extension.")
         payload = asdict(self)
-        payload["schema_version"] = 1
+        payload["schema_version"] = 2
         return atomic_write_json(destination, payload)
 
     @classmethod
     def load(cls, path: str | Path, *, verify_source=True, cancelled=lambda: False):
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
-        if not isinstance(payload, dict) or payload.pop("schema_version", None) != 1:
+        if not isinstance(payload, dict) or payload.pop("schema_version", None) not in (1, 2):
             raise ValueError("Unsupported point cloud session schema.")
         source = SourceIdentity(**payload.pop("source"))
         entries = payload.pop("_journal")
@@ -188,6 +206,19 @@ class PointCloudEditSession:
         ids = set()
         for entry in entries:
             entry = dict(entry)
+            if entry.get("kind") == "SET_ATTRIBUTE":
+                from .selection import SelectionDefinition
+                definitions = tuple(SelectionDefinition(**item) for item in entry.pop("definitions"))
+                operation = AttributeEditOperation(definitions=definitions, **entry)
+                first = definitions[0]
+                if (first.session_id != payload["session_id"] or first.source_fingerprint != source.sha256
+                        or first.geometry_crs != payload["source_crs"] or first.source_type != source.source_type):
+                    raise ValueError("Journal contains a selection for another source/session.")
+                if operation.operation_id in ids:
+                    raise ValueError("Duplicate journal operation identity.")
+                ids.add(operation.operation_id)
+                operations.append(operation)
+                continue
             selection = SpatialSelection(**entry.pop("selection"))
             operation = EditOperation(selection=selection, **entry)
             if selection.source_sha256 != source.sha256 or selection.source_crs != payload["source_crs"]:
@@ -201,3 +232,31 @@ class PointCloudEditSession:
         if verify_source:
             source.verify(cancelled=cancelled)
         return result
+
+
+@dataclass(frozen=True)
+class AttributeEditOperation:
+    """Ordered diff; membership always refers to original source attributes."""
+    operation_id: str
+    timestamp: str
+    definitions: tuple
+    attribute: str
+    value: int
+    point_count: int
+    kind: str = "SET_ATTRIBUTE"
+    previous_value_contract: str = "REPLAY_ORIGINAL_THEN_ORDERED_JOURNAL"
+    status: str = "STAGED"
+    note: str = ""
+
+    def __post_init__(self):
+        from .selection import validate_sequence
+        object.__setattr__(self, "definitions", validate_sequence(self.definitions))
+        if not self.operation_id or not self.timestamp or self.kind != "SET_ATTRIBUTE" or self.status != "STAGED":
+            raise ValueError("Invalid staged edit identity/state.")
+        if self.previous_value_contract != "REPLAY_ORIGINAL_THEN_ORDERED_JOURNAL":
+            raise ValueError("Unsupported previous-value contract.")
+        limits = {"Classification": 255, "Withheld": 1, "DELETE_ON_EXPORT": 1}
+        if self.attribute not in limits or type(self.value) is not int or not 0 <= self.value <= limits[self.attribute]:
+            raise ValueError("Unsupported attribute or value; coordinate edits are prohibited.")
+        if type(self.point_count) is not int or self.point_count <= 0:
+            raise ValueError("Staged edits require a positive resolved source count.")

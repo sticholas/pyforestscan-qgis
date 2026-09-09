@@ -33,6 +33,7 @@ def assets():
         result[route] = path
     result["viewer.html"] = Path(__file__).with_name("viewer.html")
     result["viewer.js"] = Path(__file__).with_name("viewer.js")
+    result["editor.js"] = Path(__file__).with_name("editor.js")
     return result
 
 
@@ -196,9 +197,17 @@ def main():
                 capture(command["name"])
             elif action == "session_ready":
                 stage_once("SESSION_READY")
-            elif action in ("fit", "top", "front", "mode", "classes", "height", "clear_height", "clear_filters", "camera", "navigation", "orbit", "pan", "zoom", "snapshot"):
+            elif action == "editor_overlay":
+                from pyforestscan_qgis.core.point_cloud.runtime import ViewerRuntimeService
+                path = Path(command["path"]).resolve(strict=True)
+                root = (ViewerRuntimeService().root / "editor-runs").resolve()
+                if path.name != "overlay.json" or not path.is_relative_to(root) or path.stat().st_size > 16 * 1024 * 1024:
+                    raise ValueError("Invalid editor overlay path.")
+                server.assets["editor-overlay.json"] = path
+                bridge.command.emit(json.dumps({"action": "editor_overlay", "selection_color": command.get("selection_color")}))
+            elif action in ("fit", "top", "front", "mode", "classes", "height", "clear_height", "clear_filters", "camera", "navigation", "orbit", "pan", "zoom", "snapshot", "selection_tool", "selection_test"):
                 bridge.command.emit(json.dumps(command, allow_nan=False))
-        except (ValueError, KeyError, TypeError, OverflowError):
+        except (ValueError, KeyError, TypeError, OverflowError, OSError):
             emit({"error": "Invalid viewer command."})
 
     bridge.received.connect(receive)
