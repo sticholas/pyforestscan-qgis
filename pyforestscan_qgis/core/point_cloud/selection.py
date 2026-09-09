@@ -48,6 +48,8 @@ class SelectionDefinition:
     profile_geometry: tuple[tuple[float, float], ...] | None = None
     profile_axis: str = "Z"
     depth_mode: str = "FULL_COLUMN"
+    circle_center: tuple[float, float] | None = None
+    circle_radius: float | None = None
 
     def __post_init__(self):
         if not self.selection_id or not self.session_id or not self.geometry_crs.strip():
@@ -66,6 +68,17 @@ class SelectionDefinition:
         if any(len(p) != 2 or any(type(v) not in (int, float) or not math.isfinite(v) for v in p) for p in ring):
             raise ValueError("Selection requires finite source XY coordinates.")
         object.__setattr__(self, "geometry", ring)
+        if self.circle_center is not None or self.circle_radius is not None:
+            center, radius = self.circle_center, self.circle_radius
+            if (center is None or len(center) != 2
+                    or any(type(v) not in (int, float) or not math.isfinite(v) for v in center)
+                    or type(radius) not in (int, float) or not math.isfinite(radius) or radius <= 0):
+                raise ValueError("Circle requires finite source XY center and positive radius.")
+            center = tuple(center)
+            envelope = circle_envelope(center, radius)
+            if ring != envelope:
+                raise ValueError("Circle query envelope must match its exact source-space bounds.")
+            object.__setattr__(self, "circle_center", center)
         object.__setattr__(self, "z_filter", _range(self.z_filter, "Z"))
         object.__setattr__(self, "hag_filter", _range(self.hag_filter, "HAG"))
         if self.classification_filter is not None:
@@ -198,6 +211,12 @@ def selection_mask(chunk, definitions, shapes=None):
     selected = np.zeros(len(chunk), dtype=bool)
     for item, shape in zip(items, shapes):
         mask = shapely.intersects_xy(shape, chunk["X"], chunk["Y"])
+        if item.circle_center is not None:
+            cx, cy = item.circle_center
+            # Exact source-space predicate; the rectangular geometry is only a
+            # conservative query envelope shared with indexing/journal replay.
+            mask &= np.hypot((chunk["X"] - cx) / item.circle_radius,
+                             (chunk["Y"] - cy) / item.circle_radius) <= 1.0
         if item.clip_geometry is not None:
             clip = shapely.Polygon(item.clip_geometry)
             if not clip.is_valid or clip.is_empty or clip.area <= 0:
@@ -235,6 +254,29 @@ def selection_mask(chunk, definitions, shapes=None):
         else:
             selected &= ~mask
     return selected
+
+
+def circle_envelope(center, radius):
+    x, y = center
+    low_x, high_x, low_y, high_y = x-radius, x+radius, y-radius, y+radius
+    if (not all(math.isfinite(v) for v in (low_x, high_x, low_y, high_y))
+            or low_x >= high_x or low_y >= high_y):
+        raise ValueError("Circle extent is outside representable source coordinates.")
+    return ((low_x, low_y), (high_x, low_y), (high_x, high_y),
+            (low_x, high_y), (low_x, low_y))
+
+
+def circular_selection(definition, *, center, radius):
+    """Preserve source/view/filter identity while replacing polygon geometry.
+
+    Radius is in source XY units. A Z/HAG range intersects the circular column;
+    no implied camera depth, unit conversion, or nearest rendered point is used.
+    """
+    if (len(center) != 2 or any(type(v) not in (int, float) or not math.isfinite(v) for v in center)
+            or type(radius) not in (int, float) or not math.isfinite(radius) or radius <= 0):
+        raise ValueError("Circle requires finite source XY center and positive radius.")
+    return replace(definition, geometry=circle_envelope(center, radius),
+                   circle_center=tuple(center), circle_radius=radius)
 
 
 class SelectionResolver:
