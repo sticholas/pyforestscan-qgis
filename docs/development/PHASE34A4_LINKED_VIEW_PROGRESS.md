@@ -308,6 +308,16 @@ contracts, preserve the original cloud, publish derived datasets, and
 qualify provenance and subsequent editing. Display sampling is not dataset
 thinning, and a display height filter is not normalization.
 
+## Dataset preparation audit
+
+The [preparation workspace audit](POINT_CLOUD_PREPARATION_WORKSPACE_AUDIT.md)
+records existing filter/HAG contracts, a successful bounded managed-runtime
+attribute test, and the remaining integration risks. In particular, the
+existing preprocessing adapter is not automatically routed by its PBM-mode
+argument; installed voxel modes differ from the legacy option list; and
+adding HAG is not the same operation as normalizing Z.
+No production preparation control or scientific algorithm changed.
+
 ## Blocked gates / package status
 
 No access blocker currently prevents development. Release gates remain open:
