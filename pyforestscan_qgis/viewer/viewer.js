@@ -3,6 +3,14 @@
 const message = document.getElementById("message");
 const state = {ready: false, js_ready: false, source_requested: false, errors: [], mode: "Classification", classes: null, height_filter: null, quality: "Automatic"};
 let viewer, cloud, heightVolume, previousCamera = "", lastFrame = performance.now(), frameMs = 16;
+let linkedContext = null, profileDragInstalled = false;
+function fitProfile() {
+    const geometry = linkedContext.geometry;
+    viewer.setCameraMode(Potree.CameraMode.ORTHOGRAPHIC);
+    viewer.scene.view.yaw = Math.atan2(geometry.b[1]-geometry.a[1], geometry.b[0]-geometry.a[0]);
+    viewer.scene.view.pitch = 0;
+    viewer.fitToScreen(0);
+}
 let priorView = null, cameraVelocity = 0, lastMotion = 0, evictions = 0;
 const recentNodes = new WeakMap();
 let residentLimit = 2000000;
@@ -45,8 +53,8 @@ function inspectVisibleClasses() {
     const owner = cloud.pcoGeometry;
     const header = owner.copc && owner.copc.header;
     const schema = owner.ept && owner.ept.schema;
-    const present = header ? [2,3,5,7,8,10].includes(header.pointDataRecordFormat) :
-        schema ? ["Red","Green","Blue"].every(name=>schema.some(a=>a.name===name)) : true;
+    const present = rawRGB.count > 0 || (header ? [2,3,5,7,8,10].includes(Number(header.pointDataRecordFormat) & 63) :
+        schema ? ["Red","Green","Blue"].every(name=>schema.some(a=>a.name===name)) : true);
     const stats = rawRGB.count || rawRGB.invalid ? rawRGB : decodedRGB;
     stats.present = present;
     state.rgb_diagnostic = stats.report(rgbRenderError, stats===rawRGB?"ORIGINAL_RGB":"DECODED_RGB");
@@ -101,6 +109,25 @@ window.command = function(command) {
     if (!cloud) return;
     try {
         const action = command.action;
+        if (action === "linked_view") {
+            linkedContext = command.view || null;
+            if (linkedContext && linkedContext.view_type === "VERTICAL_SLICE") {
+                viewer.setControls(viewer.orbitControls);
+                viewer.orbitControls.rotationSpeed = 0;
+                viewer.orbitControls.yawDelta = viewer.orbitControls.pitchDelta = 0;
+                viewer.orbitControls.doubleClockZoomEnabled = false;
+                if (!profileDragInstalled) {
+                    viewer.orbitControls.addEventListener("drag", event => {
+                        if (!linkedContext || linkedContext.view_type !== "VERTICAL_SLICE" ||
+                            event.drag.object !== null || event.drag.mouse !== 1) return;
+                        viewer.orbitControls.panDelta.x += event.drag.lastDrag.x/viewer.renderer.domElement.clientWidth;
+                        viewer.orbitControls.panDelta.y += event.drag.lastDrag.y/viewer.renderer.domElement.clientHeight;
+                    });
+                    profileDragInstalled = true;
+                }
+                fitProfile();
+            }
+        }
         if (action === "quality") {
             if (!["Automatic", "Performance", "Balanced", "High Detail"].includes(command.quality)) throw Error("Invalid quality preset.");
             state.quality = command.quality;
@@ -110,8 +137,12 @@ window.command = function(command) {
         if (action === "orbit") { viewer.orbitControls.yawDelta += .25; viewer.orbitControls.pitchDelta += .1; }
         if (action === "pan") { viewer.orbitControls.panDelta.x += .05; }
         if (action === "zoom") { viewer.orbitControls.radiusDelta -= viewer.scene.view.radius * .2; }
-        if (action === "navigation") viewer.setControls(command.mode === "Pan" ? viewer.earthControls : viewer.orbitControls);
-        if (action === "fit") viewer.fitToScreen(0);
+        if (action === "navigation") viewer.setControls(linkedContext && linkedContext.view_type === "VERTICAL_SLICE" ?
+            viewer.orbitControls : command.mode === "Pan" ? viewer.earthControls : viewer.orbitControls);
+        if (action === "fit") {
+            if (linkedContext && linkedContext.view_type === "VERTICAL_SLICE") fitProfile();
+            else viewer.fitToScreen(0);
+        }
         if (action === "top") { viewer.setTopView(); viewer.fitToScreen(0); }
         if (action === "front") { viewer.setFrontView(); viewer.fitToScreen(0); }
         if (action === "budget") {

@@ -39,6 +39,15 @@ class SelectionDefinition:
     attribute_filters: tuple[tuple[str, float, float], ...] = ()
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     addressing: str = "FULL_RESOLUTION_ORIGINAL_SOURCE_QUERY"
+    view_id: str = ""
+    view_name: str = ""
+    clip_geometry: tuple[tuple[float, float], ...] | None = None
+    profile_a: tuple[float, float] | None = None
+    profile_b: tuple[float, float] | None = None
+    profile_thickness: float | None = None
+    profile_geometry: tuple[tuple[float, float], ...] | None = None
+    profile_axis: str = "Z"
+    depth_mode: str = "FULL_COLUMN"
 
     def __post_init__(self):
         if not self.selection_id or not self.session_id or not self.geometry_crs.strip():
@@ -72,6 +81,27 @@ class SelectionDefinition:
                 raise ValueError("Use the explicit geometry/class/height filter.")
             _range(item[1:], item[0])
         object.__setattr__(self, "attribute_filters", filters)
+        if self.depth_mode not in ("FULL_COLUMN", "CUSTOM_DEPTH_RANGE", "SLICE_CORRIDOR"):
+            raise ValueError("Selection depth must be explicit; visible-depth occlusion is not supported.")
+        if self.depth_mode == "CUSTOM_DEPTH_RANGE" and self.z_filter is None and self.hag_filter is None:
+            raise ValueError("Custom depth requires an explicit Z or HAG range.")
+        for name in ("clip_geometry", "profile_geometry"):
+            value = getattr(self, name)
+            if value is not None:
+                polygon = tuple(tuple(p) for p in value)
+                if (not 4 <= len(polygon) <= 4097 or polygon[0] != polygon[-1] or
+                        any(len(p) != 2 or any(type(v) not in (int, float) or not math.isfinite(v) for v in p) for p in polygon)):
+                    raise ValueError("Linked selection polygons must be closed and finite.")
+                object.__setattr__(self, name, polygon)
+        profile_fields = (self.profile_a, self.profile_b, self.profile_thickness)
+        if any(value is not None for value in profile_fields) or self.profile_geometry is not None:
+            from .workspace import SliceGeometry
+            profile = SliceGeometry(self.profile_a or (), self.profile_b or (),
+                                    self.profile_thickness, self.geometry_crs, self.profile_axis)
+            object.__setattr__(self, "profile_a", profile.a)
+            object.__setattr__(self, "profile_b", profile.b)
+        elif self.depth_mode == "SLICE_CORRIDOR":
+            raise ValueError("Slice selection requires endpoints and thickness.")
 
 
 @dataclass(frozen=True)
@@ -168,6 +198,25 @@ def selection_mask(chunk, definitions, shapes=None):
     selected = np.zeros(len(chunk), dtype=bool)
     for item, shape in zip(items, shapes):
         mask = shapely.intersects_xy(shape, chunk["X"], chunk["Y"])
+        if item.clip_geometry is not None:
+            clip = shapely.Polygon(item.clip_geometry)
+            if not clip.is_valid or clip.is_empty or clip.area <= 0:
+                raise ValueError("Area intersection polygon is invalid.")
+            mask &= shapely.intersects_xy(clip, chunk["X"], chunk["Y"])
+        if item.profile_a is not None:
+            ax, ay = item.profile_a
+            bx, by = item.profile_b
+            length = math.hypot(bx-ax, by-ay)
+            along = ((chunk["X"]-ax)*(bx-ax) + (chunk["Y"]-ay)*(by-ay))/length
+            depth = (-(chunk["X"]-ax)*(by-ay) + (chunk["Y"]-ay)*(bx-ax))/length
+            mask &= (along >= 0) & (along <= length) & (np.abs(depth) <= item.profile_thickness/2)
+            if item.profile_geometry is not None:
+                if item.profile_axis not in names:
+                    raise ValueError(f"Source does not contain {item.profile_axis}.")
+                side = shapely.Polygon(item.profile_geometry)
+                if not side.is_valid or side.is_empty or side.area <= 0:
+                    raise ValueError("Profile selection polygon is invalid.")
+                mask &= shapely.intersects_xy(side, along, chunk[item.profile_axis])
         for dimension, limits in (("Z", item.z_filter), ("HeightAboveGround", item.hag_filter)):
             if limits is not None:
                 if dimension not in names:
@@ -196,7 +245,7 @@ class SelectionResolver:
     This is not a cryptographic guarantee against hostile same-stat mutation.
     """
 
-    def __init__(self, source: SourceIdentity, *, cancelled=lambda: False):
+    def __init__(self, source: SourceIdentity, *, cancelled=lambda: False, index_root=None):
         from pathlib import Path
         self.source = source
         self.path = Path(source.path)
@@ -205,6 +254,10 @@ class SelectionResolver:
         self.stamp = self._stamp()
         if before != self.stamp:
             raise ValueError("Source changed during selection attachment.")
+        self.index = None
+        if index_root is not None and source.source_type in ("LAS", "LAZ"):
+            from .source_index import RawSpatialIndex
+            self.index = RawSpatialIndex(source, index_root)
 
     def _stamp(self):
         stat = self.path.stat()
@@ -238,6 +291,8 @@ class SelectionResolver:
         for item in items:
             if item.hag_filter is not None:
                 required.add("HeightAboveGround")
+            if item.profile_geometry is not None:
+                required.add(item.profile_axis)
             required.update(d for d, _low, _high in item.attribute_filters)
         if required - names:
             raise ValueError("Source does not contain " + ", ".join(sorted(required - names)) + ".")
@@ -258,7 +313,15 @@ class SelectionResolver:
         bounds = None
         counts = {}
         hag_min = hag_max = None
-        for chunk in _candidate_chunks(self.source, items, pdal, np):
+        if self.index is not None:
+            self.index.ensure(cancelled=cancelled, progress=progress)
+            envelopes = [(min(p[0] for p in item.geometry), min(p[1] for p in item.geometry),
+                          max(p[0] for p in item.geometry), max(p[1] for p in item.geometry))
+                         for item in items if item.selection_mode != "SUBTRACT"]
+            chunks = self.index.chunks(envelopes, cancelled=cancelled)
+        else:
+            chunks = _candidate_chunks(self.source, items, pdal, np)
+        for chunk in chunks:
             if cancelled():
                 raise InterruptedError("Selection cancelled; no edits staged.")
             self._check_source()

@@ -111,6 +111,23 @@ class ViewState:
 
 class ViewerResourceCoordinator:
     """Only active views receive a render allocation; inactive metadata is cheap."""
+    def visible_allocations(self, roots, focused_id, *, point_budget):
+        if type(point_budget) is not int or point_budget < 0 or focused_id not in roots:
+            raise ValueError("Invalid visible-view allocation.")
+        if any(type(value) is not int or value < 0 for value in roots.values()):
+            raise ValueError("Invalid visible root sizes.")
+        ordered = [focused_id, *(key for key in roots if key != focused_id)]
+        result, remaining = {}, point_budget
+        for key in ordered:
+            minimum = max(1000, roots[key])
+            result[key] = minimum if remaining >= minimum else 0
+            remaining -= result[key]
+        weights = {key:2 if key == focused_id else 1 for key in result if result[key]}
+        total = sum(weights.values())
+        for key,weight in weights.items():
+            result[key] += remaining*weight//total
+        return result
+
     def allocations(self, view_ids, active_id, *, point_budget, available_ram, frame_ms):
         if active_id not in view_ids:
             raise ValueError("Active view is not registered.")

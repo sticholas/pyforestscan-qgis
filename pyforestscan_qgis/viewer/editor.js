@@ -4,6 +4,7 @@ let context, tool = "Pointer", rectangleStart = null, rectangleBox = null;
 const drawing = new DrawingTool();
 let drawingCamera = null, polygonOverlay = null, polygonLine = null;
 let savedNavigation = null;
+let linkedView = null, drawingPurpose = "EDIT";
 let mode = "REPLACE", eventNumber = 0, latestEvent = null, revision = 0, edits = [], selection = [];
 const originals = new WeakMap(), records = new Map();
 const point = new THREE.Vector3(), flat = new THREE.Vector3();
@@ -12,10 +13,23 @@ let gestureMode = null;
 let toolEpoch = 0, insertionPending = false;
 let displaySignature = "";
 let selectionColor = new THREE.Color("#5be4eb");
+function sourceAttribute(geometry, name) {
+    const extra = geometry._pfsOriginalDimensions && geometry._pfsOriginalDimensions[name];
+    return extra ? {array:extra} : geometry.getAttribute(name) || geometry.getAttribute(name.toLowerCase());
+}
 
 function publish(geometry) {
     const effectiveMode = gestureMode || mode;
+    if (drawingPurpose !== "EDIT") {
+        latestEvent = {id: ++eventNumber, action: drawingPurpose, geometry};
+        return;
+    }
     latestEvent = {id: ++eventNumber, geometry, mode: effectiveMode};
+    if (linkedView && linkedView.view_type === "VERTICAL_SLICE") {
+        latestEvent.profile_geometry = geometry;
+        latestEvent.geometry = linkedView.corridor;
+        return; // Only the authoritative worker publishes a profile selection overlay.
+    }
     const filters = window.editorSelectionFilters();
     const preview = compile({geometry, selection_mode: effectiveMode, classification_filter: filters.classes,
         z_filter: filters.height_filter, hag_filter: null, attribute_filters: []});
@@ -27,7 +41,11 @@ function compile(definition) {
     const ring = definition.geometry.slice(0, -1).map(p => new THREE.Vector2(p[0], p[1]));
     const triangles = THREE.ShapeUtils.triangulateShape(ring, []).map(face =>
         new THREE.Triangle(...face.map(i => new THREE.Vector3(ring[i].x, ring[i].y, 0))));
-    return {...definition, triangles, bounds: [Math.min(...ring.map(p => p.x)),
+    const extra = {};
+    for (const key of ["clip_geometry", "profile_geometry"]) {
+        if (definition[key]) extra[key + "_triangles"] = compile({geometry:definition[key]}).triangles;
+    }
+    return {...definition, ...extra, triangles, bounds: [Math.min(...ring.map(p => p.x)),
         Math.min(...ring.map(p => p.y)), Math.max(...ring.map(p => p.x)), Math.max(...ring.map(p => p.y))]};
 }
 function matches(definitions, xyz, classification, geometry, index) {
@@ -35,17 +53,33 @@ function matches(definitions, xyz, classification, geometry, index) {
     for (const item of definitions) {
         flat.set(xyz.x, xyz.y, 0);
         let hit = item.triangles.some(triangle => triangle.containsPoint(flat));
+        if (hit && item.clip_geometry_triangles)
+            hit = item.clip_geometry_triangles.some(triangle => triangle.containsPoint(flat));
+        if (hit && item.profile_a) {
+            const [ax, ay] = item.profile_a, [bx, by] = item.profile_b;
+            const length = Math.hypot(bx-ax, by-ay);
+            const along = ((xyz.x-ax)*(bx-ax)+(xyz.y-ay)*(by-ay))/length;
+            const depth = (-(xyz.x-ax)*(by-ay)+(xyz.y-ay)*(bx-ax))/length;
+            hit = along >= 0 && along <= length && Math.abs(depth) <= item.profile_thickness/2;
+            if (hit && item.profile_geometry_triangles) {
+                const attribute = sourceAttribute(geometry, "HeightAboveGround");
+                const height = item.profile_axis === "HeightAboveGround" ?
+                    (attribute ? attribute.array[index] : NaN) : xyz.z;
+                flat.set(along, height, 0);
+                hit = Number.isFinite(height) && item.profile_geometry_triangles.some(triangle => triangle.containsPoint(flat));
+            }
+        }
         if (item.legacy_bounds) {
             const b = item.legacy_bounds;
             hit = xyz.x >= b[0] && xyz.y >= b[1] && xyz.z >= b[2] &&
                   xyz.x <= b[3] && xyz.y <= b[4] && xyz.z <= b[5];
         }
         if (hit && item.z_filter) hit = xyz.z >= item.z_filter[0] && xyz.z <= item.z_filter[1];
-        if (hit && item.classification_filter !== null) hit = item.classification_filter.includes(classification);
+        if (hit && item.classification_filter != null) hit = item.classification_filter.includes(classification);
         const ranges = [...(item.attribute_filters || [])];
         if (item.hag_filter) ranges.push(["HeightAboveGround", ...item.hag_filter]);
         for (const [name, low, high] of ranges) {
-            const attribute = geometry.getAttribute(name) || geometry.getAttribute(name.toLowerCase());
+            const attribute = sourceAttribute(geometry, name);
             if (!attribute || attribute.array[index] < low || attribute.array[index] > high) hit = false;
         }
         if (item.selection_mode === "REPLACE") selected = hit;
@@ -98,6 +132,11 @@ function completeDrawing() {
     if (ring) {
         publish(ring.map(p => {
             const xyz = sourceXY(p[0], p[1], drawingCamera);
+            if (drawingPurpose === "EDIT" && linkedView && linkedView.view_type === "VERTICAL_SLICE") {
+                const {a, b} = linkedView.geometry;
+                const length = Math.hypot(b[0]-a[0], b[1]-a[1]);
+                return [((xyz.x-a[0])*(b[0]-a[0])+(xyz.y-a[1])*(b[1]-a[1]))/length, xyz.z];
+            }
             return [xyz.x, xyz.y];
         }));
         drawing.resolving();
@@ -120,7 +159,7 @@ function initialize(value) {
         event.stopPropagation();
     }, true);
     canvas.addEventListener("pointermove", event => {
-        if (tool === "Polygon") drawPolygon([event.offsetX, event.offsetY]);
+        if (tool === "Polygon" || tool === "Line") drawPolygon([event.offsetX, event.offsetY]);
         if (!rectangleStart || !rectangleBox) return;
         const [x, y] = rectangleStart;
         Object.assign(rectangleBox.style, {left: Math.min(x, event.offsetX) + "px",
@@ -128,6 +167,19 @@ function initialize(value) {
             height: Math.abs(event.offsetY - y) + "px"});
     }, true);
     canvas.addEventListener("pointerup", event => {
+        if (tool === "Line") {
+            event.preventDefault(); event.stopImmediatePropagation();
+            if (event.button === 0) {
+                drawing.vertex(event.offsetX, event.offsetY); drawPolygon();
+                if (drawing.vertices.length === 2) {
+                    publish(drawing.vertices.map(p => {
+                        const xyz = sourceXY(p[0], p[1], drawingCamera); return [xyz.x, xyz.y];
+                    }));
+                    drawing.cancel(); leaveTool();
+                }
+            }
+            return;
+        }
         if (tool === "Polygon") {
             event.preventDefault();
             event.stopImmediatePropagation();
@@ -198,6 +250,9 @@ function paint() {
             const i = record.offset;
             if (classes.array[i] !== original[i]) record.sourceUnchanged = false;
             point.fromBufferAttribute(positions, i).applyMatrix4(node.sceneNode.matrixWorld);
+            const displayZ = point.z;
+            const originalZ = sourceAttribute(geometry, "PFSOriginalZ");
+            if (originalZ) point.z = originalZ.array[i];
             let classification = original[i], classified = false, withheld = false, removed = false;
             for (const edit of record.edits) {
                 if (!matches(edit.definitions, point, original[i], geometry, i)) continue;
@@ -208,7 +263,7 @@ function paint() {
             record.effectiveClasses[classification] = (record.effectiveClasses[classification] || 0) + 1;
             const filters = window.editorSelectionFilters();
             const visible = (filters.classes === null || filters.classes.includes(original[i])) &&
-                (!filters.height_filter || point.z >= filters.height_filter[0] && point.z <= filters.height_filter[1]);
+                (!filters.height_filter || displayZ >= filters.height_filter[0] && displayZ <= filters.height_filter[1]);
             const selected = matches(selection, point, original[i], geometry, i);
             let color = null;
             if (selected) color = selectionColor.toArray();
@@ -256,6 +311,9 @@ window.pointCloudEditor = {
         }
         for (const node of visible) {
             const geometry = node.geometryNode && node.geometryNode.geometry;
+            const extra = node.geometryNode && node.geometryNode.gpsTime && node.geometryNode.gpsTime.originalDimensions;
+            // CPU membership metadata must not change Potree's registered GPU attribute layout.
+            if (geometry && extra) geometry._pfsOriginalDimensions = extra;
             const classes = geometry && geometry.getAttribute("classification");
             if (!classes || !node.sceneNode) continue;
             if (!originals.has(classes)) originals.set(classes, classes.array.slice());
@@ -270,6 +328,7 @@ window.pointCloudEditor = {
                 effectiveClasses[code] = (effectiveClasses[code] || 0) + count;
         }
         return {event: latestEvent, tool, drawing_state: drawing.state, revision, pending_nodes: pending.length, ready: true,
+            view_id: linkedView && linkedView.view_id,
             highlighted_points: highlighted, effective_classes: effectiveClasses,
             source_buffers_unchanged: Array.from(records.values()).every(r => r.sourceUnchanged !== false),
             overlay_diagnostics: Array.from(records.values()).slice(0, 3).map(r => ({
@@ -279,13 +338,15 @@ window.pointCloudEditor = {
             }))};
     },
     command(command) {
+        if (command.action === "linked_view") linkedView = command.view || null;
         if (!context) return;
         if (command.action === "selection_tool") {
-            if (!["Pointer", "Polygon", "Rectangle"].includes(command.tool)) return;
+            if (!["Pointer", "Polygon", "Rectangle", "Line"].includes(command.tool)) return;
             if (command.mode && !["REPLACE", "ADD", "SUBTRACT"].includes(command.mode)) return;
             leaveTool();
             drawing.cancel();
             mode = command.mode || "REPLACE";
+            drawingPurpose = command.purpose || "EDIT";
             if (command.tool === "Pointer") {
                 return;
             }
@@ -294,17 +355,17 @@ window.pointCloudEditor = {
                 pitch: view.pitch, radius: view.radius,
                 cameraMode: context.viewer.scene.cameraMode || Potree.CameraMode.PERSPECTIVE};
             context.viewer.setCameraMode(Potree.CameraMode.ORTHOGRAPHIC);
-            context.viewer.setTopView();
+            if (!linkedView || linkedView.view_type !== "VERTICAL_SLICE") context.viewer.setTopView();
             const epoch = toolEpoch;
             insertionPending = true;
             requestAnimationFrame(() => requestAnimationFrame(() => {
                 if (epoch !== toolEpoch) return;
                 insertionPending = false;
                 tool = command.tool;
-                drawing.arm(tool, mode);
+                drawing.arm(tool === "Line" ? "Polygon" : tool, mode);
                 drawingCamera = context.viewer.scene.getActiveCamera().clone();
                 context.viewer.inputHandler.enabled = false;
-                if (tool === "Polygon") {
+                if (tool === "Polygon" || tool === "Line") {
                     polygonOverlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
                     polygonOverlay.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
                     polygonLine = document.createElementNS("http://www.w3.org/2000/svg", "polyline");

@@ -5,9 +5,18 @@ importScripts("./rgb.js");
 if (Copc.Las.View) {
     const createView = Copc.Las.View.create;
     const sendMessage = self.postMessage.bind(self);
-    let stats;
+    let stats, originalDimensions;
     Copc.Las.View.create = function(...args) {
         const view = createView(...args);
+        originalDimensions = {};
+        const count = args[0].byteLength / args[1].pointDataRecordLength;
+        if (!Number.isSafeInteger(count) || count < 0) throw Error("Invalid original point record buffer.");
+        for (const name of ["HeightAboveGround", "PFSOriginalZ"]) {
+            if (!view.dimensions[name]) continue;
+            const values = new Float64Array(count), get = view.getter(name);
+            for (let i = 0; i < count; i++) values[i] = get(i);
+            originalDimensions[name] = values;
+        }
         stats = new RGBStats(["Red","Green","Blue"].every(name => view.dimensions[name]));
         const getter = view.getter.bind(view), sample = {};
         view.getter = name => {
@@ -24,6 +33,10 @@ if (Copc.Las.View) {
     };
     self.postMessage = function(message, transfer) {
         if (stats && message.gpsMeta) message.gpsMeta.rgbDiagnostic = stats.report();
+        if (message.gpsMeta && originalDimensions) {
+            message.gpsMeta.originalDimensions = originalDimensions;
+            transfer = [...(transfer || []), ...Object.values(originalDimensions).map(values => values.buffer)];
+        }
         return sendMessage(message, transfer);
     };
 }

@@ -70,6 +70,12 @@ def main():
             emit({"progress": stage, "count": count})
             last_progress, last_stage = now, stage
     def view_update(command):
+        if session and command.get("workspace"):
+            from pyforestscan_qgis.core.point_cloud.workspace import PointCloudWorkspaceModel
+            payload = PointCloudWorkspaceModel.restore(command["workspace"], session.source.sha256).to_dict()
+            if payload["session_id"] != session.session_id:
+                raise ValueError("Linked views belong to another editing session.")
+            session.visibility["linked_workspace"] = payload
         if session and command.get("view"):
             state = validate_view_state(command["view"])
             session.camera = state["camera"]
@@ -83,16 +89,20 @@ def main():
     def visual(item):
         raw = asdict(item)
         return {key: raw[key] for key in ("geometry", "selection_mode", "z_filter", "hag_filter",
-                                         "classification_filter", "attribute_filters")}
+            "classification_filter", "attribute_filters", "view_id", "view_name", "clip_geometry",
+            "profile_a", "profile_b", "profile_thickness", "profile_geometry", "profile_axis", "depth_mode")}
     def snapshot(*, restored=False, exported=None, highlight=True):
         nonlocal revision
         revision += 1
+        session.visibility["selection_definitions"] = [asdict(item) for item in definitions]
+        session.save(autosave)
         edits = []
         history = []
         for op in session.operations:
             if isinstance(op, AttributeEditOperation):
                 edits.append({"definitions": [visual(d) for d in op.definitions], "attribute": op.attribute, "value": op.value})
-                history.append(f"{op.point_count:,} points: {op.attribute} = {op.value}")
+                history.append(f"{op.point_count:,} points: {op.attribute} = {op.value}" +
+                               (f" | {op.note}" if op.note else ""))
             else:
                 x, y, z, xx, yy, zz = op.selection.bounds
                 edits.append({"attribute": "Classification", "value": op.classification, "definitions": [{
@@ -104,9 +114,12 @@ def main():
         atomic_write_json(overlay, {"revision": revision, "edits": edits,
                                    "selection": [visual(d) for d in definitions] if highlight else []})
         emit({"ready": True, "source": session.source.path, "source_fingerprint": session.source.sha256,
+              "source_identity":asdict(session.source), "source_crs":session.source_crs, "dimensions":session.dimensions,
               "session_id": session.session_id,
               "point_count": point_count, "overlay": str(overlay), "revision": revision,
               "selection": asdict(result) if result else None,
+              "selection_definitions": [asdict(item) for item in definitions],
+              "linked_workspace": session.visibility.get("linked_workspace"),
               "can_undo": session.can_undo, "can_redo": session.can_redo,
               "edits": len(session.operations), "autosave": str(autosave),
               "history": list(reversed(history[-20:])),
@@ -160,19 +173,32 @@ def main():
                     crs_text = ":".join(authority) if authority else crs.to_wkt()
                 else:
                     crs_text = "SOURCE_LOCAL:" + source.sha256
-                new_resolver = SelectionResolver(source, cancelled=cancelled.is_set)
+                from pyforestscan_qgis.core.point_cloud.runtime import ViewerRuntimeService
+                new_resolver = SelectionResolver(source, cancelled=cancelled.is_set,
+                    index_root=ViewerRuntimeService().root/"source-range-index")
                 session = candidate or PointCloudEditSession(source, crs_text,
                     tuple(d.strip() for d in metadata["dimensions"].split(",")))
                 resolver = new_resolver
                 point_count = int(metadata["num_points"])
                 definitions, result = (), None
+                if action == "load" and session.visibility.get("selection_definitions"):
+                    pending = validate_sequence(SelectionDefinition(**item)
+                        for item in session.visibility["selection_definitions"])
+                    if pending[0].session_id != session.session_id:
+                        raise ValueError("Saved selection belongs to a different session.")
+                    result = resolver.resolve(pending, cancelled=cancelled.is_set,
+                        progress=lambda count: progress("Restoring original source selection", count))
+                    definitions = pending
                 session.save(autosave)
                 snapshot(restored=action == "load")
             elif session is None:
                 raise ValueError("Open a local source before editing. EPT edit identity is not yet enabled.")
             else:
                 view_update(command)
-                if action == "select":
+                if action == "workspace":
+                    session.save(autosave)
+                    emit({"workspace_saved": True})
+                elif action == "select":
                     resolver._check_source()
                     mode = command.get("mode", "REPLACE")
                     if not definitions and mode == "ADD":
@@ -180,10 +206,18 @@ def main():
                     if not definitions and mode == "SUBTRACT":
                         raise ValueError("Select a region before subtracting from it.")
                     state = command.get("view", {})
+                    constraints = command.get("constraints")
+                    if constraints is None:
+                        constraints = {"z_filter": state.get("height_filter"),
+                                       "classification_filter": state.get("classes")}
+                    allowed = {"view_id", "view_name", "clip_geometry", "profile_a", "profile_b",
+                               "profile_thickness", "profile_geometry", "profile_axis", "depth_mode",
+                               "z_filter", "hag_filter", "classification_filter", "attribute_filters"}
+                    if not isinstance(constraints, dict) or set(constraints) - allowed:
+                        raise ValueError("Unsupported linked selection constraints.")
                     item = SelectionDefinition(uuid4().hex, session.session_id, session.source.sha256,
                         session.source.source_type, command["geometry"], session.source_crs,
-                        selection_mode=mode, z_filter=state.get("height_filter"),
-                        classification_filter=state.get("classes"))
+                        selection_mode=mode, **constraints)
                     pending = validate_sequence((item,) if mode == "REPLACE" or not definitions else (*definitions, item))
                     progress("Resolving original source points")
                     resolved = resolver.resolve(pending, cancelled=cancelled.is_set,
@@ -202,7 +236,9 @@ def main():
                         emit({"confirm": True, "selection_id": result.selection_id, "count": result.resolved_point_count,
                               "fraction": result.resolved_point_count / max(point_count, 1), "command": command})
                         continue
-                    session.stage_resolved(definitions, result, command["attribute"], command["value"])
+                    origin = definitions[-1].view_name
+                    session.stage_resolved(definitions, result, command["attribute"], command["value"],
+                                           note=("View: " + origin) if origin else "")
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action in ("undo", "redo"):

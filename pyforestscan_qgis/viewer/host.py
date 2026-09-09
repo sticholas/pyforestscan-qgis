@@ -74,6 +74,7 @@ def main():
     observed = set()
     memory_sample = {"at": 0, "value": None}
     profile_state = {"path": None, "seed": None, "saved_at": 0}
+    coordinated_limit = {"points": None}
 
     def stage_once(stage, **values):
         if stage not in observed:
@@ -194,9 +195,11 @@ def main():
                             profile_state['saved_at'] = now
                         except OSError:
                             pass
-                    self.command.emit(json.dumps({"action": "budget", "points": policy.points,
+                    limit = coordinated_limit["points"]
+                    ceiling = policy.ceiling if limit is None else min(policy.ceiling,limit)
+                    self.command.emit(json.dumps({"action": "budget", "points": min(policy.points,ceiling),
                                                   "screen_error": policy.screen_error,
-                                                  "ceiling": policy.ceiling, "floor": policy.floor,
+                                                  "ceiling": ceiling, "floor": min(policy.floor,ceiling),
                                                   "pressure": pressure,
                                                   "source_class": policy.source_class}))
                 emit({"telemetry": value})
@@ -243,6 +246,12 @@ def main():
                             max(1, min(16384, int(command["height"]))))
             elif action == "visible":
                 view.setVisible(bool(command["visible"]))
+            elif action == "resource_limit":
+                limit = command["points"]
+                if type(limit) is not int or not 0 <= limit <= 2000000:
+                    raise ValueError("Invalid coordinated point allocation.")
+                coordinated_limit["points"] = limit
+                view.setVisible(limit > 0)
             elif action == "capture":
                 capture(command["name"])
             elif action == "session_ready":
@@ -255,7 +264,7 @@ def main():
                     raise ValueError("Invalid editor overlay path.")
                 server.assets["editor-overlay.json"] = path
                 bridge.command.emit(json.dumps({"action": "editor_overlay", "selection_color": command.get("selection_color")}))
-            elif action in ("fit", "top", "front", "mode", "classes", "height", "clear_height", "clear_filters", "camera", "navigation", "orbit", "pan", "zoom", "snapshot", "selection_tool", "selection_test", "quality"):
+            elif action in ("fit", "top", "front", "mode", "classes", "height", "clear_height", "clear_filters", "camera", "navigation", "orbit", "pan", "zoom", "snapshot", "selection_tool", "selection_test", "selection_resolution", "linked_view", "quality"):
                 bridge.command.emit(json.dumps(command, allow_nan=False))
         except (ValueError, KeyError, TypeError, OverflowError, OSError):
             emit({"error": "Invalid viewer command."})
