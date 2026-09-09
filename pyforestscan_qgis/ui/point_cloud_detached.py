@@ -80,8 +80,8 @@ class DetachedView(QDialog):
         self.mode.addItems(("Classification","Elevation","RGB","Intensity"))
         self.mode.currentTextChanged.connect(lambda value:self.send({"action":"mode","mode":value}))
         row.addWidget(self.mode)
-        self.tool = QComboBox()
-        self.tool.addItems(("Pointer","Polygon","Rectangle"))
+        from .point_cloud_tools import SelectionTools
+        self.tool = SelectionTools(self)
         self.tool.currentTextChanged.connect(lambda value:self.send({
             "action":"selection_tool","tool":value,"mode":self.selection_mode.currentText().upper()}))
         row.addWidget(self.tool)

@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import time
 import traceback
+from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
@@ -92,6 +93,13 @@ def main():
             if original_worker:
                 assert editor.worker is original_worker, "Linked view replaced authoritative editor"
             if step == 0:
+                with patch.object(page.linked, "draw") as draw:
+                    page.linked.area_button.click()
+                    draw.assert_called_with("Rectangle", "CREATE_AREA")
+                    page.linked.slice_button.click()
+                    draw.assert_called_with("Line", "CREATE_SLICE")
+                assert not page.linked.area_button.icon().isNull()
+                assert not page.linked.slice_button.icon().isNull()
                 original_worker = editor.worker
                 renderers["overview"] = page.worker
                 detail = page.linked.add(ViewType.AREA_DETAIL,
@@ -102,6 +110,7 @@ def main():
                 page.grab().save(str(args.output_dir/"area.png"))
                 report["area_telemetry"] = page._view_state
                 previous = (editor.state.get("selection") or {}).get("selection_id")
+                editor.tool.buttons["Rectangle"].click()
                 page.send({"action":"selection_test","geometry":[[x-d,y-d],[x+d,y-d],[x+d,y+d],[x-d,y+d],[x-d,y-d]]})
             elif step == 2:
                 result = editor.state.get("selection") or {}
@@ -123,6 +132,7 @@ def main():
                 renderers[profile] = page.worker
                 previous = (editor.state.get("selection") or {}).get("selection_id")
                 low,high = page._view_state["z_range"]
+                editor.tool.buttons["Polygon"].click()
                 page.send({"action":"selection_test","geometry":[[d,low],[3*d,low],[3*d,high],[d,high],[d,low]]})
             elif step == 5:
                 result = editor.state.get("selection") or {}
@@ -228,6 +238,7 @@ def main():
                 previous = editor.state["selection"]["selection_id"]
                 low,high = window.telemetry["z_range"]
                 window.send({"action":"capture","name":"detached-profile"})
+                window.tool.buttons["Polygon"].click()
                 window.send({"action":"selection_test","geometry":[[d,low],[3*d,low],[3*d,high],[d,high],[d,low]]})
             elif step == 17:
                 if editor.state["selection"]["selection_id"] == previous:

@@ -136,15 +136,14 @@ class EditorPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
         row = QHBoxLayout()
-        self.tool = QComboBox()
-        self.tool.addItems(("Pointer", "Polygon", "Rectangle"))
-        self.tool.setToolTip("Polygon: click vertices, then double-click, Enter, right-click or click the first vertex to finish. Escape cancels. Rectangle: drag. Selection temporarily uses top view through source Z; your prior camera returns when finished or cancelled.")
+        from .point_cloud_tools import SelectionTools
+        self.tool = SelectionTools(self)
         self.mode = QComboBox()
         self.mode.addItems(("Replace", "Add", "Subtract"))
         self.mode.setToolTip("Replace, add or subtract a filtered source region. Hold Shift for Add or Alt for Subtract when starting a shape in the viewer. Esc returns to navigation. Rendered point count is not edit membership.")
         self.tool.currentTextChanged.connect(self.change_tool)
         self.mode.currentTextChanged.connect(lambda _: self.change_tool(self.tool.currentText()))
-        row.addWidget(self.tool, 1)
+        row.addWidget(self.tool)
         row.addWidget(self.mode, 1)
         self.clear = self.button("Clear Selection", "SP_DialogResetButton", lambda: self.send("clear"),
                                  "Clear only the current selection. Staged edits and history remain.")

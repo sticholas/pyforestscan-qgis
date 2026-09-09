@@ -12,12 +12,15 @@ too slow, with temporarily empty views. Dragging tabs out did not work.
 Menus, selection depth, padding terminology and square point rendering were
 confusing. These failures override earlier automated canary success.
 
-The field defaulting to 2 is traced to `LinkedViews.from_selection`:
+The former field defaulting to 2 is traced to `LinkedViews.from_selection`:
 `QInputDialog.getDouble` returns floating-point padding in source XY units.
 Each side is expanded by that amount: width/height = bounds span + 2 * padding.
 It affects the detail region, not point size, spacing, resolution or edit depth.
-Renaming and unit-aware presentation remain pending; do not assume metres
-for a source with unknown coordinates or geographic units.
+It now reads "Extra margin on each side (dataset XY units)" and defaults to
+zero. A regression verifies that zero preserves the selected XY span and an
+explicit margin of two adds four to each dimension, without changing point
+display size. Specific CRS unit-name presentation remains pending; do not
+assume metres for a source with unknown coordinates or geographic units.
 
 ## Done
 
@@ -47,6 +50,7 @@ Evidence directory on the test machine:
 | surface-transfer-01 | Passed automated 22-step canary | Same renderer through detach/redock; attachment acknowledged before retiring native container; nonblank captures |
 | surface-transfer-20 | Passed on QGIS 3.44.13 | Twenty repeated detach/redock cycles plus final shared edit/export; same renderer retained |
 | surface-transfer-qgis4-01 | Passed on QGIS 4.0.0 | Three repeated transfers plus final shared edit/export; original SHA256 unchanged |
+| direct-tools-01 | Passed on QGIS 3.44.13 | Rectangle/Polygon buttons in main and detached views; three transfer cycles, shared edits and export; 69.30 s |
 
 For resident-hag-02, both warm returns completed by the next 250 ms test
 poll. This is a polling upper bound, not a precision frame-latency benchmark.
@@ -68,6 +72,24 @@ gesture/decoder lifecycle tests passed. The real QGIS canary covers scientific
 selection/export unavailable in the skipped WSL tests.
 
 ## In progress / next
+
+Pointer/Navigate, Polygon Select and Rectangle Select now use a shared compact
+exclusive icon strip in main and detached views. There is no hidden tool combo.
+Area Detail and Vertical Slice have direct QGIS-theme icon buttons. View
+options retains less frequent polygon-region and adjustment actions. Tool
+icons have semantic help, accessible names and stable 28-pixel logical sizing.
+Nine actual Qt widget/event tests pass on each installed QGIS version,
+including the zero-margin regression. The focused tier runs 150 tests with
+16 QGIS/native-dependency skips; no failures. Compilation, undefined-name
+and documentation-link checks pass.
+The direct-tools canary clicks the selection controls before resolving geometry;
+creation-button wiring is checked separately, not claimed as a human drawing
+test. Source-safe export SHA256 still matches the earlier result.
+The UI-only capture was reviewed for layout; its blank foreign-renderer area
+is not evidence of failed rendering (native-host captures are used for that).
+The current selection tool still temporarily uses top view for 3D XY drawing,
+as stated in its tooltip; preserving arbitrary 3D selection projection is not
+implemented by this control-only change.
 
 Drag-out now detects boundary crossing during mouse movement and ends Qt's
 tab-reorder grab before dispatching the window change on the next event turn.

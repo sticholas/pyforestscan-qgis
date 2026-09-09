@@ -32,13 +32,21 @@ class LinkedViews(QObject):
         self.resource_signature = None
         from .point_cloud_resident_views import ResidentViews
         self.residents = ResidentViews(page)
+        from .point_cloud_tools import spatial_button
+        self.area_button = spatial_button("Area Detail", "mActionZoomToSelected.svg",
+            "Area Detail: draw a rectangle in Overview to open a closer view of that region. It shares the original cloud, selection and staged edits.")
+        self.area_button.clicked.connect(lambda: self.draw("Rectangle", "CREATE_AREA"))
+        toolbar.addWidget(self.area_button)
+        self.slice_button = spatial_button("Vertical Slice", "mActionMeasure.svg",
+            "Vertical Slice: choose two endpoints in Overview, then set the corridor thickness. Opens a profile of the same cloud; it does not write or edit points.")
+        self.slice_button.clicked.connect(lambda: self.draw("Line", "CREATE_SLICE"))
+        toolbar.addWidget(self.slice_button)
         self.create = QToolButton()
-        self.create.setText("Linked views")
-        self.create.setToolTip("Draw an Area Detail region or a two-endpoint Vertical Slice in Overview. All edits share the original source.")
+        self.create.setText("View options")
+        self.create.setAccessibleName("View options")
+        self.create.setToolTip("View options: adjust the current region, open the selected area or manage linked windows. Selection and edit history remain shared.")
         menu = QMenu(self.create)
-        for label, tool, purpose in (("Area Detail: Rectangle", "Rectangle", "CREATE_AREA"),
-                                    ("Area Detail: Polygon", "Polygon", "CREATE_AREA"),
-                                    ("Vertical Slice", "Line", "CREATE_SLICE")):
+        for label, tool, purpose in (("Area Detail: Polygon", "Polygon", "CREATE_AREA"),):
             action = menu.addAction(label)
             action.triggered.connect(lambda _=False, t=tool, p=purpose: self.draw(t,p))
         menu.addAction("Open Selection in Area Detail", self.from_selection)
@@ -176,7 +184,8 @@ class LinkedViews(QObject):
         if not bounds:
             self.page.status.setText("Resolve a source selection before opening its area.")
             return
-        padding, ok = QInputDialog.getDouble(self.page, "Area Detail", "Padding (source coordinate units)", 2, 0, 1000000, 3)
+        padding, ok = QInputDialog.getDouble(self.page, "Area Detail",
+            "Extra margin on each side (dataset XY units)", 0, 0, 1000000, 3)
         if ok:
             x,y,_,xx,yy,_ = bounds
             self.add(ViewType.AREA_DETAIL, {"shape":"RECTANGLE","crs":self.page.editor.state["source_crs"],
