@@ -1,6 +1,8 @@
 # Point cloud view cache contract
 
-Design contract, not implemented in 34A1.
+Implemented in Phase 34A3.2/34A3.3. See the authoritative
+[stability contract](POINT_CLOUD_VIEWER_STABILITY_CONTRACT.md) and
+[measured cache/profile evidence](../testing/PHASE_34A3_2_DENSE_VIEW_PIPELINE_PROFILE.md).
 
 Use application-managed cache outside source directories, keyed by verified
 source identity plus converter/version/options. Cache data is rebuildable,

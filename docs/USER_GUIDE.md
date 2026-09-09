@@ -2,16 +2,33 @@
 
 ## Experimental Point Cloud Workspace
 
+The main tab is **3D Overview**. Polygon selection finishes with double-click,
+Enter, right-click, or clicking the first vertex; Escape cancels. Rectangle
+uses a drag. Both currently select an XY footprint through source Z, temporarily
+switch to top view, then restore the prior camera. They are not angled 3D
+depth selections. Edit membership and counts come from original source points.
+
+Help has a fixed, scrollable footer. Long status messages keep one compact line
+with complete text in their tooltip. RGB explains missing, sampled-zero or
+constant values separately from renderer failure; no colors are invented.
+
+Area Detail and Vertical Slice are not available yet. Their shared-source,
+global-selection and undo contracts are described in the
+[linked-view architecture](development/POINT_CLOUD_LINKED_VIEWS.md).
+
 Open **Point Cloud**, then **Set Up Viewer** if the optional graphics runtime
 is missing. Setup requires confirmation and uses a separate user-local runtime;
 it does not install graphics packages into QGIS Python or the scientific engine.
-Open a local LAS, LAZ or COPC. Unindexed sources over two million points are
-currently refused; use an existing COPC until automatic out-of-core indexing
-is integrated. EPT viewing is qualified on the tested Windows Qt adapters,
+Open a local LAS, LAZ or COPC. Small eligible files open directly; larger raw
+files automatically prepare a read-only optimized view in managed storage.
+The viewer's Setup / Repair flow installs its separate indexing component.
+Valid cached views are reused; the original remains the editing authority.
+EPT viewing is qualified on the tested Windows Qt adapters,
 but EPT editing remains disabled until a safe immutable source contract exists.
 
-Fit, Top, Front, Orbit/Pan and color modes affect only the view. Expand
+Fit, Top, Front, Orbit/Pan and color modes affect only the view. Open
 **Display filters** to show/hide or solo observed classes and limit source Z.
+It is one nonmodal panel; opening it does not shrink the viewer canvas.
 Observed classes come from streamed nodes, not a full-source classification
 inventory. These filters never edit the source or add journal operations.
 
@@ -42,7 +59,8 @@ fill empty header identifiers; the validation report records those changes.
 Use in Process verifies and selects the export without starting processing or
 changing the preferred output folder. Active Process work blocks replacement.
 See the [editing acceptance record](development/PHASE_34A3_EDITING_LOOP.md):
-human drawing/restart acceptance remains pending; this is not a 0.3 release.
+human drawing/restart acceptance is tracked in the
+[current stability gate](testing/PHASE_34A3_3_STABILITY_EVIDENCE.md); this is not a 0.3 release.
 
 ## Set up or reload the Processing Engine
 

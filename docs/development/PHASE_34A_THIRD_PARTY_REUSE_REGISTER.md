@@ -1,7 +1,18 @@
 # Phase 34A third-party reuse register
 
-No upstream source code or new runtime dependency has been incorporated.
-All foundation code is new local contract code.
+The table below records the historical Phase 34A foundation audit, not the
+current embedded viewer's dependency inventory. Later phases selected a pinned
+Potree asset bundle; its complete hashes/notices are packaged under
+pyforestscan_qgis/viewer/assets/manifest.json and assets/notices.
+
+Current Potree source commit: 5636cd471d9eb464969e758be45c44d7613d3859.
+The managed indexer is pinned Untwine 1.5.1 in its own user-local environment,
+not a copied native executable in the plugin. See the
+[stability contract](POINT_CLOUD_VIEWER_STABILITY_CONTRACT.md) for its tested
+scan-flag adapter and source-preservation gate.
+
+New drawing, RGB statistics and decoder lifecycle adapters are plugin-authored;
+the pinned vendor files and their asset checksums were not modified in 34A3.4.
 
 | Source | Decision | Basis / outstanding gate |
 | --- | --- | --- |

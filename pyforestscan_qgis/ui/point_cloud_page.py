@@ -16,7 +16,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel,
     QComboBox, QFileDialog, QMessageBox, QSizePolicy,
     QToolButton, QCheckBox, QDoubleSpinBox, QFormLayout,
-    QStyle, QListWidget, QListWidgetItem,
+    QStyle, QListWidget, QListWidgetItem, QDialog, QTabWidget, QTabBar,
 )
 from ..compat.qt import qt_enum
 from ..core.backend.process_env import hidden_subprocess_kwargs
@@ -54,6 +54,7 @@ class ViewerWorker(QThread):
 
     def run(self):
         process = None
+        cache_lease = None
         failure = None
         service = ViewerRuntimeService()
         try:
@@ -65,6 +66,10 @@ class ViewerWorker(QThread):
             if self.setup:
                 executable = service.setup(confirmed=True, progress=lambda message: self.update.emit({"status": message}),
                                            cancelled=self.stop_event.is_set)
+                from ..core.point_cloud.indexer import ViewerIndexerService
+                ViewerIndexerService(service.paths).setup(confirmed=True,
+                    progress=lambda message: self.update.emit({"status": message}),
+                    cancelled=self.stop_event.is_set)
                 self.update.emit({"status": "Viewer component ready", "setup_ready": True})
                 return
             if os.name != "nt":
@@ -77,26 +82,58 @@ class ViewerWorker(QThread):
                 engine = BackendService().processing_engine_service()
                 token = engine.runtime_token_for(("dataset_inspection",))
                 engine.validate_runtime_token_for_launch(token, ("dataset_inspection",))
-                self.update.emit({"status": "Preparing read-only viewer cache"})
+                self.update.emit({"status": "Opening point cloud"})
+                progress_path = self.run_record.folder / "prepare_progress.json"
+                cancel_path = self.run_record.folder / "prepare_cancel"
                 with (self.run_record.folder / "prepare_stdout.log").open("w+", encoding="utf-8") as output, \
                      (self.run_record.folder / "prepare_stderr.log").open("w+", encoding="utf-8") as errors:
                     process = subprocess.Popen(
                         [token.executable, "-I", str(viewer_root / "prepare_source.py"), "--source", str(source),
-                         "--cache", str(service.root / "source-cache")],
+                         "--cache", str(service.root / "source-cache"),
+                         "--progress-file", str(progress_path), "--cancel-file", str(cancel_path)],
                         stdout=output, stderr=errors, env=engine.environment(), **hidden_subprocess_kwargs())
                     self.run_record.update(preparation_pid=process.pid,
                         preparation_stdout_path=str(self.run_record.folder / "prepare_stdout.log"),
                         preparation_stderr_path=str(self.run_record.folder / "prepare_stderr.log"))
                     started = time.monotonic()
+                    last_progress = 0
                     while process.poll() is None:
-                        if self.stop_event.wait(.1) or time.monotonic() - started > 600:
+                        if self.stop_event.wait(.1) or time.monotonic() - started > 86400:
+                            cancel_path.touch()
+                            try:
+                                process.wait(timeout=15)
+                            except subprocess.TimeoutExpired:
+                                from ..core.owned_workers import terminate_process_tree
+                                terminate_process_tree(process)
+                                process.wait()
                             raise RuntimeError("Viewer source preparation cancelled or timed out.")
+                        if time.monotonic() - last_progress >= 1:
+                            last_progress = time.monotonic()
+                            try:
+                                with progress_path.open(encoding="utf-8") as progress_stream:
+                                    progress = json.loads(progress_stream.read(16000))
+                                elapsed = int(progress.get("elapsed_seconds", 0))
+                                self.update.emit({"status": f"{progress['stage']} ({elapsed}s)",
+                                                  "preparation_progress": progress})
+                            except (OSError, ValueError, KeyError):
+                                pass
                     output.seek(0)
                     lines = output.read(16000).splitlines()
                     if process.returncode:
-                        raise RuntimeError("Could not prepare the viewing cache. See preparation logs in Viewer Diagnostics.")
+                        errors.seek(0)
+                        detail = errors.read(4000).strip()
+                        raise RuntimeError("Could not prepare an interactive view. " +
+                                           (detail or "See preparation logs in Viewer Diagnostics."))
                     prepared = json.loads(lines[-1])
-                    self.run_record.update(source_fingerprint=prepared["sha256"])
+                    if prepared.get("cache_fingerprint"):
+                        from ..core.point_cloud.view_cache import ViewCache
+                        lease = ViewCache(service.root / "source-cache").lease(prepared["cache_fingerprint"])
+                        lease.__enter__()
+                        cache_lease = lease
+                    self.run_record.update(source_fingerprint=prepared["sha256"],
+                        view_strategy=prepared.get("strategy"),
+                        cache_fingerprint=prepared.get("cache_fingerprint"),
+                        preparation_seconds=prepared.get("preparation_seconds"))
                     source = Path(prepared["render_source"])
                     self.update.emit({"source_info": prepared})
             if self.stop_event.is_set():
@@ -187,7 +224,11 @@ class ViewerWorker(QThread):
                             self.run_record.shutdown(self.shutdown_origin)
                         self.run_record.finish(process.returncode if process is not None else (1 if failure else 0), failure)
                 finally:
-                    self.stopped_event.set()
+                    try:
+                        if cache_lease is not None:
+                            cache_lease.__exit__(None, None, None)
+                    finally:
+                        self.stopped_event.set()
 
 
 class ViewerSessionWorker(QThread):
@@ -272,7 +313,7 @@ class PointCloudPage(QWidget):
         self.open_button = QPushButton("Open")
         self.open_button.clicked.connect(self.open_source)
         self.open_button.setToolTip("Open a local LAS, LAZ, COPC or EPT source without modifying its points.")
-        self.source.setToolTip("Original point cloud path. Unindexed LAS/LAZ uses a separate viewing cache.")
+        self.source.setToolTip("Original point cloud path. Small sources open directly; larger raw sources use a managed, read-only viewing cache.")
         source_row.addWidget(self.source, 1)
         source_row.addWidget(self.open_button)
         layout.addLayout(source_row)
@@ -288,7 +329,7 @@ class PointCloudPage(QWidget):
             self.view_buttons.append(button)
         self.mode = QComboBox()
         self.mode.addItems(("Classification", "Elevation", "RGB", "Intensity"))
-        self.mode.setToolTip("Display colors only; original attributes remain unchanged.")
+        self.mode.setToolTip("RGB uses stored Red, Green and Blue attributes. Missing, zero or constant colors are diagnosed separately from rendering failures. Display modes never alter source attributes.")
         self.mode.currentTextChanged.connect(lambda value: self.send({"action": "mode", "mode": value}))
         layout.addLayout(toolbar)
         self.navigation_mode = QComboBox()
@@ -304,9 +345,12 @@ class PointCloudPage(QWidget):
         self.filter_toggle.setArrowType(qt_enum(Qt, "RightArrow", "ArrowType"))
         self.filter_toggle.setToolTip("Display-only class and source-Z filters; no source attributes or journal entries change.")
         layout.addWidget(self.filter_toggle)
-        self.filters_panel = QWidget()
+        self.filters_panel = QDialog(self, qt_enum(Qt, "Tool", "WindowType"))
+        self.filters_panel.setWindowTitle("Point Cloud display filters")
+        self.filters_panel.setModal(False)
+        self.filters_panel.finished.connect(lambda _result: self.filter_toggle.setChecked(False))
         form = QFormLayout(self.filters_panel)
-        form.setContentsMargins(0, 0, 0, 0)
+        form.setContentsMargins(10, 10, 10, 10)
         self.quality = QComboBox()
         self.quality.addItems(("Automatic", "Performance", "Balanced", "High Detail"))
         self.quality.setToolTip("Automatic adapts display detail to measured frame time without dropping below the structural point floor. Presets affect viewing only.")
@@ -352,16 +396,24 @@ class PointCloudPage(QWidget):
         form.addRow(filter_actions)
         self.filters_panel.setVisible(False)
         self.filter_toggle.toggled.connect(self._toggle_filters)
-        layout.addWidget(self.filters_panel)
         self.surface = ViewerSurface(self)
         self.surface.resized.connect(lambda w, h: self.send({"action": "resize", "width": w, "height": h}))
         self.surface.visibility.connect(lambda value: self.send({"action": "visible", "visible": value}))
-        layout.addWidget(self.surface, 1)
-        self.status = QLabel("Open a source. Viewer setup is separate from scientific processing.")
-        self.status.setWordWrap(True)
+        from ..core.point_cloud.workspace import PointCloudWorkspaceModel
+        self.workspace = PointCloudWorkspaceModel()
+        self.overview_id = self.workspace.register(view_id="overview")
+        self.view_tabs = QTabWidget(self)
+        self.view_tabs.setDocumentMode(True)
+        self.view_tabs.setTabsClosable(True)
+        self.view_tabs.addTab(self.surface, "3D Overview")
+        # The workspace always retains its Overview; future derived tabs are closeable.
+        self.view_tabs.tabBar().setTabButton(0, qt_enum(QTabBar, "RightSide", "ButtonPosition"), None)
+        self.view_tabs.tabBar().setTabButton(0, qt_enum(QTabBar, "LeftSide", "ButtonPosition"), None)
+        layout.addWidget(self.view_tabs, 1)
+        from .point_cloud_widgets import StableViewerStatus
+        self.status = StableViewerStatus("Open a source. Viewer setup is separate from scientific processing.")
         layout.addWidget(self.status)
-        self.details = QLabel("Quality: Automatic | Selection: None")
-        self.details.setWordWrap(True)
+        self.details = StableViewerStatus("Quality: Automatic | Selection: None")
         layout.addWidget(self.details)
         actions = QHBoxLayout()
         self.reload_button = QPushButton("Reload Viewer")
@@ -398,9 +450,17 @@ class PointCloudPage(QWidget):
         layout.addLayout(session_actions)
         from .point_cloud_editor import EditorPanel
         self.editor = EditorPanel(self)
+        self.workspace.bind_editor(self.editor.send)
         layout.addWidget(self.editor)
-        from .pages import ContextHelpBanner
-        self.context_help = ContextHelpBanner(self)
+        from .point_cloud_widgets import StableViewerHelp
+        self.filter_help = StableViewerHelp(self.filters_panel)
+        form.addRow(self.filter_help)
+        for control, name in ((self.quality, "Viewing quality"),
+                              (self.class_list, "Visible classifications"),
+                              (self.height_min, "Minimum source Z"),
+                              (self.height_max, "Maximum source Z")):
+            control.setAccessibleName(name)
+        self.context_help = StableViewerHelp(self)
         layout.addWidget(self.context_help)
         for control in self.findChildren(QWidget):
             if control.toolTip():
@@ -409,11 +469,18 @@ class PointCloudPage(QWidget):
 
     def eventFilter(self, watched, event):
         if event.type() in (qt_enum(QEvent, "Enter", "Type"), qt_enum(QEvent, "FocusIn", "Type")):
-            self.context_help.set_help(watched.toolTip())
+            banner = self.filter_help if self.filters_panel.isAncestorOf(watched) else self.context_help
+            banner.set_help(watched.toolTip())
         return super().eventFilter(watched, event)
 
     def _toggle_filters(self, opened):
         self.filters_panel.setVisible(opened)
+        if opened:
+            self.filters_panel.adjustSize()
+            self.filters_panel.raise_()
+            self.quality.setFocus()
+        elif not self._closing:
+            self.filter_toggle.setFocus()
         self.filter_toggle.setArrowType(qt_enum(Qt, "DownArrow" if opened else "RightArrow", "ArrowType"))
 
     def open_diagnostics(self):
@@ -667,6 +734,8 @@ class PointCloudPage(QWidget):
             self._controls(True)
             if self._session_worker is None:
                 self.status.setText("Source open | Original unchanged")
+                if telemetry.get("mode") == "RGB" and telemetry.get("rgb_diagnostic", {}).get("message"):
+                    self.status.setText(telemetry["rgb_diagnostic"]["message"])
             displayed = telemetry.get('render_diagnostics', {}).get('rendered_points', telemetry.get('displayed', 0))
             self.details.setText(f"View points (before filters): {displayed:,} | {telemetry.get('quality', 'Automatic')} | {telemetry.get('detail', 'Refining')}")
             if telemetry.get('context_lost'):
@@ -706,7 +775,7 @@ class PointCloudPage(QWidget):
                 self._pending_save = None
                 self._start_session_worker(ViewerSessionWorker("save", path, source=self.source.text(),
                     state=telemetry, existing=self._edit_session,
-                    cache_identity={key: self._source_info[key] for key in ("render_source", "sha256") if key in self._source_info}))
+                    cache_identity={key: self._source_info[key] for key in ("render_source", "sha256", "strategy", "cache_fingerprint") if key in self._source_info}))
         if telemetry.get("errors"):
             self.status.setText("Point Cloud viewer needs attention. Reload Viewer; details are in diagnostics.")
             self._view_state = None
@@ -728,6 +797,7 @@ class PointCloudPage(QWidget):
 
     def prepare_for_unload(self):
         self._closing = True
+        self.filters_panel.close()
         self.editor.close_editor()
         if self._session_worker:
             self._session_worker.cancelled.set()

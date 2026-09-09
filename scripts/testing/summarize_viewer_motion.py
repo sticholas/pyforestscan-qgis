@@ -18,14 +18,16 @@ def main():
         data = json.loads(file.read_text(encoding='utf-8'))
         samples = data.get('samples', [])
         groups = {}
-        for phase in ('initial', 'orbit', 'settle', 'pan', 'zoom', 'refined'):
+        for phase in ('initial', 'orbit', 'settle', 'pan', 'zoom', 'refined', 'human', 'stress', 'idle'):
             rows = [s for s in samples if s['phase'] == phase]
             if not rows:
                 continue
-            groups[phase] = {'samples': len(rows), 'min_points': min(s['displayed'] for s in rows),
-                'max_points': max(s['displayed'] for s in rows),
+            def rendered(s):
+                return s.get('render_diagnostics', {}).get('rendered_points', s['displayed'])
+            groups[phase] = {'samples': len(rows), 'min_points': min(rendered(s) for s in rows),
+                'max_points': max(rendered(s) for s in rows),
                 'mean_frame_ms': statistics.mean(s['frame_ms'] for s in rows),
-                'zero_point_samples': sum(s['displayed'] == 0 for s in rows)}
+                'zero_point_samples': sum(rendered(s) == 0 for s in rows)}
         pictures = []
         for shot in data.get('screenshots', []):
             image = QImage(shot['path'])
@@ -40,6 +42,10 @@ def main():
             pictures.append({'name': shot['name'], 'occupancy': hits / total, 'path': shot['path']})
         memory = [s['process_memory'] for s in samples if s.get('process_memory')]
         summary[file.parent.name] = {'errors': data['errors'], 'phases': groups, 'screenshots': pictures,
+            'first_useful_view_seconds': data.get('first_useful_view_seconds'),
+            'strategy': data.get('source_info', {}).get('strategy'),
+            'preparation_seconds': data.get('source_info', {}).get('preparation_seconds'),
+            'timings': data.get('source_info', {}).get('timings'),
             'peak_private_bytes': max((m['private_bytes'] for m in memory), default=None),
             'peak_working_set_bytes': max((m['working_set_bytes'] for m in memory), default=None),
             'final_transport': samples[-1].get('transport') if samples else None}

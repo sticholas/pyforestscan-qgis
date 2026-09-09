@@ -2,17 +2,29 @@
 
 ## Experimental Point Cloud Viewer
 
+- Phase 34A3.4 is LINKED_VIEW_ARCHITECTURE_EXPERIMENTAL, not linked-view beta.
+  Area Detail/Slice queries, rendering, live shared highlights, multi-tab session
+  restore and global GPU enforcement remain gated. EPT is still view-only.
+- Current drawing selects top-view XY columns, not angled screen frusta.
+  A slice corridor and profile/top polygon intersection require a new qualified
+  full-resolution query adapter. See [contracts](development/POINT_CLOUD_LINKED_VIEWS.md).
+- RGB raw statistics describe loaded nodes, not a whole-source scan. Binary EPT
+  may provide only decoded-color evidence. Mixed node encodings need further QA.
+- The prior 60-minute mixed soak failed its geometry gate; new help/status fixes
+  passed focused tests but do not retroactively make that soak pass.
+
 - Motion budget starvation is fixed in measured COPC/EPT tests. Rendering remains
-  `VIEWER_PERFORMANCE_EXPERIMENTAL`; human motion, low-memory, deep navigation and
-  graphics-reset gates are tracked in the
-  [motion quality audit](testing/PHASE_34A3_1_VIEWER_MOTION_QUALITY.md).
+  experimental; human motion passed on small LAZ, Olaa and EPT. Remaining
+  stability, low-memory and graphics-reset gates are tracked in the
+  [current stability evidence](testing/PHASE_34A3_3_STABILITY_EVIDENCE.md).
 
 - The embedded Windows viewer has passed Qt5/Qt6 renderer, session and failure
   isolation harnesses. Mouse orbit/pan/zoom were human-confirmed in installed
   QGIS 3.44; installed-QGIS Qt6 acceptance remains separate.
 - Large indexed COPC viewing is qualified on a real 104.8M-point derived cloud.
-  Normal large unindexed LAS/LAZ preparation is still blocked above two million
-  points; the measured Untwine conversion is a qualification harness only.
+  Raw LAS/LAZ now automatically builds or reuses managed view caches, including
+  measured 104.8M inputs. Disk space, supported formats and verified runtime
+  capabilities still constrain intake; direct-view thresholds are provisional.
 - Local authoritative selections and staged editing/export are implemented.
   EPT viewing passed its prior qualification, but immutable EPT editing identity
   remains unresolved. HAG editing controls and human drawing/restart acceptance
@@ -21,7 +33,8 @@
   waveform formats remain blocked. Export uses disk-backed staging: about
   278 MB private memory but 6.26 GB working set on that test, not a guarantee of
   tiny resident memory on smaller machines. A native writer may delay cancellation.
-- Normal export failures clean owned temporaries; abrupt export-worker death
+- Normal export failures clean owned temporaries. An abrupt 104.8M export-child
+  crash preserved source/session and retried successfully; orphan scratch cleanup
   and low-memory recovery need broader qualification. Never treat .partial
   files as completed outputs. Existing destinations are never overwritten.
 - The editor remains EDITOR_EXPERIMENTAL, version 0.2.0-beta.1. See the

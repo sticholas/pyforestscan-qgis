@@ -75,6 +75,10 @@ def main():
             session.camera = state["camera"]
             session.visibility["render_mode"] = state["mode"]
             session.visibility["quality"] = state["quality"]
+            from pyforestscan_qgis.core.point_cloud.view_strategy import session_cache_hint
+            hint = session_cache_hint(command.get("view_cache"), session.source.sha256)
+            if hint:
+                session.visibility["view_cache"] = hint
             session.filters.update(classes=state["classes"], z=state["height_filter"])
     def visual(item):
         raw = asdict(item)
@@ -100,6 +104,7 @@ def main():
         atomic_write_json(overlay, {"revision": revision, "edits": edits,
                                    "selection": [visual(d) for d in definitions] if highlight else []})
         emit({"ready": True, "source": session.source.path, "source_fingerprint": session.source.sha256,
+              "session_id": session.session_id,
               "point_count": point_count, "overlay": str(overlay), "revision": revision,
               "selection": asdict(result) if result else None,
               "can_undo": session.can_undo, "can_redo": session.can_redo,

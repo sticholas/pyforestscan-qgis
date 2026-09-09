@@ -1,5 +1,34 @@
 # Changelog
 
+## Phase 34A3.4 - Editor closure and linked-view foundation (experimental)
+
+- Replaced clipping-cancellation-dependent selection with a tested drawing state
+  and explicit Polygon completion/cancellation; restored pre-selection camera.
+- Fixed Point Cloud help geometry and bounded long status text; human interaction
+  retest and Qt5/Qt6 1,000-message checks passed.
+- Added distinct RGB data/render diagnostics and raw per-node color statistics;
+  effective 8-bit/16-bit display transformation is recorded, originals unchanged.
+- Added one managed-editor workspace facade, source-space Area/Slice geometry,
+  shared selection/undo subscription contracts, resource policy and Overview tab.
+  Area Detail and Vertical Slice execution are NOT yet implemented or qualified.
+- See [closure evidence](docs/testing/PHASE_34A3_4_EDITOR_CLOSURE.md) and
+  [linked-view contracts](docs/development/POINT_CLOUD_LINKED_VIEWS.md).
+
+## Phase 34A3.2 / 34A3.3 - Dense intake and stability qualification
+
+- Added bounded small-file direct viewing and automatic managed COPC view caches
+  for large raw LAS/LAZ; originals remain authoritative for editing and export.
+- Added isolated, pinned Untwine setup, cache integrity hashes/leases/rebuilds,
+  cancellation cleanup, and a verified scanner-channel preservation workaround.
+- Removed the obsolete raw-source selection ceiling using the existing chunked
+  original-source resolver; qualified a full 104.8M raw LAS selection/export.
+- Kept display filters in one nonmodal panel with local help and accessibility;
+  500-transition Qt5/Qt6 checks and 50 source switches passed.
+- Added decoder allocation cleanup, export-memory attribution, owned export-crash
+  retry evidence and focused protected test tiers. Scientific processing unchanged.
+- EPT editing and remaining stability/human gates still block professional tools.
+  See [current evidence](docs/testing/PHASE_34A3_3_STABILITY_EVIDENCE.md).
+
 ## Phase 34A3.1 - Viewer motion hardening (experimental)
 
 - Reproduced complete motion-time budget starvation on the reported cloud,

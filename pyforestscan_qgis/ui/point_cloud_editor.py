@@ -127,6 +127,7 @@ class EditorPanel(QWidget):
         self.viewer_worker = None
         self.sent_overlay = None
         self.pending_initial = None
+        self.pending_action = None
         self.folder = None
         self.restored_view = None
         layout = QVBoxLayout(self)
@@ -135,7 +136,7 @@ class EditorPanel(QWidget):
         row = QHBoxLayout()
         self.tool = QComboBox()
         self.tool.addItems(("Pointer", "Polygon", "Rectangle"))
-        self.tool.setToolTip("Polygon and Rectangle select a top-view region through source Z, within the active original-class and Z filters. Pointer restores normal navigation.")
+        self.tool.setToolTip("Polygon: click vertices, then double-click, Enter, right-click or click the first vertex to finish. Escape cancels. Rectangle: drag. Selection temporarily uses top view through source Z; your prior camera returns when finished or cancelled.")
         self.mode = QComboBox()
         self.mode.addItems(("Replace", "Add", "Subtract"))
         self.mode.setToolTip("Replace, add or subtract a filtered source region. Hold Shift for Add or Alt for Subtract when starting a shape in the viewer. Esc returns to navigation. Rendered point count is not edit membership.")
@@ -147,8 +148,8 @@ class EditorPanel(QWidget):
                                  "Clear only the current selection. Staged edits and history remain.")
         row.addWidget(self.clear)
         layout.addLayout(row)
-        self.summary = QLabel("Editor: Open a local source")
-        self.summary.setWordWrap(True)
+        from .point_cloud_widgets import StableViewerStatus
+        self.summary = StableViewerStatus("Editor: Open a local source")
         layout.addWidget(self.summary)
         self.edit_controls = QWidget()
         actions = QHBoxLayout(self.edit_controls)
@@ -263,6 +264,7 @@ class EditorPanel(QWidget):
         self.start({"action": "open", "source": source})
 
     def start(self, initial):
+        self.page.workspace.detach_editor()
         if self.worker:
             self.pending_initial = initial
             self.busy = True
@@ -293,7 +295,11 @@ class EditorPanel(QWidget):
         command = {"action": action, **values}
         if self.page._view_state:
             command["view"] = self.page._view_state
+        if self.page._source_info:
+            command["view_cache"] = {key: self.page._source_info.get(key)
+                                    for key in ("sha256", "strategy", "cache_fingerprint")}
         if self.worker.send(command) and action != "cancel":
+            self.pending_action = action
             self.busy = True
             self.refresh_controls()
 
@@ -349,9 +355,11 @@ class EditorPanel(QWidget):
         if value.get("progress"):
             self.summary.setText(f"{value['progress']} | {value.get('count', 0):,}")
         if value.get("ready"):
+            self.page.send({"action": "selection_resolution"})
             old_export = self.state.get("exported")
             self.state = value
             self.state["exported"] = value.get("exported") or old_export
+            self.page.workspace.accept_editor_snapshot(self.state)
             self.busy = False
             self.source = value["source"]
             selection = value.get("selection") or {}
@@ -376,7 +384,10 @@ class EditorPanel(QWidget):
             self.page.session_status.setText("Session: Saved | Edited cloud requires explicit export")
             self.busy = False
         if value.get("error"):
-            self.summary.setText(value["error"])
+            self.page.send({"action": "selection_resolution", "error": str(value["error"])})
+            suffix = " Previous authoritative selection retained." if self.pending_action == "select" else ""
+            self.summary.setText(value["error"] + suffix)
+            self.sent_overlay = None
             self.busy = False
         if value.get("handoff_ready"):
             self.busy = False
@@ -462,6 +473,7 @@ class EditorPanel(QWidget):
             self.start(initial)
 
     def close_editor(self):
+        self.page.workspace.detach_editor()
         self.pending_initial = None
         if self.worker:
             try:

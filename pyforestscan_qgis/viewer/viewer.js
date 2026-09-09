@@ -7,26 +7,54 @@ let priorView = null, cameraVelocity = 0, lastMotion = 0, evictions = 0;
 const recentNodes = new WeakMap();
 let residentLimit = 2000000;
 const observedClasses = new Set(), scannedClasses = new WeakMap();
+let rgbChecked = 0, rgbNonzero = false;
+const rawRGB = new RGBStats(), decodedRGB = new RGBStats(), rgbNodes = new WeakSet();
+let rgbRenderError = "";
 window.editorSelectionFilters = () => ({classes: state.classes, height_filter: state.height_filter});
 window.editorClassificationColor = code => (viewer.classifications[code] || viewer.classifications.DEFAULT).color;
 function inspectVisibleClasses() {
     // Inspect only resident buffers, with bounded work per telemetry tick.
     let remaining = 50000;
     for (const node of cloud.visibleNodes || []) {
+        const raw = node.geometryNode && node.geometryNode.gpsTime && node.geometryNode.gpsTime.rgbDiagnostic;
+        if (raw && !rgbNodes.has(node.geometryNode)) {
+            rawRGB.merge(raw); rgbNodes.add(node.geometryNode);
+        }
         const geometry = node.geometryNode && node.geometryNode.geometry;
         const attribute = geometry && geometry.getAttribute("classification");
         if (!attribute) continue;
         const values = window.pointCloudEditor ? window.pointCloudEditor.originalClasses(attribute) : attribute.array;
         let offset = scannedClasses.get(values) || 0;
         const end = Math.min(values.length, offset + remaining);
-        for (; offset < end; offset++) observedClasses.add(values[offset]);
+        const colors = geometry.getAttribute("rgba");
+        for (; offset < end; offset++) {
+            observedClasses.add(values[offset]);
+            if (colors && offset < colors.count) {
+                const i = offset * colors.itemSize;
+                rgbNonzero = rgbNonzero || colors.array[i] > 0 || colors.array[i + 1] > 0 || colors.array[i + 2] > 0;
+                rgbChecked++;
+                decodedRGB.add(colors.array[i], colors.array[i+1], colors.array[i+2]);
+            }
+        }
         remaining -= end - (scannedClasses.get(values) || 0);
         scannedClasses.set(values, end);
         if (remaining <= 0) break;
     }
     state.observed_classes = Array.from(observedClasses).sort((a, b) => a - b);
+    state.rgb_observation = rgbNonzero ? "NONZERO_OBSERVED" : rgbChecked ? "ZERO_SO_FAR" : "UNCHECKED";
+    const owner = cloud.pcoGeometry;
+    const header = owner.copc && owner.copc.header;
+    const schema = owner.ept && owner.ept.schema;
+    const present = header ? [2,3,5,7,8,10].includes(header.pointDataRecordFormat) :
+        schema ? ["Red","Green","Blue"].every(name=>schema.some(a=>a.name===name)) : true;
+    const stats = rawRGB.count || rawRGB.invalid ? rawRGB : decodedRGB;
+    stats.present = present;
+    state.rgb_diagnostic = stats.report(rgbRenderError, stats===rawRGB?"ORIGINAL_RGB":"DECODED_RGB");
 }
 function fail(error) {
+    if (state.mode === "RGB") rgbRenderError = String(error.message || error);
+    if (rgbRenderError) state.rgb_diagnostic = (rawRGB.count ? rawRGB : decodedRGB).report(
+        rgbRenderError, rawRGB.count ? "ORIGINAL_RGB" : "DECODED_RGB");
     state.ready = false;
     const text = String(error.message || error).slice(0, 1000);
     state.errors = state.errors.slice(-7).concat(text);
@@ -100,6 +128,7 @@ window.command = function(command) {
             if (!names[command.mode]) throw Error("Unsupported render mode.");
             cloud.material.activeAttributeName = names[command.mode];
             state.mode = command.mode;
+            if (command.mode === "RGB") rgbRenderError = "";
         }
         if (action === "classes") {
             state.classes = command.classes.slice();

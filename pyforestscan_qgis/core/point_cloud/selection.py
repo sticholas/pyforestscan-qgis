@@ -241,8 +241,10 @@ class SelectionResolver:
             required.update(d for d, _low, _high in item.attribute_filters)
         if required - names:
             raise ValueError("Source does not contain " + ", ".join(sorted(required - names)) + ".")
-        if self.source.source_type != "COPC" and not 0 < int(metadata.get("num_points", 0)) <= 2_000_000:
-            raise ValueError("Large unindexed LAS/LAZ selection requires a verified spatial index.")
+        if int(metadata.get("num_points", 0)) <= 0:
+            raise ValueError("Original source has no verified point count.")
+        # Raw inputs are scanned in bounded chunks by the isolated editor worker.
+        # Never substitute reordered view-cache records as selection authority.
         srs = metadata.get("srs", {})
         wkt = srs.get("compoundwkt") or srs.get("wkt") or ""
         requested = items[0].geometry_crs

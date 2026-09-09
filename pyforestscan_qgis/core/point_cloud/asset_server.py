@@ -6,6 +6,8 @@ one indexed source and an explicit asset list, never an arbitrary directory.
 from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import io
 import mimetypes
 from pathlib import Path
 import re
@@ -51,6 +53,8 @@ class ViewerAssetServer:
                 raise ValueError("Asset route must be a normalized relative path.")
             self.assets[route] = Path(path).resolve(strict=True)
         self.source = Path(source).resolve(strict=True)
+        self._virtual = {}
+        self._direct = False
         self._stats_lock = threading.Lock()
         self._stats = {"source_requests": 0, "source_bytes": 0, "range_requests": 0,
                        "hierarchy_requests": 0, "point_node_requests": 0}
@@ -58,6 +62,15 @@ class ViewerAssetServer:
             self.source_route = "source/ept.json"
         elif self.source.name.lower().endswith(".copc.laz"):
             self.source_route = "source/cloud.copc.laz"
+        elif self.source.suffix.lower() in (".las", ".laz"):
+            from .direct_source import direct_metadata
+            metadata = direct_metadata(self.source)
+            self._direct = True
+            self.source_route = "source/ept.json"
+            self._virtual = {
+                "source/ept.json": json.dumps(metadata).encode("utf-8"),
+                "source/ept-hierarchy/0-0-0-0.json": json.dumps({"0-0-0-0": metadata["points"]}).encode("ascii"),
+            }
         else:
             raise ValueError("Viewer transport requires COPC or EPT; prepare LAS/LAZ first.")
         token = secrets.token_urlsafe(32)
@@ -112,16 +125,20 @@ class ViewerAssetServer:
                     return
                 route = route[len(prefix):]
                 try:
-                    if route == owner.source_route:
+                    if route in owner._virtual:
+                        path = None
+                    elif owner._direct and route == "source/ept-data/0-0-0-0.laz":
                         path = owner.source
-                    elif owner.source_route.endswith("ept.json") and route.startswith("source/"):
+                    elif route == owner.source_route:
+                        path = owner.source
+                    elif not owner._direct and owner.source_route.endswith("ept.json") and route.startswith("source/"):
                         path = source_file(owner.source.parent, route[7:])
                     else:
                         path = owner.assets[route]
                     # Open before responding: report stale/unreadable files cleanly.
-                    with path.open("rb") as handle:
+                    with (io.BytesIO(owner._virtual[route]) if path is None else path.open("rb")) as handle:
                         import os
-                        size = os.fstat(handle.fileno()).st_size
+                        size = len(owner._virtual[route]) if path is None else os.fstat(handle.fileno()).st_size
                         value = self.headers.get("Range")
                         start, stop = byte_range(value, size)
                         is_source = route.startswith("source/")
@@ -139,7 +156,7 @@ class ViewerAssetServer:
                             ".wasm": "application/wasm",
                             ".html": "text/html; charset=utf-8",
                             ".json": "application/json",
-                        }.get(path.suffix, mimetypes.guess_type(path.name)[0] or "application/octet-stream"))
+                        }.get(Path(route).suffix, mimetypes.guess_type(route)[0] or "application/octet-stream"))
                         self.send_header("Content-Length", str(stop - start))
                         self.send_header("Accept-Ranges", "bytes")
                         self.send_header("Cache-Control", "no-store")

@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--plugin-root", type=Path)
+    parser.add_argument('--stress-cycles', type=int, choices=(0, 100), default=0)
     args = parser.parse_args()
     if args.plugin_root:
         sys.path.insert(0, str(args.plugin_root.resolve()))
@@ -34,13 +35,24 @@ def main():
         assert imported_page.is_relative_to(args.plugin_root.resolve()), "Did not import the extracted package."
     page.resize(760, 850)
     page.show()
+    app.processEvents()
+    canvas_before_filters = (page.surface.width(), page.surface.height())
+    page.filter_toggle.setChecked(True)
+    app.processEvents()
+    canvas_with_filters = (page.surface.width(), page.surface.height())
+    page.filter_toggle.setChecked(False)
+    assert canvas_before_filters == canvas_with_filters, "Display filters resized the viewer canvas."
     page.source.setText(str(args.source))
     report = {"qgis": Qgis.QGIS_VERSION, "steps": [], "errors": [],
               "source_sha_before": hashlib.sha256(args.source.read_bytes()).hexdigest(),
-              "human_drawing_test": "NOT_EXECUTED", "imported_page": str(imported_page)}
+              "human_drawing_test": "NOT_EXECUTED", "imported_page": str(imported_page),
+              "canvas_before_filters": canvas_before_filters, "canvas_with_filters": canvas_with_filters}
     page.editor.exportReady.connect(lambda value: report.update(verified_handoff=value))
     started = time.monotonic()
     step = 0
+    stress_phase = 0
+    stress_completed = 0
+    previous_selection = None
     widths = iter((420, 600, 760, 1100, 1400))
     pending_width = None
     finished = False
@@ -62,7 +74,8 @@ def main():
                 QTimer.singleShot(100, close)
                 return
             report["source_sha_after"] = hashlib.sha256(args.source.read_bytes()).hexdigest()
-            report["passed"] = (step == 10 and not report["errors"] and
+            report['stress_cycles_completed'] = stress_completed
+            report["passed"] = (step == 10 and stress_completed == args.stress_cycles and not report["errors"] and
                                 report["source_sha_before"] == report["source_sha_after"])
             atomic_write_json(args.output_dir / "editor_ui_acceptance.json", report)
             print(json.dumps(report), flush=True)
@@ -71,9 +84,9 @@ def main():
         close()
 
     def tick():
-        nonlocal step, pending_width
+        nonlocal step, pending_width, stress_phase, stress_completed, previous_selection
         try:
-            if time.monotonic() - started > 120:
+            if time.monotonic() - started > 120 + args.stress_cycles * 12:
                 raise TimeoutError("Editor canary timed out: " + page.editor.summary.text())
             editor = page.editor
             if step == 8 and report.get("waiting_for_viewer_exit") and page.worker is not None:
@@ -86,6 +99,39 @@ def main():
             if editor.summary.text().startswith("Point Cloud editor:"):
                 raise RuntimeError(editor.summary.text())
             if editor.busy or not editor.viewer_ready or not editor.state.get("ready"):
+                return
+            if step == 10:
+                if stress_completed == args.stress_cycles:
+                    finish()
+                    return
+                if stress_phase == 0:
+                    previous_selection = (editor.state.get('selection') or {}).get('selection_id')
+                    page.send({'action': 'selection_test', 'geometry': [[0,0],[4,0],[4,4],[0,4],[0,0]]})
+                elif stress_phase == 1:
+                    selected = editor.state.get('selection') or {}
+                    if selected.get('selection_id') == previous_selection:
+                        return
+                    assert selected.get('resolved_point_count') == 814
+                    attribute, value = (('Classification', 2), ('Classification', 7),
+                                        ('Withheld', 1), ('DELETE_ON_EXPORT', 1))[stress_completed % 4]
+                    editor.stage(attribute, value)
+                elif stress_phase == 2:
+                    assert editor.state['edits'] == stress_completed + 2
+                    editor.send('undo')
+                elif stress_phase == 3:
+                    assert editor.state['edits'] == stress_completed + 1
+                    editor.send('redo')
+                else:
+                    assert editor.state['edits'] == stress_completed + 2
+                    telemetry = (page._view_state or {}).get('editor', {})
+                    if telemetry.get('pending_nodes') or telemetry.get('revision') != editor.state['revision']:
+                        return
+                    assert telemetry['source_buffers_unchanged']
+                    assert Path(editor.state['autosave']).is_file()
+                    stress_completed += 1
+                    if stress_completed % 10 == 0:
+                        print(json.dumps({'stress_cycles': stress_completed}), flush=True)
+                stress_phase = (stress_phase + 1) % 5
                 return
             if step == 0:
                 page._sync_classes([5])
@@ -185,7 +231,7 @@ def main():
                 process_page.close()
             report["steps"].append(step)
             step += 1
-            if step == 10:
+            if step == 10 and not args.stress_cycles:
                 finish()
         except Exception as error:
             report["errors"].append({"message": str(error), "traceback": traceback.format_exc()})

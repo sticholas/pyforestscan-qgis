@@ -36,7 +36,13 @@ def assets():
     result["viewer.html"] = Path(__file__).with_name("viewer.html")
     result["viewer.js"] = Path(__file__).with_name("viewer.js")
     result["editor.js"] = Path(__file__).with_name("editor.js")
+    result["drawing.js"] = Path(__file__).with_name("drawing.js")
+    result["rgb.js"] = Path(__file__).with_name("rgb.js")
+    result["assets/build/potree/workers/rgb.js"] = Path(__file__).with_name("rgb.js")
     result["render_policy.js"] = Path(__file__).with_name("render_policy.js")
+    worker_route = "assets/build/potree/workers/EptLaszipDecoderWorker.js"
+    result[worker_route.replace(".js", ".vendor.js")] = result[worker_route]
+    result[worker_route] = Path(__file__).with_name("full_file_decoder.js")
     return result
 
 

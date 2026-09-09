@@ -1,6 +1,9 @@
 import * as THREE from "./assets/libs/three.js/three.module.js";
 
-let context, tool = "Pointer", volume = null, rectangleStart = null, rectangleBox = null;
+let context, tool = "Pointer", rectangleStart = null, rectangleBox = null;
+const drawing = new DrawingTool();
+let drawingCamera = null, polygonOverlay = null, polygonLine = null;
+let savedNavigation = null;
 let mode = "REPLACE", eventNumber = 0, latestEvent = null, revision = 0, edits = [], selection = [];
 const originals = new WeakMap(), records = new Map();
 const point = new THREE.Vector3(), flat = new THREE.Vector3();
@@ -63,16 +66,20 @@ function leaveTool() {
     toolEpoch++;
     insertionPending = false;
     const viewer = context.viewer;
-    if (volume) {
-        viewer.dispatchEvent({type: "cancel_insertions"});
-        viewer.scene.removePolygonClipVolume(volume);
-        volume = null;
-    }
+    if (polygonOverlay) polygonOverlay.remove();
+    polygonOverlay = null; polygonLine = null; drawingCamera = null;
     if (rectangleBox) rectangleBox.remove();
     rectangleBox = null;
     rectangleStart = null;
     viewer.inputHandler.enabled = true;
-    viewer.setCameraMode(Potree.CameraMode.PERSPECTIVE);
+    if (savedNavigation) {
+        const view = viewer.scene.view;
+        view.position.copy(savedNavigation.position);
+        view.yaw = savedNavigation.yaw; view.pitch = savedNavigation.pitch;
+        view.radius = savedNavigation.radius;
+        viewer.setCameraMode(savedNavigation.cameraMode);
+        savedNavigation = null;
+    }
     gestureMode = null;
     tool = "Pointer";
 }
@@ -80,6 +87,22 @@ function sourceXY(x, y, camera) {
     const canvas = context.viewer.renderer.domElement;
     return new THREE.Vector3(x / canvas.clientWidth * 2 - 1, 1 - y / canvas.clientHeight * 2, 0)
         .unproject(camera);
+}
+function drawPolygon(cursor) {
+    if (!polygonLine) return;
+    const points = cursor ? [...drawing.vertices, cursor] : drawing.vertices;
+    polygonLine.setAttribute("points", points.map(p => p.join(",")).join(" "));
+}
+function completeDrawing() {
+    const ring = drawing.close();
+    if (ring) {
+        publish(ring.map(p => {
+            const xyz = sourceXY(p[0], p[1], drawingCamera);
+            return [xyz.x, xyz.y];
+        }));
+        drawing.resolving();
+    } else latestEvent = {id: ++eventNumber, error: drawing.error};
+    leaveTool();
 }
 function initialize(value) {
     context = value;
@@ -97,6 +120,7 @@ function initialize(value) {
         event.stopPropagation();
     }, true);
     canvas.addEventListener("pointermove", event => {
+        if (tool === "Polygon") drawPolygon([event.offsetX, event.offsetY]);
         if (!rectangleStart || !rectangleBox) return;
         const [x, y] = rectangleStart;
         Object.assign(rectangleBox.style, {left: Math.min(x, event.offsetX) + "px",
@@ -104,20 +128,42 @@ function initialize(value) {
             height: Math.abs(event.offsetY - y) + "px"});
     }, true);
     canvas.addEventListener("pointerup", event => {
+        if (tool === "Polygon") {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if (event.button === 0) {
+                const first = drawing.vertices[0];
+                if (drawing.vertices.length >= 3 && first &&
+                    Math.hypot(first[0]-event.offsetX, first[1]-event.offsetY) <= 6) completeDrawing();
+                else { drawing.vertex(event.offsetX, event.offsetY); drawPolygon(); }
+            }
+            return;
+        }
         if (!rectangleStart || tool !== "Rectangle") return;
         const [x, y] = rectangleStart, xx = event.offsetX, yy = event.offsetY;
-        const camera = context.viewer.scene.getActiveCamera().clone();
+        if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
         if (Math.abs(x - xx) > 2 && Math.abs(y - yy) > 2) {
-            const ring = [[x,y], [xx,y], [xx,yy], [x,yy], [x,y]].map(p => {
-                const xyz = sourceXY(p[0], p[1], camera);
-                return [xyz.x, xyz.y];
-            });
-            publish(ring);
-        }
-        leaveTool();
+            for (const p of [[x,y], [xx,y], [xx,yy], [x,yy]]) drawing.vertex(...p);
+            completeDrawing();
+        } else { drawing.cancel(); leaveTool(); latestEvent = {id: ++eventNumber, action: "pointer"}; }
+    }, true);
+    canvas.addEventListener("dblclick", event => {
+        if (tool !== "Polygon") return;
+        event.preventDefault(); event.stopImmediatePropagation(); completeDrawing();
+    }, true);
+    canvas.addEventListener("contextmenu", event => {
+        if (tool !== "Polygon") return;
+        event.preventDefault(); event.stopImmediatePropagation(); completeDrawing();
+    }, true);
+    canvas.addEventListener("pointercancel", () => {
+        if (tool === "Pointer") return;
+        drawing.cancel(); leaveTool(); latestEvent = {id: ++eventNumber, action: "pointer"};
     }, true);
     document.addEventListener("keydown", event => {
-        if (event.key === "Escape" && (tool !== "Pointer" || insertionPending)) {
+        if (event.key === "Enter" && tool === "Polygon") {
+            event.preventDefault(); completeDrawing();
+        } else if (event.key === "Escape" && (tool !== "Pointer" || insertionPending)) {
+            drawing.cancel();
             leaveTool();
             latestEvent = {id: ++eventNumber, action: "pointer"};
             event.preventDefault();
@@ -203,15 +249,6 @@ window.pointCloudEditor = {
             displaySignature = signature;
             for (const record of records.values()) record.revision = -1;
         }
-        if (volume && volume.initialized) {
-            const ring = volume.markers.map(marker => {
-                const p = marker.position.clone().unproject(volume.camera);
-                return [p.x, p.y];
-            });
-            ring.push(ring[0]);
-            publish(ring);
-            leaveTool();
-        }
         const visible = new Set(context.cloud.visibleNodes || []);
         for (const [node, record] of records) if (!visible.has(node)) {
             removeHighlight(record);
@@ -232,7 +269,7 @@ window.pointCloudEditor = {
             for (const [code, count] of Object.entries(record.effectiveClasses || {}))
                 effectiveClasses[code] = (effectiveClasses[code] || 0) + count;
         }
-        return {event: latestEvent, tool, revision, pending_nodes: pending.length, ready: true,
+        return {event: latestEvent, tool, drawing_state: drawing.state, revision, pending_nodes: pending.length, ready: true,
             highlighted_points: highlighted, effective_classes: effectiveClasses,
             source_buffers_unchanged: Array.from(records.values()).every(r => r.sourceUnchanged !== false),
             overlay_diagnostics: Array.from(records.values()).slice(0, 3).map(r => ({
@@ -247,11 +284,15 @@ window.pointCloudEditor = {
             if (!["Pointer", "Polygon", "Rectangle"].includes(command.tool)) return;
             if (command.mode && !["REPLACE", "ADD", "SUBTRACT"].includes(command.mode)) return;
             leaveTool();
+            drawing.cancel();
             mode = command.mode || "REPLACE";
             if (command.tool === "Pointer") {
-                context.viewer.setCameraMode(Potree.CameraMode.PERSPECTIVE);
                 return;
             }
+            const view = context.viewer.scene.view;
+            if (view) savedNavigation = {position: view.position.clone(), yaw: view.yaw,
+                pitch: view.pitch, radius: view.radius,
+                cameraMode: context.viewer.scene.cameraMode || Potree.CameraMode.PERSPECTIVE};
             context.viewer.setCameraMode(Potree.CameraMode.ORTHOGRAPHIC);
             context.viewer.setTopView();
             const epoch = toolEpoch;
@@ -260,9 +301,24 @@ window.pointCloudEditor = {
                 if (epoch !== toolEpoch) return;
                 insertionPending = false;
                 tool = command.tool;
-                if (tool === "Polygon") volume = context.viewer.clippingTool.startInsertion({type: "polygon"});
-                else if (tool === "Rectangle") context.viewer.inputHandler.enabled = false;
+                drawing.arm(tool, mode);
+                drawingCamera = context.viewer.scene.getActiveCamera().clone();
+                context.viewer.inputHandler.enabled = false;
+                if (tool === "Polygon") {
+                    polygonOverlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                    polygonOverlay.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
+                    polygonLine = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+                    polygonLine.setAttribute("fill", "none");
+                    polygonLine.setAttribute("stroke", "#5be4eb");
+                    polygonLine.setAttribute("stroke-width", "2");
+                    polygonOverlay.appendChild(polygonLine);
+                    context.viewer.renderer.domElement.parentElement.appendChild(polygonOverlay);
+                }
             }));
+        }
+        if (command.action === "selection_resolution") {
+            if (command.error) drawing.fail(command.error);
+            else drawing.resolved();
         }
         if (command.action === "selection_test") publish(command.geometry);
         if (command.action === "editor_overlay") {

@@ -1,5 +1,12 @@
 # Documentation Index
 
+Point Cloud editor closure: [Phase 34A3.4 evidence](testing/PHASE_34A3_4_EDITOR_CLOSURE.md)
+and [linked-view architecture / next gates](development/POINT_CLOUD_LINKED_VIEWS.md).
+
+Point Cloud stability: [contract](development/POINT_CLOUD_VIEWER_STABILITY_CONTRACT.md),
+[dense pipeline profile](testing/PHASE_34A3_2_DENSE_VIEW_PIPELINE_PROFILE.md), and
+[Phase 34A3.3 evidence / release gate](testing/PHASE_34A3_3_STABILITY_EVIDENCE.md).
+
 Phase 33B live failure evidence: [all-product attempt reconstruction and DTM corrective replay](development/PHASE_33B_LIVE_ALL_PRODUCT_FAILURE_RECONSTRUCTION.md).
 
 Phase 33A release audit: [authoritative product map](development/PHASE_33A_RELEASE_PRODUCT_MAP.md), [readiness scorecard](release/PHASE_33A_RELEASE_READINESS_SCORECARD.md), and [0.2.0-beta.1 notes](releases/v0.2.0-beta.1.md).

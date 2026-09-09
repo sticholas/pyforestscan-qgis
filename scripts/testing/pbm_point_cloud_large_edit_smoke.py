@@ -9,12 +9,15 @@ import sys
 import threading
 from time import monotonic
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--raw-source", action="store_true")
+    parser.add_argument("--memory-composition", action="store_true")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=False)
     dll = Path(sys.executable).parent / "Library/bin"
@@ -27,12 +30,25 @@ def main():
     from windows_viewer_memory import tree_memory
     started = monotonic()
     report = {"passed": False, "memory_peak": {}, "progress": []}
+    if args.memory_composition:
+        import tracemalloc
+        tracemalloc.start()
+        report["memory_composition"] = []
     stopped = threading.Event()
     def sample():
+        last_composition = 0
         while not stopped.wait(1):
             value = tree_memory(os.getpid()) or {}
             for key in ("private_bytes", "working_set_bytes"):
                 report["memory_peak"][key] = max(report["memory_peak"].get(key, 0), value.get(key, 0))
+            if args.memory_composition and monotonic() - last_composition >= 10:
+                from windows_memory_composition import memory_composition
+                sample = memory_composition(os.getpid())
+                sample["seconds"] = monotonic() - started
+                sample["python_tracemalloc_current_peak"] = tracemalloc.get_traced_memory()
+                sample["stage"] = report["progress"][-1]["stage"] if report["progress"] else None
+                report["memory_composition"].append(sample)
+                last_composition = monotonic()
     sampler = threading.Thread(target=sample, daemon=True)
     sampler.start()
     last = [0]
@@ -47,8 +63,9 @@ def main():
     try:
         progress("Fingerprinting indexed source", 0)
         source = SourceIdentity.capture(args.source)
-        assert source.source_type == "COPC", "Reuse the qualified index; do not scan unindexed large LAS for selection."
-        meta = next(iter(pdal.Pipeline(json.dumps([{"type": "readers.copc", "filename": source.path}])).quickinfo.values()))
+        assert source.source_type == "COPC" or args.raw_source, "Raw-source scanning needs explicit QA selection."
+        reader = "readers.copc" if source.source_type == "COPC" else "readers.las"
+        meta = next(iter(pdal.Pipeline(json.dumps([{"type": reader, "filename": source.path}])).quickinfo.values()))
         bounds = meta["bounds"]
         x = (bounds["minx"] + bounds["maxx"]) / 2
         y = (bounds["miny"] + bounds["maxy"]) / 2

@@ -14,6 +14,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument('--cycles', type=int, choices=(20, 100), default=20)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=False)
     dll = Path(sys.executable).parent / "Library/bin"
@@ -39,16 +40,19 @@ def main():
     session = PointCloudEditSession(source, crs, tuple(original.dtype.names))
     resolver = SelectionResolver(source)
     report = {"source": asdict(source), "passed": False, "operations": []}
-    for index in range(20):
+    for cycle in range(args.cycles):
+        index = cycle % 20
         x = float(original["X"].min()) + index * .2
         y = float(original["Y"].min()) + index * .1
         size = 8 - index * .1
         geometry = ((x, y), (x + size, y), (x + size, y + size), (x, y + size), (x, y))
-        definition = SelectionDefinition(str(index), session.session_id, source.sha256, source.source_type, geometry, crs)
+        definition = SelectionDefinition(str(cycle), session.session_id, source.sha256, source.source_type, geometry, crs)
         result = resolver.resolve([definition])
         attribute, value = (("Classification", (2, 5, 7, 18)[index % 4]) if index < 16
                             else ("Withheld", 1) if index < 19 else ("DELETE_ON_EXPORT", 1))
         session.stage_resolved([definition], result, attribute, value)
+        assert session.undo() and session.redo()
+        session.save(args.output_dir / 'stress-autosave.json')
         # Independent rectangle predicate: no shared geometry/replay implementation.
         mask = ((original["X"] >= x) & (original["X"] <= x + size) &
                 (original["Y"] >= y) & (original["Y"] <= y + size))
@@ -96,7 +100,7 @@ def main():
         else:
             raise AssertionError(name + " was not rejected")
         assert {item.name for item in args.output_dir.iterdir()} == baseline, name
-        assert len(loaded.operations) == 20
+        assert len(loaded.operations) == args.cycles
         source.verify()
         report["failure_safety"].append(name)
     rejected("source overwrite", lambda: export_edited(loaded, source.path), ValueError)

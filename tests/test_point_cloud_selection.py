@@ -130,6 +130,32 @@ class SelectionTests(unittest.TestCase):
                     geometry=((0, 0), (2, 2), (2, 0), (0, 2), (0, 0)))])
         self.source.verify()
 
+    @unittest.skipUnless(importlib.util.find_spec('shapely') and importlib.util.find_spec('pyproj'),
+                         'Managed geometry tier requires Shapely and pyproj')
+    def test_large_raw_metadata_uses_bounded_original_stream(self):
+        import json
+        import numpy as np
+        raw = replace(self.source, source_type='LAS')
+        definition = replace(self.definition, source_type='LAS')
+        points = np.array([(0, 0, 1, 2)],
+            dtype=[('X', 'f8'), ('Y', 'f8'), ('Z', 'f8'), ('Classification', 'u1')])
+        owner = self
+        class Pipeline:
+            quickinfo = {'readers.las': {'num_points': 104819538,
+                         'dimensions': 'X, Y, Z, Classification'}}
+            def __init__(self, spec):
+                reader = json.loads(spec)[0]
+                owner.assertEqual(reader['filename'], raw.path)
+                owner.assertEqual(reader['type'], 'readers.las')
+                owner.assertNotIn('count', reader)
+            def iterator(self, *, chunk_size, prefetch):
+                owner.assertEqual((chunk_size, prefetch), (65536, 0))
+                yield points
+        # Test query policy without claiming the one-row stub is a large-file benchmark.
+        with patch.object(SourceIdentity, 'verify'), patch.dict('sys.modules', {
+                'pdal': types.SimpleNamespace(Pipeline=Pipeline)}):
+            self.assertEqual(SelectionResolver(raw).resolve([definition]).resolved_point_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
