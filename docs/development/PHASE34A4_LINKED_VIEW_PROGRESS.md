@@ -44,6 +44,9 @@ Evidence directory on the test machine:
 | resident-hag-01 | Passed automated 15-step canary | Same Overview/Slice workers retained; undo/redo, session, export and handoff |
 | resident-hag-02 | Passed automated 22-step canary | Fresh snapshot replies after switching, native screenshots, detached edit/redock and export |
 | detach-action-01 | Passed automated 22-step canary | Direct accessible Detach icon, shared 467-point profile selection, redock, three-edit export; 75.08 s total |
+| surface-transfer-01 | Passed automated 22-step canary | Same renderer through detach/redock; attachment acknowledged before retiring native container; nonblank captures |
+| surface-transfer-20 | Passed on QGIS 3.44.13 | Twenty repeated detach/redock cycles plus final shared edit/export; same renderer retained |
+| surface-transfer-qgis4-01 | Passed on QGIS 4.0.0 | Three repeated transfers plus final shared edit/export; original SHA256 unchanged |
 
 For resident-hag-02, both warm returns completed by the next 250 ms test
 poll. This is a polling upper bound, not a precision frame-latency benchmark.
@@ -72,8 +75,31 @@ A direct Detach View icon is available beside Linked views, with semantic
 tooltip and accessible name. Four actual Qt event tests pass under both
 installed QGIS 3.44/Qt5 and QGIS 4.0/Qt6 (cross-boundary single dispatch, click,
 reorder and release fallback). This does not replace the failed human drag
-acceptance; real mouse retesting remains required. Detach/dock still restart
-the renderer until the separate surface-ownership handoff is implemented.
+acceptance; real mouse retesting remains required.
+
+Native surface transfer now keeps the same renderer, source/cache lease and
+camera. The old container remains alive until the host acknowledges its new
+parent. Commands retry for up to ten seconds; a timeout stops only that viewer
+before retiring its container, leaving source/edit authority untouched.
+Focused tests cover acknowledgments, retries, timeout cleanup and ownership.
+The first real test retained the renderer through both moves and redocked
+within one 250 ms poll. Its nine-second detach test wait also included opening
+the main Overview after session reload; it is not a pure transfer latency.
+Subsequent canaries record host acknowledgment timing separately.
+
+Across surface-transfer-20, detach acknowledgment was 15-63 ms (44.1 ms mean)
+and dock acknowledgment 16-78 ms (19.85 ms mean). These are command/host
+acknowledgment measurements, not human-visible frame latency. Final detachment
+and docking were each observed by the next 250 ms poll. Native captures
+after moving and returning were nonblank. The final three-edit export SHA256
+matched the earlier `fd4e62...8f66b` result on QGIS 3.44 and QGIS 4.
+This validates the tested Windows machines/runtimes only, not Linux/macOS.
+
+Current focused validation: 145 point-cloud tests passed with 11 skipped in
+the QGIS-free tier; four Qt event tests ran separately on each installed QGIS
+version. Ten resident/transfer tests include failure cleanup. Compilation,
+undefined names and help-topic coverage checks passed (37 orphan registered
+help topics remain; no missing used topics or generic placeholders reported).
 
 1. Reliable drag-out and visible Detach/Dock access, preferably moving retained
    surfaces rather than restarting the view.

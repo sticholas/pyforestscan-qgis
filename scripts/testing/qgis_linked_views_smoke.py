@@ -17,6 +17,7 @@ def main():
     parser.add_argument("--width", type=float, default=8)
     parser.add_argument("--hag", action="store_true")
     parser.add_argument("--detach", action="store_true")
+    parser.add_argument("--transfer-cycles", type=int, default=0)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=False)
     from qgis.core import QgsApplication, Qgis
@@ -38,6 +39,10 @@ def main():
     previous = None
     renderers = {}
     switch_started = None
+    transferred_worker = None
+    transfer_started = None
+    cycle_stage = "detach"
+    cycles = 0
     x,y = args.center
     d = args.width/4
     ending = False
@@ -72,7 +77,7 @@ def main():
         page.send({"action":"snapshot", "request_id":"warm-"+key})
 
     def tick():
-        nonlocal step,detail,profile,original_worker,previous
+        nonlocal step,detail,profile,original_worker,previous,transferred_worker,transfer_started,cycle_stage,cycles
         try:
             if time.monotonic()-started > 480:
                 raise TimeoutError(page.status.text()+" | "+page.editor.summary.text())
@@ -179,8 +184,31 @@ def main():
             elif step == 14:
                 if "handoff" not in report:
                     return
+                if cycles < args.transfer_cycles:
+                    if cycle_stage == "detach":
+                        transferred_worker = page.worker
+                        page.linked.detach_button.click()
+                        cycle_stage = "dock"
+                    elif cycle_stage == "dock":
+                        window = page.linked.detached[profile]
+                        assert window.worker is transferred_worker
+                        if getattr(window.worker, "_surface_transfer", None):
+                            return
+                        report.setdefault("transfer_cycles", []).append({"detach": window.worker.surface_transfer_seconds})
+                        page.linked.dock(profile)
+                        cycle_stage = "finish"
+                    else:
+                        assert page.worker is transferred_worker
+                        if getattr(page.worker, "_surface_transfer", None):
+                            return
+                        report["transfer_cycles"][-1]["dock"] = page.worker.surface_transfer_seconds
+                        cycles += 1
+                        cycle_stage = "detach"
+                    return
             elif step == 15:
                 if args.detach:
+                    transferred_worker = page.worker
+                    transfer_started = time.monotonic()
                     assert page.linked.detach_button.accessibleName() == "Detach View"
                     assert not page.linked.detach_button.icon().isNull()
                     page.linked.detach_button.click()
@@ -189,8 +217,13 @@ def main():
                     return
             elif step == 16:
                 window = page.linked.detached[profile]
+                assert window.worker is transferred_worker, "Detaching restarted the renderer"
+                if getattr(window.worker, "_surface_transfer", None):
+                    return
                 if window.telemetry.get("editor",{}).get("view_id") != profile:
                     return
+                report["detach_seconds"] = time.monotonic()-transfer_started
+                report["detach_ack_seconds"] = window.worker.surface_transfer_seconds
                 report["detached_view_log"] = str(window.worker.run_record.folder)
                 previous = editor.state["selection"]["selection_id"]
                 low,high = window.telemetry["z_range"]
@@ -203,10 +236,17 @@ def main():
                 editor.stage("Classification",9)
             elif step == 18:
                 assert editor.state["edits"] == 3
+                transfer_started = time.monotonic()
                 page.linked.dock(profile)
             elif step == 19:
                 if page.linked.rendered_id != profile:
                     return
+                assert page.worker is transferred_worker, "Docking restarted the renderer"
+                if getattr(page.worker, "_surface_transfer", None):
+                    return
+                report["dock_seconds"] = time.monotonic()-transfer_started
+                report["dock_ack_seconds"] = page.worker.surface_transfer_seconds
+                page.send({"action":"capture","name":"redocked-profile"})
                 assert page.view_tabs.count() == 3
                 assert not page.linked.detached
                 editor.send("export",path=str(args.output_dir/"detached-edited.laz"))

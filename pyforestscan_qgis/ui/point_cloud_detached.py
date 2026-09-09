@@ -55,9 +55,9 @@ class LinkedTabBar(QTabBar):
 class DetachedView(QDialog):
     dockRequested = pyqtSignal(str)
 
-    def __init__(self, controller, view_id, source):
+    def __init__(self, controller, view_id, entry):
         super().__init__(controller.page, qt_enum(Qt,"Window","WindowType"))
-        from .point_cloud_page import ViewerSurface, ViewerWorker, _ACTIVE_WORKERS
+        from .point_cloud_page import ViewerSurface
         self.controller, self.view_id = controller, view_id
         self.worker = None
         self.telemetry = {}
@@ -65,6 +65,7 @@ class DetachedView(QDialog):
         self.event_id = None
         self.context_sent = False
         self.closing = False
+        self.resident_state = entry
         self.setWindowTitle(controller.page.workspace.views[view_id].title)
         self.resize(960,720)
         layout = QVBoxLayout(self)
@@ -107,14 +108,18 @@ class DetachedView(QDialog):
         self.surface.resized.connect(lambda w,h:self.send({"action":"resize","width":w,"height":h}))
         self.surface.visibility.connect(lambda visible:self.send({"action":"visible","visible":visible}))
         self.show()
-        worker = ViewerWorker(source=source,parent_handle=int(self.surface.winId()))
+        from .point_cloud_resident_views import transfer_surface
+        worker = entry["worker"]
         self.worker = worker
+        self.telemetry = entry["state"]["_view_state"] or {}
+        self.context_sent = True
+        self.event_id = (self.telemetry.get("editor", {}).get("event") or {}).get("id")
+        self.mode.blockSignals(True)
+        self.mode.setCurrentText(self.telemetry.get("mode", "Classification"))
+        self.mode.blockSignals(False)
         worker.update.connect(self.update_view)
         worker.finished.connect(self.finished)
-        _ACTIVE_WORKERS.add(worker)
-        worker.finished.connect(lambda:_ACTIVE_WORKERS.discard(worker))
-        worker.finished.connect(worker.deleteLater)
-        worker.start()
+        transfer_surface(worker, self.surface, entry["surface"])
 
     def send(self, value):
         if self.worker and not self.closing:
@@ -189,6 +194,19 @@ class DetachedView(QDialog):
     def finished(self):
         self.worker = None
 
+    def release(self):
+        if not self.worker or getattr(self.worker, "_surface_transfer", None):
+            return None
+        self.closing = True
+        worker, self.worker = self.worker, None
+        worker.update.disconnect(self.update_view)
+        worker.finished.disconnect(self.finished)
+        entry = self.resident_state
+        entry["state"]["_view_state"] = self.telemetry
+        entry["geometry"] = self.controller.page.workspace.views[self.view_id].geometry
+        self.hide()
+        return entry
+
     def shutdown(self):
         if self.closing:
             return
@@ -203,5 +221,8 @@ class DetachedView(QDialog):
     def closeEvent(self,event):
         if not self.closing:
             self.dockRequested.emit(self.view_id)
+            if not self.closing:
+                event.ignore()
+                return
         self.shutdown()
         event.accept()

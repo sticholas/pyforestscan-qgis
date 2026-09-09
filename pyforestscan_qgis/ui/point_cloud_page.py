@@ -658,15 +658,8 @@ class PointCloudPage(QWidget):
             return
         self.worker = worker
         self.linked.residents.started()
-        surface = self.surface
-        resize = lambda w, h: worker.send({"action": "resize", "width": w, "height": h})
-        visibility = lambda value: worker.send({"action": "visible", "visible": value})
-        surface.resized.connect(resize)
-        surface.visibility.connect(visibility)
-        def disconnect_surface():
-            surface.resized.disconnect(resize)
-            surface.visibility.disconnect(visibility)
-        worker.finished.connect(disconnect_surface)
+        from .point_cloud_resident_views import bind_surface
+        bind_surface(worker, self.surface)
         self.open_button.setEnabled(False)
         self.reload_button.setEnabled(False)
         self.setup_button.setEnabled(False)

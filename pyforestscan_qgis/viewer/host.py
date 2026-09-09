@@ -232,6 +232,7 @@ def main():
     view.setPosition(0, 0)
 
     def receive(line):
+        nonlocal parent
         try:
             command = json.loads(line)
             if not isinstance(command, dict):
@@ -246,6 +247,22 @@ def main():
                             max(1, min(16384, int(command["height"]))))
             elif action == "visible":
                 view.setVisible(bool(command["visible"]))
+            elif action == "reparent":
+                handle = command["parent"]
+                if type(handle) is not int or not 0 < handle < 2**64:
+                    raise ValueError("Invalid viewer parent handle.")
+                if int(parent.winId()) != handle:
+                    replacement = QWindow.fromWinId(handle)
+                    if replacement is None:
+                        raise ValueError("Viewer parent surface is unavailable.")
+                    previous = parent
+                    view.hide()
+                    view.setParent(replacement)
+                    parent = replacement
+                    view.setPosition(0, 0)
+                    previous.deleteLater()
+                view.show()
+                emit({"surface_attached": command["request_id"]})
             elif action == "resource_limit":
                 limit = command["points"]
                 if type(limit) is not int or not 0 <= limit <= 2000000:

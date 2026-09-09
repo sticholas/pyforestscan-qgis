@@ -431,15 +431,20 @@ class LinkedViews(QObject):
         if key != self.rendered_id or not self.page.worker or self.waiting:
             self.page.status.setText("Open the view before moving it to a separate window.")
             return
+        if getattr(self.page.worker, "_surface_transfer", None):
+            self.page.status.setText("Finishing the view transfer. Please wait.")
+            return
         self.capture()
         from .point_cloud_detached import DetachedView
-        window = DetachedView(self,key,self.page.worker.source)
+        entry = self.residents.take_current()
+        if entry is None:
+            self.page.status.setText("Wait for the view to finish opening before detaching.")
+            return
+        window = DetachedView(self,key,entry)
         self.detached[key] = window
         window.dockRequested.connect(self.dock)
         if position is not None:
             window.move(position)
-        self.page.worker.stop("view_detached")
-        self.residents.key = None
         self.rendered_id = None
         attached = [view_id for view_id in self.page.workspace.views if view_id not in self.detached]
         if attached:
@@ -451,10 +456,24 @@ class LinkedViews(QObject):
         self.persist()
 
     def dock(self, key):
-        window = self.detached.pop(key,None)
+        window = self.detached.get(key)
         if window is None:
             return
-        window.shutdown()
+        if window.worker is None:
+            self.detached.pop(key)
+            window.shutdown()
+            window.close()
+            self.page.workspace.activate(key)
+            self.sync_tabs()
+            if not self.closing:
+                self.open_active()
+            return
+        entry = window.release()
+        if entry is None:
+            window.status.setText("Finishing the view transfer. Please wait.")
+            return
+        self.detached.pop(key)
+        self.residents.receive_window(key,entry,window)
         window.close()
         self.sync_tabs()
         if not self.closing:

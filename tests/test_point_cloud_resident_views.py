@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from pyforestscan_qgis.ui.point_cloud_resident_views import ResidentViews
+from pyforestscan_qgis.ui.point_cloud_resident_views import ResidentViews, transfer_surface
 
 
 class Signal:
@@ -15,6 +15,10 @@ class Signal:
 
     def disconnect(self, slot):
         self.slots.remove(slot)
+
+    def emit(self, *args):
+        for slot in list(self.slots):
+            slot(*args)
 
 
 class Worker:
@@ -80,6 +84,16 @@ class ResidentViewTests(unittest.TestCase):
         self.assertIsNone(self.pool.key)
         self.worker.stop.assert_called_once()
 
+    def test_take_current_transfers_ownership_without_stopping(self):
+        module = SimpleNamespace(ViewerSurface=Mock())
+        with patch.dict("sys.modules", {"pyforestscan_qgis.ui.point_cloud_page": module}):
+            entry = self.pool.take_current()
+        self.assertIs(entry["worker"], self.worker)
+        self.assertFalse(self.pool.parked)
+        self.assertIsNone(self.page.worker)
+        self.assertFalse(self.worker.update.slots)
+        self.worker.stop.assert_not_called()
+
     def test_unacknowledged_view_is_not_cached(self):
         self.page.linked.rendered_id = None
         self.park()
@@ -98,6 +112,50 @@ class ResidentViewTests(unittest.TestCase):
         self.pool.started()
         self.assertEqual(list(self.pool.parked), ["area", "slice"])
         first.stop.assert_called_once()
+
+
+class SurfaceTransferTests(unittest.TestCase):
+    def setUp(self):
+        self.worker = Worker()
+        self.surface = Mock()
+        self.surface.winId.return_value = 123
+        self.surface.width.return_value = 640
+        self.surface.height.return_value = 480
+        self.previous = Mock()
+        self.timer = Mock()
+        self.timer.timeout = Signal()
+
+    def begin(self):
+        with patch.dict("sys.modules", {"qgis.PyQt.QtCore": SimpleNamespace(QTimer=lambda: self.timer)}):
+            transfer_surface(self.worker, self.surface, self.previous)
+
+    def test_old_surface_survives_until_matching_ack(self):
+        self.begin()
+        self.previous.deleteLater.assert_not_called()
+        token = self.worker._surface_transfer
+        self.worker.update.emit({"surface_attached": "wrong"})
+        self.previous.deleteLater.assert_not_called()
+        self.worker.update.emit({"surface_attached": token})
+        self.previous.deleteLater.assert_called_once()
+        self.assertEqual(self.worker.parent_handle, 123)
+        self.assertIsNone(self.worker._surface_transfer)
+        self.worker.stop.assert_not_called()
+
+    def test_retry_keeps_the_same_transfer_identity(self):
+        self.begin()
+        first = self.worker.send.call_args_list[0]
+        self.timer.timeout.emit()
+        self.assertEqual(first, self.worker.send.call_args_list[-2])
+        self.previous.deleteLater.assert_not_called()
+
+    def test_timeout_stops_only_viewer_then_retires_surface_after_exit(self):
+        self.begin()
+        with patch("time.monotonic", return_value=float("inf")):
+            self.timer.timeout.emit()
+        self.worker.stop.assert_called_once_with("surface_transfer_timeout")
+        self.previous.deleteLater.assert_not_called()
+        self.worker.finished.emit()
+        self.previous.deleteLater.assert_called_once()
 
 
 if __name__ == "__main__":

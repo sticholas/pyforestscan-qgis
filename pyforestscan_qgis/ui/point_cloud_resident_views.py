@@ -3,6 +3,58 @@ from collections import OrderedDict
 from copy import deepcopy
 
 
+def bind_surface(worker, surface):
+    resize = lambda w, h: worker.send({"action": "resize", "width": w, "height": h})
+    visibility = lambda value: worker.send({"action": "visible", "visible": value})
+    surface.resized.connect(resize)
+    surface.visibility.connect(visibility)
+    def disconnect():
+        try:
+            surface.resized.disconnect(resize)
+            surface.visibility.disconnect(visibility)
+        except (RuntimeError, TypeError):
+            pass  # A transferred container may already have been retired.
+    worker.finished.connect(disconnect)
+
+
+def transfer_surface(worker, surface, previous_owner):
+    """Keep the old native parent alive until the renderer confirms attachment."""
+    import time
+    from uuid import uuid4
+    from qgis.PyQt.QtCore import QTimer
+    token = uuid4().hex
+    worker._surface_transfer = token
+    handle = int(surface.winId())
+    started = time.monotonic()
+    deadline = started + 10
+    timer = QTimer()
+    def complete():
+        timer.stop()
+        timer.deleteLater()
+        worker.update.disconnect(received)
+        worker.finished.disconnect(complete)
+        worker._surface_transfer = None
+        previous_owner.deleteLater()
+    def received(value):
+        if value.get("surface_attached") == token:
+            worker.parent_handle = handle
+            worker.surface_transfer_seconds = time.monotonic() - started
+            complete()
+    def send():
+        if time.monotonic() >= deadline:
+            timer.stop()
+            worker.update.emit({"error": "Viewer window transfer timed out. Reload this view; source and edits are unchanged."})
+            worker.stop("surface_transfer_timeout")
+            return
+        worker.send({"action": "reparent", "parent": handle, "request_id": token})
+        worker.send({"action": "resize", "width": surface.width(), "height": surface.height()})
+    worker.update.connect(received)
+    worker.finished.connect(complete)
+    timer.timeout.connect(send)
+    timer.start(250)
+    send()
+
+
 class ResidentViews:
     """Keep Overview/Detail/Slice warm without running inactive render loops."""
 
@@ -133,6 +185,34 @@ class ResidentViews:
             worker.finished.disconnect(entry["finished"])
             worker.finished.connect(entry["surface"].deleteLater)
             worker.stop("inactive_view_evicted")
+
+    def take_current(self):
+        key = self.key
+        self.park()
+        entry = self.parked.pop(key, None)
+        if entry:
+            entry["worker"].update.disconnect(entry["update"])
+            entry["worker"].finished.disconnect(entry["finished"])
+        return entry
+
+    def receive_window(self, key, entry, window):
+        from .point_cloud_page import ViewerSurface
+        surface = ViewerSurface(self.page)
+        worker = entry["worker"]
+        entry["surface"] = surface
+        def update(value):
+            if value.get("telemetry", {}).get("ready"):
+                entry["state"]["_view_state"] = value["telemetry"]
+        def finished():
+            if self.parked.get(key) is entry:
+                self.parked.pop(key)
+                surface.deleteLater()
+        entry.update(update=update, finished=finished)
+        worker.update.connect(update)
+        worker.finished.connect(finished)
+        self.parked[key] = entry
+        bind_surface(worker, surface)
+        transfer_surface(worker, surface, window)
 
     def clear(self):
         for key in list(self.parked):
