@@ -10,11 +10,13 @@ from pathlib import Path
 import sys
 import struct
 import threading
+import time
+import platform
 
 # Executed by the isolated viewer Python with -I; only this plugin is added.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from pyforestscan_qgis.core.point_cloud.asset_server import ViewerAssetServer
-from pyforestscan_qgis.core.point_cloud.view_policy import next_view_budget
+from pyforestscan_qgis.core.point_cloud.view_policy import next_view_budget, system_memory_pressure
 
 
 def assets():
@@ -34,6 +36,7 @@ def assets():
     result["viewer.html"] = Path(__file__).with_name("viewer.html")
     result["viewer.js"] = Path(__file__).with_name("viewer.js")
     result["editor.js"] = Path(__file__).with_name("editor.js")
+    result["render_policy.js"] = Path(__file__).with_name("render_policy.js")
     return result
 
 
@@ -63,6 +66,8 @@ def main():
     emit({"stage": "VIEWER_ASSETS_LOADED"})
     viewer_url = server.base_url + "viewer.html?source=" + server.source_route
     observed = set()
+    memory_sample = {"at": 0, "value": None}
+    profile_state = {"path": None, "seed": None, "saved_at": 0}
 
     def stage_once(stage, **values):
         if stage not in observed:
@@ -130,6 +135,10 @@ def main():
                 if not isinstance(value, dict):
                     return
                 value["transport"] = server.stats()
+                now = time.monotonic()
+                if now - memory_sample['at'] > 1:
+                    memory_sample.update(at=now, value=system_memory_pressure())
+                value['system_memory'] = memory_sample['value']
                 if value.get("js_ready"):
                     stage_once("JS_READY")
                 if value.get("source_requested"):
@@ -144,11 +153,46 @@ def main():
                     if value.get("camera"):
                         stage_once("CAMERA_READY", camera_initialized=True)
                     stage_once("INTERACTION_READY")
+                    from pyforestscan_qgis.core.point_cloud.runtime import ViewerRuntimeService, runtime_spec
+                    from pyforestscan_qgis.core.atomic_state import atomic_write_json
+                    if profile_state['path'] is None:
+                        key = hashlib.sha256(json.dumps([platform.platform(), runtime_spec()[1],
+                            value.get('webgl_information'), 'motion-policy-v1'], sort_keys=True).encode()).hexdigest()
+                        profile_state['path'] = ViewerRuntimeService().root / 'performance-profiles' / (key + '.json')
+                        try:
+                            saved = json.loads(profile_state['path'].read_text(encoding='utf-8'))
+                            if time.time() - saved['timestamp'] < 30 * 86400:
+                                profile_state['seed'] = max(0, min(2000000, int(saved['comfortable_points'])))
+                        except (OSError, ValueError, KeyError, TypeError):
+                            pass
+                    previous = max(int(value.get('budget', 0)), profile_state['seed'] or 0)
+                    profile_state['seed'] = None
+                    memory = memory_sample['value'] or {}
+                    pressure = max(value.get('memory_pressure', 0), memory.get('pressure', 0))
+                    value['performance_profile'] = profile_state['path'].name
                     policy = next_view_budget(
-                        int(value.get("budget", 0)), viewport_pixels=max(1, view.width() * view.height()),
-                        moving=bool(value.get("moving")), frame_ms=value.get("frame_ms"))
+                        previous, viewport_pixels=max(1, view.width() * view.height()),
+                        moving=bool(value.get("moving")), frame_ms=value.get("frame_ms"),
+                        source_points=value.get("source_points"),
+                        root_points=max(0, int(value.get("render_diagnostics", {}).get("root_points") or 0)),
+                        velocity=value.get("camera_velocity", 0.0),
+                        memory_pressure=pressure,
+                        available_bytes=memory.get('available_bytes'),
+                        quality=value.get("quality", "Automatic"))
+                    if (not value.get('moving') and value.get('displayed', 0) > 0 and
+                            value.get('frame_ms', 100) < 30 and now - profile_state['saved_at'] > 30):
+                        try:
+                            atomic_write_json(profile_state['path'], {'timestamp': time.time(),
+                                'comfortable_points': value['displayed'], 'frame_ms': value['frame_ms'],
+                                'advisory_only': True})
+                            profile_state['saved_at'] = now
+                        except OSError:
+                            pass
                     self.command.emit(json.dumps({"action": "budget", "points": policy.points,
-                                                  "screen_error": policy.screen_error}))
+                                                  "screen_error": policy.screen_error,
+                                                  "ceiling": policy.ceiling, "floor": policy.floor,
+                                                  "pressure": pressure,
+                                                  "source_class": policy.source_class}))
                 emit({"telemetry": value})
             except (ValueError, TypeError, OverflowError):
                 emit({"error": "Invalid renderer telemetry."})
@@ -205,7 +249,7 @@ def main():
                     raise ValueError("Invalid editor overlay path.")
                 server.assets["editor-overlay.json"] = path
                 bridge.command.emit(json.dumps({"action": "editor_overlay", "selection_color": command.get("selection_color")}))
-            elif action in ("fit", "top", "front", "mode", "classes", "height", "clear_height", "clear_filters", "camera", "navigation", "orbit", "pan", "zoom", "snapshot", "selection_tool", "selection_test"):
+            elif action in ("fit", "top", "front", "mode", "classes", "height", "clear_height", "clear_filters", "camera", "navigation", "orbit", "pan", "zoom", "snapshot", "selection_tool", "selection_test", "quality"):
                 bridge.command.emit(json.dumps(command, allow_nan=False))
         except (ValueError, KeyError, TypeError, OverflowError, OSError):
             emit({"error": "Invalid viewer command."})

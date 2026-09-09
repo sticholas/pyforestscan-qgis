@@ -1,8 +1,11 @@
 /* Local renderer commands contain values only, never executable user scripts. */
 "use strict";
 const message = document.getElementById("message");
-const state = {ready: false, js_ready: false, source_requested: false, errors: [], mode: "Classification", classes: null, height_filter: null};
+const state = {ready: false, js_ready: false, source_requested: false, errors: [], mode: "Classification", classes: null, height_filter: null, quality: "Automatic"};
 let viewer, cloud, heightVolume, previousCamera = "", lastFrame = performance.now(), frameMs = 16;
+let priorView = null, cameraVelocity = 0, lastMotion = 0, evictions = 0;
+const recentNodes = new WeakMap();
+let residentLimit = 2000000;
 const observedClasses = new Set(), scannedClasses = new WeakMap();
 window.editorSelectionFilters = () => ({classes: state.classes, height_filter: state.height_filter});
 window.editorClassificationColor = code => (viewer.classifications[code] || viewer.classifications.DEFAULT).color;
@@ -37,6 +40,17 @@ function frame(now) {
     const elapsed = now - lastFrame;
     if (elapsed > 0 && elapsed < 1000) frameMs = frameMs * .9 + elapsed * .1;
     lastFrame = now;
+    if (viewer && cloud) {
+        const v = viewer.scene.view;
+        const current = [...v.position.toArray(), v.yaw, v.pitch, v.radius];
+        if (priorView && elapsed > 0 && elapsed < 1000) {
+            const motion = viewerRenderPolicy.motion(priorView, current, elapsed, cameraVelocity, lastMotion, now);
+            cameraVelocity = motion.velocity;
+            lastMotion = motion.lastMotion;
+        }
+        priorView = current;
+        for (const n of cloud.visibleNodes || []) recentNodes.set(n.geometryNode, now);
+    }
     requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -59,6 +73,10 @@ window.command = function(command) {
     if (!cloud) return;
     try {
         const action = command.action;
+        if (action === "quality") {
+            if (!["Automatic", "Performance", "Balanced", "High Detail"].includes(command.quality)) throw Error("Invalid quality preset.");
+            state.quality = command.quality;
+        }
         if (window.pointCloudEditor) window.pointCloudEditor.command(command);
         if (action === "snapshot") state.request_id = command.request_id;
         if (action === "orbit") { viewer.orbitControls.yawDelta += .25; viewer.orbitControls.pitchDelta += .1; }
@@ -70,7 +88,12 @@ window.command = function(command) {
         if (action === "front") { viewer.setFrontView(); viewer.fitToScreen(0); }
         if (action === "budget") {
             viewer.setPointBudget(Math.max(1000, Math.min(2000000, command.points)));
-            cloud.minimumNodePixelSize = command.screen_error;
+            // Viewer.update owns this property; assigning it on the cloud is overwritten.
+            viewer.minNodeSize = viewerRenderPolicy.threshold(viewer.minNodeSize, command.screen_error);
+            residentLimit = Math.max(command.ceiling, command.points) * (command.pressure >= .85 ? 1.25 : 2);
+            Potree.maxNodesLoading = command.pressure >= .85 ? 2 : 4;
+            state.quality_floor = command.floor;
+            state.source_class = command.source_class;
         }
         if (action === "mode") {
             const names = {Classification: "classification", Elevation: "elevation", RGB: "rgba", Intensity: "intensity"};
@@ -124,8 +147,35 @@ window.snapshot = function() {
     const view = viewer.scene.view;
     const camera = {position: view.position.toArray(), yaw: view.yaw, pitch: view.pitch, radius: view.radius};
     const key = JSON.stringify(camera);
-    const moving = previousCamera !== "" && previousCamera !== key;
+    const moving = viewerRenderPolicy.moving(cameraVelocity, lastMotion, performance.now());
     previousCamera = key;
+    const nodes = cloud.visibleNodes || [];
+    const levels = nodes.map(n => n.geometryNode.level);
+    const root = cloud.pcoGeometry.root;
+    state.render_diagnostics = {
+        visible_nodes: nodes.length, loaded_nodes: Potree.lru ? Potree.lru.elements : null,
+        resident_points: Potree.lru ? Potree.lru.numPoints : null,
+        pending_nodes: Potree.numNodesLoading, node_pixel_threshold: cloud.minimumNodePixelSize,
+        viewer_node_threshold: viewer.minNodeSize, point_size: cloud.material.size,
+        point_size_type: cloud.material.pointSizeType, root_points: root ? root.numPoints : null,
+        lod_min: levels.length ? Math.min(...levels) : null, lod_max: levels.length ? Math.max(...levels) : null,
+        fps: 1000 / frameMs, viewport_pixels: viewer.renderer.domElement.width * viewer.renderer.domElement.height,
+        near: viewer.scene.getActiveCamera().near, far: viewer.scene.getActiveCamera().far,
+        scale: cloud.scale.toArray(), cache_limit_points: Potree.pointLoadLimit,
+        js_heap_bytes: performance.memory ? performance.memory.usedJSHeapSize : null
+    };
+    state.render_diagnostics.cache_evictions = evictions;
+    state.render_diagnostics.resident_limit_points = residentLimit;
+    state.render_diagnostics.rendered_points = nodes.reduce((sum, n) => sum + n.geometryNode.numPoints, 0);
+    state.render_diagnostics.points_per_megapixel = state.render_diagnostics.rendered_points * 1000000 / Math.max(1, state.render_diagnostics.viewport_pixels);
+    state.render_diagnostics.gpu_upload_nodes_per_frame = 2;
+    state.render_diagnostics.decode_queue = Potree.numNodesLoading;
+    state.render_diagnostics.gpu_upload_queue = null;
+    state.source_points = cloud.pcoGeometry.copc ? cloud.pcoGeometry.copc.header.pointCount : cloud.pcoGeometry.ept.points;
+    state.camera_velocity = cameraVelocity;
+    state.memory_pressure = performance.memory ? Math.min(1, performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit) : 0;
+    state.memory_pressure_source = "JS_HEAP_RATIO; host also samples system RAM";
+    state.detail = moving ? "Interactive" : performance.now() - lastMotion < 1500 ? "Refining" : "Available detail";
     return Object.assign({}, state, {displayed: cloud.numVisiblePoints, budget: viewer.getPointBudget(),
                                     frame_ms: frameMs, moving, camera, webgl: !!viewer.renderer.getContext()});
 };
@@ -141,10 +191,36 @@ try {
     viewer.setBackground("black");
     viewer.setEDLEnabled(false);
     viewer.setPointBudget(100000);
+    // Keep a stable cache ceiling during motion; never evict visible ancestors.
+    const lru = Potree.lru;
+    if (lru) {
+        const remove = lru.remove.bind(lru);
+        lru.remove = node => { if (lru.items[node.id]) evictions++; return remove(node); };
+        lru.freeMemory = () => {
+            const visible = cloud ? (cloud.visibleNodes || []).map(n => n.geometryNode.name) : [];
+            const candidates = [];
+            for (let item = lru.first; item; item = item.next) candidates.push(item.node);
+            for (const node of candidates) {
+                if (lru.numPoints <= residentLimit) break;
+                if (!lru.items[node.id] || viewerRenderPolicy.retain(node.name, visible,
+                    recentNodes.get(node) || 0, performance.now(), lru.numPoints, residentLimit)) continue;
+                lru.disposeDescendants(node);
+            }
+        };
+    }
     state.js_ready = true;
     const gl = viewer.renderer.getContext();
-    viewer.renderer.domElement.addEventListener("webglcontextlost", () => fail(Error("The viewer graphics context was lost. Reload Viewer.")));
+    viewer.renderer.domElement.addEventListener("webglcontextlost", event => {
+        event.preventDefault(); state.context_lost = true;
+        message.textContent = "Viewer graphics context was reset. Restoring view...";
+    });
+    viewer.renderer.domElement.addEventListener("webglcontextrestored", () => {
+        state.context_lost = false; state.context_restores = (state.context_restores || 0) + 1;
+        message.textContent = "";
+    });
     state.webgl_information = {vendor: gl.getParameter(gl.VENDOR), renderer: gl.getParameter(gl.RENDERER), version: gl.getParameter(gl.VERSION)};
+    const gpu = gl.getExtension('WEBGL_debug_renderer_info');
+    if (gpu) state.webgl_information.graphics_device = gl.getParameter(gpu.UNMASKED_RENDERER_WEBGL);
     const source = new URLSearchParams(location.search).get("source");
     if (!["source/cloud.copc.laz", "source/ept.json"].includes(source)) throw Error("Invalid source route.");
     state.source_requested = true;
@@ -152,6 +228,11 @@ try {
         cloud = event.pointcloud;
         viewer.scene.addPointCloud(cloud);
         cloud.material.activeAttributeName = "classification";
+        cloud.material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
+        const size = viewerRenderPolicy.size();
+        cloud.material.size = size.scale;
+        cloud.material.minSize = size.minimum;
+        cloud.material.maxSize = size.maximum;
         cloud.updateMatrixWorld(true);
         const bounds = cloud.boundingBox.clone().applyMatrix4(cloud.matrixWorld);
         state.z_range = [bounds.min.z, bounds.max.z];

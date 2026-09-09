@@ -35,7 +35,7 @@ Rectangle {
         }
     }
     Timer {
-        interval: 750
+        interval: 250
         running: true
         repeat: true
         onTriggered: web.runJavaScript("window.snapshot ? JSON.stringify(window.snapshot()) : '{}'",

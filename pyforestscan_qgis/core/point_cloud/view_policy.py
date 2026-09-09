@@ -3,16 +3,39 @@ from dataclasses import dataclass
 import math
 
 
+def system_memory_pressure():
+    """Read system pressure, not invented GPU availability; unavailable is None."""
+    import os
+    if os.name != 'nt':
+        return None
+    import ctypes
+    from ctypes import wintypes
+    class Status(ctypes.Structure):
+        _fields_ = [('length', wintypes.DWORD), ('load', wintypes.DWORD),
+                    *[(name, ctypes.c_ulonglong) for name in ('total', 'available', 'page_total',
+                       'page_available', 'virtual_total', 'virtual_available', 'extended')]]
+    status = Status()
+    status.length = ctypes.sizeof(status)
+    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        return None
+    return {'pressure': status.load / 100, 'available_bytes': status.available}
+
+
 @dataclass(frozen=True)
 class ViewBudget:
     points: int
     screen_error: float
     prefetch: bool
+    floor: int = 0
+    ceiling: int = 0
+    source_class: str = "UNKNOWN"
 
 
 def next_view_budget(previous: int, *, viewport_pixels: int, moving: bool,
                      frame_ms: float | None = None, memory_pressure: float = 0.0,
-                     available_bytes: int | None = None, source_points: int | None = None) -> ViewBudget:
+                     available_bytes: int | None = None, source_points: int | None = None,
+                     root_points: int = 0, velocity: float = 0.0,
+                     quality: str = "Automatic") -> ViewBudget:
     """Conservative draw budget; a backend must enforce residency separately.
 
     Unknown RAM/GPU is not invented. Limits are guardrails, not measured
@@ -28,22 +51,29 @@ def next_view_budget(previous: int, *, viewport_pixels: int, moving: bool,
         raise ValueError("Available memory cannot be negative.")
     if source_points is not None and source_points < 0:
         raise ValueError("Source point count cannot be negative.")
-    ceiling = min(2_000_000, max(10_000, viewport_pixels * 2))
+    if root_points < 0 or not math.isfinite(velocity) or velocity < 0:
+        raise ValueError("Invalid root point count or camera velocity.")
+    if quality not in ("Automatic", "Performance", "Balanced", "High Detail"):
+        raise ValueError("Unknown viewer quality preset.")
+    multiplier = {"Performance": 1.5, "High Detail": 3}.get(quality, 2)
+    ceiling = int(min(2_000_000, max(10_000, viewport_pixels * multiplier)))
     if available_bytes is not None:
         ceiling = min(ceiling, available_bytes // (128 * 4))
     if source_points is not None:
         ceiling = min(ceiling, source_points)
-    if memory_pressure >= 0.85:
-        target = int(previous * 0.5)
-    elif moving or (frame_ms is not None and frame_ms > 33.3):
-        target = int(previous * 0.75)
-    elif frame_ms is not None and frame_ms < 22:
-        target = max(previous + 1, int(previous * 1.10))
-    else:
-        target = previous
-    # First view starts small; telemetry subsequently determines refinement.
-    if previous == 0 and ceiling:
-        target = min(100_000, ceiling)
-    points = max(0, min(target, ceiling))
-    return ViewBudget(points, 6.0 if moving or memory_pressure >= 0.85 else 2.0,
-                      not moving and memory_pressure < 0.7 and points > 0)
+    source_class = ("UNKNOWN" if source_points is None else "TINY" if source_points <= 100_000
+                    else "SMALL" if source_points <= 3_000_000 else "MEDIUM" if source_points <= 20_000_000
+                    else "LARGE" if source_points <= 200_000_000 else "MASSIVE_INDEXED")
+    # Admission is whole-node in Potree. A budget below the root renders nothing.
+    floor = min(ceiling, max(root_points, min(500_000, max(100_000, viewport_pixels))))
+    fits = source_points is not None and source_points <= ceiling
+    if fits:
+        floor = ceiling
+    speed = min(1.0, velocity) if moving else 0.0
+    target = int(ceiling * (1 - .25 * speed))
+    if memory_pressure >= .85 or (frame_ms is not None and frame_ms > 40):
+        target = int(previous * .9)
+    # Smooth changes, with a non-negotiable structural floor after root discovery.
+    step = max(1, int(max(previous, 100_000) * .08))
+    points = min(ceiling, max(floor, min(previous + step, max(previous - step, target))))
+    return ViewBudget(points, 12.0 + 6.0 * speed, False, floor, ceiling, source_class)

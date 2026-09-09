@@ -25,8 +25,8 @@ class ViewerSessionTests(unittest.TestCase):
                                   cache_identity={"source_sha256": before})
         loaded = load_view_session(path)
         self.assertEqual(loaded.session_id, saved.session_id)
-        self.assertEqual(session_view_state(loaded), self.state)
-        self.assertEqual(loaded.visibility["quality"], "AUTOMATIC")
+        self.assertEqual(session_view_state(loaded), dict(self.state, quality="Automatic"))
+        self.assertEqual(loaded.visibility["quality"], "Automatic")
         self.assertEqual(hashlib.sha256(self.source.read_bytes()).hexdigest(), before)
 
     def test_existing_journal_survives_view_save(self):

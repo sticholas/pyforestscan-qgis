@@ -307,6 +307,11 @@ class PointCloudPage(QWidget):
         self.filters_panel = QWidget()
         form = QFormLayout(self.filters_panel)
         form.setContentsMargins(0, 0, 0, 0)
+        self.quality = QComboBox()
+        self.quality.addItems(("Automatic", "Performance", "Balanced", "High Detail"))
+        self.quality.setToolTip("Automatic adapts display detail to measured frame time without dropping below the structural point floor. Presets affect viewing only.")
+        self.quality.currentTextChanged.connect(lambda value: self.send({"action": "quality", "quality": value}))
+        form.addRow("Quality", self.quality)
         self.class_list = QListWidget()
         self.class_list.setMaximumHeight(100)
         self.class_list.setToolTip("Classes observed in streamed points. More may appear as the view refines. Check a class to show it; this never edits the source.")
@@ -613,7 +618,7 @@ class PointCloudPage(QWidget):
         self.class_list.clear()
         self._edit_session = self._session_to_open
         self._restore_expected = None
-        for combo, value in ((self.mode, "Classification"), (self.navigation_mode, "Orbit")):
+        for combo, value in ((self.mode, "Classification"), (self.navigation_mode, "Orbit"), (self.quality, "Automatic")):
             combo.blockSignals(True)
             combo.setCurrentText(value)
             combo.blockSignals(False)
@@ -662,7 +667,10 @@ class PointCloudPage(QWidget):
             self._controls(True)
             if self._session_worker is None:
                 self.status.setText("Source open | Original unchanged")
-            self.details.setText(f"View points (before filters): {telemetry.get('displayed', 0):,} | Quality: Automatic")
+            displayed = telemetry.get('render_diagnostics', {}).get('rendered_points', telemetry.get('displayed', 0))
+            self.details.setText(f"View points (before filters): {displayed:,} | {telemetry.get('quality', 'Automatic')} | {telemetry.get('detail', 'Refining')}")
+            if telemetry.get('context_lost'):
+                self.status.setText("Viewer graphics context was reset. Restoring view...")
             if not self._filter_bounds_initialized and telemetry.get("z_range"):
                 self.height_min.setValue(telemetry["z_range"][0])
                 self.height_max.setValue(telemetry["z_range"][1])
@@ -673,6 +681,8 @@ class PointCloudPage(QWidget):
                     restored = dict(restored, camera=telemetry["camera"])
                 self._restore_expected = restored
                 self.send({"action": "camera", "camera": restored["camera"]})
+                self.quality.setCurrentText(restored.get("quality", "Automatic"))
+                self.send({"action": "quality", "quality": restored.get("quality", "Automatic")})
                 self.mode.setCurrentText(restored["mode"])
                 self.send({"action": "mode", "mode": restored["mode"]})
                 self.send({"action": "clear_filters"})

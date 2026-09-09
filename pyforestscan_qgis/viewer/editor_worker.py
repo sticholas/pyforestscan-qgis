@@ -74,6 +74,7 @@ def main():
             state = validate_view_state(command["view"])
             session.camera = state["camera"]
             session.visibility["render_mode"] = state["mode"]
+            session.visibility["quality"] = state["quality"]
             session.filters.update(classes=state["classes"], z=state["height_filter"])
     def visual(item):
         raw = asdict(item)

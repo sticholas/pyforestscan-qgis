@@ -31,7 +31,10 @@ def validate_view_state(state):
     if height is not None and (not isinstance(height, (list, tuple)) or len(height) != 2 or
             any(type(v) not in (int, float) or not math.isfinite(v) for v in height) or height[0] >= height[1]):
         raise ValueError("Invalid session height filter.")
-    return {"camera": camera, "mode": mode, "classes": list(classes) if classes is not None else None,
+    quality = state.get("quality", "Automatic")
+    if quality not in ("Automatic", "Performance", "Balanced", "High Detail"):
+        raise ValueError("Unsupported viewer quality preset.")
+    return {"camera": camera, "mode": mode, "quality": quality, "classes": list(classes) if classes is not None else None,
             "height_filter": list(height) if height is not None else None}
 
 
@@ -41,7 +44,7 @@ def view_state_matches(actual, expected):
         actual, expected = validate_view_state(actual), validate_view_state(expected)
     except (ValueError, TypeError, AttributeError):
         return False
-    if any(actual[key] != expected[key] for key in ("mode", "classes", "height_filter")):
+    if any(actual[key] != expected[key] for key in ("mode", "classes", "height_filter", "quality")):
         return False
     a, b = actual["camera"], expected["camera"]
     return (all(math.isclose(x, y, rel_tol=0, abs_tol=1e-5) for x, y in zip(a["position"], b["position"])) and
@@ -57,7 +60,7 @@ def save_view_session(path, source, state, *, existing=None, source_crs="", dime
     session = copy.deepcopy(existing) if existing is not None else PointCloudEditSession(
         identity, source_crs, tuple(dimensions))
     session.camera = values["camera"]
-    session.visibility.update(render_mode=values["mode"], quality="AUTOMATIC",
+    session.visibility.update(render_mode=values["mode"], quality=values["quality"],
                               viewer_backend="ISOLATED_WEBENGINE_POTREE",
                               cache_identity=copy.deepcopy(cache_identity or {}))
     session.filters.update(classes=values["classes"], z=values["height_filter"])
@@ -79,6 +82,7 @@ def load_view_session(path, *, cancelled=lambda: False):
 
 def session_view_state(session):
     return {"camera": copy.deepcopy(session.camera),
+            "quality": "Automatic" if session.visibility.get("quality", "Automatic") == "AUTOMATIC" else session.visibility.get("quality", "Automatic"),
             "mode": session.visibility.get("render_mode", "Classification"),
             "classes": copy.deepcopy(session.filters.get("classes")),
             "height_filter": copy.deepcopy(session.filters.get("z"))}

@@ -2,6 +2,11 @@
 
 ## Experimental Point Cloud Viewer
 
+- Motion budget starvation is fixed in measured COPC/EPT tests. Rendering remains
+  `VIEWER_PERFORMANCE_EXPERIMENTAL`; human motion, low-memory, deep navigation and
+  graphics-reset gates are tracked in the
+  [motion quality audit](testing/PHASE_34A3_1_VIEWER_MOTION_QUALITY.md).
+
 - The embedded Windows viewer has passed Qt5/Qt6 renderer, session and failure
   isolation harnesses. Mouse orbit/pan/zoom were human-confirmed in installed
   QGIS 3.44; installed-QGIS Qt6 acceptance remains separate.

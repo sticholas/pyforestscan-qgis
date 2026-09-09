@@ -1,5 +1,17 @@
 # Changelog
 
+## Phase 34A3.1 - Viewer motion hardening (experimental)
+
+- Reproduced complete motion-time budget starvation on the reported cloud,
+  104.8M-point Olaa and large EPT; added root-aware floors and smooth adaptation.
+- Corrected the viewer-owned LOD threshold, enabled clamped adaptive point sizes,
+  and retained recently visible nodes with parent-safe LRU eviction.
+- Added motion/memory diagnostics, optional saved quality presets, advisory
+  graphics/runtime profiles and deterministic before/after screenshot evidence.
+- Rendering remains experimental pending human, low-memory and deep-navigation
+  gates; large raw LAS/LAZ automatic indexing is still limited. No 0.3 release.
+- See [motion quality evidence](docs/testing/PHASE_34A3_1_VIEWER_MOTION_QUALITY.md).
+
 ## Phase 34A3 - Non-destructive editing loop (experimental)
 
 - Connected Polygon/Rectangle source selections to the existing journal,
