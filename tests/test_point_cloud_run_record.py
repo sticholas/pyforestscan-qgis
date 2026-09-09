@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 from pyforestscan_qgis.core.point_cloud.run_record import ViewerRunRecord
 
 
@@ -54,6 +55,26 @@ class ViewerRunRecordTests(unittest.TestCase):
     def test_stage_must_be_known(self):
         with self.assertRaises(ValueError):
             self.record.stage("GUESS_RENDERER_CRASH")
+
+    def test_stages_have_attempt_relative_monotonic_timing(self):
+        self.record.started = 100
+        with patch("pyforestscan_qgis.core.point_cloud.run_record.time.monotonic", return_value=102.125):
+            self.record.stage("VIEWER_RUNTIME_RESOLVED")
+        self.assertEqual(self.record.data["stage_history"][-1]["elapsed_seconds"], 2.125)
+        self.assertIn("at", self.record.data["stage_history"][-1])
+
+    def test_startup_spans_survive_later_telemetry(self):
+        spans = {"qt_initialization": .8, "asset_verification": .4, "source_server": .1}
+        self.record.observe({"stage": "VIEWER_ASSETS_LOADED", "host_startup_seconds": spans})
+        self.record.observe({"telemetry": {"ready": True}})
+        self.assertEqual(json.loads(self.record.path.read_text())["host_startup_seconds"], spans)
+
+    def test_preparation_stages_are_bounded_and_do_not_claim_first_frame(self):
+        for _ in range(70):
+            self.record.stage("SOURCE_PREPARATION_STARTED")
+        self.record.stage("SOURCE_PREPARATION_COMPLETE")
+        self.assertEqual(len(self.record.data["stage_history"]), 64)
+        self.assertEqual(self.record.data["first_frame_status"], "NOT_OBSERVED")
 
     def test_harness_never_polls_deleted_qt_worker(self):
         root = Path(__file__).resolve().parents[1]

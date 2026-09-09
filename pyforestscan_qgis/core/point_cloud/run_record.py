@@ -11,6 +11,7 @@ from uuid import uuid4
 from ..atomic_state import atomic_write_json
 
 STAGES = (
+    "VIEWER_RUNTIME_RESOLVED", "SOURCE_PREPARATION_STARTED", "SOURCE_PREPARATION_COMPLETE",
     "VIEWER_PROCESS_CREATED", "QT_INITIALIZED", "WEBENGINE_INITIALIZED",
     "VIEWER_ASSETS_LOADED", "JS_READY", "SOURCE_REQUESTED", "SOURCE_OPENED",
     "FIRST_NODE_LOADED", "FIRST_FRAME_RENDERED", "CAMERA_READY",
@@ -64,14 +65,18 @@ class ViewerRunRecord:
         with self.lock:
             if stage not in STAGES:
                 raise ValueError("Unknown viewer lifecycle stage.")
-            self.data["stage_history"] = (self.data["stage_history"] + [{"stage": stage, "at": now()}])[-64:]
+            self.data["stage_history"] = (self.data["stage_history"] + [{
+                "stage": stage, "at": now(),
+                "elapsed_seconds": round(time.monotonic() - self.started, 6),
+            }])[-64:]
             self.update(viewer_stage=stage, last_successful_stage=stage, **values)
 
     def observe(self, value):
         if value.get("stage") in STAGES:
             self.stage(value["stage"])
         fields = {key: value[key] for key in ("viewer_Qt_version", "OpenGL_information", "WebGL_information",
-                  "source_load_status", "first_frame_status", "camera_initialized", "screenshot") if key in value}
+                  "source_load_status", "first_frame_status", "camera_initialized", "screenshot",
+                  "host_startup_seconds") if key in value}
         for field in ("JS_console_messages", "QML_errors", "WebEngine_errors"):
             if field in value:
                 with self.lock:

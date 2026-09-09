@@ -191,6 +191,41 @@ policy, compilation, undefined-name, and documentation-link checks passed.
 Human interaction retesting, read-only EPT session appearance persistence,
 large-source rendering, resource stress, and sustained soak remain open.
 
+## Cold-start timing slice
+
+Lifecycle records now include attempt-relative monotonic stage timings, explicit
+runtime/source-preparation boundaries, and host spans for Qt initialization,
+asset verification, and source-server creation. Wall-clock timestamps remain
+for correlation; elapsed values are the basis for latency comparisons.
+Preparation completion does not imply a rendered frame.
+
+The isolated QGIS 3.44 startup-timing-01 baseline passed in 66.94 seconds.
+The host was spending roughly two seconds verifying packaged assets from the
+WSL UNC development checkout. Asset-root resolution is now performed once per
+launch instead of once per asset. Every asset is still resolved, containment
+checked, and SHA256 verified on every launch; no validation cache bypass exists.
+Tests cover tampering after a successful launch and parent/symlink escapes.
+
+The startup-timing-02 repeat passed in 64.58 seconds. Recorded asset spans:
+
+| View | Baseline seconds | Repeat seconds |
+| --- | --- | --- |
+| Overview | 1.969 | 1.781 |
+| Slice | 2.297 | 1.969 |
+| Later detached view | 1.906 | 1.781 |
+
+Corresponding first-frame timings were 8.704/8.266, 8.688/8.688, and
+8.344/7.766 seconds. These are individual observations, not a statistically
+controlled benchmark or a claim that cold loading is solved. The package
+is running from WSL UNC, so installed-local performance must be measured
+separately. Both runs preserved the original source and produced the same
+validated three-edit export SHA256 recorded above.
+
+The focused tier ran 174 tests with 24 dependency skips and no failures.
+Compilation and undefined-name checks passed. Next performance work should
+address verified asset delivery and source-preparation overhead without
+weakening runtime isolation or authoritative editing.
+
 ## Blocked gates / package status
 
 No access blocker currently prevents development. Release gates remain open:

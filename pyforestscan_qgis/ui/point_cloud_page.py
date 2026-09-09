@@ -75,9 +75,11 @@ class ViewerWorker(QThread):
             if os.name != "nt":
                 raise RuntimeError("Embedded viewer is experimental on Windows; other platform adapters are not yet qualified.")
             executable = service.executable()
+            self.run_record.stage("VIEWER_RUNTIME_RESOLVED")
             source = Path(self.source).resolve(strict=True)
             viewer_root = Path(__file__).resolve().parents[1] / "viewer"
             if source.suffix.lower() in (".las", ".laz") and not source.name.lower().endswith(".copc.laz"):
+                self.run_record.stage("SOURCE_PREPARATION_STARTED")
                 from ..core.backend.service import BackendService
                 engine = BackendService().processing_engine_service()
                 token = engine.runtime_token_for(("dataset_inspection",))
@@ -136,6 +138,7 @@ class ViewerWorker(QThread):
                         preparation_seconds=prepared.get("preparation_seconds"))
                     source = Path(prepared["render_source"])
                     self.update.emit({"source_info": prepared})
+                self.run_record.stage("SOURCE_PREPARATION_COMPLETE")
             if self.stop_event.is_set():
                 return
             if source.name.lower() == "ept.json":

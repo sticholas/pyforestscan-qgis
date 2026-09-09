@@ -19,13 +19,13 @@ from pyforestscan_qgis.core.point_cloud.asset_server import ViewerAssetServer
 from pyforestscan_qgis.core.point_cloud.view_policy import next_view_budget, system_memory_pressure
 
 
-def assets():
-    root = Path(__file__).parent / "assets"
+def assets(root=None):
+    root = (Path(root) if root is not None else Path(__file__).parent / "assets").resolve(strict=True)
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     result = {}
     for name, record in manifest["files"].items():
         path = (root / name).resolve(strict=True)
-        if not path.is_relative_to(root.resolve()):
+        if not path.is_relative_to(root):
             raise ValueError("Invalid packaged viewer asset.")
         if hashlib.sha256(path.read_bytes()).hexdigest() != record["sha256"]:
             raise ValueError(f"Viewer asset needs repair: {name}")
@@ -47,6 +47,7 @@ def assets():
 
 
 def main():
+    host_started = time.monotonic()
     parser = argparse.ArgumentParser()
     parser.add_argument("--parent", required=True, type=int)
     parser.add_argument("--source", required=True, type=Path)
@@ -68,8 +69,15 @@ def main():
     emit({"stage": "QT_INITIALIZED", "viewer_Qt_version": qVersion()})
     if app.platformName() != "windows":
         raise RuntimeError("Embedded viewer platform adapter is not yet qualified on this platform.")
-    server = ViewerAssetServer(assets=assets(), source=args.source)
-    emit({"stage": "VIEWER_ASSETS_LOADED"})
+    asset_started = time.monotonic()
+    packaged_assets = assets()
+    assets_verified = time.monotonic()
+    server = ViewerAssetServer(assets=packaged_assets, source=args.source)
+    emit({"stage": "VIEWER_ASSETS_LOADED", "host_startup_seconds": {
+        "qt_initialization": round(asset_started - host_started, 6),
+        "asset_verification": round(assets_verified - asset_started, 6),
+        "source_server": round(time.monotonic() - assets_verified, 6),
+    }})
     viewer_url = server.base_url + "viewer.html?source=" + server.source_route
     observed = set()
     memory_sample = {"at": 0, "value": None}
