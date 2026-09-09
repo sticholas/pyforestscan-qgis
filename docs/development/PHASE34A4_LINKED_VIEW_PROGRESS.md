@@ -318,6 +318,15 @@ argument; installed voxel modes differ from the legacy option list; and
 adding HAG is not the same operation as normalizing Z.
 No production preparation control or scientific algorithm changed.
 
+## Preparation request boundary
+
+The immutable preparation contract is implemented with QGIS-free tests for
+new output/provenance paths, source identity, explicit thinning/height actions,
+finite spacing, active-edit rejection, serialization, cancellation, and
+source/destination rechecks. See the
+[preparation audit](POINT_CLOUD_PREPARATION_WORKSPACE_AUDIT.md).
+Managed execution, validated publication, and workspace controls remain open.
+
 ## Blocked gates / package status
 
 No access blocker currently prevents development. Release gates remain open:

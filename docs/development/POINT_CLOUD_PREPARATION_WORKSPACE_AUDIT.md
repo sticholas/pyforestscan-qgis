@@ -76,5 +76,25 @@ existing clean managed-process environment for the eventual workspace job.
 4. Qualify raw/edited input, thinning-only, HAG-only, normalized Z, failure,
    cancellation, metadata preservation, large-source limits, and reopen.
 
-Thinning and normalization remain open Phase 34A4 requirements. This audit
-does not enable new production controls or change scientific processing.
+## Implemented Request Boundary
+
+`core/point_cloud/preparation.py` now defines immutable preparation intent:
+Poisson/voxel-first thinning with positive finite spacing in source coordinate
+units, or explicit add-HAG/normalize-Z actions. Ground-classification consent
+is separate and defaults off. The contract does not select a scientific
+ground model; managed execution must use and validate the existing planner.
+
+Requests require a local SourceIdentity, absolute new LAS/LAZ paths, and a
+free paired provenance path. EPT metadata and COPC output are rejected.
+Construction/serialization are read-only; source hashing belongs in
+`verify_input` in a worker. Runtime publication must repeat destination
+checks and use no-replacement atomic publication; preflight alone cannot
+eliminate a filesystem race.
+
+`from_session` rejects active staged edits with guidance to export and open
+the validated result first. It reads the existing journal and never changes
+undo/redo history. Source identity/options/output form the deterministic
+request signature. Schema validation rejects unknown request fields.
+
+Thinning and normalization remain open Phase 34A4 requirements. This request
+layer does not yet execute preparation or enable production controls.
