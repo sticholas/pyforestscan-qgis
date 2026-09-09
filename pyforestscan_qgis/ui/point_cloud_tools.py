@@ -34,6 +34,8 @@ class SelectionTools(QWidget):
              "Polygon Select: click vertices, then double-click, Enter or right-click to finish; Escape cancels. Selects original points within the active depth limits, not just displayed points. 3D views temporarily use top view; Slice stays in profile."),
             ("Rectangle", "Rectangle Select", "mActionSelectRectangle.svg",
              "Rectangle Select: drag a rectangle; Escape cancels. Selects original points within the active depth limits. 3D views temporarily use top view; Slice stays in profile. Staged edits are unchanged until you apply an edit."),
+            ("Circle", "Circle Select", "mActionSelectRadius.svg",
+             "Circle Select: drag from the center to set a radius in dataset XY coordinates; Escape cancels. Full column selects a circular column; Elevation or HAG limits make it a bounded cylinder. Selection resolves original points, not displayed samples. Vertical Slice support is not yet enabled."),
         )
         for value, label, icon, help_text in specs:
             button = spatial_button(label, icon, help_text, self)

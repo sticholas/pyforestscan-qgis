@@ -332,7 +332,9 @@ class EditorPanel(QWidget):
             elif event.get("geometry"):
                 try:
                     constraints = self.page.linked.selection_values(event)
-                    self.send("select", geometry=event["geometry"], mode=event["mode"], constraints=constraints)
+                    values = {key: event[key] for key in ("circle_center", "circle_radius") if key in event}
+                    self.send("select", geometry=event["geometry"], mode=event["mode"],
+                              constraints=constraints, **values)
                 except ValueError as error:
                     self.summary.setText(str(error))
             elif event.get("action") in ("undo", "redo"):

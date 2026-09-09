@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--transfer-cycles", type=int, default=0)
     parser.add_argument("--selection-hag", nargs=2, type=float)
     parser.add_argument("--appearance-check", action="store_true")
+    parser.add_argument("--circle-check", action="store_true")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=False)
     from qgis.core import QgsApplication, Qgis
@@ -154,14 +155,21 @@ def main():
                 page.grab().save(str(args.output_dir/"area.png"))
                 report["area_telemetry"] = page._view_state
                 previous = (editor.state.get("selection") or {}).get("selection_id")
-                editor.tool.buttons["Rectangle"].click()
-                page.send({"action":"selection_test","geometry":[[x-d,y-d],[x+d,y-d],[x+d,y+d],[x-d,y+d],[x-d,y-d]]})
+                if args.circle_check:
+                    editor.tool.buttons["Circle"].click()
+                    page.send({"action":"selection_test",
+                        "geometry":[[x-d,y-d],[x+d,y-d],[x+d,y+d],[x-d,y+d],[x-d,y-d]],
+                        "circle_center":[x,y],"circle_radius":d})
+                else:
+                    editor.tool.buttons["Rectangle"].click()
+                    page.send({"action":"selection_test","geometry":[[x-d,y-d],[x+d,y-d],[x+d,y+d],[x-d,y+d],[x-d,y-d]]})
             elif step == 2:
                 result = editor.state.get("selection") or {}
                 if result.get("selection_id") == previous:
                     return
                 assert result["resolved_point_count"] > 0
                 report["area_selection"] = result
+                report["area_selection_shape"] = "CIRCLE" if args.circle_check else "RECTANGLE"
                 if args.selection_hag:
                     assert result["hag_min"] >= args.selection_hag[0]
                     assert result["hag_max"] <= args.selection_hag[1]

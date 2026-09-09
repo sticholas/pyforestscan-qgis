@@ -201,7 +201,9 @@ class DetachedView(QDialog):
             if event.get("geometry") and not editor.busy:
                 try:
                     constraints = self.controller.selection_values_for(view, event, telemetry)
-                    editor.send("select",geometry=event["geometry"],mode=event["mode"],constraints=constraints)
+                    values = {key: event[key] for key in ("circle_center", "circle_radius") if key in event}
+                    editor.send("select", geometry=event["geometry"], mode=event["mode"],
+                                constraints=constraints, **values)
                 except ValueError as error:
                     self.selection_error = str(error)
             elif event.get("action") in ("undo","redo"):

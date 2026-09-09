@@ -21,9 +21,18 @@ class DrawingRGBTests(unittest.TestCase):
         for event in ('"dblclick"', '"contextmenu"', '"Enter"', '"Escape"', '"pointercancel"'):
             self.assertIn(event, source)
         self.assertIn("drawing_state: drawing.state", source)
+        self.assertIn('"Circle"', source)
+        self.assertIn("circle_center", source)
+        self.assertIn("circle_radius", source)
 
     def test_help_has_fixed_scrollable_footprint(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_widgets.py").read_text()
         self.assertIn("setFixedHeight(self.HEIGHT)", source)
         self.assertIn("WidgetWidth", source)
         self.assertIn("setReadOnly(True)", source)
+
+    def test_circle_metadata_reaches_docked_and_detached_editor(self):
+        for name in ("point_cloud_editor.py", "point_cloud_detached.py"):
+            source = (ROOT / "pyforestscan_qgis/ui" / name).read_text()
+            self.assertIn('("circle_center", "circle_radius")', source)
+            self.assertIn("constraints=constraints, **values", source)

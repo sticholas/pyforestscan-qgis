@@ -7,6 +7,7 @@ import unittest
 from pyforestscan_qgis.core.point_cloud.selection import (
     SelectionDefinition, circular_selection, reader_spec, selection_mask)
 from pyforestscan_qgis.core.point_cloud.session import SourceIdentity
+from pyforestscan_qgis.viewer.editor_worker import visual_definition
 
 
 class CircleContractTests(unittest.TestCase):
@@ -42,6 +43,15 @@ class CircleContractTests(unittest.TestCase):
         circle = circular_selection(base, center=(100, 200), radius=3)
         for field in ("z_filter", "hag_filter", "classification_filter", "view_id", "depth_mode"):
             self.assertEqual(getattr(circle, field), getattr(base, field))
+
+    def test_renderer_overlay_retains_exact_circle_predicate(self):
+        visual = visual_definition(self.circle)
+        self.assertEqual(visual["circle_center"], (0, 0))
+        self.assertEqual(visual["circle_radius"], 1)
+        self.assertEqual(set(visual), {"geometry", "selection_mode", "z_filter", "hag_filter",
+            "classification_filter", "attribute_filters", "view_id", "view_name", "clip_geometry",
+            "profile_a", "profile_b", "profile_thickness", "profile_geometry", "profile_axis",
+            "depth_mode", "circle_center", "circle_radius"})
 
 
 @unittest.skipUnless(importlib.util.find_spec("numpy") and importlib.util.find_spec("shapely"),

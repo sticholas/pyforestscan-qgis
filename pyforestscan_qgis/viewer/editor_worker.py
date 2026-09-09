@@ -15,6 +15,15 @@ from uuid import uuid4
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
+def visual_definition(item):
+    """Value-only renderer projection of authoritative original-source selection."""
+    raw = asdict(item)
+    return {key: raw[key] for key in ("geometry", "selection_mode", "z_filter", "hag_filter",
+        "classification_filter", "attribute_filters", "view_id", "view_name", "clip_geometry",
+        "profile_a", "profile_b", "profile_thickness", "profile_geometry", "profile_axis",
+        "depth_mode", "circle_center", "circle_radius")}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--folder", type=Path, required=True)
@@ -86,11 +95,6 @@ def main():
             if hint:
                 session.visibility["view_cache"] = hint
             session.filters.update(classes=state["classes"], z=state["height_filter"])
-    def visual(item):
-        raw = asdict(item)
-        return {key: raw[key] for key in ("geometry", "selection_mode", "z_filter", "hag_filter",
-            "classification_filter", "attribute_filters", "view_id", "view_name", "clip_geometry",
-            "profile_a", "profile_b", "profile_thickness", "profile_geometry", "profile_axis", "depth_mode")}
     def snapshot(*, restored=False, exported=None, highlight=True):
         nonlocal revision
         revision += 1
@@ -100,7 +104,7 @@ def main():
         history = []
         for op in session.operations:
             if isinstance(op, AttributeEditOperation):
-                edits.append({"definitions": [visual(d) for d in op.definitions], "attribute": op.attribute, "value": op.value})
+                edits.append({"definitions": [visual_definition(d) for d in op.definitions], "attribute": op.attribute, "value": op.value})
                 history.append(f"{op.point_count:,} points: {op.attribute} = {op.value}" +
                                (f" | {op.note}" if op.note else ""))
             else:
@@ -112,7 +116,7 @@ def main():
                     "z_filter": [z, zz], "hag_filter": None, "attribute_filters": []}]})
                 history.append(f"Legacy region: Classification = {op.classification}")
         atomic_write_json(overlay, {"revision": revision, "edits": edits,
-                                   "selection": [visual(d) for d in definitions] if highlight else []})
+                                   "selection": [visual_definition(d) for d in definitions] if highlight else []})
         emit({"ready": True, "source": session.source.path, "source_fingerprint": session.source.sha256,
               "source_identity":asdict(session.source), "source_crs":session.source_crs, "dimensions":session.dimensions,
               "session_id": session.session_id,
@@ -215,9 +219,13 @@ def main():
                                "z_filter", "hag_filter", "classification_filter", "attribute_filters"}
                     if not isinstance(constraints, dict) or set(constraints) - allowed:
                         raise ValueError("Unsupported linked selection constraints.")
+                    circle = {}
+                    if "circle_center" in command or "circle_radius" in command:
+                        circle = {"circle_center": command.get("circle_center"),
+                                  "circle_radius": command.get("circle_radius")}
                     item = SelectionDefinition(uuid4().hex, session.session_id, session.source.sha256,
                         session.source.source_type, command["geometry"], session.source_crs,
-                        selection_mode=mode, **constraints)
+                        selection_mode=mode, **constraints, **circle)
                     pending = validate_sequence((item,) if mode == "REPLACE" or not definitions else (*definitions, item))
                     progress("Resolving original source points")
                     resolved = resolver.resolve(pending, cancelled=cancelled.is_set,
