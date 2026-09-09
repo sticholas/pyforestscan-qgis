@@ -1,6 +1,7 @@
 """Detachable linked view windows; editor authority stays in the owning workspace."""
 from dataclasses import asdict
-from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtCore import Qt, QEvent, QPointF, QTimer, pyqtSignal
+from qgis.PyQt.QtGui import QMouseEvent
 from qgis.PyQt.QtWidgets import (QTabBar, QDialog, QVBoxLayout, QHBoxLayout,
                                 QToolButton, QComboBox, QInputDialog)
 from ..compat.qt import qt_enum
@@ -15,6 +16,25 @@ class LinkedTabBar(QTabBar):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.drag_id = None
+
+    def mouseMoveEvent(self, event):
+        point = event.position().toPoint() if hasattr(event,"position") else event.pos()
+        left = qt_enum(Qt, "LeftButton", "MouseButton")
+        # Finish Qt's tab-reorder grab before a foreign renderer can receive
+        # the release. Deferring the window change avoids reparenting mid-event.
+        if (self.drag_id and event.buttons() & left and
+                not self.rect().adjusted(-12, -12, 12, 12).contains(point)):
+            key, self.drag_id = self.drag_id, None
+            position = event.globalPosition().toPoint() if hasattr(event,"globalPosition") else event.globalPos()
+            release = QMouseEvent(qt_enum(QEvent, "MouseButtonRelease", "Type"),
+                QPointF(point), QPointF(position), left,
+                qt_enum(Qt, "NoButton", "MouseButton"), event.modifiers())
+            super().mouseReleaseEvent(release)
+            self.releaseMouse()
+            QTimer.singleShot(0, lambda: self.detachRequested.emit(key, position))
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event):
         point = event.position().toPoint() if hasattr(event,"position") else event.pos()

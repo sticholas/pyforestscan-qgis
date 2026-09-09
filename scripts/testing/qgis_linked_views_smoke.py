@@ -181,7 +181,9 @@ def main():
                     return
             elif step == 15:
                 if args.detach:
-                    page.linked.detach(profile)
+                    assert page.linked.detach_button.accessibleName() == "Detach View"
+                    assert not page.linked.detach_button.icon().isNull()
+                    page.linked.detach_button.click()
                 else:
                     finish()
                     return

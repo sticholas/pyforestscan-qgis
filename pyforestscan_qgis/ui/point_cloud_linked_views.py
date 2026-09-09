@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from qgis.PyQt.QtCore import QObject, Qt
 from qgis.PyQt.QtWidgets import (QToolButton, QMenu, QInputDialog, QCheckBox, QDialog,
-    QFormLayout, QDialogButtonBox, QDoubleSpinBox, QComboBox)
+    QFormLayout, QDialogButtonBox, QDoubleSpinBox, QComboBox, QStyle)
 from ..compat.qt import qt_enum
 from ..core.point_cloud.workspace import ViewType
 from ..core.point_cloud.linked_query import view_ring
@@ -49,6 +49,14 @@ class LinkedViews(QObject):
         self.create.setMenu(menu)
         self.create.setPopupMode(qt_enum(QToolButton, "InstantPopup", "ToolButtonPopupMode"))
         toolbar.addWidget(self.create)
+        self.detach_button = QToolButton()
+        self.detach_button.setIcon(page.style().standardIcon(
+            qt_enum(QStyle, "SP_TitleBarNormalButton", "StandardPixmap")))
+        self.detach_button.setText("Detach View")
+        self.detach_button.setAccessibleName("Detach View")
+        self.detach_button.setToolTip("Detach View: open the loaded view in its own window. Selection, edits and undo history stay shared. Use Dock to tabs to return it.")
+        self.detach_button.clicked.connect(lambda: self.detach(page.workspace.active_view_id))
+        toolbar.addWidget(self.detach_button)
         self.select_filtered = QCheckBox("Select filtered points")
         self.select_filtered.setToolTip("Opt in to applying visible class and height filters to authoritative selection. Unchecked: display filters do not limit edits.")
         toolbar.addWidget(self.select_filtered)

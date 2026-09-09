@@ -43,6 +43,7 @@ Evidence directory on the test machine:
 | human-linked-01 | Failed human usability acceptance | User report above; automated JSON alone does not encode that report |
 | resident-hag-01 | Passed automated 15-step canary | Same Overview/Slice workers retained; undo/redo, session, export and handoff |
 | resident-hag-02 | Passed automated 22-step canary | Fresh snapshot replies after switching, native screenshots, detached edit/redock and export |
+| detach-action-01 | Passed automated 22-step canary | Direct accessible Detach icon, shared 467-point profile selection, redock, three-edit export; 75.08 s total |
 
 For resident-hag-02, both warm returns completed by the next 250 ms test
 poll. This is a polling upper bound, not a precision frame-latency benchmark.
@@ -64,6 +65,15 @@ gesture/decoder lifecycle tests passed. The real QGIS canary covers scientific
 selection/export unavailable in the skipped WSL tests.
 
 ## In progress / next
+
+Drag-out now detects boundary crossing during mouse movement and ends Qt's
+tab-reorder grab before dispatching the window change on the next event turn.
+A direct Detach View icon is available beside Linked views, with semantic
+tooltip and accessible name. Four actual Qt event tests pass under both
+installed QGIS 3.44/Qt5 and QGIS 4.0/Qt6 (cross-boundary single dispatch, click,
+reorder and release fallback). This does not replace the failed human drag
+acceptance; real mouse retesting remains required. Detach/dock still restart
+the renderer until the separate surface-ownership handoff is implemented.
 
 1. Reliable drag-out and visible Detach/Dock access, preferably moving retained
    surfaces rather than restarting the view.
