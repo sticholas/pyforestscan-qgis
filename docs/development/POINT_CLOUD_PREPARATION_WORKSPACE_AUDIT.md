@@ -121,3 +121,28 @@ These publication tests use byte fixtures, not scientific LAS validation.
 
 Thinning and normalization remain open Phase 34A4 requirements. Request and
 publication layers do not yet execute preparation or enable production controls.
+
+## Array Execution Boundary
+
+`core/point_cloud/preparation_execution.py` now composes the existing HAG
+executor and official thinning filters for full-resolution arrays. Height
+preparation precedes thinning so thinning does not remove ground support before
+HAG calculation. Inputs are copied; add-HAG retains Z, while normalize-Z retains
+original elevation in PFSOriginalZ and refuses an existing field of that name.
+Normalized Z requires finite HAG at every point. Automatic ground classification
+requires explicit consent, and unsupported planner modes fail closed.
+
+The wrapper applies the scientific-runtime boundary and cancellation checks
+between operations. Individual scientific filter calls are not interruptible
+through this callback. It has no file loader or publisher and must not be
+connected directly to the Qt event loop. A managed worker must still preflight
+memory before array loading, verify original-source identity, validate every
+retained output attribute and file metadata, and publish through the staging
+contract. Copying arrays does not establish bounded-memory large-cloud support.
+
+The preparation-focused tests run 29 checks on Linux and Windows managed
+Python; Windows skips two symlink-privilege tests. New execution tests use fake
+filter delegates to verify ordering, original-Z preservation, consent, invalid
+HAG, cancellation, and invalid counts. These are contract tests, not new
+scientific accuracy or real-file publication evidence. Workspace controls,
+managed dispatch, real LAS/LAZ validation, and large-source limits remain open.
