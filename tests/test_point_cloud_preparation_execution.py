@@ -36,12 +36,43 @@ class PreparationExecutionTests(unittest.TestCase):
         before = self.source.copy()
         def thin(arrays, spacing, mode):
             self.assertEqual((spacing, mode), (.5, "first"))
-            arrays[0]["X"] = 9
             return (arrays[0][:1],)
         self.filters.downsample_voxel.side_effect = thin
         result = self.execute(PreparationOptions(thinning="voxel_first", spacing=.5))
         np.testing.assert_array_equal(self.source, before)
         self.assertEqual((result.input_points, result.output_points), (2, 1))
+        self.assertNotIn("PFSPreparationRecordId", result.arrays[0].dtype.names)
+
+    def test_filter_attribute_mutation_fails_without_mutating_source(self):
+        before = self.source.copy()
+        def bad_filter(arrays, spacing):
+            arrays[0]["X"] = 9
+            return arrays
+        self.filters.downsample_poisson.side_effect = bad_filter
+        with self.assertRaisesRegex(ValueError, "dimension X"):
+            self.execute(PreparationOptions(thinning="poisson", spacing=1))
+        np.testing.assert_array_equal(self.source, before)
+
+    def test_duplicate_retained_record_fails(self):
+        self.filters.downsample_poisson.side_effect = lambda arrays, spacing: (arrays[0][[0, 0]],)
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            self.execute(PreparationOptions(thinning="poisson", spacing=1))
+
+    @patch(MODULE + ".execute_preparation")
+    def test_thinning_cannot_change_normalized_height(self, height):
+        height.side_effect = self.fake_height
+        def corrupt(arrays, spacing):
+            arrays[0]["Z"] = 123
+            return arrays
+        self.filters.downsample_poisson.side_effect = corrupt
+        with self.assertRaisesRegex(ValueError, "dimension Z"):
+            self.execute(PreparationOptions(
+                thinning="poisson", spacing=1, height_action="normalize_z"))
+
+    def test_lost_identity_fails(self):
+        self.filters.downsample_poisson.return_value = (self.source.copy(),)
+        with self.assertRaisesRegex(ValueError, "identities"):
+            self.execute(PreparationOptions(thinning="poisson", spacing=1))
 
     @patch(MODULE + ".execute_preparation")
     def test_normalize_retains_original_z_before_thinning(self, height):

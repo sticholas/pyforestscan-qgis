@@ -13,6 +13,7 @@ from .preparation import PreparationOptions
 
 
 ORIGINAL_Z = "PFSOriginalZ"
+RECORD_ID = "PFSPreparationRecordId"
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,8 @@ def prepare_arrays(arrays, options: PreparationOptions, *, filters_module,
     _check_cancelled(cancelled)
     for array in arrays:
         names = array.dtype.names or ()
+        if RECORD_ID in names:
+            raise ValueError("Source contains a reserved preparation record-ID dimension.")
         if not all(name in names for name in ("X", "Y", "Z")):
             raise ValueError("Preparation requires structured XYZ point records.")
         if options.height_action == "normalize_z" and ORIGINAL_Z in names:
@@ -55,7 +58,12 @@ def prepare_arrays(arrays, options: PreparationOptions, *, filters_module,
         if (plan.height_mode is HeightNormalizationPlanMode.AUTO_CLASSIFY_GROUND_THEN_DELAUNAY
                 and not options.allow_ground_classification):
             raise ValueError("Automatic ground classification requires explicit consent.")
-    prepared = tuple(array.copy() for array in arrays)
+    import numpy as np
+    from numpy.lib.recfunctions import append_fields, drop_fields
+    # IDs refer to original full-resolution records, not renderer/sample indices.
+    baseline = np.concatenate(arrays)
+    prepared = (append_fields(baseline, RECORD_ID,
+        np.arange(count, dtype=np.uint64), usemask=False),)
     provenance = None
     if options.height_action != "preserve":
         result = execute_preparation(
@@ -67,8 +75,6 @@ def prepare_arrays(arrays, options: PreparationOptions, *, filters_module,
             raise ValueError("Height preparation unexpectedly changed the point count.")
         _check_cancelled(cancelled)
         if options.height_action == "normalize_z":
-            import numpy as np
-            from numpy.lib.recfunctions import append_fields
             normalized = []
             for array in prepared:
                 if ORIGINAL_Z in array.dtype.names:
@@ -83,6 +89,12 @@ def prepare_arrays(arrays, options: PreparationOptions, *, filters_module,
                 normalized.append(output)
             prepared = tuple(normalized)
     _check_cancelled(cancelled)
+    reference = np.concatenate(prepared)
+    if (RECORD_ID not in reference.dtype.names
+            or reference.dtype[RECORD_ID] != np.dtype("uint64")
+            or not np.array_equal(np.sort(reference[RECORD_ID]), np.arange(count, dtype=np.uint64))):
+        raise ValueError("Height preparation changed original record identities.")
+    reference = reference[np.argsort(reference[RECORD_ID])]
     if options.thinning != "none":
         if progress:
             progress("Thinning prepared points")
@@ -94,7 +106,32 @@ def prepare_arrays(arrays, options: PreparationOptions, *, filters_module,
     output_count = sum(len(array) for array in prepared)
     if not 0 < output_count <= count:
         raise ValueError("Preparation returned an invalid point count.")
-    return PreparedArrays(prepared, count, output_count, provenance)
+    result = np.concatenate(prepared)
+    names = result.dtype.names or ()
+    if RECORD_ID not in names or result.dtype[RECORD_ID] != np.dtype("uint64"):
+        raise ValueError("Preparation lost original record identities.")
+    ids = result[RECORD_ID]
+    if np.any(ids >= count) or len(np.unique(ids)) != len(ids):
+        raise ValueError("Preparation returned duplicate or invalid original records.")
+    for name in reference.dtype.names:
+        if name not in names or not np.array_equal(result[name], reference[name][ids], equal_nan=True):
+            raise ValueError(f"Thinning changed retained dimension {name}.")
+    may_change_classification = (
+        options.height_action != "preserve"
+        and plan.height_mode is HeightNormalizationPlanMode.AUTO_CLASSIFY_GROUND_THEN_DELAUNAY)
+    for name in baseline.dtype.names:
+        if name not in names:
+            raise ValueError(f"Preparation lost source dimension {name}.")
+        if name == "HeightAboveGround" and options.height_action != "preserve":
+            continue
+        if name == "Classification" and may_change_classification:
+            continue
+        actual_name = ORIGINAL_Z if name == "Z" and options.height_action == "normalize_z" else name
+        if not np.array_equal(result[actual_name], baseline[name][ids], equal_nan=True):
+            raise ValueError(f"Preparation changed retained source dimension {name}.")
+    _check_cancelled(cancelled)
+    return PreparedArrays((drop_fields(result, RECORD_ID, usemask=False),),
+                          count, output_count, provenance)
 
 
 def _check_cancelled(cancelled):

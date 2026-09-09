@@ -146,3 +146,44 @@ filter delegates to verify ordering, original-Z preservation, consent, invalid
 HAG, cancellation, and invalid counts. These are contract tests, not new
 scientific accuracy or real-file publication evidence. Workspace controls,
 managed dispatch, real LAS/LAZ validation, and large-source limits remain open.
+
+## Retained-Record Validation and Real Wrapper Evidence
+
+Preparation now carries temporary PFSPreparationRecordId values referencing the
+original full-resolution arrays. It rejects a conflicting source dimension,
+lost/duplicate/out-of-range IDs, lost attributes, and unrelated source-attribute
+changes. Thinning must preserve every prepared attribute, including normalized
+Z and newly calculated HAG. Internal IDs are removed before the arrays leave
+the wrapper. No new selection authority is introduced.
+
+This validation currently allocates array copies, a sorted reference, and
+identity-indexed comparisons. It is not a massive-cloud streaming solution;
+the managed file loader must enforce a measured memory policy before use.
+
+The Windows managed runtime ran six actual-filter/wrapper checks on the
+20,000-point tiny.laz fixture using PyForestScan 0.4.1 and the sanitized
+processing-engine environment. Evidence is in the local artifact directory
+`artifacts/phase34a4/preparation-wrapper-02/preparation-evidence.json`.
+
+| Wrapper operation | Retained points | Observed seconds |
+| --- | ---: | ---: |
+| Voxel-first, 0.5 source units | 3,931 | 0.031 |
+| Existing-ground Delaunay HAG | 20,000 | 0.094 |
+| Normalize Z, then Poisson 0.5 source units | 1,369 | 0.109 |
+
+Normalized-Z thinning operates in normalized coordinates; it is therefore
+not equivalent to thinning original XYZ first. The direct original-coordinate
+Poisson check retained 1,643 points. This operation order must be explicit in
+the eventual workspace controls and output provenance.
+
+All retained original attributes matched, normalized Z matched HAG, temporary
+IDs were absent from returned arrays, and input arrays and file remained
+unchanged. Source SHA256:
+`4672454a0036298308d7f1e5fbfad3548340061dbb96ff924b2fc7632c234866`.
+Each wrapper's HAG provenance has a separate attempt directory. Timings are
+single bounded-fixture observations, not throughput benchmarks or scientific
+accuracy evidence. No derived LAS/LAZ was published by this harness.
+
+The preparation suite now has 33 passing tests on Linux; Windows runs the same
+33 with two symlink-privilege skips. Tests also reject malformed filters that
+alter coordinates/heights, duplicate retained records, or discard identities.
