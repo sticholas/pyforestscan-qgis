@@ -55,6 +55,7 @@ class LinkedViews(QObject):
             action.triggered.connect(lambda _=False, t=tool, p=purpose: self.draw(t,p))
         menu.addAction("Open Selection in Area Detail", self.from_selection)
         menu.addAction("Adjust Active View", self.adjust)
+        self.rename_view_action = menu.addAction("Rename Active View...", self.rename_active_view)
         menu.addAction("Selection Depth", self.adjust_depth)
         menu.addAction("Move Active View to Window", lambda:self.detach(self.page.workspace.active_view_id))
         menu.addAction("Dock All Views", self.dock_all)
@@ -229,6 +230,12 @@ class LinkedViews(QObject):
         desired = {key:view for key,view in self.page.workspace.views.items()
                    if key not in self.detached or view.view_type == ViewType.OVERVIEW_3D}
         if set(keys) == set(desired):
+            for index, key in enumerate(keys):
+                if tabs.tabText(index) != desired[key].title:
+                    tabs.setTabText(index, desired[key].title)
+            for key, window in self.detached.items():
+                if key in self.page.workspace.views:
+                    window.setWindowTitle(self.page.workspace.views[key].title)
             return
         tabs.blockSignals(True)
         while tabs.count():
@@ -242,6 +249,9 @@ class LinkedViews(QObject):
             if key == current:
                 tabs.setCurrentIndex(index)
         tabs.blockSignals(False)
+        for key, window in self.detached.items():
+            if key in self.page.workspace.views:
+                window.setWindowTitle(self.page.workspace.views[key].title)
 
     def capture(self):
         page = self.page
@@ -323,9 +333,28 @@ class LinkedViews(QObject):
     def refresh_viewpoint_actions(self):
         ready = bool(self.page._view_state and self.source_descriptor())
         self.save_viewpoint_action.setEnabled(ready)
+        self.rename_view_action.setEnabled(
+            ready and self.active().view_type != ViewType.OVERVIEW_3D)
         available = bool(self.page.workspace.bookmarks)
         self.open_viewpoint_action.setEnabled(available)
         self.remove_viewpoint_action.setEnabled(available)
+
+    def rename_active_view(self):
+        view = self.active()
+        if view.view_type == ViewType.OVERVIEW_3D:
+            self.page.status.setText("3D Overview keeps its standard workspace name.")
+            return
+        title, ok = QInputDialog.getText(
+            self.page, "Rename Linked View", "View name", text=view.title)
+        if not ok:
+            return
+        try:
+            value = self.page.workspace.rename_view(view.view_id, title)
+            self.sync_tabs()
+            self.persist()
+            self.page.status.setText(f"Renamed linked view: {value}")
+        except ValueError as error:
+            self.page.status.setText(str(error))
 
     def save_viewpoint(self):
         if not self.page._view_state or not self.source_descriptor():

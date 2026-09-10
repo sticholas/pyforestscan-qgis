@@ -20,6 +20,15 @@ class ViewType(str, Enum):
 
 
 MAX_VIEW_BOOKMARKS = 100
+MAX_VIEW_TITLE = 80
+
+
+def _view_title(value):
+    title = value.strip() if isinstance(value, str) else ""
+    if (not title or len(title) > MAX_VIEW_TITLE
+            or any(ord(char) < 32 for char in title)):
+        raise ValueError(f"Linked view name must contain 1 to {MAX_VIEW_TITLE} printable characters.")
+    return title
 
 
 def _camera(value):
@@ -253,8 +262,11 @@ class PointCloudWorkspaceModel:
     def register(self, view_type=ViewType.OVERVIEW_3D, title="3D Overview", *, view_id=None, geometry=None):
         kind = ViewType(view_type)
         key = view_id or uuid4().hex
+        title = _view_title(title)
         if not isinstance(key, str) or not key or key in self._views:
             raise ValueError("View identity must be unique.")
+        if any(item.title.casefold() == title.casefold() for item in self._views.values()):
+            raise ValueError("Linked view names must be unique in this workspace.")
         if kind != ViewType.OVERVIEW_3D and not geometry:
             raise ValueError("A detail or slice view requires source-space geometry.")
         if kind == ViewType.VERTICAL_SLICE:
@@ -265,6 +277,16 @@ class PointCloudWorkspaceModel:
         if not self.active_view_id:
             self.active_view_id = key
         return key
+
+    def rename_view(self, view_id, title):
+        if view_id not in self._views:
+            raise ValueError("Unknown linked view.")
+        value = _view_title(title)
+        if any(key != view_id and item.title.casefold() == value.casefold()
+               for key, item in self._views.items()):
+            raise ValueError("Linked view names must be unique in this workspace.")
+        self._views[view_id].title = value
+        return value
 
     def subscribe(self, view_id, callback):
         if view_id not in self._views:

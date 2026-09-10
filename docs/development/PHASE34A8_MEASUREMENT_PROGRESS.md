@@ -49,6 +49,10 @@ Editor and do not change the `0.2.0-beta.1` release boundary.
   authority. Active, parked, newly opened and detached renderers receive the
   same marker state. Add, inspect, rename, edit note, remove and clear actions
   remain under compact Measure and Editing Details menus.
+- Area Detail and Vertical Slice views can now be given validated, unique names
+  from the existing View options menu. Names remain part of the sole
+  source-bound linked-workspace record, survive session recovery, and update
+  existing tabs and detached-window titles without recreating renderers.
 
 ## IN PROGRESS
 
@@ -61,7 +65,7 @@ require live qualification.
 
 1. Qualify point picking, markers and linked overlays in a fresh human viewer
    session.
-2. Add named Detail/Slice view metadata and scene organization without
+2. Add compact scene organization for larger collections of named views without
    duplicating linked-workspace ownership.
 3. Design source-isolated multiple-cloud comparison views without merging edit
    journals or source fingerprints.

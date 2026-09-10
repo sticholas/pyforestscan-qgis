@@ -70,6 +70,20 @@ class WorkspaceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             PointCloudWorkspaceModel.restore(raw, "b"*64)
 
+    def test_linked_view_names_are_validated_unique_and_persisted(self):
+        model, _ = self.model()
+        detail = self.detail(model)
+        self.assertEqual(model.rename_view(detail, "  Crown review  "), "Crown review")
+        self.assertEqual(model.views[detail].title, "Crown review")
+        with self.assertRaisesRegex(ValueError, "unique"):
+            model.register(ViewType.AREA_DETAIL, "crown REVIEW",
+                geometry=asdict(AreaGeometry("SQUARE", "EPSG:32605", (4,5), 10, 10)))
+        with self.assertRaisesRegex(ValueError, "1 to 80"):
+            model.rename_view(detail, "")
+        raw = json.loads(json.dumps(model.to_dict()))
+        restored = PointCloudWorkspaceModel.restore(raw, "a"*64)
+        self.assertEqual(restored.views[detail].title, "Crown review")
+
     def test_named_viewpoint_roundtrip_and_activation_restore_exact_camera(self):
         model, _ = self.model()
         detail = self.detail(model)

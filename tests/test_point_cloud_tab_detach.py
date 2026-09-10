@@ -27,8 +27,46 @@ class TabDetachTests(unittest.TestCase):
         source = (Path(__file__).parents[1]/"pyforestscan_qgis"/"ui"/
                   "point_cloud_linked_views.py").read_text(encoding="utf-8")
         for label in ("Save Current Viewpoint...", "Open Saved Viewpoint...",
-                      "Remove Saved Viewpoint..."):
+                      "Remove Saved Viewpoint...", "Rename Active View..."):
             self.assertIn(label, source)
+
+    def test_rename_active_view_updates_existing_workspace_authority(self):
+        from pyforestscan_qgis.core.point_cloud.workspace import (
+            AreaGeometry, PointCloudWorkspaceModel, ViewType)
+        from dataclasses import asdict
+        model = PointCloudWorkspaceModel()
+        model.register(view_id="overview")
+        detail = model.register(ViewType.AREA_DETAIL, "Area Detail 1",
+            geometry=asdict(AreaGeometry("SQUARE", "EPSG:32605", (1,2), 30, 30)))
+        model.activate(detail)
+        page = SimpleNamespace(workspace=model, status=Mock())
+        owner = SimpleNamespace(page=page, active=lambda:model.views[model.active_view_id],
+                                sync_tabs=Mock(), persist=Mock())
+        with patch("pyforestscan_qgis.ui.point_cloud_linked_views.QInputDialog.getText",
+                   return_value=("Canopy inspection", True)):
+            LinkedViews.rename_active_view(owner)
+        self.assertEqual(model.views[detail].title, "Canopy inspection")
+        owner.sync_tabs.assert_called_once()
+        owner.persist.assert_called_once()
+
+    def test_title_only_changes_update_existing_tabs_and_detached_windows(self):
+        from pyforestscan_qgis.core.point_cloud.workspace import (
+            AreaGeometry, PointCloudWorkspaceModel, SliceGeometry, ViewType)
+        from dataclasses import asdict
+        model = PointCloudWorkspaceModel()
+        model.register(title="Overview", view_id="Overview")
+        model.register(ViewType.AREA_DETAIL, "Area Detail", view_id="Area Detail",
+            geometry=asdict(AreaGeometry("SQUARE", "EPSG:32605", (1,2), 30, 30)))
+        model.register(ViewType.VERTICAL_SLICE, "Slice", view_id="Slice",
+            geometry=asdict(SliceGeometry((0,0),(10,0),2,"EPSG:32605")))
+        window = Mock()
+        owner = SimpleNamespace(page=SimpleNamespace(view_tabs=self.tabs, workspace=model),
+                                detached={"Slice":window})
+        model.rename_view("Area Detail", "Crown Detail")
+        model.rename_view("Slice", "Stem Profile")
+        LinkedViews.sync_tabs(owner)
+        self.assertEqual(self.tabs.tabText(1), "Crown Detail")
+        window.setWindowTitle.assert_called_once_with("Stem Profile")
 
     def test_save_and_open_viewpoint_use_existing_workspace_authority(self):
         from pyforestscan_qgis.core.point_cloud.workspace import PointCloudWorkspaceModel
