@@ -17,6 +17,19 @@ function surface() {
 const canvas=surface(); canvas.parentElement=surface();
 const document=surface(); document.createElement=surface; document.createElementNS=surface;
 const queue=[];
+class BufferGeometry {
+    constructor(){this.attributes={};}
+    setAttribute(name,value){this.attributes[name]=value;return this;}
+    clone(){const value=new BufferGeometry();value.attributes={...this.attributes};return value;}
+    dispose(){}
+}
+class Group {constructor(){this.children=[];}add(value){this.children.push(value);}}
+class SceneObject {
+    constructor(geometry,material){
+        this.geometry=geometry;this.material=material;
+        this.position={set:(x,y,z)=>{this.origin=[x,y,z];}};
+    }
+}
 class Vector3 {
     constructor(x=0,y=0,z=0){Object.assign(this,{x,y,z});}
     unproject(){ this.x=1000+this.x*100;this.y=2000+this.y*100;return this; }
@@ -24,16 +37,22 @@ class Vector3 {
     copy(value){Object.assign(this,value);return this;}
 }
 const THREE={Vector3,Vector2:class {constructor(x,y){Object.assign(this,{x,y});}},
-    Color:class{}, ShapeUtils:{triangulateShape(){return [];}}};
+    Color:class{},Group,BufferGeometry,
+    Float32BufferAttribute:class {constructor(values,size){this.values=values;this.itemSize=size;}},
+    Line:SceneObject,Points:SceneObject,LineBasicMaterial:class {dispose(){}},
+    PointsMaterial:class {dispose(){}},ShapeUtils:{triangulateShape(){return [];}}};
 const viewer={renderer:{domElement:canvas},inputHandler:{enabled:true},
     scene:{view:{position:new Vector3(20,30,40),yaw:.4,pitch:-.3,radius:12},cameraMode:1,
+        scene:{items:[],add(value){this.items.push(value);}},
         getActiveCamera(){return {clone(){return {};}};}},
     setCameraMode(mode){this.scene.cameraMode=mode;},
     setTopView(){this.scene.view.yaw=0;this.scene.view.pitch=-Math.PI/2;}};
 const cloud={visibleNodes:[],material:{activeAttributeName:"classification"}};
-const context={THREE,DrawingTool,simplifySourcePath,document,Potree:{CameraMode:{PERSPECTIVE:1,ORTHOGRAPHIC:2}},
+const context={THREE,DrawingTool,simplifySourcePath,document,Potree:{CameraMode:{PERSPECTIVE:1,ORTHOGRAPHIC:2},
+    Utils:{getMousePointCloudIntersection(mouse){return {location:new Vector3(mouse.x,mouse.y,mouse.x+mouse.y)};}}},
     requestAnimationFrame:fn=>queue.push(fn),performance:{now:()=>0}};
 context.window=context; context.editorSelectionFilters=()=>({classes:null,height_filter:null});
+context.viewerRenderPolicy={objectFocus(mode){return {requested:mode,effective:mode,opacity:1};}};
 vm.createContext(context);
 const source=fs.readFileSync(path.join(__dirname,"../../pyforestscan_qgis/viewer/editor.js"),"utf8").replace(/^import[^\n]+\n/,"");
 vm.runInContext(source,context);
@@ -172,4 +191,25 @@ assert.match(tick().event.error,/only in Vertical Slice/);
 arm();editor.command({action:"selection_tool",tool:"Pointer"});
 for(let i=0;i<2;i++){ const callbacks=queue.splice(0);callbacks.forEach(fn=>fn()); }
 assert.equal(tick().tool,"Pointer");
+const cameraBefore=[viewer.scene.view.yaw,viewer.scene.view.pitch,viewer.scene.cameraMode];
+editor.command({action:"measurement_tool"});
+assert.equal(tick().tool,"MeasureDistance");
+click(10,20);
+assert.equal(tick().event.action,"measurement_anchor");
+assert.equal(tick().tool,"MeasureDistance");
+click(30,50);
+const measurement=tick().event;
+assert.equal(measurement.action,"measure_points");
+assert.deepEqual(Array.from(measurement.points[0]),[10,20,30]);
+assert.deepEqual(Array.from(measurement.points[1]),[30,50,80]);
+assert.equal(tick().tool,"Pointer");
+assert.deepEqual([viewer.scene.view.yaw,viewer.scene.view.pitch,viewer.scene.cameraMode],cameraBefore);
+editor.command({action:"measurements",measurements:[{
+    start:{source_xyz:[10,20,30]},end:{source_xyz:[30,50,80]}}]});
+assert.equal(tick().measurement_count,1);
+const measurementGroup=viewer.scene.scene.items.find(item=>item.name==="PyForestScan measurements");
+assert.ok(measurementGroup);
+assert.deepEqual(Array.from(measurementGroup.children[0].geometry.attributes.position.values),
+    [0,0,0,20,30,50]);
+assert.deepEqual(measurementGroup.children[0].origin,[10,20,30]);
 console.log("Production editor gesture handlers passed all completion/cancel paths.");

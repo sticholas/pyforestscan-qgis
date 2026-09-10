@@ -173,6 +173,12 @@ class EditorPanel(QWidget):
         self.resize_selection_button.setMenu(resize_menu)
         self.resize_selection_button.setPopupMode(qt_enum(QToolButton, "InstantPopup", "ToolButtonPopupMode"))
         row.addWidget(self.resize_selection_button)
+        self.measurement_button = spatial_button("Measure Point-to-Point", "mActionMeasure.svg",
+            "Measure between two displayed source points without changing the camera. Both picks are re-resolved "
+            "against the immutable full-resolution source before distance values are saved.", self)
+        self.measurement_button.setCheckable(True)
+        self.measurement_button.clicked.connect(self.start_measurement)
+        row.addWidget(self.measurement_button)
         layout.addLayout(row)
         from .point_cloud_widgets import StableViewerStatus
         self.summary = StableViewerStatus("Editor: Open a local source")
@@ -262,6 +268,11 @@ class EditorPanel(QWidget):
         details_menu = QMenu(self.details_button)
         stats = details_menu.addAction("Selection Details")
         stats.triggered.connect(self.show_selection_details)
+        self.measurements_action = details_menu.addAction("Measurements")
+        self.measurements_action.triggered.connect(self.show_measurements)
+        self.clear_measurements_action = details_menu.addAction("Clear Measurements")
+        self.clear_measurements_action.triggered.connect(
+            lambda: self.send("clear_measurements"))
         self.audit_action = details_menu.addAction("Audit All Classifications")
         self.audit_action.setToolTip(
             "Explicitly scan the full original source in bounded chunks and replay staged edits to count effective classes. This can take time but never writes source points.")
@@ -411,6 +422,9 @@ class EditorPanel(QWidget):
             control.setEnabled(ready)
         self.invert.setEnabled(ready and bool(self.state.get("selection")))
         self.resize_selection_button.setEnabled(ready and bool(self.state.get("selection")))
+        self.measurement_button.setEnabled(ready)
+        self.measurements_action.setEnabled(bool(self.state.get("measurements")))
+        self.clear_measurements_action.setEnabled(ready and bool(self.state.get("measurements")))
         if hasattr(self.page, "linked"):
             self.page.linked.limits.refresh()
             self.tool.setEnabled(ready and not self.page.linked.depth_error)
@@ -581,6 +595,17 @@ class EditorPanel(QWidget):
             self.page.send({"action": "selection_tool", "tool": tool,
                             "mode": self.mode.currentText().upper(), **values})
 
+    def start_measurement(self):
+        if not self.viewer_ready or self.busy:
+            self.measurement_button.setChecked(False)
+            return
+        self.tool.blockSignals(True)
+        self.tool.setCurrentText("Pointer")
+        self.tool.blockSignals(False)
+        self.page.send({"action":"measurement_tool"})
+        self.measurement_button.setChecked(True)
+        self.summary.setText("Measurement: Click the first source point")
+
     def observe(self, telemetry):
         if self.viewer_worker is not self.page.worker:
             self.viewer_worker = self.page.worker
@@ -606,6 +631,12 @@ class EditorPanel(QWidget):
                               constraints=constraints, **values)
                 except ValueError as error:
                     self.summary.setText(str(error))
+            elif event.get("action") == "measurement_anchor":
+                self.measurement_button.setChecked(True)
+                self.summary.setText("Measurement: First source point chosen | Click the second point")
+            elif event.get("action") == "measure_points":
+                self.measurement_button.setChecked(False)
+                self.send("add_measurement", points=event.get("points"))
             elif event.get("action") in ("undo", "redo"):
                 self.send(event["action"])
             elif event.get("error"):
@@ -613,6 +644,8 @@ class EditorPanel(QWidget):
             self.tool.blockSignals(True)
             self.tool.setCurrentText("Pointer")
             self.tool.blockSignals(False)
+        self.measurement_button.setChecked(
+            telemetry.get("editor", {}).get("tool") == "MeasureDistance")
         signature = (self.state.get("overlay"), self.state.get("revision"))
         if self.viewer_ready and signature[0] and signature != self.sent_overlay:
             color = self.palette().color(qt_enum(QPalette, "Highlight", "ColorRole")).name()
@@ -641,6 +674,21 @@ class EditorPanel(QWidget):
                 lines.append(f"{key.replace('_', ' ').title()}: {selection[key]}")
         lines.append("Counts describe the frozen original-source selection, not rendered LOD or staged attributes.")
         QMessageBox.information(self, "Authoritative Selection Details", "\n".join(lines))
+
+    def show_measurements(self):
+        measurements = self.state.get("measurements") or []
+        if not measurements:
+            QMessageBox.information(self, "Measurements", "No saved measurements in this editing session.")
+            return
+        from ..core.point_cloud.measurement import measurement_summary
+        lines = []
+        for index, item in enumerate(reversed(measurements[-20:]), 1):
+            lines.append(f"{index}. {measurement_summary(item)}")
+            if item.get("unit_warning"):
+                lines.append("   " + item["unit_warning"])
+        lines.extend(("", "Anchors were resolved against original source points. "
+                      "Measurements are session metadata and do not edit the cloud."))
+        QMessageBox.information(self, "Point-to-Point Measurements", "\n".join(lines))
 
     def show_classification_audit(self):
         report = self.state.get("classification_audit")
@@ -899,6 +947,8 @@ class EditorPanel(QWidget):
             self.state["exported"] = value.get("exported") or old_export
             self.page.workspace.accept_editor_snapshot(self.state)
             linked = getattr(self.page, "linked", None)
+            if linked and hasattr(linked, "set_measurements"):
+                linked.set_measurements(value.get("measurements", []))
             if (not self.state.get("active_object") and
                     getattr(linked, "object_focus_mode", "SHOW_ALL") != "SHOW_ALL" and
                     hasattr(linked, "set_object_focus")):
@@ -964,6 +1014,12 @@ class EditorPanel(QWidget):
                 self.summary.setText(
                     f"{active.get('field')} object {active.get('object_id')} | "
                     + object_review_summary(value["current_object_review"]))
+            if completed_action == "add_measurement" and value.get("measurements"):
+                from ..core.point_cloud.measurement import measurement_summary
+                self.summary.setText("Measurement saved | " +
+                    measurement_summary(value["measurements"][-1]))
+            if completed_action == "clear_measurements":
+                self.summary.setText("Measurements cleared | Source and edit journal unchanged")
             self.page.session_status.setText(f"Session: Autosaved | {value['edits']} staged edits, not a source rewrite")
             self.history.clear()
             self.history.addItems(value.get("history", []))

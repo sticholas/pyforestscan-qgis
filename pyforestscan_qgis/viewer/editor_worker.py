@@ -124,6 +124,10 @@ def main():
                 base["next_available_object_id"] = None
                 base["allocation_exhausted"] = True
             session.visibility["object_id_policy"] = base
+        from pyforestscan_qgis.core.point_cloud.measurement import validate_measurements
+        measurements = validate_measurements(session.visibility.get("measurements"),
+                                             session.source.sha256)
+        session.visibility["measurements"] = measurements
         session.save(autosave)
         reviews = session.visibility.get("object_reviews")
         active = session.visibility.get("active_object")
@@ -166,6 +170,7 @@ def main():
               "effective_object_audit": session.visibility.get("effective_object_audit"),
               "object_reviews": reviews,
               "current_object_review": current_review,
+              "measurements": measurements,
               "active_object": session.visibility.get("active_object"),
               "object_split_source": session.visibility.get("object_split_source"),
               "object_id_policy": session.visibility.get("object_id_policy"),
@@ -600,6 +605,26 @@ def main():
                         active["field"], active["object_id"], **keyword)
                     session.save(autosave)
                     snapshot()
+                elif action == "add_measurement":
+                    from pyforestscan_qgis.core.point_cloud.measurement import (
+                        MAX_MEASUREMENTS, resolve_source_measurement, validate_measurements)
+                    current = validate_measurements(session.visibility.get("measurements"),
+                                                    session.source.sha256)
+                    if len(current) >= MAX_MEASUREMENTS:
+                        raise ValueError(f"One session supports at most {MAX_MEASUREMENTS:,} measurements.")
+                    progress("Resolving original source measurement anchors")
+                    measurement = resolve_source_measurement(session.source, point_count,
+                        command.get("points") or (), session.source_crs,
+                        pdal_module=pdal, crs_type=CRS, cancelled=cancelled.is_set,
+                        progress=lambda count: progress(
+                            "Resolving original source measurement anchors", count))
+                    session.visibility["measurements"] = [*current, measurement.to_dict()]
+                    session.save(autosave)
+                    snapshot(highlight=False)
+                elif action == "clear_measurements":
+                    session.visibility["measurements"] = []
+                    session.save(autosave)
+                    snapshot(highlight=False)
                 elif action == "save":
                     progress("Verifying and saving session")
                     session.source.verify(cancelled=cancelled.is_set)

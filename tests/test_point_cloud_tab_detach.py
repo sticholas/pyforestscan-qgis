@@ -339,6 +339,37 @@ class SelectionToolTests(unittest.TestCase):
         editor.send.assert_called_once_with("set_object_review", selection_id="exact",
                                             note="new note")
 
+    def test_measurement_control_preserves_selection_tool_and_uses_renderer_command(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        self.assertFalse(editor.measurement_button.isEnabled())
+        editor.viewer_ready = True
+        editor.state = {"ready":True}
+        editor.refresh_controls()
+        self.assertTrue(editor.measurement_button.isEnabled())
+        editor.page = SimpleNamespace(send=Mock(), linked=SimpleNamespace(depth_error=""))
+        editor.tool.blockSignals(True)
+        editor.tool.setCurrentText("Rectangle")
+        editor.tool.blockSignals(False)
+        editor.start_measurement()
+        editor.page.send.assert_called_with({"action":"measurement_tool"})
+        self.assertEqual(editor.tool.currentText(), "Pointer")
+        self.assertTrue(editor.measurement_button.isChecked())
+        self.assertTrue(editor.summary.text().startswith("Measurement:"))
+
+    def test_measurements_broadcast_once_to_all_linked_renderers(self):
+        workers = [Mock(), Mock(), Mock()]
+        owner = SimpleNamespace(
+            page=SimpleNamespace(worker=workers[0]),
+            residents=SimpleNamespace(parked={"detail":{"worker":workers[1]}}),
+            detached={"slice":SimpleNamespace(worker=workers[2])})
+        owner.viewer_workers = lambda: LinkedViews.viewer_workers(owner)
+        measurements = [{"measurement_id":"one"}]
+        LinkedViews.set_measurements(owner, measurements)
+        for worker in workers:
+            worker.send.assert_called_once_with(
+                {"action":"measurements", "measurements":measurements})
+
     def test_object_focus_broadcasts_once_to_all_linked_renderers(self):
         workers = [Mock(), Mock(), Mock()]
         page = SimpleNamespace(

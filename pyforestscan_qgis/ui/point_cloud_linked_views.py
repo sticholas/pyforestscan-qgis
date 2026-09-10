@@ -176,6 +176,11 @@ class LinkedViews(QObject):
         if persist:
             self.persist()
 
+    def set_measurements(self, measurements):
+        command = {"action":"measurements", "measurements":list(measurements or [])}
+        for worker in self.viewer_workers():
+            worker.send(command)
+
     @property
     def depth_error(self):
         for key, limits in self.depth.items():

@@ -16,6 +16,7 @@ let sphereAxis = "Z", sphereHeight = 0;
 let displaySignature = "";
 let selectionColor = new THREE.Color("#5be4eb");
 let objectFocusMode = "SHOW_ALL";
+let measurementDraft = [], measurementGroup = null;
 function sourceAttribute(geometry, name) {
     const extra = geometry._pfsOriginalDimensions && geometry._pfsOriginalDimensions[name];
     return extra ? {array:extra} : geometry.getAttribute(name) || geometry.getAttribute(name.toLowerCase());
@@ -152,6 +153,9 @@ function leaveTool() {
     rectangleBox = null;
     rectangleStart = null;
     brushPointer = null;
+    measurementDraft = [];
+    if (context && context.viewer && context.viewer.renderer)
+        context.viewer.renderer.domElement.style.cursor = "";
     viewer.inputHandler.enabled = true;
     if (savedNavigation) {
         const view = viewer.scene.view;
@@ -163,6 +167,39 @@ function leaveTool() {
     }
     gestureMode = null;
     tool = "Pointer";
+}
+function renderMeasurements(items) {
+    if (!measurementGroup) {
+        measurementGroup = new THREE.Group();
+        measurementGroup.name = "PyForestScan measurements";
+        context.viewer.scene.scene.add(measurementGroup);
+    }
+    while (measurementGroup.children.length) {
+        const child = measurementGroup.children.pop();
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+    }
+    for (const item of items || []) {
+        if (!item.start || !item.end) continue;
+        const absolute = [...item.start.source_xyz, ...item.end.source_xyz];
+        if (absolute.length !== 6 || absolute.some(value => !Number.isFinite(value))) continue;
+        // Keep Float32 geometry local so large projected coordinates do not erase
+        // sub-metre differences; Object3D carries the source-coordinate origin.
+        const values = [0, 0, 0, absolute[3]-absolute[0],
+            absolute[4]-absolute[1], absolute[5]-absolute[2]];
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(values, 3));
+        const line = new THREE.Line(geometry,
+            new THREE.LineBasicMaterial({color:0xffd166, depthTest:false, transparent:true, opacity:.95}));
+        line.position.set(absolute[0], absolute[1], absolute[2]);
+        line.renderOrder = 1100;
+        measurementGroup.add(line);
+        const markers = new THREE.Points(geometry.clone(),
+            new THREE.PointsMaterial({color:0xffd166, size:8, sizeAttenuation:false, depthTest:false}));
+        markers.position.set(absolute[0], absolute[1], absolute[2]);
+        markers.renderOrder = 1101;
+        measurementGroup.add(markers);
+    }
 }
 function sourceXY(x, y, camera) {
     const canvas = context.viewer.renderer.domElement;
@@ -245,6 +282,27 @@ function initialize(value) {
             height: Math.abs(event.offsetY - y) + "px"});
     }, true);
     canvas.addEventListener("pointerup", event => {
+        if (tool === "MeasureDistance") {
+            event.preventDefault(); event.stopImmediatePropagation();
+            if (event.button !== 0) return;
+            const hit = Potree.Utils && Potree.Utils.getMousePointCloudIntersection(
+                {x:event.offsetX,y:event.offsetY}, context.viewer.scene.getActiveCamera(),
+                context.viewer, [context.cloud]);
+            if (!hit || !hit.location) {
+                latestEvent={id:++eventNumber,error:"No displayed source point was found at that location. Try a visible point."};
+                return;
+            }
+            measurementDraft.push([hit.location.x,hit.location.y,hit.location.z]);
+            if (measurementDraft.length === 1) {
+                latestEvent={id:++eventNumber,action:"measurement_anchor",count:1};
+            } else {
+                latestEvent={id:++eventNumber,action:"measure_points",
+                    points:measurementDraft.map(value=>value.slice()),
+                    view_id:linkedView&&linkedView.view_id};
+                leaveTool();
+            }
+            return;
+        }
         if (tool === "Brush" && brushPointer === event.pointerId) {
             if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
             drawing.vertex(event.offsetX,event.offsetY);
@@ -477,6 +535,7 @@ window.pointCloudEditor = {
             view_id: linkedView && linkedView.view_id,
             highlighted_points: highlighted, effective_classes: effectiveClasses,
             object_focus_mode: objectFocus.requested, object_focus_effective: objectFocus.effective,
+            measurement_count: measurementGroup ? measurementGroup.children.length/2 : 0,
             source_buffers_unchanged: Array.from(records.values()).every(r => r.sourceUnchanged !== false),
             overlay_diagnostics: Array.from(records.values()).slice(0, 3).map(r => ({
                 node: r.node.name, edits: (r.edits || []).length,
@@ -487,6 +546,19 @@ window.pointCloudEditor = {
     command(command) {
         if (command.action === "linked_view") linkedView = command.view || null;
         if (!context) return;
+        if (command.action === "measurement_tool") {
+            leaveTool();
+            drawing.cancel();
+            tool = "MeasureDistance";
+            measurementDraft = [];
+            context.viewer.inputHandler.enabled = false;
+            context.viewer.renderer.domElement.style.cursor = "crosshair";
+            return;
+        }
+        if (command.action === "measurements") {
+            renderMeasurements(command.measurements || []);
+            return;
+        }
         if (command.action === "selection_tool") {
             if (!["Pointer", "Polygon", "Rectangle", "Box", "Circle", "Sphere", "Brush", "Line", "AboveLine", "BelowLine"].includes(command.tool)) return;
             if (command.mode && !["REPLACE", "ADD", "SUBTRACT"].includes(command.mode)) return;
