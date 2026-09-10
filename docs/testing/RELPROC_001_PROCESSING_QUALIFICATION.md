@@ -77,6 +77,7 @@ Shared product parameters include input LAS/LAZ/COPC/EPT path, CRS, output path,
 - Real polygon mask: PASS. An EPSG:32605 inset polygon was applied to a real CHM raster through `BackendRasterMaskService`, cropped successfully, and outside cells were assigned nodata -9999.
 - Failure injection: PASS. A 145,997-point fixture with ground classifications removed returned the actionable no-ground DTM error through QGIS/PBM without publishing a false output.
 - Cancellation/ownership/failure isolation matrix: 45 passed, including queued-file cancellation, owned-process termination, preparation cancellation, retry/backoff, circuit breaking, and partial-success truthfulness.
+- Clean-profile staging ZIP: PASS. Package/source verification and the full release validator passed; installation into an isolated QGIS profile reported `PLUGIN_VALID` with no missing, extra, or differing critical modules; Mission Control passed its 100/100 lifecycle smoke from the installed package; all 14 provider algorithms loaded from that package.
 - QGIS 4.0.0: BLOCKED by the equivalent QtCore DLL failure and is not a supported processing target for this release.
 
-Clean-profile package installation, import, and Mission Control startup remain the final gate before the product ZIP is published.
+All RELPROC-001 packaging gates are satisfied for the recorded commit. Publish only the distinct `pyforestscan_qgis-v0.2.0-beta.2.zip` artifact; do not overwrite the historical beta.1 package or write to the shared-drive `Y:` path.
