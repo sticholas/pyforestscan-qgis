@@ -74,9 +74,12 @@ class DetachedView(QDialog):
         layout.setContentsMargins(8,8,8,8)
         row = QHBoxLayout()
         self.action_buttons = {}
-        for text, action in (("Fit","fit"),("Undo","undo"),("Redo","redo")):
+        for text, action in (("Fit","fit"),("Undo","undo"),("Redo","redo"),("Invert","invert")):
             button = QToolButton()
             button.setText(text)
+            if action == "invert":
+                button.setToolTip("Select every original source point not currently selected. Runs a cancellable full-source query.")
+                button.setAccessibleName("Invert Selection")
             button.clicked.connect(lambda _=False,a=action:self.action(a))
             row.addWidget(button)
             self.action_buttons[action] = button
@@ -174,9 +177,10 @@ class DetachedView(QDialog):
             (editor.state.get("selection") or {}).get("resolved_point_count")))
         self.action_buttons["undo"].setEnabled(ready and bool(editor.state.get("can_undo")))
         self.action_buttons["redo"].setEnabled(ready and bool(editor.state.get("can_redo")))
+        self.action_buttons["invert"].setEnabled(ready and bool(editor.state.get("selection")))
 
     def action(self, action):
-        if action in ("undo","redo"):
+        if action in ("undo","redo","invert"):
             self.controller.page.editor.send(action)
         else:
             self.send({"action":action})

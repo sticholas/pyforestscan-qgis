@@ -113,6 +113,7 @@ function matches(definitions, xyz, classification, geometry, index) {
         if (item.selection_mode === "REPLACE") selected = hit;
         else if (item.selection_mode === "ADD") selected = selected || hit;
         else selected = selected && !hit;
+        if (item.invert_result) selected = !selected;
     }
     return selected;
 }
@@ -505,7 +506,7 @@ window.pointCloudEditor = {
         }
         if (command.action === "selection_test") publish(command.geometry,
             Object.fromEntries(["circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
-                "sphere_center", "sphere_radius", "sphere_axis"].filter(key => key in command)
+                "sphere_center", "sphere_radius", "sphere_axis", "invert_result"].filter(key => key in command)
                 .map(key => [key, command[key]])));
         if (command.action === "editor_overlay") {
             if (/^#[0-9a-f]{6}$/i.test(command.selection_color || "")) selectionColor.set(command.selection_color);

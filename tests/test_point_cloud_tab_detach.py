@@ -24,7 +24,7 @@ class TabDetachTests(unittest.TestCase):
             "can_undo": True, "can_redo": True, "selection": {"resolved_point_count": 8}})
         window = SimpleNamespace(controller=SimpleNamespace(page=SimpleNamespace(editor=editor), depth_error=""),
             tool=Mock(), selection_mode=Mock(), classify_button=Mock(),
-            action_buttons={"undo": Mock(), "redo": Mock()})
+            action_buttons={"undo": Mock(), "redo": Mock(), "invert": Mock()})
         DetachedView.refresh_edit_controls(window)
         for button in (window.tool, window.selection_mode, window.classify_button,
                        *window.action_buttons.values()):
@@ -35,11 +35,12 @@ class TabDetachTests(unittest.TestCase):
             "can_undo": True, "can_redo": False, "selection": {"resolved_point_count": 8}})
         window = SimpleNamespace(controller=SimpleNamespace(page=SimpleNamespace(editor=editor), depth_error=""),
             tool=Mock(), selection_mode=Mock(), classify_button=Mock(),
-            action_buttons={"undo": Mock(), "redo": Mock()})
+            action_buttons={"undo": Mock(), "redo": Mock(), "invert": Mock()})
         DetachedView.refresh_edit_controls(window)
         window.classify_button.setEnabled.assert_called_with(True)
         window.action_buttons["undo"].setEnabled.assert_called_with(True)
         window.action_buttons["redo"].setEnabled.assert_called_with(False)
+        window.action_buttons["invert"].setEnabled.assert_called_with(True)
         editor.busy = True
         DetachedView.refresh_edit_controls(window)
         window.tool.setEnabled.assert_called_with(False)

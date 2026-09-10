@@ -138,7 +138,7 @@ class EditorPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
         row = QHBoxLayout()
-        from .point_cloud_tools import SelectionTools
+        from .point_cloud_tools import SelectionTools, spatial_button
         self.tool = SelectionTools(self)
         self.mode = QComboBox()
         self.mode.addItems(("Replace", "Add", "Subtract"))
@@ -154,6 +154,10 @@ class EditorPanel(QWidget):
         self.clear = self.button("Clear Selection", "SP_DialogResetButton", lambda: self.send("clear"),
                                  "Clear only the current selection. Staged edits and history remain.")
         row.addWidget(self.clear)
+        self.invert = spatial_button("Invert Selection", "mActionInvertSelection.svg",
+            "Invert Selection: select every original source point not currently selected. This runs a full-source background query and may be large; the existing selection remains if cancelled.", self)
+        self.invert.clicked.connect(lambda: self.send("invert"))
+        row.addWidget(self.invert)
         layout.addLayout(row)
         from .point_cloud_widgets import StableViewerStatus
         self.summary = StableViewerStatus("Editor: Open a local source")
@@ -249,6 +253,7 @@ class EditorPanel(QWidget):
         ready = bool(self.state.get("ready")) and not self.busy and self.viewer_ready
         for control in (self.tool, self.mode, self.clear):
             control.setEnabled(ready)
+        self.invert.setEnabled(ready and bool(self.state.get("selection")))
         if hasattr(self.page, "linked"):
             self.page.linked.limits.refresh()
             self.tool.setEnabled(ready and not self.page.linked.depth_error)
@@ -414,7 +419,8 @@ class EditorPanel(QWidget):
             stage = str(value["progress"])
             count = value.get("count", 0)
             selection_progress = stage in ("Resolving original source points",
-                                           "Restoring original source selection")
+                                           "Restoring original source selection",
+                                           "Resolving inverted original-source selection")
             suffix = (f" | {count:,} source points checked" if count and selection_progress
                       else f" | {count:,}" if count else "")
             self.summary.setText(stage + suffix)
@@ -455,7 +461,8 @@ class EditorPanel(QWidget):
             self.cancel_requested = False
         if value.get("error"):
             self.page.send({"action": "selection_resolution", "error": str(value["error"])})
-            suffix = " Previous authoritative selection retained." if self.pending_action == "select" else ""
+            suffix = (" Previous authoritative selection retained."
+                      if self.pending_action in ("select", "invert") else "")
             self.summary.setText(value["error"] + suffix)
             self.sent_overlay = None
             self.busy = False

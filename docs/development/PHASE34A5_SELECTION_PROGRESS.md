@@ -91,6 +91,13 @@ human interaction, long-run/resource, and source-format gates remain open.
   emits the same sphere fields already used by the resolver, renderer overlay,
   journal replay and export; camera depth and rendered point identity remain
   irrelevant.
+- Added direct Invert Selection in docked and detached editors. Inversion is an
+  explicit replayed property of the current selection step, so later Add and
+  Subtract operations retain deterministic boolean order. The resolver scans
+  the complete original source for inverted LAS, LAZ and COPC selections rather
+  than negating a query envelope or visible LOD. It remains cancellable in the
+  managed background, reuses large-selection review/confirmation, and leaves
+  the previous authoritative selection intact on failure or cancellation.
 
 ## MEASURED EVIDENCE
 
@@ -213,6 +220,14 @@ at center (215250, 2114750, HAG 10), radius 5, with exact independent predicate
 agreement and unchanged source SHA256. Human placement acceptance and the full
 QGIS export canary remain open while viewer runtime slots are occupied.
 
+An all-record Invert qualification negated the 1,139-point HAG-bounded Box on
+the immutable 2,287,408-point LAZ. The resolver selected the exact complement,
+2,286,269 points, in 0.500 seconds. Counts and classes matched an independent
+NumPy predicate; ordinary and inverted partitions summed to the source header
+count, and SHA256 remained unchanged. This proves local-LAZ semantics, not
+large COPC performance; inverted COPC intentionally uses a complete source
+reader and still requires massive-source qualification.
+
 ## IN PROGRESS
 
 Circle/cylinder selection is exposed but remains experimental pending human
@@ -230,6 +245,8 @@ guessed vertical center cannot become sphere authority.
 Box Select is exposed with explicit depth semantics and automated contract and
 real-source evidence. Human drawing acceptance and a full QGIS export canary
 remain open.
+Invert Selection is exposed with exact local-LAZ evidence. Large COPC latency,
+human feedback and full export-canary coverage remain open.
 
 ## NEXT
 
@@ -239,6 +256,8 @@ remain open.
    point source or another representative massive local cloud.
 3. Complete human Box and Sphere drawing acceptance and their full linked-view/
    export canary after viewer runtime capacity is available.
+4. Qualify Invert on a representative large COPC and confirm large-selection
+   review/cancellation behavior in the live editor.
 
 ## BLOCKED
 

@@ -30,6 +30,16 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(definition.geometry[1], (2, 0))
         self.assertEqual(definition.classification_filter, (2,))
 
+    def test_inversion_is_explicit_and_forces_complete_copc_reader(self):
+        inverted = replace(self.definition, invert_result=True)
+        self.assertNotIn("bounds", reader_spec(self.source, [inverted]))
+        subtract_inverted = replace(self.definition, selection_id="subtract", selection_mode="SUBTRACT",
+                                      invert_result=True)
+        self.assertEqual(len(reader_specs(self.source, [self.definition, subtract_inverted])), 1)
+        self.assertNotIn("bounds", reader_specs(self.source, [self.definition, subtract_inverted])[0])
+        with self.assertRaisesRegex(ValueError, "boolean"):
+            replace(self.definition, invert_result=1)
+
     def test_lod_and_ept_identity_rejected(self):
         for field, value in (("addressing", "LOD_SAMPLE"), ("source_type", "EPT")):
             with self.assertRaises(ValueError):
@@ -110,6 +120,11 @@ class SelectionTests(unittest.TestCase):
             self.assertEqual(result.classification_counts, ((2, 2), (5, 1)))
             self.assertEqual(result.z_max, 4)
             self.assertEqual(progress, [2, 4])
+            inverted = replace(self.definition, invert_result=True)
+            self.assertEqual(resolver.resolve([inverted]).resolved_point_count, 1)
+            added_after_invert = replace(self.definition, selection_id="after", selection_mode="ADD",
+                                         classification_filter=(2,))
+            self.assertEqual(resolver.resolve([inverted, added_after_invert]).resolved_point_count, 3)
             added = replace(self.definition, selection_id="b", selection_mode="ADD")
             self.assertEqual(resolver.resolve([self.definition, added]).resolved_point_count, 3)
             with patch.object(Pipeline, "iterator", lambda self, **kwargs: iter((np.concatenate((points, points)),))):

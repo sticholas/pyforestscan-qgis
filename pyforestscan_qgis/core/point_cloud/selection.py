@@ -56,6 +56,7 @@ class SelectionDefinition:
     sphere_center: tuple[float, float, float] | None = None
     sphere_radius: float | None = None
     sphere_axis: str = "Z"
+    invert_result: bool = False
 
     def __post_init__(self):
         if not self.selection_id or not self.session_id or not self.geometry_crs.strip():
@@ -68,6 +69,8 @@ class SelectionDefinition:
             raise ValueError("Rendered LOD indices are not authoritative selection addresses.")
         if self.selection_mode not in ("REPLACE", "ADD", "SUBTRACT"):
             raise ValueError("Unsupported selection mode.")
+        if type(self.invert_result) is not bool:
+            raise ValueError("Selection inversion must be explicit boolean state.")
         ring = tuple(tuple(point) for point in self.geometry)
         if not 4 <= len(ring) <= 4097 or ring[0] != ring[-1]:
             raise ValueError("Selection polygon must be closed with 3-4096 vertices.")
@@ -197,7 +200,7 @@ def reader_spec(source, definitions):
         raise ValueError("Selection does not belong to this original source.")
     reader = {"type": "readers.copc" if source.source_type == "COPC" else "readers.las",
               "filename": source.path}
-    if source.source_type == "COPC":
+    if source.source_type == "COPC" and not any(item.invert_result for item in items):
         points = [p for item in items if item.selection_mode != "SUBTRACT" for p in item.geometry]
         xmin, xmax = min(p[0] for p in points), max(p[0] for p in points)
         ymin, ymax = min(p[1] for p in points), max(p[1] for p in points)
@@ -210,7 +213,7 @@ def reader_spec(source, definitions):
 def reader_specs(source, definitions):
     """Separate positive regions avoid reading the empty space between lassos."""
     items = validate_sequence(definitions)
-    if source.source_type != "COPC":
+    if source.source_type != "COPC" or any(item.invert_result for item in items):
         return (reader_spec(source, items),)
     return tuple(reader_spec(source, (replace(item, selection_mode="REPLACE"),))
                  for item in items if item.selection_mode != "SUBTRACT")
@@ -305,6 +308,8 @@ def selection_mask(chunk, definitions, shapes=None, *, cancelled=lambda: False):
             selected |= mask
         else:
             selected &= ~mask
+        if item.invert_result:
+            selected = ~selected
     return selected
 
 
@@ -459,7 +464,7 @@ class SelectionResolver:
         bounds = None
         counts = {}
         hag_min = hag_max = None
-        if self.index is not None:
+        if self.index is not None and not any(item.invert_result for item in items):
             self.index.ensure(cancelled=cancelled, progress=progress)
             envelopes = [(min(p[0] for p in item.geometry), min(p[1] for p in item.geometry),
                           max(p[0] for p in item.geometry), max(p[1] for p in item.geometry))

@@ -1,7 +1,7 @@
 """Managed editor process: one source/session, durable journal, value-only IPC."""
 from __future__ import annotations
 import argparse
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import json
 import os
 from pathlib import Path
@@ -22,7 +22,7 @@ def visual_definition(item):
         "classification_filter", "attribute_filters", "view_id", "view_name", "clip_geometry",
         "profile_a", "profile_b", "profile_thickness", "profile_geometry", "profile_axis",
         "depth_mode", "circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
-        "sphere_center", "sphere_radius", "sphere_axis")}
+        "sphere_center", "sphere_radius", "sphere_axis", "invert_result")}
 
 
 def main():
@@ -248,6 +248,16 @@ def main():
                     snapshot()
                 elif action == "clear":
                     definitions, result = (), None
+                    snapshot()
+                elif action == "invert":
+                    if not definitions:
+                        raise ValueError("Resolve a source selection before inverting it.")
+                    pending = (*definitions[:-1], replace(definitions[-1],
+                        invert_result=not definitions[-1].invert_result))
+                    progress("Resolving inverted original-source selection")
+                    resolved = resolver.resolve(pending, cancelled=cancelled.is_set,
+                        progress=lambda count: progress("Resolving inverted original-source selection", count))
+                    definitions, result = pending, resolved
                     snapshot()
                 elif action == "stage":
                     resolver._check_source()

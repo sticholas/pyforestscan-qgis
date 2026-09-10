@@ -23,6 +23,7 @@ def main():
                         metavar=("XMIN", "YMIN", "XMAX", "YMAX"))
     parser.add_argument("--height-range", nargs=2, type=float, metavar=("MIN", "MAX"))
     parser.add_argument("--height-axis", choices=("Z", "HeightAboveGround"), default="Z")
+    parser.add_argument("--invert", action="store_true")
     args = parser.parse_args()
     sphere = args.sphere_center is not None or args.sphere_radius is not None
     box = args.box_bounds is not None or args.height_range is not None
@@ -84,6 +85,8 @@ def main():
             key = "hag_filter" if args.height_axis == "HeightAboveGround" else "z_filter"
             definition = replace(definition, **{key: tuple(args.height_range),
                 "depth_mode": "CUSTOM_DEPTH_RANGE"})
+        if args.invert:
+            definition = replace(definition, invert_result=True)
         resolver = SelectionResolver(source)
         result = resolver.resolve([definition])
         report["result"] = asdict(result)
@@ -98,6 +101,8 @@ def main():
             mask = (((points["X"]-cx)/args.sphere_radius)**2 +
                     ((points["Y"]-cy)/args.sphere_radius)**2 +
                     ((points[args.sphere_axis]-cz)/args.sphere_radius)**2 <= 1)
+            if args.invert:
+                mask = ~mask
             expected = int(mask.sum())
             codes, counts = np.unique(points["Classification"][mask], return_counts=True)
             report["classification_reference_passed"] = result.classification_counts == tuple(
@@ -116,6 +121,8 @@ def main():
             mask = ((points["X"] >= xmin_box) & (points["X"] <= xmax_box) &
                     (points["Y"] >= ymin_box) & (points["Y"] <= ymax_box) &
                     (points[args.height_axis] >= low) & (points[args.height_axis] <= high))
+            if args.invert:
+                mask = ~mask
             expected = int(mask.sum())
             codes, counts = np.unique(points["Classification"][mask], return_counts=True)
             report["classification_reference_passed"] = result.classification_counts == tuple(
@@ -128,6 +135,8 @@ def main():
             wkt = "POLYGON ((" + ", ".join(f"{px} {py}" for px, py in ring) + "))"
             reference = pdal.Pipeline(json.dumps([report["reader"], {"type": "filters.crop", "polygon": wkt}]))
             expected = reference.execute_streaming(65_536)
+            if args.invert:
+                expected = int(meta["num_points"]) - expected
             report["reference_kind"] = "bounded full-resolution PDAL crop"
         else:
             reference = pdal.Pipeline(json.dumps([read]))
@@ -136,21 +145,31 @@ def main():
             # Independent triangle inequality; no Shapely and no preview inputs.
             mask = ((points["X"] >= x) & (points["Y"] >= y) &
                     ((points["X"] - x) + (points["Y"] - y) <= width))
+            if args.invert:
+                mask = ~mask
             expected = int(mask.sum())
             codes, counts = np.unique(points["Classification"][mask], return_counts=True)
             report["classification_reference_passed"] = result.classification_counts == tuple(
                 (int(c), int(n)) for c, n in zip(codes, counts))
             report["reference_kind"] = "all original fixture points, independent triangle predicate"
         report["expected_count"] = expected
-        added = replace(definition, selection_id="add", selection_mode="ADD")
-        report["add_no_double_count"] = resolver.resolve([definition, added]).resolved_point_count == result.resolved_point_count
-        subtract = replace(definition, selection_id="subtract", selection_mode="SUBTRACT")
-        report["subtract_all_empty"] = resolver.resolve([definition, subtract]).resolved_point_count == 0
+        report["inverted"] = args.invert
+        if args.invert:
+            ordinary = replace(definition, selection_id="ordinary", invert_result=False)
+            ordinary_count = resolver.resolve([ordinary]).resolved_point_count
+            report["inverse_partition_complete"] = (
+                ordinary_count + result.resolved_point_count == int(meta["num_points"]))
+        else:
+            added = replace(definition, selection_id="add", selection_mode="ADD")
+            report["add_no_double_count"] = resolver.resolve([definition, added]).resolved_point_count == result.resolved_point_count
+            subtract = replace(definition, selection_id="subtract", selection_mode="SUBTRACT")
+            report["subtract_all_empty"] = resolver.resolve([definition, subtract]).resolved_point_count == 0
         source.verify()
         report["source_unchanged"] = True
+        mode_checks = (report.get("inverse_partition_complete", False) if args.invert else
+                       report["add_no_double_count"] and report["subtract_all_empty"])
         report["passed"] = (result.resolved_point_count == expected and expected > 0 and
-                            report.get("classification_reference_passed", True) and
-                            report["add_no_double_count"] and report["subtract_all_empty"])
+                            report.get("classification_reference_passed", True) and mode_checks)
     except Exception as error:
         report["error"] = f"{type(error).__name__}: {error}"
     args.output_dir.mkdir(parents=True, exist_ok=True)

@@ -265,7 +265,7 @@ class PointCloudWorkspaceModel:
     def command(self, view_id, action, **values):
         if view_id not in self._views or not self._sink:
             raise ValueError("An attached editor and view are required.")
-        if action not in ("select", "clear", "stage", "undo", "redo", "export", "save", "cancel"):
+        if action not in ("select", "clear", "stage", "undo", "redo", "invert", "export", "save", "cancel"):
             raise ValueError("Unsupported workspace editor command.")
         if self._views[view_id].view_type != ViewType.OVERVIEW_3D and action == "select":
             raise NotImplementedError("Linked selection adapters are not qualified; rendered point indices are never edit addresses.")
