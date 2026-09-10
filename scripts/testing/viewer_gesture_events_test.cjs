@@ -127,6 +127,13 @@ canvas.emit("pointerdown",{offsetX:100,offsetY:100});
 assert.match(tick().event.error,/Overview and Area Detail/);
 assert.equal(tick().tool,"Pointer");
 editor.command({action:"linked_view",view:null});
+editor.command({action:"selection_test",
+    geometry:[[8,18],[12,18],[12,22],[8,22],[8,18]],
+    sphere_center:[10,20,30],sphere_radius:2,sphere_axis:"Z"});
+const sphere=tick().event;
+assert.deepEqual(Array.from(sphere.sphere_center),[10,20,30]);
+assert.equal(sphere.sphere_radius,2);
+assert.equal(sphere.sphere_axis,"Z");
 arm();editor.command({action:"selection_tool",tool:"Pointer"});
 for(let i=0;i<2;i++){ const callbacks=queue.splice(0);callbacks.forEach(fn=>fn()); }
 assert.equal(tick().tool,"Pointer");

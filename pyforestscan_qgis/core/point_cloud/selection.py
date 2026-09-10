@@ -52,6 +52,9 @@ class SelectionDefinition:
     circle_radius: float | None = None
     brush_path: tuple[tuple[float, float], ...] | None = None
     brush_radius: float | None = None
+    sphere_center: tuple[float, float, float] | None = None
+    sphere_radius: float | None = None
+    sphere_axis: str = "Z"
 
     def __post_init__(self):
         if not self.selection_id or not self.session_id or not self.geometry_crs.strip():
@@ -70,9 +73,13 @@ class SelectionDefinition:
         if any(len(p) != 2 or any(type(v) not in (int, float) or not math.isfinite(v) for v in p) for p in ring):
             raise ValueError("Selection requires finite source XY coordinates.")
         object.__setattr__(self, "geometry", ring)
-        if ((self.circle_center is not None or self.circle_radius is not None)
-                and (self.brush_path is not None or self.brush_radius is not None)):
-            raise ValueError("Selection cannot be both a circle and a brush stroke.")
+        if self.sphere_axis not in ("Z", "HeightAboveGround"):
+            raise ValueError("Sphere height axis must be Z or HeightAboveGround.")
+        primitives = sum((self.circle_center is not None or self.circle_radius is not None,
+                          self.brush_path is not None or self.brush_radius is not None,
+                          self.sphere_center is not None or self.sphere_radius is not None))
+        if primitives > 1:
+            raise ValueError("Selection cannot contain competing spatial primitives.")
         if self.circle_center is not None or self.circle_radius is not None:
             center, radius = self.circle_center, self.circle_radius
             if (center is None or len(center) != 2
@@ -97,6 +104,16 @@ class SelectionDefinition:
             if ring != brush_envelope(path, radius):
                 raise ValueError("Brush query envelope must match its exact source-space bounds.")
             object.__setattr__(self, "brush_path", path)
+        if self.sphere_center is not None or self.sphere_radius is not None:
+            center, radius = self.sphere_center, self.sphere_radius
+            if (center is None or len(center) != 3
+                    or any(type(v) not in (int, float) or not math.isfinite(v) for v in center)
+                    or type(radius) not in (int, float) or not math.isfinite(radius) or radius <= 0):
+                raise ValueError("Sphere requires finite source XYZ/HAG center, positive radius and height axis.")
+            center = tuple(center)
+            if ring != circle_envelope(center[:2], radius):
+                raise ValueError("Sphere query envelope must match its exact source-XY bounds.")
+            object.__setattr__(self, "sphere_center", center)
         object.__setattr__(self, "z_filter", _range(self.z_filter, "Z"))
         object.__setattr__(self, "hag_filter", _range(self.hag_filter, "HAG"))
         if self.classification_filter is not None:
@@ -112,10 +129,12 @@ class SelectionDefinition:
                 raise ValueError("Use the explicit geometry/class/height filter.")
             _range(item[1:], item[0])
         object.__setattr__(self, "attribute_filters", filters)
-        if self.depth_mode not in ("FULL_COLUMN", "CUSTOM_DEPTH_RANGE", "SLICE_CORRIDOR"):
+        if self.depth_mode not in ("FULL_COLUMN", "CUSTOM_DEPTH_RANGE", "SLICE_CORRIDOR", "SPHERE_VOLUME"):
             raise ValueError("Selection depth must be explicit; visible-depth occlusion is not supported.")
         if self.depth_mode == "CUSTOM_DEPTH_RANGE" and self.z_filter is None and self.hag_filter is None:
             raise ValueError("Custom depth requires an explicit Z or HAG range.")
+        if (self.depth_mode == "SPHERE_VOLUME") != (self.sphere_center is not None):
+            raise ValueError("Sphere selection requires explicit sphere-volume depth semantics.")
         for name in ("clip_geometry", "profile_geometry"):
             value = getattr(self, name)
             if value is not None:
@@ -237,6 +256,13 @@ def selection_mask(chunk, definitions, shapes=None):
                              (chunk["Y"] - cy) / item.circle_radius) <= 1.0
         if item.brush_path is not None:
             mask &= _brush_mask(chunk, item.brush_path, item.brush_radius, np)
+        if item.sphere_center is not None:
+            if item.sphere_axis not in names:
+                raise ValueError(f"Source does not contain {item.sphere_axis}.")
+            cx, cy, cz = item.sphere_center
+            mask &= (((chunk["X"]-cx)/item.sphere_radius)**2 +
+                     ((chunk["Y"]-cy)/item.sphere_radius)**2 +
+                     ((chunk[item.sphere_axis]-cz)/item.sphere_radius)**2 <= 1.0)
         if item.clip_geometry is not None:
             clip = shapely.Polygon(item.clip_geometry)
             if not clip.is_valid or clip.is_empty or clip.area <= 0:
@@ -320,6 +346,18 @@ def brush_selection(definition, *, path, radius):
     points = tuple(tuple(point) for point in path)
     return replace(definition, geometry=brush_envelope(points, radius),
                    brush_path=points, brush_radius=radius)
+
+
+def spherical_selection(definition, *, center, radius, axis="Z"):
+    """Return one exact Euclidean source-XYZ or HAG-relative sphere."""
+    if (len(center) != 3
+            or any(type(v) not in (int, float) or not math.isfinite(v) for v in center)
+            or type(radius) not in (int, float) or not math.isfinite(radius) or radius <= 0
+            or axis not in ("Z", "HeightAboveGround")):
+        raise ValueError("Sphere requires finite source XYZ/HAG center, positive radius and height axis.")
+    return replace(definition, geometry=circle_envelope(center[:2], radius),
+                   sphere_center=tuple(center), sphere_radius=radius,
+                   sphere_axis=axis, depth_mode="SPHERE_VOLUME")
 
 
 def _brush_mask(chunk, path, radius, np):

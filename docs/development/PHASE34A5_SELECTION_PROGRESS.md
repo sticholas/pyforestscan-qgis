@@ -46,6 +46,16 @@ human interaction, long-run/resource, and source-format gates remain open.
   session restoration, export, and Process handoff retain the same path/radius.
 - Linked-tab drag-out now requires vertical movement outside the tab strip, so
   reordering wide tabs cannot accidentally detach a view.
+- Added one optional exact sphere primitive to the same SelectionDefinition.
+  Its center is source X/Y/Z or source X/Y/HeightAboveGround, its radius is in
+  the corresponding source units, and its depth mode is explicitly
+  SPHERE_VOLUME. The XY circle is only a conservative indexed-query envelope;
+  authoritative membership is the inclusive three-dimensional Euclidean test.
+- Sphere fields survive serialization, renderer projection, docked/detached
+  event transport, journal replay and export. Circle, Brush and Sphere remain
+  mutually exclusive primitives. Missing stored HAG, invalid axis, incomplete
+  center/radius, mismatched envelope, or implicit depth semantics fail closed.
+  No Sphere button is exposed before a professional 3D placement gesture exists.
 
 ## MEASURED EVIDENCE
 
@@ -121,6 +131,16 @@ e133d44d4a4c37234988a470be5c92e4de89442b86adf89ab563cf10520a4b0e.
 These canaries exercise the production event protocol but do not replace human
 freehand drawing acceptance or establish massive-cloud Brush latency.
 
+A read-only managed-runtime sphere qualification used center
+(215250, 2114750, HAG 10) and radius 5 on the 2,287,408-point HAG LAZ. The
+production resolver selected 138 original class-5 records in 0.531 seconds,
+exactly matching an independent predicate over every source record. Add without
+double-counting and Subtract-to-empty passed. Source SHA256 remained
+0c688c22d42b0240c6cba19973087ee59606721289872a3f8237253548db34bb.
+Thirty-two managed geometry tests now pass across Circle, Brush and Sphere;
+Sphere coverage includes source-Z boundaries, HAG membership, envelope-corner
+exclusion, filters, modes, missing dimensions, serialization and journal replay.
+
 ## IN PROGRESS
 
 Circle/cylinder selection is exposed but remains experimental pending human
@@ -131,6 +151,9 @@ Brush is exposed and end-to-end automated evidence passes, but human freehand
 acceptance, measured long-stroke simplification, cancellation responsiveness,
 background progress, and large-selection impact feedback remain required before
 user release.
+Sphere membership and transport are implemented but deliberately have no user
+gesture yet. A renderer sample, camera depth, or guessed vertical center cannot
+become sphere authority.
 
 ## NEXT
 
@@ -138,7 +161,8 @@ user release.
    including Add/Subtract and the active height limits.
 2. Human Brush acceptance plus measured path simplification, background
    progress, cancellation responsiveness, and selection-impact feedback.
-3. Sphere/volume contracts and large-source selector evidence.
+3. Design and qualify an explicit 3D sphere/volume placement gesture, then add
+   a compact direct action without camera-depth or rendered-point authority.
 
 ## BLOCKED
 

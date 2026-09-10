@@ -51,7 +51,8 @@ class CircleContractTests(unittest.TestCase):
         self.assertEqual(set(visual), {"geometry", "selection_mode", "z_filter", "hag_filter",
             "classification_filter", "attribute_filters", "view_id", "view_name", "clip_geometry",
             "profile_a", "profile_b", "profile_thickness", "profile_geometry", "profile_axis",
-            "depth_mode", "circle_center", "circle_radius", "brush_path", "brush_radius"})
+            "depth_mode", "circle_center", "circle_radius", "brush_path", "brush_radius",
+            "sphere_center", "sphere_radius", "sphere_axis"})
 
 
 @unittest.skipUnless(importlib.util.find_spec("numpy") and importlib.util.find_spec("shapely"),

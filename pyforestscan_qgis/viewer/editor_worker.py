@@ -21,7 +21,8 @@ def visual_definition(item):
     return {key: raw[key] for key in ("geometry", "selection_mode", "z_filter", "hag_filter",
         "classification_filter", "attribute_filters", "view_id", "view_name", "clip_geometry",
         "profile_a", "profile_b", "profile_thickness", "profile_geometry", "profile_axis",
-        "depth_mode", "circle_center", "circle_radius", "brush_path", "brush_radius")}
+        "depth_mode", "circle_center", "circle_radius", "brush_path", "brush_radius",
+        "sphere_center", "sphere_radius", "sphere_axis")}
 
 
 def main():
@@ -228,6 +229,12 @@ def main():
                             raise ValueError("Selection has competing spatial primitives.")
                         primitive = {"brush_path": command.get("brush_path"),
                                      "brush_radius": command.get("brush_radius")}
+                    if "sphere_center" in command or "sphere_radius" in command:
+                        if primitive:
+                            raise ValueError("Selection has competing spatial primitives.")
+                        primitive = {"sphere_center": command.get("sphere_center"),
+                                     "sphere_radius": command.get("sphere_radius"),
+                                     "sphere_axis": command.get("sphere_axis", "Z")}
                     item = SelectionDefinition(uuid4().hex, session.session_id, session.source.sha256,
                         session.source.source_type, command["geometry"], session.source_crs,
                         selection_mode=mode, **constraints, **primitive)

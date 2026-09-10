@@ -60,6 +60,16 @@ function insideBrush(item, xyz) {
     }
     return false;
 }
+function insideSphere(item, xyz, geometry, index) {
+    if (!item.sphere_center || !item.sphere_radius) return true;
+    const attribute = item.sphere_axis === "HeightAboveGround" ?
+        sourceAttribute(geometry, "HeightAboveGround") : null;
+    const height = item.sphere_axis === "HeightAboveGround" ?
+        (attribute ? attribute.array[index] : NaN) : xyz.z;
+    const [x,y,z] = item.sphere_center, radius = item.sphere_radius;
+    return Number.isFinite(height) &&
+        ((xyz.x-x)/radius)**2 + ((xyz.y-y)/radius)**2 + ((height-z)/radius)**2 <= 1;
+}
 function matches(definitions, xyz, classification, geometry, index) {
     let selected = false;
     for (const item of definitions) {
@@ -68,6 +78,8 @@ function matches(definitions, xyz, classification, geometry, index) {
         if (hit && item.circle_center && item.circle_radius)
             hit = Math.hypot(xyz.x-item.circle_center[0], xyz.y-item.circle_center[1]) <= item.circle_radius;
         if (hit && item.brush_path && item.brush_radius) hit = insideBrush(item, xyz);
+        if (hit && item.sphere_center && item.sphere_radius)
+            hit = insideSphere(item, xyz, geometry, index);
         if (hit && item.clip_geometry_triangles)
             hit = item.clip_geometry_triangles.some(triangle => triangle.containsPoint(flat));
         if (hit && item.profile_a) {
@@ -480,7 +492,8 @@ window.pointCloudEditor = {
             else drawing.resolved();
         }
         if (command.action === "selection_test") publish(command.geometry,
-            Object.fromEntries(["circle_center", "circle_radius", "brush_path", "brush_radius"].filter(key => key in command)
+            Object.fromEntries(["circle_center", "circle_radius", "brush_path", "brush_radius",
+                "sphere_center", "sphere_radius", "sphere_axis"].filter(key => key in command)
                 .map(key => [key, command[key]])));
         if (command.action === "editor_overlay") {
             if (/^#[0-9a-f]{6}$/i.test(command.selection_color || "")) selectionColor.set(command.selection_color);

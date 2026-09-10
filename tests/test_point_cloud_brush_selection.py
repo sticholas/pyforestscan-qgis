@@ -32,7 +32,7 @@ class BrushContractTests(unittest.TestCase):
                 brush_selection(self.base, path=path, radius=radius)
         circle = replace(self.base, geometry=((-1,-1),(1,-1),(1,1),(-1,1),(-1,-1)),
                          circle_center=(0,0), circle_radius=1)
-        with self.assertRaisesRegex(ValueError, "both"):
+        with self.assertRaisesRegex(ValueError, "competing"):
             brush_selection(circle, path=((0,0),(1,0)), radius=1)
 
     def test_constraints_and_modes_are_preserved(self):

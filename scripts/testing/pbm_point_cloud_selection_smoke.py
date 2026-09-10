@@ -16,13 +16,19 @@ def main():
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--large", action="store_true")
+    parser.add_argument("--sphere-center", nargs=3, type=float)
+    parser.add_argument("--sphere-radius", type=float)
+    parser.add_argument("--sphere-axis", choices=("Z", "HeightAboveGround"), default="Z")
     args = parser.parse_args()
+    if (args.sphere_center is None) != (args.sphere_radius is None) or args.large and args.sphere_center:
+        parser.error("Sphere center and radius are required together and cannot use --large.")
     dll = Path(sys.executable).parent / "Library/bin"
     dll_handle = os.add_dll_directory(str(dll)) if os.name == "nt" and dll.is_dir() else None
     import numpy as np
     import pdal
     from pyforestscan_qgis.core.atomic_state import atomic_write_json
-    from pyforestscan_qgis.core.point_cloud.selection import SelectionDefinition, SelectionResolver, reader_spec
+    from pyforestscan_qgis.core.point_cloud.selection import (
+        SelectionDefinition, SelectionResolver, reader_spec, spherical_selection)
     from pyforestscan_qgis.core.point_cloud.session import SourceIdentity
 
     source = SourceIdentity.capture(args.source)
@@ -36,7 +42,12 @@ def main():
         bounds = meta["bounds"]
         xmin, ymin = bounds["minx"], bounds["miny"]
         xmax, ymax = bounds["maxx"], bounds["maxy"]
-        if args.large:
+        if args.sphere_center:
+            if not 0 < meta["num_points"] <= 3_000_000:
+                raise ValueError("Full-reference sphere test is limited to three million points.")
+            x, y, _height = args.sphere_center
+            width = args.sphere_radius
+        elif args.large:
             if source.source_type != "COPC":
                 raise ValueError("Large qualification must use indexed COPC.")
             x, y = (xmin + xmax) / 2, (ymin + ymax) / 2
@@ -49,11 +60,31 @@ def main():
         ring = ((x, y), (x + width, y), (x, y + width), (x, y))
         definition = SelectionDefinition("triangle", "qualification", source.sha256,
                                          source.source_type, ring, crs)
+        if args.sphere_center:
+            definition = spherical_selection(definition, center=args.sphere_center,
+                                             radius=args.sphere_radius, axis=args.sphere_axis)
         resolver = SelectionResolver(source)
         result = resolver.resolve([definition])
         report["result"] = asdict(result)
         report["reader"] = reader_spec(source, [definition])
-        if args.large:
+        if args.sphere_center:
+            reference = pdal.Pipeline(json.dumps([read]))
+            reference.execute()
+            points = reference.arrays[0]
+            if args.sphere_axis not in (points.dtype.names or ()):
+                raise ValueError(f"Source does not contain {args.sphere_axis}.")
+            cx, cy, cz = args.sphere_center
+            mask = (((points["X"]-cx)/args.sphere_radius)**2 +
+                    ((points["Y"]-cy)/args.sphere_radius)**2 +
+                    ((points[args.sphere_axis]-cz)/args.sphere_radius)**2 <= 1)
+            expected = int(mask.sum())
+            codes, counts = np.unique(points["Classification"][mask], return_counts=True)
+            report["classification_reference_passed"] = result.classification_counts == tuple(
+                (int(c), int(n)) for c, n in zip(codes, counts))
+            report["reference_kind"] = f"all original points, independent source-{args.sphere_axis} sphere"
+            report["sphere"] = {"center": args.sphere_center, "radius": args.sphere_radius,
+                                "axis": args.sphere_axis}
+        elif args.large:
             # Independently resolve with PDAL's own crop stage, not a display LOD.
             wkt = "POLYGON ((" + ", ".join(f"{px} {py}" for px, py in ring) + "))"
             reference = pdal.Pipeline(json.dumps([report["reader"], {"type": "filters.crop", "polygon": wkt}]))
