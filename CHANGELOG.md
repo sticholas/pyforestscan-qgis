@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0-beta.5 - 2026-09-10
+
+- Fixed an inspection-start race where a retained heartbeat from an earlier job could immediately and falsely fail a new run as stalled.
+- Required heartbeat ownership to match the active job before using it for liveness decisions.
+- Assigned every dataset inspection a unique job and result identity so repeated runs in the same source folder cannot collide.
+- Preserved beta.4 and all earlier versioned packages; this correction is a distinct beta.5 artifact.
+
 ## 0.2.0-beta.4 - 2026-09-10
 
 - Enabled automatic processing with one shared budget of up to five workers: multiple sources run across files, while a single source can run independent products concurrently.

@@ -29,7 +29,7 @@ class ReleasePipelineTests(unittest.TestCase):
     def test_version_source_and_metadata_are_synchronized(self) -> None:
         version = read_version_info()
 
-        self.assertEqual(version.plugin_version, "0.2.0-beta.4")
+        self.assertEqual(version.plugin_version, "0.2.0-beta.5")
         self.assertEqual(read_metadata_version(), version.plugin_version)
         self.assertEqual(version.minimum_qgis_version, "3.28")
         self.assertIn(3, version.supported_qgis_major_versions)
@@ -117,11 +117,11 @@ class ReleasePipelineTests(unittest.TestCase):
             package_plugin(output_path=versioned_zip_path(version, dist), latest_path=dist / "pyforestscan_qgis.zip")
             values = prepare_release(dist)
 
-        self.assertEqual(values["tag_name"], "v0.2.0-beta.4")
-        self.assertTrue(values["release_notes_path"].endswith("docs/releases/v0.2.0-beta.4.md"))
-        self.assertTrue(values["zip_artifact_path"].endswith("pyforestscan_qgis-v0.2.0-beta.4.zip"))
+        self.assertEqual(values["tag_name"], "v0.2.0-beta.5")
+        self.assertTrue(values["release_notes_path"].endswith("docs/releases/v0.2.0-beta.5.md"))
+        self.assertTrue(values["zip_artifact_path"].endswith("pyforestscan_qgis-v0.2.0-beta.5.zip"))
         self.assertEqual(len(values["sha256"]), 64)
-        self.assertEqual(release_notes_path(version).name, "v0.2.0-beta.4.md")
+        self.assertEqual(release_notes_path(version).name, "v0.2.0-beta.5.md")
 
     def test_clean_machine_release_docs_exist(self) -> None:
         root = Path(__file__).resolve().parents[1]

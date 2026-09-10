@@ -32,6 +32,22 @@ _ACTIVE_PROCESS_LOCK = threading.Lock()
 _ACTIVE_PROCESSING_PROCESSES: set[subprocess.Popen[str]] = set()
 
 
+def matching_heartbeat_age(path: Path, job_id: str) -> float | None:
+    """Return heartbeat age only when it belongs to the current job.
+
+    Run folders can retain a heartbeat from an earlier job.  Treating that
+    file as current can make a newly launched worker look stalled before it
+    has had a chance to publish its first heartbeat.
+    """
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if str(payload.get("job_id", "")) != job_id:
+            return None
+        return max(0.0, time.time() - path.stat().st_mtime)
+    except (OSError, TypeError, ValueError):
+        return None
+
+
 def cancel_active_processing_jobs() -> int:
     """Terminate PBM child processes owned by this plugin process."""
     with _ACTIVE_PROCESS_LOCK:
@@ -302,7 +318,7 @@ class BackendExecutionService:
                 while process.poll() is None:
                     time.sleep(0.1)
                     elapsed = time.monotonic() - started
-                    age = max(0.0, time.time() - heartbeat.stat().st_mtime) if heartbeat.exists() else None
+                    age = matching_heartbeat_age(heartbeat, spec.job_id)
                     decision = evaluate_liveness(self.timeout_policy, elapsed=elapsed, heartbeat_age=age, progress_age=None, started=True, product=spec.product)
                     if decision.status in {"stalled", "timed_out"}:
                         self._terminate_process_tree(process)

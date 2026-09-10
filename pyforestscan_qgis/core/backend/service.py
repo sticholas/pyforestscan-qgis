@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 from .checksums import ChecksumResult
@@ -136,7 +137,7 @@ class BackendService:
         """Run Dataset Explorer inspection through PBM backend Python."""
         from pyforestscan_qgis.backend_runner.job_spec import BackendJobSpec
 
-        job_id = f"pbm-dataset-inspection-{input_path.stem}"
+        job_id = f"pbm-dataset-inspection-{input_path.stem}-{uuid.uuid4().hex[:12]}"
         spec = BackendJobSpec(
             job_id=job_id,
             input_lidar_path=input_path,

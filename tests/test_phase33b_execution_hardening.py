@@ -11,6 +11,8 @@ from pyforestscan_qgis.core.job_diagnostics import classify_exception, write_fai
 from pyforestscan_qgis.core.job_diagnostics import classify_exception, write_failure_artifacts
 from pyforestscan_qgis.core.product_dependencies import PRODUCT_DEPENDENCIES
 from pyforestscan_qgis.core.types import ProductType
+from pyforestscan_qgis.core.backend.execution import matching_heartbeat_age
+from pyforestscan_qgis.core.backend.service import BackendService
 
 
 class Phase33BExecutionHardeningTests(unittest.TestCase):
@@ -70,6 +72,31 @@ class Phase33BExecutionHardeningTests(unittest.TestCase):
         self.assertTrue(report.is_file())
         self.assertTrue(bundle.is_file())
         self.assertIn("Successful products:</strong> chm", report.read_text(encoding="utf-8"))
+
+    def test_stale_heartbeat_from_previous_job_is_ignored(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            heartbeat = Path(temp_dir) / "heartbeat.json"
+            heartbeat.write_text(json.dumps({"job_id": "previous-job"}), encoding="utf-8")
+            self.assertIsNone(matching_heartbeat_age(heartbeat, "current-job"))
+            heartbeat.write_text(json.dumps({"job_id": "current-job"}), encoding="utf-8")
+            self.assertIsNotNone(matching_heartbeat_age(heartbeat, "current-job"))
+
+    def test_dataset_inspection_job_ids_are_unique(self):
+        captured = []
+
+        class ExecutionService:
+            def run_processing_job(self, spec, spec_path):  # type: ignore[no-untyped-def]
+                captured.append(spec)
+                return spec
+
+        service = BackendService.__new__(BackendService)
+        service.execution_service = lambda: ExecutionService()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_folder = Path(temp_dir)
+            first = service.run_dataset_inspection(Path("sample.las"), "EPSG:32604", {}, run_folder)
+            second = service.run_dataset_inspection(Path("sample.las"), "EPSG:32604", {}, run_folder)
+        self.assertNotEqual(first.job_id, second.job_id)
+        self.assertNotEqual(first.result_path, second.result_path)
 
     def test_dtm_scalar_error_is_product_failure(self):
         error = classify_exception(RuntimeError("DTM generation failed: invalid index to scalar variable."))
