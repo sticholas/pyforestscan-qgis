@@ -129,6 +129,14 @@ class SelectionToolTests(unittest.TestCase):
             self.assertEqual(button.width(), 28)
             self.assertEqual(button.height(), 28)
 
+    def test_profile_line_tools_are_contextual_direct_actions(self):
+        for name in ("AboveLine", "BelowLine"):
+            self.assertTrue(self.tools.buttons[name].isHidden())
+        self.tools.setProfileToolsVisible(True)
+        for name in ("AboveLine", "BelowLine"):
+            self.assertFalse(self.tools.buttons[name].isHidden())
+            self.assertIn("original points", self.tools.buttons[name].toolTip())
+
     def test_exclusive_buttons_dispatch_existing_tool_names(self):
         self.tools.buttons["Polygon"].click()
         self.assertEqual(self.events, ["Polygon"])

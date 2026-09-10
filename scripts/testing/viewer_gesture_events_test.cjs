@@ -155,6 +155,20 @@ const sphere=tick().event;
 assert.deepEqual(Array.from(sphere.sphere_center),[10,20,30]);
 assert.equal(sphere.sphere_radius,2);
 assert.equal(sphere.sphere_axis,"Z");
+editor.command({action:"linked_view",view:{view_id:"slice",view_type:"VERTICAL_SLICE",
+    geometry:{a:[900,2000],b:[1100,2000]},
+    corridor:[[900,1995],[1100,1995],[1100,2005],[900,2005],[900,1995]]}});
+arm("AboveLine"); click(125,250); click(375,200);
+const aboveLine=tick().event;
+assert.equal(aboveLine.profile_line_side,"ABOVE");
+assert.deepEqual(Array.from(aboveLine.profile_line[0]),[50,0]);
+assert.deepEqual(Array.from(aboveLine.profile_line[1]),[150,0]);
+assert.equal(aboveLine.mode,"REPLACE");
+assert.equal(tick().drawing_state,"RESOLVING");
+editor.command({action:"selection_resolution"});
+editor.command({action:"linked_view",view:null});
+arm("BelowLine"); click(125,250); click(375,200);
+assert.match(tick().event.error,/only in Vertical Slice/);
 arm();editor.command({action:"selection_tool",tool:"Pointer"});
 for(let i=0;i<2;i++){ const callbacks=queue.splice(0);callbacks.forEach(fn=>fn()); }
 assert.equal(tick().tool,"Pointer");

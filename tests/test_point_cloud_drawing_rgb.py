@@ -50,7 +50,8 @@ class DrawingRGBTests(unittest.TestCase):
         for name in ("point_cloud_editor.py", "point_cloud_detached.py"):
             source = (ROOT / "pyforestscan_qgis/ui" / name).read_text()
             for key in ("circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
-                        "sphere_center", "sphere_radius", "sphere_axis"):
+                        "sphere_center", "sphere_radius", "sphere_axis", "profile_line",
+                        "profile_line_side"):
                 self.assertIn(f'"{key}"', source)
             self.assertIn("constraints=constraints, **values", source)
         self.assertIn('lambda: self.send("invert")',

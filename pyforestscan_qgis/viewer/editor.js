@@ -96,6 +96,16 @@ function matches(definitions, xyz, classification, geometry, index) {
                 flat.set(along, height, 0);
                 hit = Number.isFinite(height) && item.profile_geometry_triangles.some(triangle => triangle.containsPoint(flat));
             }
+            if (hit && item.profile_line) {
+                const attribute = sourceAttribute(geometry, "HeightAboveGround");
+                const height = item.profile_axis === "HeightAboveGround" ?
+                    (attribute ? attribute.array[index] : NaN) : xyz.z;
+                const [[x1,h1],[x2,h2]]=item.profile_line;
+                const low=Math.min(x1,x2), high=Math.max(x1,x2);
+                const lineHeight=h1+(along-x1)*(h2-h1)/(x2-x1);
+                hit = Number.isFinite(height) && along >= low && along <= high &&
+                    (item.profile_line_side === "ABOVE" ? height >= lineHeight : height <= lineHeight);
+            }
         }
         if (item.legacy_bounds) {
             const b = item.legacy_bounds;
@@ -215,7 +225,8 @@ function initialize(value) {
             event.preventDefault(); event.stopPropagation();
             return;
         }
-        if (tool === "Polygon" || tool === "Line") drawPolygon([event.offsetX, event.offsetY]);
+        if (["Polygon", "Line", "AboveLine", "BelowLine"].includes(tool))
+            drawPolygon([event.offsetX, event.offsetY]);
         if (!rectangleStart || !rectangleBox) return;
         const [x, y] = rectangleStart;
         if (tool === "Circle") {
@@ -254,15 +265,34 @@ function initialize(value) {
             event.preventDefault(); event.stopImmediatePropagation();
             return;
         }
-        if (tool === "Line") {
+        if (["Line", "AboveLine", "BelowLine"].includes(tool)) {
             event.preventDefault(); event.stopImmediatePropagation();
             if (event.button === 0) {
                 drawing.vertex(event.offsetX, event.offsetY); drawPolygon();
                 if (drawing.vertices.length === 2) {
-                    publish(drawing.vertices.map(p => {
-                        const xyz = sourceXY(p[0], p[1], drawingCamera); return [xyz.x, xyz.y];
-                    }));
-                    drawing.cancel(); leaveTool();
+                    const points=drawing.vertices.map(p => sourceXY(p[0],p[1],drawingCamera));
+                    if (tool === "Line") {
+                        publish(points.map(xyz => [xyz.x,xyz.y]));
+                        drawing.cancel(); leaveTool();
+                    } else if (!linkedView || linkedView.view_type !== "VERTICAL_SLICE") {
+                        latestEvent={id:++eventNumber,error:"Above/Below Line is available only in Vertical Slice."};
+                        drawing.cancel(); leaveTool();
+                    } else {
+                        const {a,b}=linkedView.geometry;
+                        const length=Math.hypot(b[0]-a[0],b[1]-a[1]);
+                        const profileLine=points.map(xyz => [
+                            ((xyz.x-a[0])*(b[0]-a[0])+(xyz.y-a[1])*(b[1]-a[1]))/length,
+                            xyz.z]);
+                        if (!drawing.finishPath(2)) {
+                            latestEvent={id:++eventNumber,error:drawing.error};
+                            leaveTool();
+                            return;
+                        }
+                        latestEvent={id:++eventNumber,geometry:linkedView.corridor,
+                            mode:gestureMode||mode,profile_line:profileLine,
+                            profile_line_side:tool === "AboveLine" ? "ABOVE" : "BELOW"};
+                        drawing.resolving(); leaveTool();
+                    }
                 }
             }
             return;
@@ -447,7 +477,7 @@ window.pointCloudEditor = {
         if (command.action === "linked_view") linkedView = command.view || null;
         if (!context) return;
         if (command.action === "selection_tool") {
-            if (!["Pointer", "Polygon", "Rectangle", "Box", "Circle", "Sphere", "Brush", "Line"].includes(command.tool)) return;
+            if (!["Pointer", "Polygon", "Rectangle", "Box", "Circle", "Sphere", "Brush", "Line", "AboveLine", "BelowLine"].includes(command.tool)) return;
             if (command.mode && !["REPLACE", "ADD", "SUBTRACT"].includes(command.mode)) return;
             if (command.tool === "Brush" &&
                     (!Number.isFinite(command.brush_radius) || command.brush_radius <= 0)) return;
@@ -474,11 +504,11 @@ window.pointCloudEditor = {
                 if (epoch !== toolEpoch) return;
                 insertionPending = false;
                 tool = command.tool;
-                drawing.arm(tool === "Line" || tool === "Brush" ? "Polygon" :
+                drawing.arm(["Line", "Brush", "AboveLine", "BelowLine"].includes(tool) ? "Polygon" :
                     tool === "Circle" || tool === "Sphere" || tool === "Box" ? "Rectangle" : tool, mode);
                 drawingCamera = context.viewer.scene.getActiveCamera().clone();
                 context.viewer.inputHandler.enabled = false;
-                if (tool === "Polygon" || tool === "Line" || tool === "Brush") {
+                if (["Polygon", "Line", "Brush", "AboveLine", "BelowLine"].includes(tool)) {
                     polygonOverlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
                     polygonOverlay.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
                     polygonLine = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
@@ -506,7 +536,8 @@ window.pointCloudEditor = {
         }
         if (command.action === "selection_test") publish(command.geometry,
             Object.fromEntries(["circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
-                "sphere_center", "sphere_radius", "sphere_axis", "invert_result"].filter(key => key in command)
+                "sphere_center", "sphere_radius", "sphere_axis", "invert_result", "profile_line",
+                "profile_line_side"].filter(key => key in command)
                 .map(key => [key, command[key]])));
         if (command.action === "editor_overlay") {
             if (/^#[0-9a-f]{6}$/i.test(command.selection_color || "")) selectionColor.set(command.selection_color);

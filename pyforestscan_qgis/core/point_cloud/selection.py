@@ -57,6 +57,8 @@ class SelectionDefinition:
     sphere_radius: float | None = None
     sphere_axis: str = "Z"
     invert_result: bool = False
+    profile_line: tuple[tuple[float, float], tuple[float, float]] | None = None
+    profile_line_side: str | None = None
 
     def __post_init__(self):
         if not self.selection_id or not self.session_id or not self.geometry_crs.strip():
@@ -158,6 +160,21 @@ class SelectionDefinition:
             object.__setattr__(self, "profile_b", profile.b)
         elif self.depth_mode == "SLICE_CORRIDOR":
             raise ValueError("Slice selection requires endpoints and thickness.")
+        if self.profile_line is not None or self.profile_line_side is not None:
+            line = tuple(tuple(point) for point in (self.profile_line or ()))
+            if (len(line) != 2 or any(len(point) != 2 or any(
+                    type(value) not in (int, float) or not math.isfinite(value)
+                    for value in point) for point in line)
+                    or line[0][0] == line[1][0]
+                    or self.profile_line_side not in ("ABOVE", "BELOW")):
+                raise ValueError("Profile line requires two finite non-vertical points and Above or Below.")
+            if self.profile_a is None or self.depth_mode != "SLICE_CORRIDOR" or self.profile_geometry is not None:
+                raise ValueError("Above/Below Line requires one Vertical Slice line selection.")
+            length = math.hypot(self.profile_b[0]-self.profile_a[0],
+                                self.profile_b[1]-self.profile_a[1])
+            if min(point[0] for point in line) < 0 or max(point[0] for point in line) > length:
+                raise ValueError("Profile line must remain inside the Vertical Slice length.")
+            object.__setattr__(self, "profile_line", line)
 
 
 @dataclass(frozen=True)
@@ -291,6 +308,16 @@ def selection_mask(chunk, definitions, shapes=None, *, cancelled=lambda: False):
                 if not side.is_valid or side.is_empty or side.area <= 0:
                     raise ValueError("Profile selection polygon is invalid.")
                 mask &= shapely.intersects_xy(side, along, chunk[item.profile_axis])
+            if item.profile_line is not None:
+                if item.profile_axis not in names:
+                    raise ValueError(f"Source does not contain {item.profile_axis}.")
+                (x1, h1), (x2, h2) = item.profile_line
+                low, high = min(x1, x2), max(x1, x2)
+                line_height = h1 + (along-x1)*(h2-h1)/(x2-x1)
+                mask &= (along >= low) & (along <= high)
+                mask &= (chunk[item.profile_axis] >= line_height if
+                         item.profile_line_side == "ABOVE" else
+                         chunk[item.profile_axis] <= line_height)
         for dimension, limits in (("Z", item.z_filter), ("HeightAboveGround", item.hag_filter)):
             if limits is not None:
                 if dimension not in names:

@@ -52,7 +52,8 @@ class CircleContractTests(unittest.TestCase):
             "classification_filter", "attribute_filters", "view_id", "view_name", "clip_geometry",
             "profile_a", "profile_b", "profile_thickness", "profile_geometry", "profile_axis",
             "depth_mode", "circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
-            "sphere_center", "sphere_radius", "sphere_axis", "invert_result"})
+            "sphere_center", "sphere_radius", "sphere_axis", "invert_result",
+            "profile_line", "profile_line_side"})
 
 
 @unittest.skipUnless(importlib.util.find_spec("numpy") and importlib.util.find_spec("shapely"),

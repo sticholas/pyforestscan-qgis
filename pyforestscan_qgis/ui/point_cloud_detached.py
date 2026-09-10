@@ -104,6 +104,8 @@ class DetachedView(QDialog):
         row.addWidget(self.appearance)
         from .point_cloud_tools import SelectionTools
         self.tool = SelectionTools(self)
+        self.tool.setProfileToolsVisible(
+            controller.page.workspace.views[view_id].view_type == "VERTICAL_SLICE")
         row.addWidget(self.tool)
         self.selection_mode = QComboBox()
         self.selection_mode.addItems(("Replace","Add","Subtract"))
@@ -162,9 +164,19 @@ class DetachedView(QDialog):
         self.selection_error = ""
 
     def change_tool(self, value):
+        view = self.controller.page.workspace.views[self.view_id]
+        if value in ("AboveLine", "BelowLine"):
+            from ..core.point_cloud.linked_selection import profile_line_selection_error
+            self.selection_error = profile_line_selection_error(view.view_type)
+            if self.selection_error:
+                self.tool.blockSignals(True)
+                self.tool.setCurrentText("Pointer")
+                self.tool.blockSignals(False)
+                self.send({"action":"selection_tool", "tool":"Pointer"})
+                self.status.setText(self.selection_error)
+                return
         if value == "Box":
             from ..core.point_cloud.linked_selection import box_selection_error
-            view = self.controller.page.workspace.views[self.view_id]
             self.selection_error = box_selection_error(view.view_type, self.controller.depth)
             if self.selection_error:
                 self.tool.blockSignals(True)
@@ -246,7 +258,8 @@ class DetachedView(QDialog):
                     constraints = self.controller.selection_values_for(view, event, telemetry)
                     values = {key: event[key] for key in (
                         "circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
-                        "sphere_center", "sphere_radius", "sphere_axis") if key in event}
+                        "sphere_center", "sphere_radius", "sphere_axis", "profile_line",
+                        "profile_line_side") if key in event}
                     editor.send("select", geometry=event["geometry"], mode=event["mode"],
                                 constraints=constraints, **values)
                 except ValueError as error:

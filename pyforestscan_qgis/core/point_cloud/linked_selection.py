@@ -16,6 +16,12 @@ def box_selection_error(view_type, depth):
     return ""
 
 
+def profile_line_selection_error(view_type):
+    """Return why Above/Below Line cannot be armed, or an empty string."""
+    return "" if view_type == "VERTICAL_SLICE" else (
+        "Select Above/Below Line is available only in a Vertical Slice.")
+
+
 def selection_limit_values(values):
     """Validate saved UI limits, retaining inverted bounds for visible correction."""
     if not isinstance(values, dict) or set(values) - {"z_filter", "hag_filter"}:

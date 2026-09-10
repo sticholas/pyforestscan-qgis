@@ -1,10 +1,16 @@
 """QGIS-free explicit box-volume selection policy tests."""
 import unittest
 
-from pyforestscan_qgis.core.point_cloud.linked_selection import box_selection_error, linked_constraints
+from pyforestscan_qgis.core.point_cloud.linked_selection import (
+    box_selection_error, linked_constraints, profile_line_selection_error)
 
 
 class BoxSelectionTests(unittest.TestCase):
+    def test_profile_line_tools_are_slice_only(self):
+        self.assertEqual(profile_line_selection_error("VERTICAL_SLICE"), "")
+        for kind in ("OVERVIEW_3D", "AREA_DETAIL", "UNKNOWN"):
+            self.assertIn("only in a Vertical Slice", profile_line_selection_error(kind))
+
     def test_overview_and_detail_require_explicit_stored_height_limits(self):
         for view_type in ("OVERVIEW_3D", "AREA_DETAIL"):
             self.assertIn("requires Elevation or HAG", box_selection_error(view_type, {}))

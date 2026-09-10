@@ -45,6 +45,10 @@ class SelectionTools(QWidget):
              "Sphere Select: choose an explicit source Z or stored HAG center, then drag center-to-edge for radius in source coordinate units. Exact 3D membership resolves against original points. Camera depth and displayed samples are never selection authority. Vertical Slice support is not enabled."),
             ("Brush", "Brush Select", "mActionSelectFreehand.svg",
              "Brush Select: drag a continuous round stroke with radius in dataset XY units. Full column selects through the cloud; Elevation or HAG limits bound its depth. Shift adds and Alt subtracts. Original points are resolved in the background; screen pixels are never edit addresses. Vertical Slice support is not yet enabled."),
+            ("AboveLine", "Select Above Line", "mActionArrowUp.svg",
+             "Select Above Line: in Vertical Slice, draw two points across the profile. Selects original points above the exact source-coordinate line, within its horizontal span and the slice corridor."),
+            ("BelowLine", "Select Below Line", "mActionArrowDown.svg",
+             "Select Below Line: in Vertical Slice, draw two points across the profile. Selects original points below the exact source-coordinate line, within its horizontal span and the slice corridor."),
         )
         for value, label, icon, help_text in specs:
             button = spatial_button(label, icon, help_text, self)
@@ -84,6 +88,7 @@ class SelectionTools(QWidget):
         layout.addWidget(self.sphere_axis)
         layout.addWidget(self.sphere_height)
         self._show_options()
+        self.setProfileToolsVisible(False)
 
     def currentText(self):
         return self._value
@@ -130,6 +135,10 @@ class SelectionTools(QWidget):
             self.sphere_height.setValue(height)
         self.sphere_axis.blockSignals(False)
         self.sphere_height.blockSignals(False)
+
+    def setProfileToolsVisible(self, visible):
+        for name in ("AboveLine", "BelowLine"):
+            self.buttons[name].setVisible(bool(visible))
 
     def _sphere_changed(self, _value=None):
         self.spherePlacementChanged.emit(self.sphereAxis(), self.sphereHeight())

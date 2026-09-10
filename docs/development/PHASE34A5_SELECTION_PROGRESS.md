@@ -107,6 +107,17 @@ human interaction, long-run/resource, and source-format gates remain open.
   the previous authoritative selection. The managed worker resolves the new
   definition against original source points before it replaces editor state;
   journal, undo/redo, overlays and export therefore keep one authority.
+- Added compact Select Above Line and Select Below Line actions that appear
+  only in Vertical Slice. A two-point gesture is converted to exact
+  `(distance along slice, Z or HAG)` endpoints before it leaves the renderer.
+  Authoritative membership includes only the line segment's horizontal span,
+  the full configured slice-corridor thickness, and points inclusively above
+  or below its interpolated height. Existing class and height filters and
+  Replace/Add/Subtract order continue through the shared SelectionDefinition,
+  managed resolver, edit journal, overlay and export path. Reversed endpoints
+  are equivalent; vertical, degenerate, outside-slice, non-slice and competing
+  profile shapes fail closed. Screen pixels and rendered point identity are
+  never retained as edit authority.
 
 ## MEASURED EVIDENCE
 
@@ -253,6 +264,19 @@ single observation. Source SHA256 remained
 This establishes local-LAZ Circle growth correctness; it is not a massive COPC
 latency result or human interaction acceptance.
 
+A read-only Above Line qualification used a 20-unit source-XY Vertical Slice
+centered across (215240, 2114750)-(215260, 2114750), corridor thickness 10,
+and a stored-HAG line from profile distance 2 at HAG 8 to distance 18 at HAG
+8. Against all 2,287,408 original records, the production resolver selected
+527 class-5 points in 0.594 seconds. Count and classification distribution
+exactly matched an independent profile-coordinate predicate. Source SHA256
+remained
+0c688c22d42b0240c6cba19973087ee59606721289872a3f8237253548db34bb.
+The reusable qualification is
+`scripts/testing/pbm_point_cloud_profile_line_smoke.py`. This establishes one
+local-LAZ HAG membership case, not human line-drawing acceptance or massive
+COPC latency.
+
 ## IN PROGRESS
 
 Circle/cylinder selection is exposed but remains experimental pending human
@@ -275,6 +299,9 @@ human feedback and full export-canary coverage remain open.
 Grow/Shrink Selection is exposed under its compact menu. Its single-Replace
 contract is intentional; true morphology of arbitrary ordered Add/Subtract or
 inverted composites is not approximated by resizing their component shapes.
+Above/Below Line is exposed contextually in Vertical Slice with exact source
+semantics and real-data evidence. Human drawing/edit/export acceptance remains
+open.
 
 ## NEXT
 
@@ -288,6 +315,8 @@ inverted composites is not approximated by resizing their component shapes.
    review/cancellation behavior in the live editor.
 5. Complete human Grow/Shrink acceptance and a full export canary after viewer
    runtime capacity is available.
+6. Complete human Above/Below Line acceptance with Z and HAG slices, including
+   Replace/Add/Subtract and an exported classification edit.
 
 ## BLOCKED
 

@@ -265,6 +265,8 @@ class EditorPanel(QWidget):
         if hasattr(self.page, "linked"):
             self.tool.setSpherePlacement(self.page.linked.sphere_axis, self.page.linked.sphere_height,
                 "HeightAboveGround" in self.state.get("dimensions", []))
+            self.tool.setProfileToolsVisible(
+                self.page.linked.active().view_type == "VERTICAL_SLICE")
         ready = bool(self.state.get("ready")) and not self.busy and self.viewer_ready
         for control in (self.tool, self.mode, self.clear):
             control.setEnabled(ready)
@@ -352,9 +354,19 @@ class EditorPanel(QWidget):
 
     def change_tool(self, tool):
         if self.viewer_ready and not self.page.linked.depth_error:
+            view = self.page.workspace.views[self.page.workspace.active_view_id]
+            if tool in ("AboveLine", "BelowLine"):
+                from ..core.point_cloud.linked_selection import profile_line_selection_error
+                error = profile_line_selection_error(view.view_type)
+                if error:
+                    self.summary.setText(error)
+                    self.tool.blockSignals(True)
+                    self.tool.setCurrentText("Pointer")
+                    self.tool.blockSignals(False)
+                    self.page.send({"action": "selection_tool", "tool": "Pointer"})
+                    return
             if tool == "Box":
                 from ..core.point_cloud.linked_selection import box_selection_error
-                view = self.page.workspace.views[self.page.workspace.active_view_id]
                 error = box_selection_error(view.view_type, self.page.linked.depth)
                 if error:
                     self.summary.setText(error)
@@ -389,7 +401,8 @@ class EditorPanel(QWidget):
                     constraints = self.page.linked.selection_values(event)
                     values = {key: event[key] for key in (
                         "circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
-                        "sphere_center", "sphere_radius", "sphere_axis") if key in event}
+                        "sphere_center", "sphere_radius", "sphere_axis", "profile_line",
+                        "profile_line_side") if key in event}
                     self.send("select", geometry=event["geometry"], mode=event["mode"],
                               constraints=constraints, **values)
                 except ValueError as error:
