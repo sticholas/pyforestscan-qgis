@@ -17,6 +17,12 @@ class LasClass:
         return f"{self.name} ({self.code})"
 
 
+@dataclass(frozen=True)
+class AutoClassifyDecision:
+    apply: bool
+    message: str = ""
+
+
 STANDARD_CLASSES = (
     LasClass(0, "Created, never classified", "#808080"),
     LasClass(1, "Unclassified", "#808080", True),
@@ -64,3 +70,18 @@ def classification_warning(code):
     if code >= 64:
         return f"Class {code} is user-defined; document its meaning for downstream users."
     return ""
+
+
+def classify_while_selecting_decision(enabled, completed_action, definitions, selected_count):
+    """Decide whether one completed editor snapshot should stage classification."""
+    if type(enabled) is not bool or type(selected_count) is not int or selected_count < 0:
+        raise ValueError("Invalid classify-while-selecting state.")
+    if not enabled or completed_action != "select":
+        return AutoClassifyDecision(False)
+    if not selected_count:
+        return AutoClassifyDecision(False, "Automatic classification skipped: no source points selected.")
+    if (not isinstance(definitions, (list, tuple)) or not definitions or
+            definitions[-1].get("selection_mode") != "REPLACE"):
+        return AutoClassifyDecision(False,
+            "Automatic classification applies to Replace selections; apply this composite manually.")
+    return AutoClassifyDecision(True)

@@ -3,7 +3,8 @@ from pathlib import Path
 import unittest
 
 from pyforestscan_qgis.core.point_cloud.las_classification import (
-    STANDARD_CLASSES, classification_entry, classification_warning)
+    STANDARD_CLASSES, classification_entry, classification_warning,
+    classify_while_selecting_decision)
 
 
 class ClassificationCatalogTests(unittest.TestCase):
@@ -31,6 +32,21 @@ class ClassificationCatalogTests(unittest.TestCase):
                   "pyforestscan_qgis/ui/point_cloud_editor.py").read_text()
         self.assertIn("STANDARD_CLASSES", source)
         self.assertNotIn('((0,"Created"),(1,"Unclassified")', source)
+
+    def test_classify_while_selecting_only_accepts_new_nonempty_replace(self):
+        replace = [{"selection_mode":"REPLACE"}]
+        self.assertTrue(classify_while_selecting_decision(True,"select",replace,20).apply)
+        for enabled,action,definitions,count in (
+                (False,"select",replace,20), (True,"stage",replace,20),
+                (True,"select",replace,0), (True,"select",[{"selection_mode":"ADD"}],20),
+                (True,"select",[{"selection_mode":"SUBTRACT"}],20)):
+            decision = classify_while_selecting_decision(enabled,action,definitions,count)
+            self.assertFalse(decision.apply)
+        self.assertIn("Replace", classify_while_selecting_decision(
+            True,"select",[{"selection_mode":"ADD"}],20).message)
+        for enabled,count in ((1,20),(True,-1)):
+            with self.assertRaises(ValueError):
+                classify_while_selecting_decision(enabled,"select",replace,count)
 
 
 if __name__ == "__main__":

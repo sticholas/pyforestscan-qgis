@@ -198,6 +198,15 @@ class EditorPanel(QWidget):
         actions.addWidget(self.button("Apply Classification", "SP_DialogApplyButton",
             lambda: self.stage("Classification", self.code.value()),
             "Stage classification for all resolved source points. The original is never rewritten; export creates a new file."))
+        self.classify_while = QToolButton()
+        self.classify_while.setText("Classify each selection")
+        self.classify_while.setCheckable(True)
+        self.classify_while.setAccessibleName("Classify each new Replace selection")
+        self.classify_while.setToolTip(
+            "When enabled, each newly resolved non-empty Replace selection is staged with the chosen class. "
+            "Add/Subtract composites, restores, inversion and resizing are never applied automatically.")
+        self.classify_while.toggled.connect(lambda _checked: self.refresh_controls())
+        actions.addWidget(self.classify_while)
         flags = QToolButton()
         flags.setText("Flags / Noise")
         flags.setToolTip("Noise changes Classification; Withheld retains flagged points; Removal omits them only from a new export.")
@@ -276,7 +285,8 @@ class EditorPanel(QWidget):
         if hasattr(self.page, "linked"):
             self.page.linked.limits.refresh()
             self.tool.setEnabled(ready and not self.page.linked.depth_error)
-        self.edit_controls.setVisible(bool((self.state.get("selection") or {}).get("resolved_point_count")))
+        self.edit_controls.setVisible(bool((self.state.get("selection") or {}).get("resolved_point_count"))
+                                      or self.classify_while.isChecked())
         self.edit_controls.setEnabled(ready)
         self.undo_button.setEnabled(ready and self.state.get("can_undo", False))
         self.redo_button.setEnabled(ready and self.state.get("can_redo", False))
@@ -443,6 +453,10 @@ class EditorPanel(QWidget):
         QMessageBox.information(self, "Authoritative Selection Details", "\n".join(lines))
 
     def update_state(self, value):
+        completed_action = self.pending_action
+        if value.get("ready") or value.get("error"):
+            self.pending_action = None
+        auto_classify = None
         if value.get("folder"):
             self.folder = value["folder"]
         if value.get("progress"):
@@ -467,10 +481,16 @@ class EditorPanel(QWidget):
             self.source = value["source"]
             selection = value.get("selection") or {}
             count = selection.get("resolved_point_count", 0)
+            from ..core.point_cloud.las_classification import classify_while_selecting_decision
+            auto_classify = classify_while_selecting_decision(
+                self.classify_while.isChecked(), completed_action,
+                value.get("selection_definitions", []), count)
             codes = ", ".join(str(code) for code, _count in selection.get("classification_counts", [])[:8])
             suffix = f" | Classes: {codes}" if codes else ""
             impact = selection_impact_suffix(count, value.get("point_count", 0))
             self.summary.setText(f"Selected: {count:,} source points | {value['edits']} staged edits" + suffix + impact)
+            if auto_classify.message:
+                self.summary.setText(self.summary.text() + " | " + auto_classify.message)
             self.page.session_status.setText(f"Session: Autosaved | {value['edits']} staged edits, not a source rewrite")
             self.history.clear()
             self.history.addItems(value.get("history", []))
@@ -515,6 +535,8 @@ class EditorPanel(QWidget):
                 command.pop("view", None)
                 self.send("stage", **command, confirmed=True)
         self.refresh_controls()
+        if auto_classify and auto_classify.apply and not self.busy:
+            self.stage("Classification", self.code.value())
 
     def save_to(self, path):
         self.send("save", path=path)

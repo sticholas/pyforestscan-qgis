@@ -149,6 +149,30 @@ class SelectionToolTests(unittest.TestCase):
         self.assertEqual(editor.classes.itemData(17), 17)
         self.assertEqual(editor.classes.itemText(18), "High noise (18)")
 
+    def test_classify_while_selecting_stages_once_only_after_select_snapshot(self):
+        value = {"ready":True, "source":"source.laz", "edits":0, "point_count":100,
+            "selection":{"selection_id":"selected", "resolved_point_count":12,
+                         "classification_counts":[[2,12]]},
+            "selection_definitions":[{"selection_mode":"REPLACE"}],
+            "history":[], "overlay":"overlay.json", "revision":1}
+        page = SimpleNamespace(send=Mock(), workspace=SimpleNamespace(
+            accept_editor_snapshot=Mock()), linked=SimpleNamespace(sync_tabs=Mock()),
+            session_status=Mock(), source=Mock(), start_source=Mock(), mode=Mock())
+        owner = SimpleNamespace(pending_action="select", classify_while=SimpleNamespace(
+            isChecked=lambda: True), state={}, page=page, summary=Mock(), history=Mock(),
+            busy=True, cancel_requested=False, source="", restored_view=None,
+            refresh_controls=Mock(), stage=Mock(), sent_overlay=None,
+            exportReady=Mock(), source_changed=Mock(), code=SimpleNamespace(value=lambda:5))
+        EditorPanel.update_state(owner, value)
+        owner.stage.assert_called_once_with("Classification", 5)
+        self.assertIsNone(owner.pending_action)
+        owner.stage.reset_mock()
+        EditorPanel.update_state(owner, value)
+        owner.stage.assert_not_called()
+        owner.pending_action = "invert"
+        EditorPanel.update_state(owner, value)
+        owner.stage.assert_not_called()
+
     def test_exclusive_buttons_dispatch_existing_tool_names(self):
         self.tools.buttons["Polygon"].click()
         self.assertEqual(self.events, ["Polygon"])

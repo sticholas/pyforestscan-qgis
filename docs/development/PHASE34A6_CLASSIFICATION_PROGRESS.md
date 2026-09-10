@@ -13,18 +13,24 @@ State: IN PROGRESS. The Point Cloud Editor remains EDITOR_EXPERIMENTAL.
 - Classification still stages through the existing authoritative selection and
   edit journal. Source files, export rules, viewer LOD, PBM and scientific
   processing behavior are unchanged.
+- Added an explicit opt-in `Classify each selection` mode. It stages the chosen
+  target only after a newly drawn, non-empty authoritative Replace selection
+  resolves. Add/Subtract composites are skipped with clear status text; restore,
+  invert, resize, undo/redo, errors and telemetry cannot trigger automatic
+  edits. The managed editor remains the only journal writer, so large-selection
+  confirmation, autosave, undo/redo and immutable export rules remain active.
 
 ## IN PROGRESS
 
-The catalog is a presentation/policy foundation. Fast classify-while-selecting,
-visibility/isolation, richer counts, presets, data-health summaries, and target
-warnings are not yet complete.
+The catalog and first classify-while-selecting policy are foundations.
+Visibility/isolation, richer counts, presets, data-health summaries, target
+warnings, and human interaction acceptance are not yet complete.
 
 ## NEXT
 
-1. Add guarded classify-while-selecting through the existing worker journal.
-2. Build compact class visibility/isolation using the shared catalog.
-3. Surface selection and effective-class counts without permanent large panels.
+1. Build compact class visibility/isolation using the shared catalog.
+2. Surface selection and effective-class counts without permanent large panels.
+3. Add target warnings and presets without bypassing journal confirmation.
 
 ## BLOCKED
 
