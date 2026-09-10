@@ -371,6 +371,38 @@ def spherical_selection(definition, *, center, radius, axis="Z"):
                    sphere_axis=axis, depth_mode="SPHERE_VOLUME")
 
 
+def resized_selection(definitions, distance, *, selection_id=None):
+    """Morph one Replace selection in source units without changing authority."""
+    items = validate_sequence(definitions)
+    if (type(distance) not in (int, float) or not math.isfinite(distance)
+            or distance == 0):
+        raise ValueError("Grow/Shrink distance must be a finite non-zero source-unit value.")
+    if len(items) != 1 or items[0].selection_mode != "REPLACE" or items[0].invert_result:
+        raise ValueError("Grow/Shrink currently requires one non-inverted Replace selection.")
+    item = replace(items[0], selection_id=selection_id or items[0].selection_id)
+    if item.profile_geometry is not None or item.profile_a is not None:
+        raise ValueError("Grow/Shrink is not yet enabled for Vertical Slice selections.")
+    if item.sphere_center is not None:
+        return (spherical_selection(item, center=item.sphere_center,
+                                    radius=item.sphere_radius+distance,
+                                    axis=item.sphere_axis),)
+    if item.circle_center is not None:
+        return (circular_selection(item, center=item.circle_center,
+                                   radius=item.circle_radius+distance),)
+    if item.brush_path is not None:
+        return (brush_selection(item, path=item.brush_path,
+                                radius=item.brush_radius+distance,
+                                tolerance=item.brush_tolerance),)
+
+    import shapely
+    geometry = shapely.Polygon(item.geometry).buffer(distance)
+    if (geometry.is_empty or geometry.geom_type != "Polygon"
+            or len(geometry.interiors) or len(geometry.exterior.coords) > 4097):
+        raise ValueError("Grow/Shrink would remove or split this selection; use a smaller distance.")
+    ring = tuple((float(x), float(y)) for x, y in geometry.exterior.coords)
+    return (replace(item, geometry=ring),)
+
+
 def _brush_mask(chunk, path, radius, np, *, cancelled=lambda: False):
     if cancelled():
         raise InterruptedError("Selection cancelled; no edits staged.")

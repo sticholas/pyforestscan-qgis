@@ -98,6 +98,15 @@ human interaction, long-run/resource, and source-format gates remain open.
   than negating a query envelope or visible LOD. It remains cancellable in the
   managed background, reuses large-selection review/confirmation, and leaves
   the previous authoritative selection intact on failure or cancellation.
+- Added compact Grow/Shrink Selection actions in docked and detached editors.
+  The first production contract deliberately accepts one non-inverted Replace
+  selection: Circle and Brush radii resize analytically, Sphere radius resizes
+  in three dimensions, and polygon/Box XY outlines use a managed Shapely
+  buffer. Existing Z/HAG limits do not change. Composite, inverted, split,
+  removed, over-complex, and Vertical Slice results fail closed while retaining
+  the previous authoritative selection. The managed worker resolves the new
+  definition against original source points before it replaces editor state;
+  journal, undo/redo, overlays and export therefore keep one authority.
 
 ## MEASURED EVIDENCE
 
@@ -228,6 +237,22 @@ count, and SHA256 remained unchanged. This proves local-LAZ semantics, not
 large COPC performance; inverted COPC intentionally uses a complete source
 reader and still requires massive-source qualification.
 
+Grow/Shrink has managed geometry and dual-QGIS compatibility coverage. Its
+real-source independent-predicate qualification is reusable as
+`scripts/testing/pbm_point_cloud_selection_resize.py`; the measured result is
+recorded after each immutable-source run rather than inferred from display LOD.
+
+The managed-runtime qualification grew a source-XY Circle centered at
+(215250, 2114750) from radius 5 to radius 7 dataset units while retaining HAG
+8-18. On the immutable 2,287,408-point HAG LAZ, the original definition
+resolved 189 class-5 points and the grown definition resolved 418 class-5
+points. Both counts and classifications exactly matched independent predicates
+over every source record. Combined resolution time was 1.062 seconds in this
+single observation. Source SHA256 remained
+0c688c22d42b0240c6cba19973087ee59606721289872a3f8237253548db34bb.
+This establishes local-LAZ Circle growth correctness; it is not a massive COPC
+latency result or human interaction acceptance.
+
 ## IN PROGRESS
 
 Circle/cylinder selection is exposed but remains experimental pending human
@@ -247,6 +272,9 @@ real-source evidence. Human drawing acceptance and a full QGIS export canary
 remain open.
 Invert Selection is exposed with exact local-LAZ evidence. Large COPC latency,
 human feedback and full export-canary coverage remain open.
+Grow/Shrink Selection is exposed under its compact menu. Its single-Replace
+contract is intentional; true morphology of arbitrary ordered Add/Subtract or
+inverted composites is not approximated by resizing their component shapes.
 
 ## NEXT
 
@@ -258,6 +286,8 @@ human feedback and full export-canary coverage remain open.
    export canary after viewer runtime capacity is available.
 4. Qualify Invert on a representative large COPC and confirm large-selection
    review/cancellation behavior in the live editor.
+5. Complete human Grow/Shrink acceptance and a full export canary after viewer
+   runtime capacity is available.
 
 ## BLOCKED
 

@@ -36,7 +36,8 @@ def main():
     from pyproj import CRS
     from pyforestscan_qgis.core.atomic_state import atomic_write_json
     from pyforestscan_qgis.core.point_cloud.session import SourceIdentity, PointCloudEditSession, AttributeEditOperation
-    from pyforestscan_qgis.core.point_cloud.selection import SelectionDefinition, SelectionResolver, validate_sequence
+    from pyforestscan_qgis.core.point_cloud.selection import (
+        SelectionDefinition, SelectionResolver, resized_selection, validate_sequence)
     from pyforestscan_qgis.core.point_cloud.selection_impact import selection_impact
     from pyforestscan_qgis.core.point_cloud.view_session import validate_view_state, session_view_state
     from pyforestscan_qgis.core.point_cloud.export import export_edited
@@ -257,6 +258,14 @@ def main():
                     progress("Resolving inverted original-source selection")
                     resolved = resolver.resolve(pending, cancelled=cancelled.is_set,
                         progress=lambda count: progress("Resolving inverted original-source selection", count))
+                    definitions, result = pending, resolved
+                    snapshot()
+                elif action == "resize_selection":
+                    pending = resized_selection(definitions, command.get("distance"),
+                                                selection_id=uuid4().hex)
+                    progress("Resolving resized original-source selection")
+                    resolved = resolver.resolve(pending, cancelled=cancelled.is_set,
+                        progress=lambda count: progress("Resolving resized original-source selection", count))
                     definitions, result = pending, resolved
                     snapshot()
                 elif action == "stage":

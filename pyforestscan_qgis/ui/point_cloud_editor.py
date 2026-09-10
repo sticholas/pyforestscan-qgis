@@ -8,10 +8,12 @@ import threading
 import time
 from uuid import uuid4
 
+from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import QThread, QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices, QPalette
 from qgis.PyQt.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QLabel,
-    QToolButton, QSpinBox, QMenu, QStyle, QFileDialog, QMessageBox, QListWidget)
+    QToolButton, QSpinBox, QMenu, QStyle, QFileDialog, QMessageBox, QListWidget,
+    QInputDialog)
 from ..compat.qt import qt_enum
 from ..core.backend.process_env import hidden_subprocess_kwargs
 from ..core.point_cloud.runtime import ViewerRuntimeService
@@ -158,6 +160,19 @@ class EditorPanel(QWidget):
             "Invert Selection: select every original source point not currently selected. This runs a full-source background query and may be large; the existing selection remains if cancelled.", self)
         self.invert.clicked.connect(lambda: self.send("invert"))
         row.addWidget(self.invert)
+        self.resize_selection_button = QToolButton(self)
+        self.resize_selection_button.setIcon(QgsApplication.getThemeIcon("/mActionOffsetCurve.svg"))
+        self.resize_selection_button.setAccessibleName("Grow or Shrink Selection")
+        self.resize_selection_button.setToolTip(
+            "Grow or shrink one Replace selection by an exact dataset-unit distance. "
+            "Circle, Brush, and polygon/Box outlines change in XY; Sphere radius changes in 3D. "
+            "Existing height limits remain unchanged.")
+        resize_menu = QMenu(self.resize_selection_button)
+        resize_menu.addAction("Grow Selection...", lambda: self.resize_selection(1))
+        resize_menu.addAction("Shrink Selection...", lambda: self.resize_selection(-1))
+        self.resize_selection_button.setMenu(resize_menu)
+        self.resize_selection_button.setPopupMode(qt_enum(QToolButton, "InstantPopup", "ToolButtonPopupMode"))
+        row.addWidget(self.resize_selection_button)
         layout.addLayout(row)
         from .point_cloud_widgets import StableViewerStatus
         self.summary = StableViewerStatus("Editor: Open a local source")
@@ -254,6 +269,7 @@ class EditorPanel(QWidget):
         for control in (self.tool, self.mode, self.clear):
             control.setEnabled(ready)
         self.invert.setEnabled(ready and bool(self.state.get("selection")))
+        self.resize_selection_button.setEnabled(ready and bool(self.state.get("selection")))
         if hasattr(self.page, "linked"):
             self.page.linked.limits.refresh()
             self.tool.setEnabled(ready and not self.page.linked.depth_error)
@@ -420,7 +436,8 @@ class EditorPanel(QWidget):
             count = value.get("count", 0)
             selection_progress = stage in ("Resolving original source points",
                                            "Restoring original source selection",
-                                           "Resolving inverted original-source selection")
+                                           "Resolving inverted original-source selection",
+                                           "Resolving resized original-source selection")
             suffix = (f" | {count:,} source points checked" if count and selection_progress
                       else f" | {count:,}" if count else "")
             self.summary.setText(stage + suffix)
@@ -462,7 +479,7 @@ class EditorPanel(QWidget):
         if value.get("error"):
             self.page.send({"action": "selection_resolution", "error": str(value["error"])})
             suffix = (" Previous authoritative selection retained."
-                      if self.pending_action in ("select", "invert") else "")
+                      if self.pending_action in ("select", "invert", "resize_selection") else "")
             self.summary.setText(value["error"] + suffix)
             self.sent_overlay = None
             self.busy = False
@@ -487,6 +504,12 @@ class EditorPanel(QWidget):
 
     def save_to(self, path):
         self.send("save", path=path)
+
+    def resize_selection(self, direction):
+        distance, ok = QInputDialog.getDouble(self, "Grow Selection" if direction > 0 else "Shrink Selection",
+            "Distance in dataset horizontal units", 1, .001, 1000000, 3)
+        if ok:
+            self.send("resize_selection", distance=distance * direction)
 
     def load(self, path):
         self.start({"action": "load", "path": path})

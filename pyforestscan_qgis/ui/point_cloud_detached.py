@@ -3,7 +3,7 @@ from dataclasses import asdict
 from qgis.PyQt.QtCore import Qt, QEvent, QPointF, QTimer, pyqtSignal
 from qgis.PyQt.QtGui import QMouseEvent
 from qgis.PyQt.QtWidgets import (QTabBar, QDialog, QVBoxLayout, QHBoxLayout,
-                                QToolButton, QComboBox, QInputDialog)
+                                QToolButton, QComboBox, QInputDialog, QMenu)
 from ..compat.qt import qt_enum
 from ..core.point_cloud.linked_query import view_ring
 from ..core.point_cloud.selection_impact import selection_impact_suffix
@@ -83,6 +83,18 @@ class DetachedView(QDialog):
             button.clicked.connect(lambda _=False,a=action:self.action(a))
             row.addWidget(button)
             self.action_buttons[action] = button
+        self.resize_button = QToolButton()
+        self.resize_button.setText("Resize")
+        self.resize_button.setAccessibleName("Grow or Shrink Selection")
+        self.resize_button.setToolTip(
+            "Grow or shrink one Replace selection in dataset units. XY outlines change; "
+            "existing height limits remain unchanged.")
+        resize_menu = QMenu(self.resize_button)
+        resize_menu.addAction("Grow Selection...", lambda:self.controller.page.editor.resize_selection(1))
+        resize_menu.addAction("Shrink Selection...", lambda:self.controller.page.editor.resize_selection(-1))
+        self.resize_button.setMenu(resize_menu)
+        self.resize_button.setPopupMode(qt_enum(QToolButton,"InstantPopup","ToolButtonPopupMode"))
+        row.addWidget(self.resize_button)
         self.mode = QComboBox()
         self.mode.addItems(("Classification","Elevation","RGB","Intensity"))
         self.mode.currentTextChanged.connect(lambda value:self.send({"action":"mode","mode":value}))
@@ -178,6 +190,7 @@ class DetachedView(QDialog):
         self.action_buttons["undo"].setEnabled(ready and bool(editor.state.get("can_undo")))
         self.action_buttons["redo"].setEnabled(ready and bool(editor.state.get("can_redo")))
         self.action_buttons["invert"].setEnabled(ready and bool(editor.state.get("selection")))
+        self.resize_button.setEnabled(ready and bool(editor.state.get("selection")))
 
     def action(self, action):
         if action in ("undo","redo","invert"):
