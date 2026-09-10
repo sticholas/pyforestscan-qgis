@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 try:
     from qgis.PyQt.QtCore import QEvent, QPoint, QPointF, Qt, QObject, pyqtSignal
     from qgis.PyQt.QtGui import QMouseEvent
-    from qgis.PyQt.QtWidgets import QApplication, QListWidget, QMessageBox
+    from qgis.PyQt.QtWidgets import QApplication, QListWidget, QMessageBox, QMenu
     from pyforestscan_qgis.compat.qt import qt_enum
     from pyforestscan_qgis.ui.point_cloud_detached import LinkedTabBar, DetachedView
     from pyforestscan_qgis.ui.point_cloud_tools import SelectionTools
@@ -27,8 +27,50 @@ class TabDetachTests(unittest.TestCase):
         source = (Path(__file__).parents[1]/"pyforestscan_qgis"/"ui"/
                   "point_cloud_linked_views.py").read_text(encoding="utf-8")
         for label in ("Save Current Viewpoint...", "Open Saved Viewpoint...",
-                      "Remove Saved Viewpoint...", "Rename Active View..."):
+                      "Remove Saved Viewpoint...", "Rename Active View...",
+                      "Linked Views"):
             self.assertIn(label, source)
+
+    def test_dynamic_linked_view_menu_lists_named_views_and_window_state(self):
+        from pyforestscan_qgis.core.point_cloud.workspace import (
+            AreaGeometry, PointCloudWorkspaceModel, ViewType)
+        from dataclasses import asdict
+        model = PointCloudWorkspaceModel()
+        model.register(title="3D Overview", view_id="overview")
+        detail = model.register(ViewType.AREA_DETAIL, "Crown Detail",
+            geometry=asdict(AreaGeometry("SQUARE", "EPSG:32605", (1,2), 30, 30)))
+        menu = QMenu()
+        self.addCleanup(menu.deleteLater)
+        detached = Mock()
+        detached.isActiveWindow.return_value = False
+        owner = SimpleNamespace(page=SimpleNamespace(workspace=model),
+            linked_views_menu=menu, detached={detail:detached},
+            refresh_viewpoint_actions=Mock(), open_linked_view=Mock())
+        LinkedViews.refresh_view_actions(owner)
+        self.assertEqual([action.text() for action in menu.actions()],
+                         ["Overview: 3D Overview", "Area: Crown Detail (window)"])
+        self.assertTrue(menu.actions()[0].isChecked())
+        menu.actions()[1].trigger()
+        owner.open_linked_view.assert_called_once_with(detail)
+
+    def test_open_linked_view_activates_tab_or_raises_detached_window(self):
+        from pyforestscan_qgis.core.point_cloud.workspace import PointCloudWorkspaceModel
+        model = PointCloudWorkspaceModel()
+        model.register(title="3D Overview", view_id="overview")
+        page = SimpleNamespace(workspace=model, view_tabs=Mock(), status=Mock())
+        page.view_tabs.count.return_value = 1
+        page.view_tabs.tabData.return_value = "overview"
+        owner = SimpleNamespace(page=page, detached={}, capture=Mock(), open_active=Mock())
+        LinkedViews.open_linked_view(owner, "overview")
+        owner.capture.assert_called_once()
+        owner.open_active.assert_called_once()
+        page.view_tabs.setCurrentIndex.assert_called_once_with(0)
+        window = Mock()
+        owner.detached["overview"] = window
+        LinkedViews.open_linked_view(owner, "overview")
+        window.show.assert_called_once()
+        window.raise_.assert_called_once()
+        window.activateWindow.assert_called_once()
 
     def test_rename_active_view_updates_existing_workspace_authority(self):
         from pyforestscan_qgis.core.point_cloud.workspace import (

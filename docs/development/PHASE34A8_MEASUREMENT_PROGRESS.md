@@ -53,6 +53,11 @@ Editor and do not change the `0.2.0-beta.1` release boundary.
   from the existing View options menu. Names remain part of the sole
   source-bound linked-workspace record, survive session recovery, and update
   existing tabs and detached-window titles without recreating renderers.
+- View options now contains a compact dynamic Linked Views switcher. It lists
+  every named view with its type, identifies separately-windowed views, opens
+  tabbed views through the existing lazy renderer lifecycle, and raises detached
+  windows directly. It introduces no second scene registry and reserves no
+  permanent viewer space.
 
 ## IN PROGRESS
 
@@ -65,8 +70,7 @@ require live qualification.
 
 1. Qualify point picking, markers and linked overlays in a fresh human viewer
    session.
-2. Add compact scene organization for larger collections of named views without
-   duplicating linked-workspace ownership.
+2. Qualify named-view switching and detached-window raising in a live session.
 3. Design source-isolated multiple-cloud comparison views without merging edit
    journals or source fingerprints.
 

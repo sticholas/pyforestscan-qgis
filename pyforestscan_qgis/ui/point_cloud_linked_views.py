@@ -50,6 +50,7 @@ class LinkedViews(QObject):
         self.create.setAccessibleName("View options")
         self.create.setToolTip("View options: adjust the current region, open the selected area or manage linked windows. Selection and edit history remain shared.")
         menu = QMenu(self.create)
+        self.linked_views_menu = menu.addMenu("Linked Views")
         for label, tool, purpose in (("Area Detail: Polygon", "Polygon", "CREATE_AREA"),):
             action = menu.addAction(label)
             action.triggered.connect(lambda _=False, t=tool, p=purpose: self.draw(t,p))
@@ -63,7 +64,7 @@ class LinkedViews(QObject):
         self.save_viewpoint_action = menu.addAction("Save Current Viewpoint...", self.save_viewpoint)
         self.open_viewpoint_action = menu.addAction("Open Saved Viewpoint...", self.open_viewpoint)
         self.remove_viewpoint_action = menu.addAction("Remove Saved Viewpoint...", self.remove_viewpoint)
-        menu.aboutToShow.connect(self.refresh_viewpoint_actions)
+        menu.aboutToShow.connect(self.refresh_view_actions)
         self.create.setMenu(menu)
         self.create.setPopupMode(qt_enum(QToolButton, "InstantPopup", "ToolButtonPopupMode"))
         toolbar.addWidget(self.create)
@@ -338,6 +339,55 @@ class LinkedViews(QObject):
         available = bool(self.page.workspace.bookmarks)
         self.open_viewpoint_action.setEnabled(available)
         self.remove_viewpoint_action.setEnabled(available)
+
+    def refresh_view_actions(self):
+        self.refresh_viewpoint_actions()
+        self.linked_views_menu.clear()
+        labels = {
+            ViewType.OVERVIEW_3D: "Overview",
+            ViewType.AREA_DETAIL: "Area",
+            ViewType.VERTICAL_SLICE: "Slice",
+        }
+        views = self.page.workspace.views
+        for key, view in views.items():
+            detached = key in self.detached
+            suffix = " (window)" if detached else ""
+            action = self.linked_views_menu.addAction(
+                f"{labels[ViewType(view.view_type)]}: {view.title}{suffix}")
+            action.setCheckable(True)
+            action.setChecked((detached and self.detached[key].isActiveWindow()) or
+                              (not detached and key == self.page.workspace.active_view_id))
+            action.setToolTip(
+                "Raise this linked window." if detached else
+                "Open this source-bound view in the main viewer.")
+            action.triggered.connect(
+                lambda _checked=False, view_id=key: self.open_linked_view(view_id))
+        if not views:
+            empty = self.linked_views_menu.addAction("No linked views")
+            empty.setEnabled(False)
+
+    def open_linked_view(self, view_id):
+        if view_id not in self.page.workspace.views:
+            self.page.status.setText("That linked view is no longer available.")
+            return
+        if view_id in self.detached:
+            window = self.detached[view_id]
+            window.show()
+            window.raise_()
+            window.activateWindow()
+            return
+        self.capture()
+        self.page.workspace.activate(view_id)
+        index = next((i for i in range(self.page.view_tabs.count())
+                      if self.page.view_tabs.tabData(i) == view_id), -1)
+        if index < 0:
+            self.page.status.setText("That linked view is not available as a workspace tab.")
+            return
+        self.page.view_tabs.blockSignals(True)
+        self.page.view_tabs.setCurrentIndex(index)
+        self.page.view_tabs.blockSignals(False)
+        self.open_active()
+        self.page.status.setText(f"Opening linked view: {self.page.workspace.views[view_id].title}")
 
     def rename_active_view(self):
         view = self.active()
