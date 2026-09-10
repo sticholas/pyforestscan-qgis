@@ -32,19 +32,25 @@ Editor and do not change the `0.2.0-beta.1` release boundary.
   identity inside the existing source-bound linked workspace. Opening a
   bookmark activates that view and camera; closing a linked view removes its
   dependent bookmarks, and changing source/session clears them.
+- Vertical Slice now has a distinct Cross-section measurement path. Elevation
+  slices resolve renderer XYZ against original source XYZ; HAG slices resolve
+  display height against the stored `HeightAboveGround` dimension while
+  retaining original XYZ. Results report along-profile distance, signed
+  vertical change and cross-section distance. They are shown only in their
+  owning slice so HAG display coordinates cannot be confused with elevation.
 
 ## IN PROGRESS
 
-Point-to-point and planar-area measurements have contract, renderer, worker and
-dual-Qt test coverage. Human point picking/drawing, label readability,
+Point-to-point, planar-area and cross-section measurements have contract,
+renderer, worker and dual-Qt test coverage. Human point picking/drawing, label readability,
 dense-source latency and detached-view visual agreement still require live
 qualification.
 
 ## NEXT
 
 1. Qualify point picking and linked overlays in a fresh human viewer session.
-2. Add profile/cross-section measurement records using authoritative source
-   coordinates.
+2. Qualify elevation and HAG cross-section measurements against a real source
+   and the live embedded Vertical Slice.
 3. Add linked-location markers and lightweight annotations to the existing
    workspace model.
 
@@ -68,6 +74,13 @@ The same managed canary validated a 10 by 10 metre boundary at projected
 coordinates near 215,000 / 2,114,500. It reported exactly 100 square metres and
 a 40 metre perimeter, retained EPSG:6635 unit context, and left the same source
 hash unchanged.
+
+The managed canary also resolved a real HAG cross-section through all 2,287,408
+source records in 0.454 seconds. Its two display anchors snapped exactly to
+stored source points, retained original elevations 908.65 and 944.71 metres,
+and used HAG values 0.00 and 18.850 metres for the profile. It reported 111.763
+metres along the transect, +18.850 metres HAG change and 113.341 metres
+cross-section distance. The source hash remained unchanged.
 
 Measurement overlays store segment vertices relative to the first endpoint and
 place the Three.js object at the source-coordinate origin. This retains

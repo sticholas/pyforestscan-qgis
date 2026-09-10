@@ -228,4 +228,21 @@ assert.equal(tick().measurement_count,2);
 assert.equal(measurementGroup.children.length,3);
 assert.deepEqual(Array.from(measurementGroup.children[2].geometry.attributes.position.values),
     [0,0,0,60,0,0,60,-60,0,0,0,0]);
+editor.command({action:"linked_view",view:{view_id:"slice",view_type:"VERTICAL_SLICE",
+    geometry:{a:[0,0],b:[100,0],thickness:4}}});
+editor.command({action:"measurement_tool",kind:"PROFILE_DISTANCE"});
+click(5,8);click(9,20);
+const profileMeasurement=tick().event;
+assert.equal(profileMeasurement.action,"measure_profile_points");
+assert.equal(profileMeasurement.view_id,"slice");
+editor.command({action:"measurements",measurements:[{kind:"PROFILE_DISTANCE",view_id:"slice",
+    start:{display_xyz:[5,8,13]},end:{display_xyz:[9,20,29]}}]});
+assert.equal(tick().measurement_count,1);
+assert.deepEqual(Array.from(measurementGroup.children[0].geometry.attributes.position.values),
+    [0,0,0,4,12,16]);
+editor.command({action:"linked_view",view:{view_id:"overview",view_type:"OVERVIEW_3D"}});
+assert.equal(tick().measurement_count,0);
+editor.command({action:"linked_view",view:{view_id:"slice",view_type:"VERTICAL_SLICE",
+    geometry:{a:[0,0],b:[100,0],thickness:4}}});
+assert.equal(tick().measurement_count,1);
 console.log("Production editor gesture handlers passed all completion/cancel paths.");

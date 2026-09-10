@@ -1,6 +1,7 @@
 """Authoritative point-to-point measurement contracts without QGIS."""
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import math
 import unittest
 
 try:
@@ -10,10 +11,12 @@ except ImportError:
 
 from pyforestscan_qgis.core.point_cloud.measurement import (
     AreaMeasurement, MeasurementAnchor, create_area_measurement,
-    create_point_measurement, measurement_summary,
-    measurement_unit_context, resolve_anchor_chunks, source_pick_tolerance,
+    create_point_measurement, create_profile_measurement, measurement_summary,
+    measurement_unit_context, resolve_anchor_chunks, resolve_profile_anchor_chunks,
+    source_pick_tolerance,
     validate_measurements)
 from pyforestscan_qgis.core.point_cloud.session import PointCloudEditSession, SourceIdentity
+from pyforestscan_qgis.core.point_cloud.workspace import SliceGeometry
 
 
 class FakeProjectedCrs:
@@ -124,6 +127,42 @@ class PointMeasurementTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "do not match"):
             validate_measurements([item], "a"*64)
 
+    @unittest.skipIf(np is None, "NumPy required")
+    def test_hag_profile_resolves_original_xyz_and_cross_section_metrics(self):
+        points = np.array([(0.,0.,100.,2,0.),(5.,1.,120.,5,8.),(9.,-1.,140.,5,20.)],
+            dtype=[("X","f8"),("Y","f8"),("Z","f8"),
+                   ("Classification","u1"),("HeightAboveGround","f8")])
+        profile = SliceGeometry((0,0),(10,0),4,"EPSG:32605","HeightAboveGround")
+        progress = []
+        anchors, duration = resolve_profile_anchor_chunks((points[:1],points[1:]),3,
+            ((5,1,8),(9,-1,20)),profile,progress=progress.append)
+        self.assertEqual(progress,[1,3])
+        self.assertEqual(anchors[0].source_xyz,(5,1,120))
+        self.assertEqual(anchors[0].display_xyz,(5,1,8))
+        self.assertEqual(anchors[0].profile_position,(5,8))
+        self.assertEqual(anchors[0].cross_track,1)
+        item = create_profile_measurement("a"*64,"EPSG:32605","slice","Slice 1",
+            profile,anchors,horizontal_unit="metre",resolution_seconds=duration,
+            source_point_count=3,measurement_id="profile",created_at="fixed")
+        self.assertEqual(item.along_distance,4)
+        self.assertEqual(item.vertical_distance,12)
+        self.assertEqual(item.vertical_difference,12)
+        self.assertTrue(math.isclose(item.cross_section_distance,math.hypot(4,12)))
+        self.assertIn("HAG change +12.000 metre",measurement_summary(item))
+        restored = validate_measurements([item.to_dict()],"a"*64)
+        self.assertEqual(restored[0]["kind"],"PROFILE_DISTANCE")
+
+    @unittest.skipIf(np is None, "NumPy required")
+    def test_profile_missing_axis_and_outside_corridor_fail_closed(self):
+        ordinary = np.array([(5.,5.,10.,2)],dtype=[("X","f8"),("Y","f8"),
+            ("Z","f8"),("Classification","u1")])
+        hag = SliceGeometry((0,0),(10,0),2,"EPSG:32605","HeightAboveGround")
+        with self.assertRaisesRegex(ValueError,"HeightAboveGround"):
+            resolve_profile_anchor_chunks((ordinary,),1,((5,0,2),(6,0,3)),hag)
+        elevation = SliceGeometry((0,0),(10,0),2,"EPSG:32605")
+        with self.assertRaisesRegex(ValueError,"could not be matched"):
+            resolve_profile_anchor_chunks((ordinary,),1,((5,5,10),(5,5,10)),elevation)
+
     def test_saved_measurements_are_source_bound_and_duplicate_guarded(self):
         anchors = (MeasurementAnchor((0,0,0),(0,0,0),0),
                    MeasurementAnchor((1,0,0),(1,0,0),0))
@@ -164,3 +203,5 @@ class PointMeasurementTests(unittest.TestCase):
         self.assertIn('elif action == "clear_measurements":', worker)
         self.assertIn('elif action == "add_area_measurement":', worker)
         self.assertIn("create_area_measurement(session.source.sha256", worker)
+        self.assertIn('elif action == "add_profile_measurement":', worker)
+        self.assertIn("resolve_source_profile_measurement(session.source", worker)

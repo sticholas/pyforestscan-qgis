@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 import hashlib
 import json
 import math
@@ -30,10 +31,13 @@ def main():
     handle = os.add_dll_directory(str(dll)) if os.name == "nt" and dll.is_dir() else None
 
     import pdal
+    import numpy as np
     from pyproj import CRS
     from pyforestscan_qgis.core.point_cloud.measurement import (
-        create_area_measurement, measurement_unit_context, resolve_source_measurement)
+        create_area_measurement, measurement_unit_context,
+        resolve_source_measurement, resolve_source_profile_measurement)
     from pyforestscan_qgis.core.point_cloud.session import SourceIdentity
+    from pyforestscan_qgis.core.point_cloud.workspace import SliceGeometry
 
     identity = SourceIdentity.capture(args.source)
     before = identity.sha256
@@ -80,12 +84,45 @@ def main():
         unit_warning=warning, measurement_id="real-source-area", created_at="fixed")
     if not math.isclose(area.area, width*height, rel_tol=0, abs_tol=1e-9):
         raise RuntimeError("Area differs from projected source-coordinate truth.")
+    if "HeightAboveGround" not in (first_chunk.dtype.names or ()):
+        raise RuntimeError("Real HAG profile qualification requires HeightAboveGround.")
+    finite = np.flatnonzero(np.isfinite(first_chunk["HeightAboveGround"]))
+    if len(finite) < 2:
+        raise RuntimeError("Real HAG profile qualification requires two finite points.")
+    first = int(finite[np.argmin(first_chunk["HeightAboveGround"][finite])])
+    ordered = finite[np.argsort(first_chunk["HeightAboveGround"][finite])][::-1]
+    second = next((int(index) for index in ordered
+                   if (first_chunk["X"][index],first_chunk["Y"][index]) !=
+                      (first_chunk["X"][first],first_chunk["Y"][first])),None)
+    if second is None:
+        raise RuntimeError("Real HAG profile qualification requires distinct XY points.")
+    profile = SliceGeometry(
+        (float(first_chunk["X"][first]),float(first_chunk["Y"][first])),
+        (float(first_chunk["X"][second]),float(first_chunk["Y"][second])),
+        1.,source_crs,"HeightAboveGround")
+    requested_profile = tuple((float(first_chunk["X"][index]),
+        float(first_chunk["Y"][index]),float(first_chunk["HeightAboveGround"][index]))
+        for index in (first,second))
+    profile_progress = []
+    profile_measurement = resolve_source_profile_measurement(identity,point_count,
+        requested_profile,source_crs,asdict(profile),"real-source-slice","HAG Slice",
+        pdal_module=pdal,crs_type=CRS,progress=profile_progress.append)
+    if profile_measurement.vertical_axis != "HeightAboveGround":
+        raise RuntimeError("Profile qualification did not retain its HAG axis.")
+    if tuple(anchor.source_xyz for anchor in
+             (profile_measurement.start,profile_measurement.end)) != tuple(
+             (float(first_chunk["X"][index]),float(first_chunk["Y"][index]),
+              float(first_chunk["Z"][index])) for index in (first,second)):
+        raise RuntimeError("Profile anchors did not retain original source XYZ.")
+    if not profile_progress or profile_progress[-1] != point_count:
+        raise RuntimeError("Profile resolver did not report the complete source scan.")
     if sha256(args.source) != before:
         raise RuntimeError("Measurement changed the original source.")
     print(json.dumps({"status":"PASS", "source":identity.path,
         "source_sha256":before, "source_unchanged":True,
         "source_point_count":point_count, "measurement":measurement.to_dict(),
         "area_measurement":area.to_dict(),
+        "profile_measurement":profile_measurement.to_dict(),
         "progress_final":progress[-1]}, sort_keys=True))
     if handle is not None:
         handle.close()

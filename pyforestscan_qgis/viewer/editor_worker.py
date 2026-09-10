@@ -641,6 +641,25 @@ def main():
                     session.visibility["measurements"] = [*current, measurement.to_dict()]
                     session.save(autosave)
                     snapshot(highlight=False)
+                elif action == "add_profile_measurement":
+                    from pyforestscan_qgis.core.point_cloud.measurement import (
+                        MAX_MEASUREMENTS, resolve_source_profile_measurement,
+                        validate_measurements)
+                    current = validate_measurements(session.visibility.get("measurements"),
+                                                    session.source.sha256)
+                    if len(current) >= MAX_MEASUREMENTS:
+                        raise ValueError(f"One session supports at most {MAX_MEASUREMENTS:,} measurements.")
+                    progress("Resolving original source profile anchors")
+                    measurement = resolve_source_profile_measurement(session.source,
+                        point_count, command.get("points") or (), session.source_crs,
+                        command.get("profile_geometry") or {}, command.get("view_id") or "",
+                        command.get("view_name") or "", pdal_module=pdal, crs_type=CRS,
+                        cancelled=cancelled.is_set,
+                        progress=lambda count: progress(
+                            "Resolving original source profile anchors",count))
+                    session.visibility["measurements"] = [*current,measurement.to_dict()]
+                    session.save(autosave)
+                    snapshot(highlight=False)
                 elif action == "clear_measurements":
                     session.visibility["measurements"] = []
                     session.save(autosave)

@@ -45,7 +45,7 @@ class ViewBookmark:
     camera: dict
 
     def __post_init__(self):
-        name = self.name.strip()
+        name = self.name.strip() if isinstance(self.name, str) else ""
         if (not re.fullmatch(r"[0-9a-f]{32}", self.bookmark_id)
                 or not name or len(name) > 80 or any(ord(char) < 32 for char in name)
                 or not self.view_id):

@@ -33,7 +33,8 @@ class DrawingRGBTests(unittest.TestCase):
         self.assertIn("insideSphere", source)
         self.assertIn('command.action === "measurement_tool"', source)
         self.assertIn("getMousePointCloudIntersection", source)
-        self.assertIn('action:"measure_points"', source)
+        self.assertIn('"measure_points"', source)
+        self.assertIn('"measure_profile_points"', source)
 
     def test_help_has_fixed_scrollable_footprint(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_widgets.py").read_text()

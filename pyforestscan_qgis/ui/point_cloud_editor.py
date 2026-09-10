@@ -1,5 +1,6 @@
 """Qt-only editor controls. Scientific work belongs to the managed child."""
 from __future__ import annotations
+from dataclasses import asdict
 import json
 from pathlib import Path
 import queue
@@ -183,6 +184,11 @@ class EditorPanel(QWidget):
         self.area_measurement_action.setToolTip(
             "Draw a horizontal boundary in source coordinates and report its area and perimeter.")
         self.area_measurement_action.triggered.connect(self.start_area_measurement)
+        self.profile_measurement_action = measurement_menu.addAction(
+            "Measure in Vertical Slice")
+        self.profile_measurement_action.setToolTip(
+            "Choose two displayed profile points. The managed worker resolves original source Z or stored HAG values before reporting cross-section distance.")
+        self.profile_measurement_action.triggered.connect(self.start_profile_measurement)
         self.measurement_button.setMenu(measurement_menu)
         self.measurement_button.setPopupMode(
             qt_enum(QToolButton, "MenuButtonPopup", "ToolButtonPopupMode"))
@@ -432,6 +438,7 @@ class EditorPanel(QWidget):
         self.resize_selection_button.setEnabled(ready and bool(self.state.get("selection")))
         self.measurement_button.setEnabled(ready)
         self.area_measurement_action.setEnabled(ready)
+        self.profile_measurement_action.setEnabled(ready and self.active_vertical_slice())
         self.measurements_action.setEnabled(bool(self.state.get("measurements")))
         self.clear_measurements_action.setEnabled(ready and bool(self.state.get("measurements")))
         if hasattr(self.page, "linked"):
@@ -608,12 +615,37 @@ class EditorPanel(QWidget):
         if not self.viewer_ready or self.busy:
             self.measurement_button.setChecked(False)
             return
+        if self.active_vertical_slice():
+            self.start_profile_measurement()
+            return
         self.tool.blockSignals(True)
         self.tool.setCurrentText("Pointer")
         self.tool.blockSignals(False)
         self.page.send({"action":"measurement_tool"})
         self.measurement_button.setChecked(True)
         self.summary.setText("Measurement: Click the first source point")
+
+    def active_vertical_slice(self):
+        try:
+            value = self.page.linked.active().view_type
+            return getattr(value, "value", value) == "VERTICAL_SLICE"
+        except (AttributeError, KeyError):
+            return False
+
+    def start_profile_measurement(self):
+        if not self.viewer_ready or self.busy:
+            self.measurement_button.setChecked(False)
+            return
+        if not self.active_vertical_slice():
+            self.summary.setText("Open a Vertical Slice before measuring a cross-section.")
+            self.measurement_button.setChecked(False)
+            return
+        self.tool.blockSignals(True)
+        self.tool.setCurrentText("Pointer")
+        self.tool.blockSignals(False)
+        self.page.send({"action":"measurement_tool", "kind":"PROFILE_DISTANCE"})
+        self.measurement_button.setChecked(True)
+        self.summary.setText("Cross-section: Click the first displayed profile point")
 
     def start_area_measurement(self):
         if not self.viewer_ready or self.busy:
@@ -661,6 +693,17 @@ class EditorPanel(QWidget):
             elif event.get("action") == "measure_points":
                 self.measurement_button.setChecked(False)
                 self.send("add_measurement", points=event.get("points"))
+            elif event.get("action") == "measure_profile_points":
+                self.measurement_button.setChecked(False)
+                view = self.page.linked.active()
+                if (getattr(view.view_type, "value", view.view_type) != "VERTICAL_SLICE"
+                        or event.get("view_id") != view.view_id):
+                    self.summary.setText(
+                        "The active Vertical Slice changed; start the measurement again.")
+                else:
+                    self.send("add_profile_measurement", points=event.get("points"),
+                              profile_geometry=asdict(view)["geometry"],
+                              view_id=view.view_id, view_name=view.title)
             elif event.get("action") in ("undo", "redo"):
                 self.send(event["action"])
             elif event.get("error"):
@@ -1038,7 +1081,8 @@ class EditorPanel(QWidget):
                 self.summary.setText(
                     f"{active.get('field')} object {active.get('object_id')} | "
                     + object_review_summary(value["current_object_review"]))
-            if completed_action == "add_measurement" and value.get("measurements"):
+            if completed_action in ("add_measurement", "add_area_measurement",
+                                     "add_profile_measurement") and value.get("measurements"):
                 from ..core.point_cloud.measurement import measurement_summary
                 self.summary.setText("Measurement saved | " +
                     measurement_summary(value["measurements"][-1]))

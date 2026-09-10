@@ -156,6 +156,100 @@ class AreaMeasurement:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class ProfileAnchor:
+    requested_display_xyz: tuple[float, float, float]
+    source_xyz: tuple[float, float, float]
+    display_xyz: tuple[float, float, float]
+    profile_position: tuple[float, float]
+    cross_track: float
+    snap_distance: float
+    classification: int | None = None
+    height_above_ground: float | None = None
+
+    def __post_init__(self):
+        for field, label in (("requested_display_xyz", "Requested profile anchor"),
+                             ("source_xyz", "Resolved profile source anchor"),
+                             ("display_xyz", "Resolved profile display anchor")):
+            object.__setattr__(self, field, _point(getattr(self, field), label))
+        profile = tuple(self.profile_position)
+        if (len(profile) != 2 or any(type(value) not in (int, float)
+                                     or not math.isfinite(value) for value in profile)):
+            raise ValueError("Profile anchor requires finite along-distance and height values.")
+        object.__setattr__(self, "profile_position", tuple(float(value) for value in profile))
+        if (type(self.cross_track) not in (int, float) or not math.isfinite(self.cross_track)
+                or type(self.snap_distance) not in (int, float)
+                or not math.isfinite(self.snap_distance) or self.snap_distance < 0
+                or self.snap_distance > MAX_SNAP_DISTANCE):
+            raise ValueError("Profile anchor resolution evidence is invalid.")
+        if self.classification is not None and (type(self.classification) is not int
+                                                or not 0 <= self.classification <= 255):
+            raise ValueError("Profile anchor classification is invalid.")
+        if self.height_above_ground is not None and not math.isfinite(self.height_above_ground):
+            raise ValueError("Profile anchor HAG is invalid.")
+
+
+@dataclass(frozen=True)
+class ProfileMeasurement:
+    measurement_id: str
+    source_sha256: str
+    source_crs: str
+    view_id: str
+    view_name: str
+    profile_geometry: dict
+    start: ProfileAnchor
+    end: ProfileAnchor
+    along_distance: float
+    vertical_distance: float
+    vertical_difference: float
+    cross_section_distance: float
+    horizontal_unit: str
+    vertical_unit: str
+    vertical_axis: str
+    unit_warning: str = ""
+    resolution_seconds: float = 0.0
+    source_point_count: int = 0
+    created_at: str = ""
+    addressing: str = "FULL_RESOLUTION_ORIGINAL_SOURCE_PROFILE_RESOLUTION"
+    kind: str = "PROFILE_DISTANCE"
+
+    def __post_init__(self):
+        from .workspace import SliceGeometry
+        if (not self.measurement_id or not re.fullmatch(r"[0-9a-f]{64}", self.source_sha256)
+                or not self.source_crs or not isinstance(self.view_id, str) or not self.view_id
+                or not isinstance(self.view_name, str) or not self.view_name.strip()
+                or self.addressing != "FULL_RESOLUTION_ORIGINAL_SOURCE_PROFILE_RESOLUTION"
+                or self.kind != "PROFILE_DISTANCE"):
+            raise ValueError("Profile measurement source or view identity is invalid.")
+        profile = SliceGeometry(**self.profile_geometry)
+        object.__setattr__(self, "profile_geometry", asdict(profile))
+        if self.vertical_axis != profile.vertical_axis:
+            raise ValueError("Profile measurement vertical axis does not match its slice.")
+        for value in (self.along_distance, self.vertical_distance,
+                      self.vertical_difference, self.cross_section_distance):
+            if type(value) not in (int, float) or not math.isfinite(value):
+                raise ValueError("Profile measurement distances must be finite.")
+        if (self.along_distance < 0 or self.vertical_distance < 0
+                or self.cross_section_distance < 0 or not self.horizontal_unit
+                or not self.vertical_unit or type(self.source_point_count) is not int
+                or self.source_point_count <= 0 or type(self.resolution_seconds) not in (int, float)
+                or not math.isfinite(self.resolution_seconds) or self.resolution_seconds < 0):
+            raise ValueError("Profile measurement distances, units, or evidence are invalid.")
+        along = abs(self.end.profile_position[0]-self.start.profile_position[0])
+        vertical = self.end.profile_position[1]-self.start.profile_position[1]
+        if (not math.isclose(self.along_distance, along, rel_tol=1e-12, abs_tol=1e-9)
+                or not math.isclose(self.vertical_difference, vertical,
+                                    rel_tol=1e-12, abs_tol=1e-9)
+                or not math.isclose(self.vertical_distance, abs(vertical),
+                                    rel_tol=1e-12, abs_tol=1e-9)
+                or not math.isclose(self.cross_section_distance, math.hypot(along, vertical),
+                                    rel_tol=1e-12, abs_tol=1e-9)):
+            raise ValueError("Saved profile measurement metrics do not match its anchors.")
+
+    def to_dict(self):
+        return asdict(self)
+
+
 def resolve_anchor_chunks(chunks, expected_points, requested_points, *,
                           cancelled=lambda: False, progress=lambda count: None):
     """Resolve renderer-picked coordinates to original points in one bounded scan."""
@@ -211,6 +305,82 @@ def resolve_anchor_chunks(chunks, expected_points, requested_points, *,
     return tuple(anchors), monotonic()-started
 
 
+def resolve_profile_anchor_chunks(chunks, expected_points, requested_points,
+                                  profile_geometry, *, cancelled=lambda: False,
+                                  progress=lambda count: None):
+    """Resolve slice-display XYZ picks against original XYZ/HAG source records."""
+    from .workspace import SliceGeometry
+    import numpy as np
+
+    profile = (profile_geometry if isinstance(profile_geometry, SliceGeometry)
+               else SliceGeometry(**profile_geometry))
+    requests = tuple(_point(item, "Profile measurement pick") for item in requested_points)
+    if len(requests) != 2:
+        raise ValueError("Cross-section measurement requires two displayed profile points.")
+    if type(expected_points) is not int or expected_points <= 0:
+        raise ValueError("Profile measurement requires a positive verified point count.")
+    tolerances = tuple(min(MAX_SNAP_DISTANCE,
+                           max(.025, source_pick_tolerance(item))) for item in requests)
+    dx, dy = profile.b[0]-profile.a[0], profile.b[1]-profile.a[1]
+    best = [None, None]
+    scanned = 0
+    started = monotonic()
+    for chunk in chunks:
+        if cancelled():
+            raise InterruptedError("Profile measurement cancelled; saved measurements are unchanged.")
+        names = set(chunk.dtype.names or ())
+        required = {"X", "Y", "Z"}
+        if profile.vertical_axis == "HeightAboveGround":
+            required.add("HeightAboveGround")
+        if required - names:
+            raise ValueError("Source lacks profile measurement dimensions: "
+                             + ", ".join(sorted(required-names)) + ".")
+        x = np.asarray(chunk["X"], dtype="f8")
+        y = np.asarray(chunk["Y"], dtype="f8")
+        z = np.asarray(chunk["Z"], dtype="f8")
+        vertical = (np.asarray(chunk["HeightAboveGround"], dtype="f8")
+                    if profile.vertical_axis == "HeightAboveGround" else z)
+        along = ((x-profile.a[0])*dx+(y-profile.a[1])*dy)/profile.length
+        cross = (-(x-profile.a[0])*dy+(y-profile.a[1])*dx)/profile.length
+        finite = np.isfinite(x) & np.isfinite(y) & np.isfinite(z) & np.isfinite(vertical)
+        eligible = finite & (np.abs(cross) <= profile.thickness/2)
+        if profile.vertical_limits is not None:
+            eligible &= ((vertical >= profile.vertical_limits[0])
+                         & (vertical <= profile.vertical_limits[1]))
+        for index, request in enumerate(requests):
+            distance2 = ((x-request[0])**2+(y-request[1])**2
+                         +(vertical-request[2])**2)
+            if not len(distance2):
+                continue
+            distance2 = np.where(eligible, distance2, np.inf)
+            location = int(np.argmin(distance2))
+            candidate = float(distance2[location])
+            if math.isfinite(candidate) and (best[index] is None or candidate < best[index][0]):
+                hag = (float(chunk["HeightAboveGround"][location])
+                       if "HeightAboveGround" in names else None)
+                if hag is not None and not math.isfinite(hag):
+                    hag = None
+                best[index] = (candidate, location, float(x[location]), float(y[location]),
+                               float(z[location]), float(vertical[location]),
+                               float(along[location]), float(cross[location]),
+                               (int(chunk["Classification"][location])
+                                if "Classification" in names else None), hag)
+        scanned += len(chunk)
+        progress(scanned)
+    if scanned != expected_points:
+        raise ValueError("Profile measurement source count differs from the verified header.")
+    anchors = []
+    for request, tolerance, candidate in zip(requests, tolerances, best):
+        if candidate is None or math.sqrt(candidate[0]) > tolerance:
+            raise ValueError("A profile pick could not be matched to an original source point.")
+        anchors.append(ProfileAnchor(request,
+            (candidate[2],candidate[3],candidate[4]),
+            (candidate[2],candidate[3],candidate[5]),
+            (candidate[6],candidate[5]), candidate[7], math.sqrt(candidate[0]),
+            candidate[8], candidate[9]))
+    return tuple(anchors), monotonic()-started
+
+
 def create_point_measurement(source_sha256, source_crs, anchors, *,
                              horizontal_unit, vertical_unit=None,
                              unit_warning="", resolution_seconds=0,
@@ -246,6 +416,26 @@ def create_area_measurement(source_sha256, source_crs, vertices, *,
     return AreaMeasurement(measurement_id or uuid4().hex, source_sha256, source_crs,
         points, area, perimeter, horizontal_unit, f"square {horizontal_unit}",
         display_elevation, unit_warning,
+        created_at or datetime.now(timezone.utc).isoformat())
+
+
+def create_profile_measurement(source_sha256, source_crs, view_id, view_name,
+                               profile_geometry, anchors, *, horizontal_unit,
+                               vertical_unit=None, unit_warning="", resolution_seconds=0,
+                               source_point_count=1, measurement_id=None, created_at=None):
+    from .workspace import SliceGeometry
+    profile = (profile_geometry if isinstance(profile_geometry, SliceGeometry)
+               else SliceGeometry(**profile_geometry))
+    items = tuple(anchors)
+    if len(items) != 2 or any(not isinstance(item, ProfileAnchor) for item in items):
+        raise ValueError("Cross-section measurement requires two resolved profile anchors.")
+    along = abs(items[1].profile_position[0]-items[0].profile_position[0])
+    vertical = items[1].profile_position[1]-items[0].profile_position[1]
+    return ProfileMeasurement(measurement_id or uuid4().hex, source_sha256,
+        source_crs, view_id, view_name, asdict(profile), items[0], items[1],
+        along, abs(vertical), vertical, math.hypot(along, vertical), horizontal_unit,
+        vertical_unit or horizontal_unit, profile.vertical_axis, unit_warning,
+        resolution_seconds, source_point_count,
         created_at or datetime.now(timezone.utc).isoformat())
 
 
@@ -289,8 +479,50 @@ def resolve_source_measurement(source, expected_points, requested_points, source
         resolution_seconds=duration, source_point_count=expected_points)
 
 
+def resolve_source_profile_measurement(source, expected_points, requested_points,
+                                       source_crs, profile_geometry, view_id, view_name, *,
+                                       pdal_module=None, crs_type=None,
+                                       cancelled=lambda: False, progress=lambda count: None):
+    """Resolve two picks from one Vertical Slice against original source records."""
+    from .workspace import SliceGeometry
+    profile = (profile_geometry if isinstance(profile_geometry, SliceGeometry)
+               else SliceGeometry(**profile_geometry))
+    pdal = pdal_module
+    if pdal is None:
+        import pdal as pdal_module
+        pdal = pdal_module
+    if crs_type is None:
+        from pyproj import CRS
+        crs_type = CRS
+    if source_crs.startswith("SOURCE_LOCAL:"):
+        if profile.crs != source_crs:
+            raise ValueError("Profile and source-local coordinate identities do not match.")
+    elif not crs_type.from_user_input(source_crs).equals(crs_type.from_user_input(profile.crs)):
+        raise ValueError("Profile and original source CRS do not match.")
+    source.verify(cancelled=cancelled)
+    reader = {"type":"readers.copc" if source.source_type == "COPC" else "readers.las",
+              "filename":source.path}
+    chunks = pdal.Pipeline(json.dumps([reader])).iterator(chunk_size=65_536,prefetch=0)
+    anchors, duration = resolve_profile_anchor_chunks(chunks, expected_points,
+        requested_points, profile, cancelled=cancelled, progress=progress)
+    source.verify(cancelled=cancelled)
+    horizontal, vertical, warning = measurement_unit_context(source_crs, crs_type)
+    if profile.vertical_axis == "HeightAboveGround":
+        axis_warning = "Vertical values use the stored HeightAboveGround dimension."
+        warning = (warning + " " + axis_warning).strip()
+    return create_profile_measurement(source.sha256, source_crs, view_id, view_name,
+        profile, anchors, horizontal_unit=horizontal, vertical_unit=vertical,
+        unit_warning=warning, resolution_seconds=duration,
+        source_point_count=expected_points)
+
+
 def measurement_summary(measurement):
-    item = measurement if isinstance(measurement, (PointMeasurement, AreaMeasurement)) else measurement_from_dict(measurement)
+    item = measurement if isinstance(measurement, (PointMeasurement, AreaMeasurement, ProfileMeasurement)) else measurement_from_dict(measurement)
+    if isinstance(item, ProfileMeasurement):
+        axis = "HAG" if item.vertical_axis == "HeightAboveGround" else "Elevation"
+        return (f"Cross-section {item.cross_section_distance:,.3f} {item.horizontal_unit} | "
+                f"Along {item.along_distance:,.3f} {item.horizontal_unit} | "
+                f"{axis} change {item.vertical_difference:+,.3f} {item.vertical_unit}")
     if isinstance(item, AreaMeasurement):
         return (f"Area {item.area:,.3f} {item.area_unit} | "
                 f"Perimeter {item.perimeter:,.3f} {item.horizontal_unit}")
@@ -306,6 +538,10 @@ def measurement_from_dict(payload):
     try:
         if values.get("kind") == "PLANAR_AREA":
             return AreaMeasurement(**values)
+        if values.get("kind") == "PROFILE_DISTANCE":
+            values["start"] = ProfileAnchor(**values["start"])
+            values["end"] = ProfileAnchor(**values["end"])
+            return ProfileMeasurement(**values)
         values["start"] = MeasurementAnchor(**values["start"])
         values["end"] = MeasurementAnchor(**values["end"])
         return PointMeasurement(**values)

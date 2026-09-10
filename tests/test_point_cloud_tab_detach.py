@@ -404,6 +404,20 @@ class SelectionToolTests(unittest.TestCase):
             {"action":"selection_tool", "tool":"Polygon", "purpose":"MEASURE_AREA"})
         self.assertTrue(editor.summary.text().startswith("Area:"))
 
+    def test_vertical_slice_measurement_uses_profile_specific_renderer_contract(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        editor.viewer_ready = True
+        editor.state = {"ready":True}
+        view = SimpleNamespace(view_type="VERTICAL_SLICE",view_id="slice",
+                               title="Vertical Slice 1",geometry={})
+        editor.page = SimpleNamespace(send=Mock(),linked=SimpleNamespace(
+            depth_error="",active=lambda:view))
+        editor.start_measurement()
+        editor.page.send.assert_called_once_with(
+            {"action":"measurement_tool","kind":"PROFILE_DISTANCE"})
+        self.assertTrue(editor.summary.text().startswith("Cross-section:"))
+
     def test_measurements_broadcast_once_to_all_linked_renderers(self):
         workers = [Mock(), Mock(), Mock()]
         owner = SimpleNamespace(

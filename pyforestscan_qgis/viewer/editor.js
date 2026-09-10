@@ -17,6 +17,7 @@ let displaySignature = "";
 let selectionColor = new THREE.Color("#5be4eb");
 let objectFocusMode = "SHOW_ALL";
 let measurementDraft = [], measurementGroup = null, measurementCount = 0;
+let measurementKind = "POINT_DISTANCE", measurementItems = [];
 function sourceAttribute(geometry, name) {
     const extra = geometry._pfsOriginalDimensions && geometry._pfsOriginalDimensions[name];
     return extra ? {array:extra} : geometry.getAttribute(name) || geometry.getAttribute(name.toLowerCase());
@@ -169,6 +170,7 @@ function leaveTool() {
     tool = "Pointer";
 }
 function renderMeasurements(items) {
+    measurementItems = Array.isArray(items) ? items : [];
     if (!measurementGroup) {
         measurementGroup = new THREE.Group();
         measurementGroup.name = "PyForestScan measurements";
@@ -180,7 +182,27 @@ function renderMeasurements(items) {
         if (child.material) child.material.dispose();
     }
     measurementCount = 0;
-    for (const item of items || []) {
+    for (const item of measurementItems) {
+        if (item.kind === "PROFILE_DISTANCE") {
+            if (!linkedView || linkedView.view_id !== item.view_id ||
+                    !item.start || !item.end) continue;
+            const absolute=[...item.start.display_xyz,...item.end.display_xyz];
+            if (absolute.length !== 6 || absolute.some(value=>!Number.isFinite(value))) continue;
+            const values=[0,0,0,absolute[3]-absolute[0],
+                absolute[4]-absolute[1],absolute[5]-absolute[2]];
+            const geometry=new THREE.BufferGeometry();
+            geometry.setAttribute("position",new THREE.Float32BufferAttribute(values,3));
+            const line=new THREE.Line(geometry,new THREE.LineBasicMaterial(
+                {color:0xffd166,depthTest:false,transparent:true,opacity:.95}));
+            line.position.set(absolute[0],absolute[1],absolute[2]);
+            line.renderOrder=1100;measurementGroup.add(line);
+            const markers=new THREE.Points(geometry.clone(),new THREE.PointsMaterial(
+                {color:0xffd166,size:8,sizeAttenuation:false,depthTest:false}));
+            markers.position.set(absolute[0],absolute[1],absolute[2]);
+            markers.renderOrder=1101;measurementGroup.add(markers);
+            measurementCount++;
+            continue;
+        }
         if (item.kind === "PLANAR_AREA") {
             if (linkedView && linkedView.view_type === "VERTICAL_SLICE") continue;
             const vertices=item.vertices || [], z=item.display_elevation;
@@ -317,7 +339,9 @@ function initialize(value) {
             if (measurementDraft.length === 1) {
                 latestEvent={id:++eventNumber,action:"measurement_anchor",count:1};
             } else {
-                latestEvent={id:++eventNumber,action:"measure_points",
+                latestEvent={id:++eventNumber,
+                    action:measurementKind === "PROFILE_DISTANCE" ?
+                        "measure_profile_points" : "measure_points",
                     points:measurementDraft.map(value=>value.slice()),
                     view_id:linkedView&&linkedView.view_id};
                 leaveTool();
@@ -565,12 +589,22 @@ window.pointCloudEditor = {
             }))};
     },
     command(command) {
-        if (command.action === "linked_view") linkedView = command.view || null;
+        if (command.action === "linked_view") {
+            linkedView = command.view || null;
+            if (context && measurementGroup) renderMeasurements(measurementItems);
+        }
         if (!context) return;
         if (command.action === "measurement_tool") {
+            if (command.kind && !["POINT_DISTANCE","PROFILE_DISTANCE"].includes(command.kind)) return;
+            if (command.kind === "PROFILE_DISTANCE" &&
+                    (!linkedView || linkedView.view_type !== "VERTICAL_SLICE")) {
+                latestEvent={id:++eventNumber,error:"Cross-section measurement is available only in Vertical Slice."};
+                return;
+            }
             leaveTool();
             drawing.cancel();
             tool = "MeasureDistance";
+            measurementKind = command.kind || "POINT_DISTANCE";
             measurementDraft = [];
             context.viewer.inputHandler.enabled = false;
             context.viewer.renderer.domElement.style.cursor = "crosshair";
