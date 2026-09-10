@@ -134,6 +134,7 @@ class EditorPanel(QWidget):
         self.sent_overlay = None
         self.pending_initial = None
         self.pending_action = None
+        self.pending_annotation = None
         self.cancel_requested = False
         self.folder = None
         self.restored_view = None
@@ -189,6 +190,11 @@ class EditorPanel(QWidget):
         self.profile_measurement_action.setToolTip(
             "Choose two displayed profile points. The managed worker resolves original source Z or stored HAG values before reporting cross-section distance.")
         self.profile_measurement_action.triggered.connect(self.start_profile_measurement)
+        self.annotation_action = measurement_menu.addAction("Add Linked Marker...")
+        self.annotation_action.setToolTip(
+            "Name a location, then click a displayed point. The managed worker resolves the marker "
+            "against the immutable original source and shares it across linked views.")
+        self.annotation_action.triggered.connect(self.start_annotation)
         self.measurement_button.setMenu(measurement_menu)
         self.measurement_button.setPopupMode(
             qt_enum(QToolButton, "MenuButtonPopup", "ToolButtonPopupMode"))
@@ -287,6 +293,15 @@ class EditorPanel(QWidget):
         self.clear_measurements_action = details_menu.addAction("Clear Measurements")
         self.clear_measurements_action.triggered.connect(
             lambda: self.send("clear_measurements"))
+        self.annotations_action = details_menu.addAction("Linked Markers")
+        self.annotations_action.triggered.connect(self.show_annotations)
+        self.edit_annotation_action = details_menu.addAction("Edit Linked Marker...")
+        self.edit_annotation_action.triggered.connect(self.edit_annotation)
+        self.remove_annotation_action = details_menu.addAction("Remove Linked Marker...")
+        self.remove_annotation_action.triggered.connect(self.remove_annotation)
+        self.clear_annotations_action = details_menu.addAction("Clear Linked Markers")
+        self.clear_annotations_action.triggered.connect(
+            lambda: self.send("clear_annotations"))
         self.audit_action = details_menu.addAction("Audit All Classifications")
         self.audit_action.setToolTip(
             "Explicitly scan the full original source in bounded chunks and replay staged edits to count effective classes. This can take time but never writes source points.")
@@ -439,8 +454,14 @@ class EditorPanel(QWidget):
         self.measurement_button.setEnabled(ready)
         self.area_measurement_action.setEnabled(ready)
         self.profile_measurement_action.setEnabled(ready and self.active_vertical_slice())
+        self.annotation_action.setEnabled(ready)
         self.measurements_action.setEnabled(bool(self.state.get("measurements")))
         self.clear_measurements_action.setEnabled(ready and bool(self.state.get("measurements")))
+        has_annotations = bool(self.state.get("annotations"))
+        self.annotations_action.setEnabled(has_annotations)
+        self.edit_annotation_action.setEnabled(ready and has_annotations)
+        self.remove_annotation_action.setEnabled(ready and has_annotations)
+        self.clear_annotations_action.setEnabled(ready and has_annotations)
         if hasattr(self.page, "linked"):
             self.page.linked.limits.refresh()
             self.tool.setEnabled(ready and not self.page.linked.depth_error)
@@ -658,6 +679,28 @@ class EditorPanel(QWidget):
         self.summary.setText(
             "Area: Draw a boundary | Finish with double-click, Enter, right-click, or the first point")
 
+    def start_annotation(self):
+        if not self.viewer_ready or self.busy:
+            return
+        title, accepted = QInputDialog.getText(self, "Add Linked Marker", "Marker name:")
+        if not accepted:
+            return
+        title = title.strip()
+        if not title:
+            QMessageBox.information(self, "Add Linked Marker", "Enter a short marker name.")
+            return
+        note, accepted = QInputDialog.getMultiLineText(
+            self, "Add Linked Marker", "Optional note:", "")
+        if not accepted:
+            return
+        self.pending_annotation = {"title": title, "note": note}
+        self.tool.blockSignals(True)
+        self.tool.setCurrentText("Pointer")
+        self.tool.blockSignals(False)
+        self.page.send({"action":"annotation_tool"})
+        self.measurement_button.setChecked(True)
+        self.summary.setText("Linked marker: Click one displayed source point")
+
     def observe(self, telemetry):
         if self.viewer_worker is not self.page.worker:
             self.viewer_worker = self.page.worker
@@ -704,15 +747,25 @@ class EditorPanel(QWidget):
                     self.send("add_profile_measurement", points=event.get("points"),
                               profile_geometry=asdict(view)["geometry"],
                               view_id=view.view_id, view_name=view.title)
+            elif event.get("action") == "annotation_point":
+                details = self.pending_annotation
+                self.pending_annotation = None
+                self.measurement_button.setChecked(False)
+                if details:
+                    self.send("add_annotation", point=event.get("point"), **details)
             elif event.get("action") in ("undo", "redo"):
                 self.send(event["action"])
+            elif event.get("action") == "pointer":
+                self.pending_annotation = None
+                self.measurement_button.setChecked(False)
             elif event.get("error"):
+                self.pending_annotation = None
                 self.summary.setText(event["error"])
             self.tool.blockSignals(True)
             self.tool.setCurrentText("Pointer")
             self.tool.blockSignals(False)
         self.measurement_button.setChecked(
-            telemetry.get("editor", {}).get("tool") == "MeasureDistance")
+            telemetry.get("editor", {}).get("tool") in ("MeasureDistance", "AddAnnotation"))
         signature = (self.state.get("overlay"), self.state.get("revision"))
         if self.viewer_ready and signature[0] and signature != self.sent_overlay:
             color = self.palette().color(qt_enum(QPalette, "Highlight", "ColorRole")).name()
@@ -756,6 +809,60 @@ class EditorPanel(QWidget):
         lines.extend(("", "Anchors were resolved against original source points. "
                       "Measurements are session metadata and do not edit the cloud."))
         QMessageBox.information(self, "Point-to-Point Measurements", "\n".join(lines))
+
+    def _choose_annotation(self, title):
+        annotations = self.state.get("annotations") or []
+        if not annotations:
+            return None
+        labels = [f"{index}. {item['title']}" for index, item in enumerate(annotations, 1)]
+        selected, accepted = QInputDialog.getItem(self, title, "Linked marker:", labels, 0, False)
+        if not accepted:
+            return None
+        try:
+            return annotations[labels.index(selected)]
+        except ValueError:
+            return None
+
+    def show_annotations(self):
+        annotations = self.state.get("annotations") or []
+        if not annotations:
+            QMessageBox.information(self, "Linked Markers",
+                                    "No linked markers in this editing session.")
+            return
+        from ..core.point_cloud.annotation import annotation_summary
+        lines = []
+        for index, item in enumerate(annotations, 1):
+            lines.append(f"{index}. {annotation_summary(item)}")
+            if item.get("note"):
+                lines.append("   " + item["note"].replace("\n", "\n   "))
+        lines.extend(("", "Markers are resolved original-source points and are shared across linked views."))
+        QMessageBox.information(self, "Linked Markers", "\n".join(lines))
+
+    def edit_annotation(self):
+        item = self._choose_annotation("Edit Linked Marker")
+        if not item:
+            return
+        title, accepted = QInputDialog.getText(
+            self, "Edit Linked Marker", "Marker name:", text=item["title"])
+        if not accepted:
+            return
+        note, accepted = QInputDialog.getMultiLineText(
+            self, "Edit Linked Marker", "Optional note:", item.get("note", ""))
+        if accepted:
+            self.send("update_annotation", annotation_id=item["annotation_id"],
+                      title=title, note=note)
+
+    def remove_annotation(self):
+        item = self._choose_annotation("Remove Linked Marker")
+        if not item:
+            return
+        answer = QMessageBox.question(self, "Remove Linked Marker",
+            f"Remove '{item['title']}' from this editing session?",
+            qt_enum(QMessageBox, "Yes", "StandardButton") |
+            qt_enum(QMessageBox, "No", "StandardButton"),
+            qt_enum(QMessageBox, "No", "StandardButton"))
+        if answer == qt_enum(QMessageBox, "Yes", "StandardButton"):
+            self.send("remove_annotation", annotation_id=item["annotation_id"])
 
     def show_classification_audit(self):
         report = self.state.get("classification_audit")
@@ -1016,6 +1123,8 @@ class EditorPanel(QWidget):
             linked = getattr(self.page, "linked", None)
             if linked and hasattr(linked, "set_measurements"):
                 linked.set_measurements(value.get("measurements", []))
+            if linked and hasattr(linked, "set_annotations"):
+                linked.set_annotations(value.get("annotations", []))
             if (not self.state.get("active_object") and
                     getattr(linked, "object_focus_mode", "SHOW_ALL") != "SHOW_ALL" and
                     hasattr(linked, "set_object_focus")):
@@ -1088,6 +1197,16 @@ class EditorPanel(QWidget):
                     measurement_summary(value["measurements"][-1]))
             if completed_action == "clear_measurements":
                 self.summary.setText("Measurements cleared | Source and edit journal unchanged")
+            if completed_action == "add_annotation" and value.get("annotations"):
+                from ..core.point_cloud.annotation import annotation_summary
+                self.summary.setText("Linked marker saved | " +
+                    annotation_summary(value["annotations"][-1]))
+            if completed_action == "update_annotation":
+                self.summary.setText("Linked marker updated | Source and edit journal unchanged")
+            if completed_action == "remove_annotation":
+                self.summary.setText("Linked marker removed | Source and edit journal unchanged")
+            if completed_action == "clear_annotations":
+                self.summary.setText("Linked markers cleared | Source and edit journal unchanged")
             self.page.session_status.setText(f"Session: Autosaved | {value['edits']} staged edits, not a source rewrite")
             self.history.clear()
             self.history.addItems(value.get("history", []))

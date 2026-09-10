@@ -18,6 +18,7 @@ let selectionColor = new THREE.Color("#5be4eb");
 let objectFocusMode = "SHOW_ALL";
 let measurementDraft = [], measurementGroup = null, measurementCount = 0;
 let measurementKind = "POINT_DISTANCE", measurementItems = [];
+let annotationGroup = null, annotationCount = 0, annotationItems = [];
 function sourceAttribute(geometry, name) {
     const extra = geometry._pfsOriginalDimensions && geometry._pfsOriginalDimensions[name];
     return extra ? {array:extra} : geometry.getAttribute(name) || geometry.getAttribute(name.toLowerCase());
@@ -240,6 +241,69 @@ function renderMeasurements(items) {
         measurementCount++;
     }
 }
+function pointInRing(x, y, ring) {
+    if (!Array.isArray(ring) || ring.length < 4) return true;
+    let inside = false;
+    for (let i=0,j=ring.length-1;i<ring.length;j=i++) {
+        const a=ring[i],b=ring[j];
+        if (!Array.isArray(a)||!Array.isArray(b)) continue;
+        if ((a[1]>y)!==(b[1]>y) && x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])
+            inside=!inside;
+    }
+    return inside;
+}
+function annotationDisplayPoint(item) {
+    const anchor=item&&item.anchor;
+    if (!anchor || !Array.isArray(anchor.source_xyz) || anchor.source_xyz.length!==3 ||
+            anchor.source_xyz.some(value=>!Number.isFinite(value))) return null;
+    const value=anchor.source_xyz.slice();
+    if (!linkedView || linkedView.view_type === "OVERVIEW_3D") return value;
+    if (linkedView.view_type === "AREA_DETAIL")
+        return pointInRing(value[0],value[1],linkedView.corridor) ? value : null;
+    if (linkedView.view_type !== "VERTICAL_SLICE" || !linkedView.geometry) return null;
+    const geometry=linkedView.geometry,a=geometry.a,b=geometry.b;
+    if (!Array.isArray(a)||!Array.isArray(b)) return null;
+    const dx=b[0]-a[0],dy=b[1]-a[1],length=Math.hypot(dx,dy);
+    if (!(length>0)) return null;
+    const along=((value[0]-a[0])*dx+(value[1]-a[1])*dy)/length;
+    const cross=(-(value[0]-a[0])*dy+(value[1]-a[1])*dx)/length;
+    if (along<0 || along>length || Math.abs(cross)>geometry.thickness/2) return null;
+    if (geometry.vertical_axis === "HeightAboveGround") {
+        if (!Number.isFinite(anchor.height_above_ground)) return null;
+        value[2]=anchor.height_above_ground;
+    }
+    if (Array.isArray(geometry.vertical_limits) &&
+            (value[2]<geometry.vertical_limits[0] || value[2]>geometry.vertical_limits[1])) return null;
+    return value;
+}
+function renderAnnotations(items) {
+    annotationItems=Array.isArray(items)?items:[];
+    if (!annotationGroup) {
+        annotationGroup=new THREE.Group();
+        annotationGroup.name="PyForestScan annotations";
+        context.viewer.scene.scene.add(annotationGroup);
+    }
+    while (annotationGroup.children.length) {
+        const child=annotationGroup.children.pop();
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+    }
+    annotationCount=0;
+    for (const item of annotationItems) {
+        const value=annotationDisplayPoint(item);
+        if (!value) continue;
+        const geometry=new THREE.BufferGeometry();
+        geometry.setAttribute("position",new THREE.Float32BufferAttribute([0,0,0],3));
+        const marker=new THREE.Points(geometry,new THREE.PointsMaterial(
+            {color:0x39d98a,size:12,sizeAttenuation:false,depthTest:false}));
+        marker.position.set(...value);
+        marker.renderOrder=1110;
+        marker.name=item.title||"Linked marker";
+        marker.userData={annotation_id:item.annotation_id,title:item.title||""};
+        annotationGroup.add(marker);
+        annotationCount++;
+    }
+}
 function sourceXY(x, y, camera) {
     const canvas = context.viewer.renderer.domElement;
     return new THREE.Vector3(x / canvas.clientWidth * 2 - 1, 1 - y / canvas.clientHeight * 2, 0)
@@ -325,7 +389,7 @@ function initialize(value) {
             height: Math.abs(event.offsetY - y) + "px"});
     }, true);
     canvas.addEventListener("pointerup", event => {
-        if (tool === "MeasureDistance") {
+        if (tool === "MeasureDistance" || tool === "AddAnnotation") {
             event.preventDefault(); event.stopImmediatePropagation();
             if (event.button !== 0) return;
             const hit = Potree.Utils && Potree.Utils.getMousePointCloudIntersection(
@@ -335,7 +399,14 @@ function initialize(value) {
                 latestEvent={id:++eventNumber,error:"No displayed source point was found at that location. Try a visible point."};
                 return;
             }
-            measurementDraft.push([hit.location.x,hit.location.y,hit.location.z]);
+            const picked=[hit.location.x,hit.location.y,hit.location.z];
+            if (tool === "AddAnnotation") {
+                latestEvent={id:++eventNumber,action:"annotation_point",point:picked,
+                    view_id:linkedView&&linkedView.view_id};
+                leaveTool();
+                return;
+            }
+            measurementDraft.push(picked);
             if (measurementDraft.length === 1) {
                 latestEvent={id:++eventNumber,action:"measurement_anchor",count:1};
             } else {
@@ -581,6 +652,7 @@ window.pointCloudEditor = {
             highlighted_points: highlighted, effective_classes: effectiveClasses,
             object_focus_mode: objectFocus.requested, object_focus_effective: objectFocus.effective,
             measurement_count: measurementCount,
+            annotation_count: annotationCount,
             source_buffers_unchanged: Array.from(records.values()).every(r => r.sourceUnchanged !== false),
             overlay_diagnostics: Array.from(records.values()).slice(0, 3).map(r => ({
                 node: r.node.name, edits: (r.edits || []).length,
@@ -592,6 +664,7 @@ window.pointCloudEditor = {
         if (command.action === "linked_view") {
             linkedView = command.view || null;
             if (context && measurementGroup) renderMeasurements(measurementItems);
+            if (context && annotationGroup) renderAnnotations(annotationItems);
         }
         if (!context) return;
         if (command.action === "measurement_tool") {
@@ -612,6 +685,18 @@ window.pointCloudEditor = {
         }
         if (command.action === "measurements") {
             renderMeasurements(command.measurements || []);
+            return;
+        }
+        if (command.action === "annotation_tool") {
+            leaveTool();
+            drawing.cancel();
+            tool="AddAnnotation";
+            context.viewer.inputHandler.enabled=false;
+            context.viewer.renderer.domElement.style.cursor="crosshair";
+            return;
+        }
+        if (command.action === "annotations") {
+            renderAnnotations(command.annotations || []);
             return;
         }
         if (command.action === "selection_tool") {

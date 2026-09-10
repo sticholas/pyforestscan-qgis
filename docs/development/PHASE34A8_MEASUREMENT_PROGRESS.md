@@ -38,21 +38,33 @@ Editor and do not change the `0.2.0-beta.1` release boundary.
   retaining original XYZ. Results report along-profile distance, signed
   vertical change and cross-section distance. They are shown only in their
   owning slice so HAG display coordinates cannot be confused with elevation.
+- Added source-bound linked markers with bounded names and optional notes. A
+  renderer click remains only a proposal: the managed worker re-resolves it
+  against the immutable full-resolution source, retains source XYZ,
+  classification and HAG when present, and persists the marker in the existing
+  editing session without creating a point edit.
+- Linked markers render in Overview and only in Area Detail or Vertical Slice
+  views whose geometry contains the resolved source point. HAG slices use the
+  stored HAG value for display while retaining original elevation as marker
+  authority. Active, parked, newly opened and detached renderers receive the
+  same marker state. Add, inspect, rename, edit note, remove and clear actions
+  remain under compact Measure and Editing Details menus.
 
 ## IN PROGRESS
 
-Point-to-point, planar-area and cross-section measurements have contract,
-renderer, worker and dual-Qt test coverage. Human point picking/drawing, label readability,
-dense-source latency and detached-view visual agreement still require live
-qualification.
+Point-to-point, planar-area, cross-section and linked-marker tools have contract,
+renderer, worker and dual-Qt test coverage. Human point picking/drawing, marker
+readability, dense-source latency and detached-view visual agreement still
+require live qualification.
 
 ## NEXT
 
-1. Qualify point picking and linked overlays in a fresh human viewer session.
-2. Qualify elevation and HAG cross-section measurements against a real source
-   and the live embedded Vertical Slice.
-3. Add linked-location markers and lightweight annotations to the existing
-   workspace model.
+1. Qualify point picking, markers and linked overlays in a fresh human viewer
+   session.
+2. Add named Detail/Slice view metadata and scene organization without
+   duplicating linked-workspace ownership.
+3. Design source-isolated multiple-cloud comparison views without merging edit
+   journals or source fingerprints.
 
 ## BLOCKED
 
@@ -85,3 +97,10 @@ cross-section distance. The source hash remained unchanged.
 Measurement overlays store segment vertices relative to the first endpoint and
 place the Three.js object at the source-coordinate origin. This retains
 sub-metre Float32 geometry precision for large projected coordinates.
+
+The linked-marker canary resolved source coordinate
+`215000.000, 2114534.320, 908.650` through all 2,287,408 original records in
+0.469 seconds. It matched the exact source point at zero snap distance, retained
+classification 2 and HAG 0.0, and left the source SHA256 unchanged. Renderer
+tests place that same source anchor at original Z in Overview, filter it out of
+unrelated Area Detail views, and place it at stored HAG in a matching HAG slice.

@@ -128,6 +128,10 @@ def main():
         measurements = validate_measurements(session.visibility.get("measurements"),
                                              session.source.sha256)
         session.visibility["measurements"] = measurements
+        from pyforestscan_qgis.core.point_cloud.annotation import validate_annotations
+        annotations = validate_annotations(session.visibility.get("annotations"),
+                                           session.source.sha256)
+        session.visibility["annotations"] = annotations
         session.save(autosave)
         reviews = session.visibility.get("object_reviews")
         active = session.visibility.get("active_object")
@@ -171,6 +175,7 @@ def main():
               "object_reviews": reviews,
               "current_object_review": current_review,
               "measurements": measurements,
+              "annotations": annotations,
               "active_object": session.visibility.get("active_object"),
               "object_split_source": session.visibility.get("object_split_source"),
               "object_id_policy": session.visibility.get("object_id_policy"),
@@ -662,6 +667,44 @@ def main():
                     snapshot(highlight=False)
                 elif action == "clear_measurements":
                     session.visibility["measurements"] = []
+                    session.save(autosave)
+                    snapshot(highlight=False)
+                elif action == "add_annotation":
+                    from pyforestscan_qgis.core.point_cloud.annotation import (
+                        MAX_ANNOTATIONS, resolve_source_annotation,
+                        validate_annotations)
+                    current = validate_annotations(session.visibility.get("annotations"),
+                                                   session.source.sha256)
+                    if len(current) >= MAX_ANNOTATIONS:
+                        raise ValueError(
+                            f"One session supports at most {MAX_ANNOTATIONS:,} annotations.")
+                    progress("Resolving original source annotation anchor")
+                    annotation = resolve_source_annotation(session.source, point_count,
+                        command.get("point") or (), session.source_crs,
+                        command.get("title") or "", command.get("note") or "",
+                        pdal_module=pdal, cancelled=cancelled.is_set,
+                        progress=lambda count: progress(
+                            "Resolving original source annotation anchor", count))
+                    session.visibility["annotations"] = [*current, annotation.to_dict()]
+                    session.save(autosave)
+                    snapshot(highlight=False)
+                elif action == "update_annotation":
+                    from pyforestscan_qgis.core.point_cloud.annotation import replace_annotation
+                    session.visibility["annotations"] = replace_annotation(
+                        session.visibility.get("annotations"), session.source.sha256,
+                        command.get("annotation_id") or "", title=command.get("title"),
+                        note=command.get("note"))
+                    session.save(autosave)
+                    snapshot(highlight=False)
+                elif action == "remove_annotation":
+                    from pyforestscan_qgis.core.point_cloud.annotation import remove_annotation
+                    session.visibility["annotations"] = remove_annotation(
+                        session.visibility.get("annotations"), session.source.sha256,
+                        command.get("annotation_id") or "")
+                    session.save(autosave)
+                    snapshot(highlight=False)
+                elif action == "clear_annotations":
+                    session.visibility["annotations"] = []
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action == "save":

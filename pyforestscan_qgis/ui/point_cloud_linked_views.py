@@ -186,6 +186,11 @@ class LinkedViews(QObject):
         for worker in self.viewer_workers():
             worker.send(command)
 
+    def set_annotations(self, annotations):
+        command = {"action":"annotations", "annotations":list(annotations or [])}
+        for worker in self.viewer_workers():
+            worker.send(command)
+
     @property
     def depth_error(self):
         for key, limits in self.depth.items():
@@ -551,6 +556,10 @@ class LinkedViews(QObject):
             context["corridor"] = view_ring(context)
         self.page.send({"action":"linked_view","view":context})
         self.page.send(self.object_focus_command())
+        self.page.send({"action":"measurements",
+                        "measurements":list(self.page.editor.state.get("measurements") or [])})
+        self.page.send({"action":"annotations",
+                        "annotations":list(self.page.editor.state.get("annotations") or [])})
         self.page.send({"action":"point_display","style":view.lod.get("point_style","Circular"),
                         "size":view.lod.get("point_size",0)})
         self.page._restore_after_open = {"camera":view.camera or telemetry["camera"],

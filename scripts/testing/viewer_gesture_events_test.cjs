@@ -245,4 +245,30 @@ assert.equal(tick().measurement_count,0);
 editor.command({action:"linked_view",view:{view_id:"slice",view_type:"VERTICAL_SLICE",
     geometry:{a:[0,0],b:[100,0],thickness:4}}});
 assert.equal(tick().measurement_count,1);
+editor.command({action:"linked_view",view:{view_id:"overview",view_type:"OVERVIEW_3D"}});
+editor.command({action:"annotation_tool"});
+assert.equal(tick().tool,"AddAnnotation");
+click(10,20);
+const annotation=tick().event;
+assert.equal(annotation.action,"annotation_point");
+assert.deepEqual(Array.from(annotation.point),[10,20,30]);
+assert.equal(tick().tool,"Pointer");
+editor.command({action:"annotations",annotations:[{annotation_id:"marker",title:"Crown",
+    anchor:{source_xyz:[10,1,30],height_above_ground:5}}]});
+assert.equal(tick().annotation_count,1);
+const annotationGroup=viewer.scene.scene.items.find(item=>item.name==="PyForestScan annotations");
+assert.ok(annotationGroup);
+assert.deepEqual(annotationGroup.children[0].origin,[10,1,30]);
+assert.equal(annotationGroup.children[0].name,"Crown");
+editor.command({action:"linked_view",view:{view_id:"detail",view_type:"AREA_DETAIL",
+    corridor:[[0,-2],[20,-2],[20,2],[0,2],[0,-2]]}});
+assert.equal(tick().annotation_count,1);
+editor.command({action:"linked_view",view:{view_id:"other",view_type:"AREA_DETAIL",
+    corridor:[[50,50],[60,50],[60,60],[50,60],[50,50]]}});
+assert.equal(tick().annotation_count,0);
+editor.command({action:"linked_view",view:{view_id:"slice",view_type:"VERTICAL_SLICE",
+    geometry:{a:[0,0],b:[100,0],thickness:4,vertical_axis:"HeightAboveGround",
+        vertical_limits:[0,10]}}});
+assert.equal(tick().annotation_count,1);
+assert.deepEqual(annotationGroup.children[0].origin,[10,1,5]);
 console.log("Production editor gesture handlers passed all completion/cancel paths.");

@@ -36,6 +36,7 @@ def main():
     from pyforestscan_qgis.core.point_cloud.measurement import (
         create_area_measurement, measurement_unit_context,
         resolve_source_measurement, resolve_source_profile_measurement)
+    from pyforestscan_qgis.core.point_cloud.annotation import resolve_source_annotation
     from pyforestscan_qgis.core.point_cloud.session import SourceIdentity
     from pyforestscan_qgis.core.point_cloud.workspace import SliceGeometry
 
@@ -116,6 +117,14 @@ def main():
         raise RuntimeError("Profile anchors did not retain original source XYZ.")
     if not profile_progress or profile_progress[-1] != point_count:
         raise RuntimeError("Profile resolver did not report the complete source scan.")
+    annotation_progress = []
+    annotation = resolve_source_annotation(identity, point_count, requested[0],
+        source_crs, "Real-source marker", "Managed qualification",
+        pdal_module=pdal, progress=annotation_progress.append)
+    if annotation.anchor.source_xyz != requested[0] or annotation.anchor.snap_distance != 0:
+        raise RuntimeError("Annotation did not resolve to the exact original source point.")
+    if not annotation_progress or annotation_progress[-1] != point_count:
+        raise RuntimeError("Annotation resolver did not report the complete source scan.")
     if sha256(args.source) != before:
         raise RuntimeError("Measurement changed the original source.")
     print(json.dumps({"status":"PASS", "source":identity.path,
@@ -123,6 +132,7 @@ def main():
         "source_point_count":point_count, "measurement":measurement.to_dict(),
         "area_measurement":area.to_dict(),
         "profile_measurement":profile_measurement.to_dict(),
+        "annotation":annotation.to_dict(),
         "progress_final":progress[-1]}, sort_keys=True))
     if handle is not None:
         handle.close()

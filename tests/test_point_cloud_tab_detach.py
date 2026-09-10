@@ -431,6 +431,35 @@ class SelectionToolTests(unittest.TestCase):
             worker.send.assert_called_once_with(
                 {"action":"measurements", "measurements":measurements})
 
+    def test_linked_markers_use_compact_prompt_and_renderer_contract(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        editor.viewer_ready = True
+        editor.state = {"ready":True}
+        editor.page = SimpleNamespace(send=Mock(), linked=SimpleNamespace(depth_error=""))
+        with patch("pyforestscan_qgis.ui.point_cloud_editor.QInputDialog.getText",
+                   return_value=("Crown fork", True)), patch(
+                   "pyforestscan_qgis.ui.point_cloud_editor.QInputDialog.getMultiLineText",
+                   return_value=("Review in profile", True)):
+            editor.start_annotation()
+        editor.page.send.assert_called_once_with({"action":"annotation_tool"})
+        self.assertEqual(editor.pending_annotation,
+                         {"title":"Crown fork", "note":"Review in profile"})
+        self.assertTrue(editor.measurement_button.isChecked())
+
+    def test_annotations_broadcast_once_to_all_linked_renderers(self):
+        workers = [Mock(), Mock(), Mock()]
+        owner = SimpleNamespace(
+            page=SimpleNamespace(worker=workers[0]),
+            residents=SimpleNamespace(parked={"detail":{"worker":workers[1]}}),
+            detached={"slice":SimpleNamespace(worker=workers[2])})
+        owner.viewer_workers = lambda: LinkedViews.viewer_workers(owner)
+        annotations = [{"annotation_id":"one"}]
+        LinkedViews.set_annotations(owner, annotations)
+        for worker in workers:
+            worker.send.assert_called_once_with(
+                {"action":"annotations", "annotations":annotations})
+
     def test_object_focus_broadcasts_once_to_all_linked_renderers(self):
         workers = [Mock(), Mock(), Mock()]
         page = SimpleNamespace(

@@ -479,6 +479,23 @@ def resolve_source_measurement(source, expected_points, requested_points, source
         resolution_seconds=duration, source_point_count=expected_points)
 
 
+def resolve_source_anchors(source, expected_points, requested_points, *, pdal_module=None,
+                           cancelled=lambda: False, progress=lambda count: None):
+    """Resolve one or more renderer picks against the immutable original source."""
+    pdal = pdal_module
+    if pdal is None:
+        import pdal as pdal_module
+        pdal = pdal_module
+    source.verify(cancelled=cancelled)
+    reader = {"type":"readers.copc" if source.source_type == "COPC" else "readers.las",
+              "filename":source.path}
+    chunks = pdal.Pipeline(json.dumps([reader])).iterator(chunk_size=65_536, prefetch=0)
+    anchors, duration = resolve_anchor_chunks(chunks, expected_points, requested_points,
+                                              cancelled=cancelled, progress=progress)
+    source.verify(cancelled=cancelled)
+    return anchors, duration
+
+
 def resolve_source_profile_measurement(source, expected_points, requested_points,
                                        source_crs, profile_geometry, view_id, view_name, *,
                                        pdal_module=None, crs_type=None,
