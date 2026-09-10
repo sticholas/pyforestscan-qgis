@@ -37,11 +37,36 @@ class ViewerRuntimeTests(unittest.TestCase):
         with patch.dict(os.environ, poison):
             env = viewer_environment(self.root / "python.exe")
         for key in poison:
-            if key != "PATH":
+            if key == "PATH":
+                continue
+            if os.name == "nt" and key.startswith(("QT_", "QML")):
+                self.assertIn(key, env)
+                self.assertNotEqual(env[key], poison[key])
+                self.assertNotIn("qgis", env[key].lower())
+            else:
                 self.assertNotIn(key, env)
         self.assertNotIn("qgis", env["PATH"].lower())
         self.assertEqual(env["PYTHONNOUSERSITE"], "1")
         self.assertEqual(env["PATH"].split(os.pathsep)[0], str(self.root))
+
+    def test_windows_environment_uses_only_runtime_local_qt_plugins(self):
+        executable = self.root / "python.exe"
+        pyside = self.root / "Lib" / "site-packages" / "PySide6"
+        poison = {
+            "QT_PLUGIN_PATH": r"C:\\Program Files\\QGIS 3.44\\apps\\Qt5\\plugins",
+            "QT_QPA_PLATFORM_PLUGIN_PATH": r"C:\\Program Files\\QGIS 3.44\\apps\\Qt5\\plugins\\platforms",
+            "QML2_IMPORT_PATH": r"C:\\Program Files\\QGIS 3.44\\apps\\Qt5\\qml",
+            "PATH": r"C:\\Program Files\\QGIS 3.44\\bin;C:\\Windows\\System32",
+            "SystemRoot": r"C:\\Windows",
+        }
+        with patch.dict(os.environ, poison):
+            env = viewer_environment(executable, platform_name="nt")
+        self.assertEqual(env["QT_PLUGIN_PATH"], str(pyside / "plugins"))
+        self.assertEqual(env["QT_QPA_PLATFORM_PLUGIN_PATH"], str(pyside / "plugins" / "platforms"))
+        self.assertEqual(env["QT_QPA_PLATFORM"], "windows")
+        self.assertEqual(env["QML2_IMPORT_PATH"], str(pyside / "qml"))
+        self.assertNotIn("QGIS", env["PATH"])
+        self.assertIn(str(pyside), env["PATH"])
 
     def test_runtime_pointer_cannot_escape_owned_directory(self):
         executable = self.root / "outside/python.exe"

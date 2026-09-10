@@ -22,14 +22,24 @@ def runtime_spec():
     return json.loads(data), hashlib.sha256(data).hexdigest()
 
 
-def viewer_environment(executable: Path) -> dict[str, str]:
-    """No Qt/Python/Conda paths from the host; Qt locates its own wheel assets."""
+def viewer_environment(executable: Path, platform_name: str | None = None) -> dict[str, str]:
+    """Return an isolated environment with only this runtime's Qt assets."""
+    platform_name = platform_name or os.name
     env = build_clean_subprocess_env()
     env = {key: value for key, value in env.items()
            if not key.upper().startswith(("QT_", "QML", "CONDA", "MAMBA", "PYTHON"))}
-    if os.name == "nt":
+    if platform_name == "nt":
         system = Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32"
-        path = os.pathsep.join((str(executable.parent), str(system)))
+        pyside = executable.parent / "Lib" / "site-packages" / "PySide6"
+        plugins = pyside / "plugins"
+        path = ";".join((str(executable.parent), str(pyside), str(system)))
+        # Never let a QGIS Qt installation choose the viewer's platform plugin.
+        # Explicit runtime-local paths also make qwindows.dll dependency lookup
+        # deterministic when the viewer is launched from inside QGIS.
+        env["QT_PLUGIN_PATH"] = str(plugins)
+        env["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(plugins / "platforms")
+        env["QT_QPA_PLATFORM"] = "windows"
+        env["QML2_IMPORT_PATH"] = str(pyside / "qml")
     else:
         path = os.pathsep.join((str(executable.parent), "/usr/bin", "/bin"))
         for name in ("DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"):
