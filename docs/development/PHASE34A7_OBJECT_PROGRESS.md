@@ -24,6 +24,11 @@ State: IN PROGRESS. Object editing is not yet enabled.
   `SelectionDefinition` queries using the cataloged bounds plus exact original
   source attribute value. The authoritative resolver must reproduce the exact
   catalog count before the selection is published to linked views.
+- Added an explicit object-ID policy for integer-backed fields. The user must
+  confirm which exact value means unassigned before later object mutations can
+  exist. Next-ID allocation scans the disk catalog in constant memory, stays
+  within the source field's real signed/unsigned storage range, skips the
+  unassigned value, and fails on exhaustion. Float-backed IDs remain read-only.
 
 ## IN PROGRESS
 
@@ -34,10 +39,10 @@ or create object IDs.
 ## NEXT
 
 1. Add linked-view isolate/fade behavior without changing edit authority.
-2. Add explicit user confirmation for unassigned-value semantics and safe new
-   ID allocation within the selected field's real storage range.
-3. Extend the existing attribute journal with validated arbitrary categorical
+2. Extend the existing attribute journal with validated arbitrary categorical
    edits, then implement add/remove/split/merge as journal-backed operations.
+3. Add reviewed/unreviewed state and notes without encoding review metadata into
+   immutable source dimensions implicitly.
 
 ## BLOCKED
 

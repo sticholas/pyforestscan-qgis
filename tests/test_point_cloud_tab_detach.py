@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 try:
     from qgis.PyQt.QtCore import QEvent, QPoint, QPointF, Qt, QObject, pyqtSignal
     from qgis.PyQt.QtGui import QMouseEvent
-    from qgis.PyQt.QtWidgets import QApplication, QListWidget
+    from qgis.PyQt.QtWidgets import QApplication, QListWidget, QMessageBox
     from pyforestscan_qgis.compat.qt import qt_enum
     from pyforestscan_qgis.ui.point_cloud_detached import LinkedTabBar, DetachedView
     from pyforestscan_qgis.ui.point_cloud_tools import SelectionTools
@@ -181,12 +181,14 @@ class SelectionToolTests(unittest.TestCase):
         self.assertIn("Discover Object Fields", actions)
         self.assertIn("Discovery Results", actions)
         self.assertIn("Build Exact Object Catalog...", actions)
+        self.assertIn("Set Unassigned Object Value...", actions)
         self.assertIn("Select Object ID...", actions)
         self.assertIn("Previous Object", actions)
         self.assertIn("Next Object", actions)
         self.assertFalse(editor.object_results_action.isEnabled())
         self.assertFalse(editor.build_object_catalog_action.isEnabled())
         self.assertFalse(editor.select_object_action.isEnabled())
+        self.assertFalse(editor.configure_object_ids_action.isEnabled())
 
     def test_object_catalog_actions_follow_context_prerequisites(self):
         editor = EditorPanel(None)
@@ -197,12 +199,31 @@ class SelectionToolTests(unittest.TestCase):
         self.assertTrue(editor.build_object_catalog_action.isEnabled())
         self.assertFalse(editor.select_object_action.isEnabled())
         editor.state["object_catalog"] = {"field":"Tree_ID", "minimum_object_id":1,
-            "maximum_object_id":3}
+            "maximum_object_id":3, "editable_integer_ids":True}
         editor.state["active_object"] = {"field":"Tree_ID", "object_id":2}
         editor.refresh_controls()
         self.assertTrue(editor.select_object_action.isEnabled())
+        self.assertTrue(editor.configure_object_ids_action.isEnabled())
         self.assertTrue(editor.previous_object_action.isEnabled())
         self.assertTrue(editor.next_object_action.isEnabled())
+
+    def test_unassigned_object_policy_requires_explicit_confirmation(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        editor.state = {"object_catalog":{"field":"Tree_ID", "editable_integer_ids":True}}
+        editor.send = Mock()
+        with patch("pyforestscan_qgis.ui.point_cloud_editor.QInputDialog.getText",
+                   return_value=("0", True)), patch(
+                   "pyforestscan_qgis.ui.point_cloud_editor.QMessageBox.question",
+                   return_value=qt_enum(QMessageBox, "No", "StandardButton")):
+            editor.configure_object_ids()
+        editor.send.assert_not_called()
+        with patch("pyforestscan_qgis.ui.point_cloud_editor.QInputDialog.getText",
+                   return_value=("0", True)), patch(
+                   "pyforestscan_qgis.ui.point_cloud_editor.QMessageBox.question",
+                   return_value=qt_enum(QMessageBox, "Yes", "StandardButton")):
+            editor.configure_object_ids()
+        editor.send.assert_called_once_with("configure_object_id_policy", unassigned_id="0")
 
     def test_classify_while_selecting_stages_once_only_after_select_snapshot(self):
         value = {"ready":True, "source":"source.laz", "edits":0, "point_count":100,

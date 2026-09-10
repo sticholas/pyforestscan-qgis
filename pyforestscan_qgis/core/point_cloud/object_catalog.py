@@ -89,6 +89,8 @@ def object_catalog_report(path):
         "catalog_path": str(catalog),
         "source_sha256": metadata["source_sha256"],
         "field": metadata["field"],
+        "field_dtype": metadata["field_dtype"],
+        "editable_integer_ids": metadata["field_kind"] in ("i", "u"),
         "source_point_count": metadata["source_point_count"],
         "cataloged_point_count": int(cataloged),
         "missing_value_count": metadata["missing_value_count"],
@@ -119,6 +121,7 @@ def build_object_catalog(chunks, expected_points, field, destination, source_sha
     temporary = destination.with_name(destination.name + ".building-" + uuid4().hex)
     started = monotonic()
     scanned = missing = 0
+    field_dtype = None
     connection = None
     try:
         connection = sqlite3.connect(temporary)
@@ -138,6 +141,14 @@ def build_object_catalog(chunks, expected_points, field, destination, source_sha
         for chunk in chunks:
             if cancelled():
                 raise InterruptedError("Object catalog cancelled; source and journal are unchanged.")
+            names = chunk.dtype.names or ()
+            if field not in names:
+                raise ValueError(f"Source does not contain catalog field {field} and XYZ coordinates.")
+            current_dtype = str(chunk.dtype.fields[field][0])
+            if field_dtype is None:
+                field_dtype = current_dtype
+            elif current_dtype != field_dtype:
+                raise ValueError("Object catalog field storage type changed during source scan.")
             rows, chunk_missing = _chunk_rows(chunk, field, np)
             with connection:
                 connection.executemany(statement, rows)
@@ -146,9 +157,12 @@ def build_object_catalog(chunks, expected_points, field, destination, source_sha
             progress(scanned)
         if scanned != expected_points:
             raise ValueError("Object catalog source count differs from the verified header.")
+        if field_dtype is None:
+            raise ValueError("Object catalog cannot infer the field storage type from an empty source.")
         duration = monotonic() - started
         metadata = {
-            "source_sha256": source_sha256, "field": field,
+            "source_sha256": source_sha256, "field": field, "field_dtype": field_dtype,
+            "field_kind": np.dtype(field_dtype).kind,
             "source_point_count": scanned, "missing_value_count": missing,
             "duration_seconds": duration,
         }

@@ -136,6 +136,7 @@ def main():
               "object_field_discovery": session.visibility.get("object_field_discovery"),
               "object_catalog": session.visibility.get("object_catalog"),
               "active_object": session.visibility.get("active_object"),
+              "object_id_policy": session.visibility.get("object_id_policy"),
               "restored": session_view_state(session) if restored else None, "exported": exported,
               "last_action": action, "last_attribute": command.get("attribute")})
     emit({"started": True})
@@ -337,6 +338,23 @@ def main():
                         progress=lambda count: progress(f"Cataloging exact {field} objects", count))
                     session.visibility["object_catalog"] = report
                     session.visibility.pop("active_object", None)
+                    session.visibility.pop("object_id_policy", None)
+                    session.save(autosave)
+                    snapshot(highlight=False)
+                elif action == "configure_object_id_policy":
+                    from pyforestscan_qgis.core.point_cloud.object_id_policy import (
+                        create_object_id_policy, next_available_object_id)
+                    catalog = session.visibility.get("object_catalog")
+                    if not catalog:
+                        raise ValueError("Build an exact object catalog before defining ID semantics.")
+                    try:
+                        unassigned_id = int(str(command.get("unassigned_id", "")), 10)
+                    except ValueError:
+                        raise ValueError("Unassigned object ID must be an integer.")
+                    policy = create_object_id_policy(catalog, unassigned_id)
+                    next_id = next_available_object_id(catalog["catalog_path"], policy)
+                    session.visibility["object_id_policy"] = {
+                        **policy.to_dict(), "next_available_object_id":next_id}
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action in ("select_object", "neighbor_object"):

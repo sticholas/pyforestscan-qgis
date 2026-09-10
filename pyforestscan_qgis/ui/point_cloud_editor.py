@@ -278,6 +278,11 @@ class EditorPanel(QWidget):
         self.object_results_action.triggered.connect(self.show_object_field_discovery)
         self.build_object_catalog_action = self.object_menu.addAction("Build Exact Object Catalog...")
         self.build_object_catalog_action.triggered.connect(self.build_object_catalog)
+        self.configure_object_ids_action = self.object_menu.addAction("Set Unassigned Object Value...")
+        self.configure_object_ids_action.setToolTip(
+            "Explicitly define the value that means unassigned before future add, remove, split or merge edits. "
+            "This policy step does not edit points.")
+        self.configure_object_ids_action.triggered.connect(self.configure_object_ids)
         self.object_menu.addSeparator()
         self.select_object_action = self.object_menu.addAction("Select Object ID...")
         self.select_object_action.triggered.connect(self.select_object_id)
@@ -356,6 +361,8 @@ class EditorPanel(QWidget):
         self.build_object_catalog_action.setEnabled(ready and bool(candidates))
         self.select_object_action.setEnabled(ready and bool(catalog))
         self.object_catalog_results_action.setEnabled(bool(catalog))
+        self.configure_object_ids_action.setEnabled(ready and bool(catalog)
+            and bool(catalog.get("editable_integer_ids")))
         current = active_object.get("object_id")
         self.previous_object_action.setEnabled(ready and current is not None
             and current != catalog.get("minimum_object_id"))
@@ -602,6 +609,22 @@ class EditorPanel(QWidget):
         if accepted:
             self.send("select_object", object_id=value)
 
+    def configure_object_ids(self):
+        catalog = self.state.get("object_catalog") or {}
+        if not catalog or not catalog.get("editable_integer_ids"):
+            return
+        current = self.state.get("object_id_policy") or {}
+        default = str(current.get("unassigned_id", 0))
+        value, accepted = QInputDialog.getText(self, "Set Unassigned Object Value",
+            f"Value in {catalog['field']} that means unassigned", text=default)
+        if not accepted:
+            return
+        answer = QMessageBox.question(self, "Confirm Object ID Semantics",
+            f"Treat {value} as the unassigned value for {catalog['field']}? "
+            "This records an editing policy but does not change source points or stage an edit.")
+        if answer == qt_enum(QMessageBox, "Yes", "StandardButton"):
+            self.send("configure_object_id_policy", unassigned_id=value)
+
     def navigate_object(self, direction):
         if direction in (-1, 1):
             self.send("neighbor_object", direction=direction)
@@ -616,12 +639,19 @@ class EditorPanel(QWidget):
             f"Cataloged points: {report['cataloged_point_count']:,}",
             f"Missing values: {report['missing_value_count']:,}",
             f"ID range: {report['minimum_object_id']} to {report['maximum_object_id']}",
+            ("Integer storage: ID editing policy can be configured."
+             if report.get("editable_integer_ids") else
+             "Non-integer storage: navigation is available, but object ID editing remains read-only."),
             "",
             "Largest objects:",
         ]
         lines.extend(f"ID {identifier}: {count:,} points"
                      for identifier, count in report.get("largest_objects", []))
         lines.extend(("", "Counts and bounds are exact original-source values. The catalog does not edit points."))
+        policy = self.state.get("object_id_policy") or {}
+        if policy:
+            lines.extend(("", f"Confirmed unassigned value: {policy['unassigned_id']}",
+                f"Next safe object ID: {policy['next_available_object_id']}"))
         QMessageBox.information(self, "Exact Object Catalog", "\n".join(lines))
 
     def update_state(self, value):
@@ -673,6 +703,11 @@ class EditorPanel(QWidget):
             if completed_action == "build_object_catalog" and value.get("object_catalog"):
                 from ..core.point_cloud.object_catalog import object_catalog_summary
                 self.summary.setText(object_catalog_summary(value["object_catalog"]))
+            if completed_action == "configure_object_id_policy" and value.get("object_id_policy"):
+                from ..core.point_cloud.object_id_policy import ObjectIdPolicy, object_id_policy_summary
+                payload = dict(value["object_id_policy"])
+                next_id = payload.pop("next_available_object_id")
+                self.summary.setText(object_id_policy_summary(ObjectIdPolicy(**payload), next_id))
             if completed_action in ("select_object", "neighbor_object") and value.get("active_object"):
                 active = value["active_object"]
                 self.summary.setText(
