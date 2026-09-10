@@ -117,18 +117,28 @@ class SliceGeometry:
     crs: str
     vertical_axis: str = "Z"
     vertical_limits: tuple | None = None
+    path: tuple = ()
+    display_projection: str = "SOURCE_XY"
 
     def __post_init__(self):
         object.__setattr__(self, "a", tuple(self.a))
         object.__setattr__(self, "b", tuple(self.b))
-        values = (*self.a, *self.b, self.thickness)
+        path = tuple(tuple(point) for point in self.path) if self.path else (self.a, self.b)
+        object.__setattr__(self, "path", path if len(path) > 2 else ())
+        values = (*self.a, *self.b, self.thickness, *(value for point in path for value in point))
         if len(self.a) != 2 or len(self.b) != 2 or any(
                 type(v) not in (int, float) or not math.isfinite(v) for v in values):
             raise ValueError("Slice requires finite source XY endpoints and thickness.")
         if self.a == self.b or self.thickness <= 0 or not self.crs.strip():
             raise ValueError("Slice needs distinct endpoints, positive thickness and CRS.")
+        if (not 2 <= len(path) <= 256 or any(len(point) != 2 for point in path)
+                or any(first == second for first, second in zip(path, path[1:]))
+                or path[0] != self.a or path[-1] != self.b):
+            raise ValueError("Profile path requires 2-256 distinct consecutive source XY points matching its endpoints.")
         if self.vertical_axis not in ("Z", "HeightAboveGround"):
             raise ValueError("Slice vertical axis must be Z or HeightAboveGround.")
+        if self.display_projection not in ("SOURCE_XY", "PROFILE_DISTANCE"):
+            raise ValueError("Profile display projection is unsupported.")
         if self.vertical_limits is not None:
             limits = tuple(self.vertical_limits)
             if len(limits) != 2 or not all(type(v) in (int, float) and math.isfinite(v) for v in limits) or limits[0] >= limits[1]:
@@ -137,23 +147,58 @@ class SliceGeometry:
 
     @property
     def length(self):
-        return math.hypot(self.b[0] - self.a[0], self.b[1] - self.a[1])
+        return sum(math.hypot(second[0]-first[0], second[1]-first[1])
+                   for first, second in zip(self.points, self.points[1:]))
+
+    @property
+    def points(self):
+        return self.path or (self.a, self.b)
 
     def local(self, x, y, z, *, hag=None):
         """Along-distance, vertical coordinate, signed cross-track distance."""
-        dx, dy = (self.b[i] - self.a[i] for i in range(2))
         height = hag if self.vertical_axis == "HeightAboveGround" else z
         if any(type(v) not in (int, float) or not math.isfinite(v) for v in (x, y, height)):
             raise ValueError("Finite source coordinates and the selected height dimension are required.")
-        return (((x-self.a[0])*dx + (y-self.a[1])*dy)/self.length, height,
-                (-(x-self.a[0])*dy + (y-self.a[1])*dx)/self.length)
+        best = None
+        cumulative = 0.0
+        for first, second in zip(self.points, self.points[1:]):
+            dx, dy = second[0]-first[0], second[1]-first[1]
+            length = math.hypot(dx, dy)
+            fraction = max(0.0, min(1.0,
+                ((x-first[0])*dx+(y-first[1])*dy)/(length*length)))
+            px, py = first[0]+fraction*dx, first[1]+fraction*dy
+            distance2 = (x-px)**2+(y-py)**2
+            candidate = (distance2, cumulative+fraction*length,
+                         (-(x-first[0])*dy+(y-first[1])*dx)/length)
+            if best is None or candidate[0] < best[0]:
+                best = candidate
+            cumulative += length
+        return best[1], height, best[2]
 
     def corridor(self):
+        if self.path:
+            margin = self.thickness/2
+            xs = [point[0] for point in self.points]
+            ys = [point[1] for point in self.points]
+            xmin, xmax, ymin, ymax = min(xs)-margin, max(xs)+margin, min(ys)-margin, max(ys)+margin
+            return ((xmin,ymin),(xmax,ymin),(xmax,ymax),(xmin,ymax),(xmin,ymin))
         nx = -(self.b[1]-self.a[1])/self.length*self.thickness/2
         ny = (self.b[0]-self.a[0])/self.length*self.thickness/2
         a, b = self.a, self.b
         return ((a[0]+nx,a[1]+ny),(b[0]+nx,b[1]+ny),
                 (b[0]-nx,b[1]-ny),(a[0]-nx,a[1]-ny),(a[0]+nx,a[1]+ny))
+
+    def segment_corridors(self):
+        """Display-only segment rectangles; exact membership uses path distance."""
+        result = []
+        for first, second in zip(self.points, self.points[1:]):
+            length = math.hypot(second[0]-first[0], second[1]-first[1])
+            nx = -(second[1]-first[1])/length*self.thickness/2
+            ny = (second[0]-first[0])/length*self.thickness/2
+            result.append(((first[0]+nx,first[1]+ny),(second[0]+nx,second[1]+ny),
+                           (second[0]-nx,second[1]-ny),(first[0]-nx,first[1]-ny),
+                           (first[0]+nx,first[1]+ny)))
+        return tuple(result)
 
 
 @dataclass

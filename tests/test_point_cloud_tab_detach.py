@@ -163,6 +163,25 @@ class TabDetachTests(unittest.TestCase):
         self.assertNotIn(key, owner.query_results)
         owner.open_active.assert_called_once()
 
+    def test_profile_reverse_reverses_the_whole_path(self):
+        from pyforestscan_qgis.core.point_cloud.workspace import (
+            PointCloudWorkspaceModel, SliceGeometry, ViewType)
+        from dataclasses import asdict
+        model = PointCloudWorkspaceModel()
+        model.register(view_id="overview")
+        geometry = SliceGeometry((0,0),(10,10),4,"EPSG:32605",
+            path=((0,0),(10,0),(10,10)), display_projection="PROFILE_DISTANCE")
+        key = model.register(ViewType.VERTICAL_SLICE, "Profile", view_id="profile",
+            geometry=asdict(geometry))
+        model.activate(key)
+        owner = SimpleNamespace(page=SimpleNamespace(workspace=model),
+            active=lambda:model.views[model.active_view_id], query_results={},
+            refresh_profile_controls=Mock(), open_active=Mock())
+        LinkedViews.reverse_profile(owner)
+        result = model.views[key].geometry
+        self.assertEqual(result["path"], [(10,10),(10,0),(0,0)])
+        self.assertEqual((result["a"],result["b"]), ((10,10),(0,0)))
+
     def test_profile_width_updates_existing_view_and_requeries(self):
         from pyforestscan_qgis.core.point_cloud.workspace import (
             PointCloudWorkspaceModel, SliceGeometry, ViewType)

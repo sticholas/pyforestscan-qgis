@@ -93,6 +93,17 @@ for(const ending of ["dblclick","Enter","contextmenu","first"]) {
     editor.command({action:"selection_resolution"});
     assert.equal(tick().drawing_state,"RESOLVED");
 }
+editor.command({action:"linked_view",view:null});
+editor.command({action:"selection_tool",tool:"ProfilePath",purpose:"CREATE_SLICE"});
+for(let i=0;i<2;i++){ const callbacks=queue.splice(0);callbacks.forEach(fn=>fn()); }
+click(50,50);click(200,50);click(200,200);document.emit("keydown",{key:"Enter"});
+const profilePath=tick().event;
+assert.equal(profilePath.action,"CREATE_SLICE");
+assert.equal(profilePath.geometry.length,3);
+assert.deepEqual(Array.from(profilePath.geometry[0]),[920,2080]);
+assert.deepEqual(Array.from(profilePath.geometry[2]),[980,2020]);
+assert.equal(tick().drawing_state,"RESOLVING");
+editor.command({action:"selection_resolution"});
 arm();click(30,30); document.emit("keydown",{key:"Escape"});
 assert.equal(tick().drawing_state,"CANCELLED");
 assert.equal(tick().event.action,"pointer");

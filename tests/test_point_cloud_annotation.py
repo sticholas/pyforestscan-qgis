@@ -12,7 +12,8 @@ except ImportError:
 
 from pyforestscan_qgis.core.point_cloud.annotation import (
     annotation_summary, create_annotation, remove_annotation,
-    replace_annotation, resolve_source_annotation, validate_annotations)
+    replace_annotation, resolve_source_annotation,
+    resolve_source_profile_annotation, validate_annotations)
 from pyforestscan_qgis.core.point_cloud.measurement import MeasurementAnchor
 from pyforestscan_qgis.core.point_cloud.session import PointCloudEditSession, SourceIdentity
 
@@ -95,11 +96,35 @@ class PointCloudAnnotationTests(unittest.TestCase):
             self.assertEqual(loaded.operations, ())
             source.verify()
 
+    @unittest.skipIf(np is None, "NumPy required")
+    def test_profile_annotation_resolves_flattened_pick_to_original_source(self):
+        points = np.array([(5., 0., 3., 5, 2.), (10., 5., 7., 2, 0.)],
+            dtype=[("X", "f8"), ("Y", "f8"), ("Z", "f8"),
+                   ("Classification", "u1"), ("HeightAboveGround", "f8")])
+        identity = "a" * 64
+        source = SimpleNamespace(sha256=identity, source_type="LAS", path="source.las",
+                                 verify=Mock())
+        class Pipeline:
+            def __init__(self, _spec): pass
+            def iterator(self, **_kwargs): return iter((points,))
+        profile = dict(a=(0, 0), b=(10, 10), thickness=2,
+            crs="SOURCE_LOCAL:" + identity, path=((0, 0), (10, 0), (10, 10)),
+            display_projection="PROFILE_DISTANCE")
+        item = resolve_source_profile_annotation(source, 2, (15, 0, 7),
+            "SOURCE_LOCAL:" + identity, profile, "Profile marker",
+            pdal_module=SimpleNamespace(Pipeline=Pipeline))
+        self.assertEqual(item.anchor.requested_xyz, (10, 5, 7))
+        self.assertEqual(item.anchor.source_xyz, (10, 5, 7))
+        self.assertEqual(item.anchor.classification, 2)
+        self.assertEqual(source.verify.call_count, 2)
+
     def test_worker_owns_resolution_and_session_persistence(self):
         worker = (Path(__file__).parents[1]/"pyforestscan_qgis"/"viewer"/
                   "editor_worker.py").read_text(encoding="utf-8")
         self.assertIn('elif action == "add_annotation":', worker)
-        self.assertIn("resolve_source_annotation(session.source, point_count", worker)
+        self.assertIn("resolve_source_profile_annotation", worker)
+        self.assertIn("else resolve_source_annotation", worker)
+        self.assertIn('if command.get("profile_geometry")', worker)
         self.assertIn('session.visibility["annotations"]', worker)
         self.assertIn('elif action == "update_annotation":', worker)
         self.assertIn('elif action == "remove_annotation":', worker)

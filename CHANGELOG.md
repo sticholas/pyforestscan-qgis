@@ -8,7 +8,11 @@
   records before display sampling; rendered points remain non-authoritative.
 - Added source-coordinate profile corridor footprints to 3D scene context with
   per-view visibility and explicit display-only authority.
-- Multi-segment paths, linked cursor readouts and live human qualification remain
+- Added multi-segment path drawing, cumulative-distance profile projection,
+  per-segment bounded source queries, exact corridor membership, and original-XYZ
+  provenance for source-authoritative selection, editing, measurement, and
+  annotation from flattened profile views.
+- Linked cursor readouts and sustained live human profile qualification remain
   unfinished. The editor stays experimental at `0.2.0-beta.1`.
 
 ## Phase 34A3.4 - Editor closure and linked-view foundation (experimental)

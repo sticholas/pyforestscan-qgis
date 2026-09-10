@@ -58,8 +58,12 @@ def extract_view(source, view, output_dir, *, index_root, point_budget,
     started = time.monotonic()
     if type(point_budget) is not int or point_budget <= 0:
         raise ValueError("A positive coordinated display budget is required.")
-    ring = view_ring(view)
-    polygon = shapely.Polygon(ring)
+    profile = SliceGeometry(**view["geometry"]) if view["view_type"]=="VERTICAL_SLICE" else None
+    if profile:
+        from .profile import profile_corridor_shape, profile_query_envelopes
+        polygon = profile_corridor_shape(profile, shapely)
+    else:
+        polygon = shapely.Polygon(view_ring(view))
     if not polygon.is_valid or polygon.area <= 0:
         raise ValueError("The view boundary is empty or self-intersecting.")
     xmin, ymin, xmax, ymax = polygon.bounds
@@ -77,11 +81,13 @@ def extract_view(source, view, output_dir, *, index_root, point_budget,
     if kind in ("LAS", "LAZ"):
         index = RawSpatialIndex(source, index_root)
         index.ensure(cancelled=cancelled, progress=lambda count:progress("Indexing original record ranges",count))
-        chunks = index.chunks(((xmin,ymin,xmax,ymax),), cancelled=cancelled)
+        envelopes = profile_query_envelopes(profile) if profile else ((xmin,ymin,xmax,ymax),)
+        chunks = index.chunks(envelopes, cancelled=cancelled)
     else:
         reader.update(bounds=f"([{xmin},{xmax}],[{ymin},{ymax}])", threads=2)
+        if profile:
+            reader["polygon"] = polygon.wkt
         chunks = pdal.Pipeline(json.dumps([reader])).iterator(chunk_size=65536,prefetch=0)
-    profile = SliceGeometry(**view["geometry"]) if view["view_type"]=="VERTICAL_SLICE" else None
     seed = int(hashlib.sha256(json.dumps([source.sha256,view["geometry"]],sort_keys=True).encode()).hexdigest()[:16],16)
     random = np.random.default_rng(seed)
     sample = keys = None
@@ -118,7 +124,22 @@ def extract_view(source, view, output_dir, *, index_root, point_budget,
         raise InterruptedError("Linked view query cancelled.")
     if sample is None or not len(sample):
         raise ValueError("No source points fall inside this view.")
-    if profile and profile.vertical_axis == "HeightAboveGround":
+    if profile and profile.display_projection == "PROFILE_DISTANCE":
+        reserved = {"PFSOriginalX", "PFSOriginalY", "PFSOriginalZ"}
+        if reserved & set(sample.dtype.names):
+            raise ValueError("Reserved viewer source-coordinate dimensions already exist in the source.")
+        from .profile import profile_coordinates
+        along, cross, _distance = profile_coordinates(profile, sample["X"], sample["Y"], np)
+        vertical = sample[profile.vertical_axis].copy()
+        converted = np.empty(len(sample),dtype=sample.dtype.descr+
+            [("PFSOriginalX","<f8"),("PFSOriginalY","<f8"),("PFSOriginalZ","<f8")])
+        for name in sample.dtype.names:
+            converted[name]=sample[name]
+        converted["PFSOriginalX"],converted["PFSOriginalY"],converted["PFSOriginalZ"] = (
+            sample["X"],sample["Y"],sample["Z"])
+        converted["X"],converted["Y"],converted["Z"] = along,cross,vertical
+        sample=converted
+    elif profile and profile.vertical_axis == "HeightAboveGround":
         if "PFSOriginalZ" in sample.dtype.names:
             raise ValueError("Reserved viewer dimension PFSOriginalZ already exists in the source.")
         converted = np.empty(len(sample),dtype=sample.dtype.descr+[("PFSOriginalZ","<f8")])
@@ -136,7 +157,7 @@ def extract_view(source, view, output_dir, *, index_root, point_budget,
               "extra_dims":"all","compression":True,
               "scale_x":"auto","scale_y":"auto","scale_z":"auto",
               "offset_x":"auto","offset_y":"auto","offset_z":"auto"}
-    if wkt:
+    if wkt and not (profile and profile.display_projection == "PROFILE_DISTANCE"):
         writer["a_srs"]=wkt
     progress("Preparing display cache",len(sample))
     try:
@@ -153,6 +174,7 @@ def extract_view(source, view, output_dir, *, index_root, point_budget,
             "classification_counts":sorted(class_counts.items(), key=lambda item:(-item[1],item[0])),
             "point_budget":point_budget,"query_seconds":time.monotonic()-started,
             "geometry":view["geometry"],"view_type":view["view_type"],
+            "display_projection":profile.display_projection if profile else "SOURCE_XY",
             "identity_scope":"EPT_METADATA_ONLY" if kind=="EPT" else "FULL_ORIGINAL_FILE",
             "display_query_source":"VERIFIED_VIEW_CACHE" if display_path is not None else "ORIGINAL_SOURCE",
             "authority":"ORIGINAL_SOURCE_RECORDS; output is display-only"}

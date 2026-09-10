@@ -52,7 +52,8 @@ function fitSource(reason) {
 function fitProfile() {
     const geometry = linkedContext.geometry;
     viewer.setCameraMode(Potree.CameraMode.ORTHOGRAPHIC);
-    viewer.scene.view.yaw = Math.atan2(geometry.b[1]-geometry.a[1], geometry.b[0]-geometry.a[0]);
+    viewer.scene.view.yaw = linkedContext.display_projection === "PROFILE_DISTANCE" ? 0 :
+        Math.atan2(geometry.b[1]-geometry.a[1], geometry.b[0]-geometry.a[0]);
     viewer.scene.view.pitch = 0;
     viewer.fitToScreen(0);
 }

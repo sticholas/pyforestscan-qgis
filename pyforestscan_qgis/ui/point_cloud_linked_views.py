@@ -100,6 +100,11 @@ class LinkedViews(QObject):
         for label, tool, purpose in (("Area Detail: Polygon", "Polygon", "CREATE_AREA"),):
             action = menu.addAction(label)
             action.triggered.connect(lambda _=False, t=tool, p=purpose: self.draw(t,p))
+        profile_path = menu.addAction("Profile: Multi-segment Path")
+        profile_path.setToolTip(
+            "Draw an open path through multiple areas. Double-click, right-click or press Enter to finish; the profile uses cumulative source distance.")
+        profile_path.triggered.connect(
+            lambda _checked=False: self.draw("ProfilePath", "CREATE_SLICE"))
         menu.addAction("Open Selection in Area Detail", self.from_selection)
         menu.addAction("Adjust Active View", self.adjust)
         self.rename_view_action = menu.addAction("Rename Active View...", self.rename_active_view)
@@ -174,6 +179,8 @@ class LinkedViews(QObject):
             return
         geometry = dict(view.geometry)
         geometry["a"], geometry["b"] = geometry["b"], geometry["a"]
+        if geometry.get("path"):
+            geometry["path"] = list(reversed(geometry["path"]))
         self.page.workspace.update_view(view.view_id, geometry=geometry, camera={})
         self.query_results.pop(view.view_id, None)
         self.refresh_profile_controls()
@@ -412,8 +419,8 @@ class LinkedViews(QObject):
         self.set_profile_footprints()
 
     def draw(self, tool, purpose):
-        if self.active().view_type != ViewType.OVERVIEW_3D:
-            self.page.status.setText("Open 3D Overview to draw a new region.")
+        if self.active().view_type == ViewType.VERTICAL_SLICE:
+            self.page.status.setText("Open Overview or Area Detail to draw a new region.")
             return
         if not self.source_descriptor() or self.page.editor.busy or not self.page._view_state:
             self.page.status.setText("Wait for source verification before creating linked views.")
@@ -436,7 +443,9 @@ class LinkedViews(QObject):
                 "Thickness (source coordinate units)", 5, .001, 1000000, 3)
             if not ok:
                 return True
-            geometry = {"a":points[0],"b":points[1],"thickness":thickness,"crs":crs}
+            geometry = {"a":points[0],"b":points[-1],"thickness":thickness,"crs":crs}
+            if len(points) > 2:
+                geometry.update(path=points,display_projection="PROFILE_DISTANCE")
             kind = ViewType.VERTICAL_SLICE
         else:
             geometry = {"shape":"POLYGON","vertices":points,"crs":crs}
@@ -798,6 +807,9 @@ class LinkedViews(QObject):
         context = asdict(view)
         if view.view_type != ViewType.OVERVIEW_3D:
             context["corridor"] = view_ring(context)
+        result = self.query_results.get(view.view_id) or {}
+        context["display_projection"] = result.get(
+            "display_projection", view.geometry.get("display_projection", "SOURCE_XY"))
         self.page.send({"action":"linked_view","view":context})
         self.page.send(self.profile_footprints())
         self.page.send({"action":"scene_visibility", "visibility":view.scene_visibility})

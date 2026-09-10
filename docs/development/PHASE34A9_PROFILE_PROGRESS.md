@@ -11,6 +11,13 @@ shows the corridor width and reports the exact number of original source points
 inside the bounded corridor. A tooltip includes profile length, display-sample
 count and the source-resolved LAS classification distribution.
 
+Overview and Area Detail now also provide **Profile: Multi-segment Path**. The
+user draws two or more source-XY vertices and finishes with double-click,
+Enter, right-click, or the first vertex. The resulting Vertical Slice flattens
+the path to cumulative distance along profile, signed cross-track distance,
+and elevation or HAG. Reverse Profile reverses the complete path rather than
+only exchanging the original endpoints.
+
 The bounded query accumulates classification counts before display sampling.
 Consequently the profile summary does not mistake rendered LOD points for edit
 authority. Reverse and Width update the existing linked-view definition, retain
@@ -24,23 +31,32 @@ carry point identities, selections or edit authority. The active profile uses
 a distinct line tone without relying on color as its only identity; renderer
 telemetry records the number of accepted profile overlays.
 
-Architecture decision: **REUSE** the established linked-workspace registry and
-per-view scene-visibility state; **ADAPT** the existing Three.js measurement and
-annotation overlay pattern for source-relative line precision; **WRAP** view
-records as bounded value-only footprint commands; **IMPLEMENT** no second scene,
-selection, journal or source authority.
+Multi-segment queries use one bounded source envelope per segment for indexed
+LAS/LAZ and an exact corridor polygon for COPC/EPT readers. The display cache
+retains original XYZ in reserved provenance dimensions while its display XYZ
+uses the flattened profile coordinates. Selection, above/below-line editing,
+measurements, and annotations project through the shared path geometry and
+resolve against original source records. Display samples never become edit
+authority.
+
+Architecture decision: **REUSE** PDAL reader polygon clipping plus the
+established linked-workspace and scene-visibility state; **ADAPT** the raw-source
+range index to per-segment envelopes; **WRAP** flattened display caches with
+original-XYZ provenance; **IMPLEMENT** one shared cumulative-distance projection
+and exact corridor-membership contract. No second source, selection, journal,
+or workspace authority was introduced.
 
 ## Qualification Boundary
 
-QGIS-free contracts cover axis wording, authoritative counts, class summaries,
-loading state and invalid geometry. Existing linked-view tests cover the shared
-workspace and journal boundaries. Live Qt layout, real-source query latency and
-human interaction still require qualification before this slice is accepted.
+QGIS-free contracts cover path validation, cumulative projection, corridor
+membership, per-segment source queries, authoritative selection, measurements,
+annotations, and renderer gesture completion. Existing linked-view tests cover
+the shared workspace and journal boundaries.
 
-Multi-segment profile paths, linked cursor/readouts, remembered profile camera,
-and profile-specific point-size/color controls remain unfinished. Polygon,
-rectangle, above-line and below-line edits continue to use the already
-source-resolved two-point Vertical Slice path.
+Linked cursor/readouts, remembered profile camera, profile-specific point-size
+and color quick actions, and sustained human editing acceptance remain
+unfinished. Two-point Vertical Slice remains available alongside the new path
+profile.
 
 ## Measured Evidence
 
@@ -58,3 +74,12 @@ Focused QGIS-free tests pass, and the linked-view/controller suite passes all
 renderer harness also verifies one footprint object, its source-space placement,
 display-only authority marker, telemetry count and visibility toggle. This is one real-source
 query measurement, not sustained profile interaction or human acceptance.
+
+A second real-source canary used a two-segment path against the same
+2,287,408-point LAZ. It scanned 380,928 indexed candidates, resolved 81,151
+authoritative corridor points, and prepared the flattened display result in
+1.344 seconds. Cumulative display distance ranged from 0.002 to 424.979 source
+units, cross-track distance stayed within the approximately 20-unit corridor,
+and the maximum independent projection difference was below 0.00000005 source
+units. The source SHA256 was unchanged. This is measured extraction and
+coordinate evidence, not a sustained-interaction qualification.

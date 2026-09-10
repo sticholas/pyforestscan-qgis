@@ -21,7 +21,7 @@ def visual_definition(item):
     raw = asdict(item)
     return {key: raw[key] for key in ("geometry", "selection_mode", "z_filter", "hag_filter",
         "classification_filter", "attribute_filters", "view_id", "view_name", "clip_geometry",
-        "profile_a", "profile_b", "profile_thickness", "profile_geometry", "profile_axis",
+        "profile_a", "profile_b", "profile_path", "profile_thickness", "profile_geometry", "profile_axis",
         "depth_mode", "circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
         "sphere_center", "sphere_radius", "sphere_axis", "invert_result",
         "profile_line", "profile_line_side")}
@@ -266,7 +266,7 @@ def main():
                     if constraints is None:
                         constraints = {"z_filter": state.get("height_filter"),
                                        "classification_filter": state.get("classes")}
-                    allowed = {"view_id", "view_name", "clip_geometry", "profile_a", "profile_b",
+                    allowed = {"view_id", "view_name", "clip_geometry", "profile_a", "profile_b", "profile_path",
                                "profile_thickness", "profile_geometry", "profile_axis", "depth_mode",
                                "z_filter", "hag_filter", "classification_filter", "attribute_filters"}
                     if not isinstance(constraints, dict) or set(constraints) - allowed:
@@ -673,6 +673,7 @@ def main():
                 elif action == "add_annotation":
                     from pyforestscan_qgis.core.point_cloud.annotation import (
                         MAX_ANNOTATIONS, resolve_source_annotation,
+                        resolve_source_profile_annotation,
                         validate_annotations)
                     current = validate_annotations(session.visibility.get("annotations"),
                                                    session.source.sha256)
@@ -680,8 +681,13 @@ def main():
                         raise ValueError(
                             f"One session supports at most {MAX_ANNOTATIONS:,} annotations.")
                     progress("Resolving original source annotation anchor")
-                    annotation = resolve_source_annotation(session.source, point_count,
-                        command.get("point") or (), session.source_crs,
+                    resolver_function = (resolve_source_profile_annotation
+                        if command.get("profile_geometry") else resolve_source_annotation)
+                    args = [session.source, point_count, command.get("point") or (),
+                            session.source_crs]
+                    if command.get("profile_geometry"):
+                        args.append(command["profile_geometry"])
+                    annotation = resolver_function(*args,
                         command.get("title") or "", command.get("note") or "",
                         pdal_module=pdal, cancelled=cancelled.is_set,
                         progress=lambda count: progress(

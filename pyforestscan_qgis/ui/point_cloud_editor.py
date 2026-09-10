@@ -775,7 +775,14 @@ class EditorPanel(QWidget):
                 self.pending_annotation = None
                 self.measurement_button.setChecked(False)
                 if details:
-                    self.send("add_annotation", point=event.get("point"), **details)
+                    values = {}
+                    if event.get("profile_display"):
+                        view = self.page.linked.active()
+                        if (getattr(view.view_type, "value", view.view_type)
+                                == "VERTICAL_SLICE"):
+                            values["profile_geometry"] = asdict(view)["geometry"]
+                    self.send("add_annotation", point=event.get("point"),
+                              **values, **details)
             elif event.get("action") in ("undo", "redo"):
                 self.send(event["action"])
             elif event.get("action") == "pointer":

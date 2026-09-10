@@ -7,7 +7,8 @@ import math
 import re
 from uuid import uuid4
 
-from .measurement import MeasurementAnchor, resolve_source_anchors
+from .measurement import (
+    MeasurementAnchor, resolve_profile_anchor_chunks, resolve_source_anchors)
 
 
 MAX_ANNOTATIONS = 500
@@ -93,6 +94,45 @@ def resolve_source_annotation(source, expected_points, requested_point, source_c
         (requested_point,), pdal_module=pdal_module, cancelled=cancelled,
         progress=progress)
     return create_annotation(source.sha256, source_crs, anchors[0], title, note,
+        resolution_seconds=duration, source_point_count=expected_points)
+
+
+def resolve_source_profile_annotation(source, expected_points, requested_point,
+                                      source_crs, profile_geometry, title, note="", *,
+                                      pdal_module=None, crs_type=None,
+                                      cancelled=lambda: False, progress=lambda count: None):
+    """Resolve one flattened-profile pick back to one immutable source record."""
+    import json
+    from .workspace import SliceGeometry
+    profile = (profile_geometry if isinstance(profile_geometry, SliceGeometry)
+               else SliceGeometry(**profile_geometry))
+    pdal = pdal_module
+    if pdal is None:
+        import pdal as pdal_module
+        pdal = pdal_module
+    if source_crs.startswith("SOURCE_LOCAL:"):
+        if profile.crs != source_crs:
+            raise ValueError("Profile and source-local coordinate identities do not match.")
+    else:
+        if crs_type is None:
+            from pyproj import CRS
+            crs_type = CRS
+        if not crs_type.from_user_input(source_crs).equals(
+                crs_type.from_user_input(profile.crs)):
+            raise ValueError("Profile and original source CRS do not match.")
+    source.verify(cancelled=cancelled)
+    reader = {"type":"readers.copc" if source.source_type == "COPC" else "readers.las",
+              "filename":source.path}
+    chunks = pdal.Pipeline(json.dumps([reader])).iterator(chunk_size=65_536,prefetch=0)
+    anchors, duration = resolve_profile_anchor_chunks(
+        chunks, expected_points, (requested_point,), profile,
+        cancelled=cancelled, progress=progress)
+    source.verify(cancelled=cancelled)
+    resolved = anchors[0]
+    anchor = MeasurementAnchor(
+        resolved.source_xyz, resolved.source_xyz, resolved.snap_distance,
+        resolved.classification, resolved.height_above_ground)
+    return create_annotation(source.sha256, source_crs, anchor, title, note,
         resolution_seconds=duration, source_point_count=expected_points)
 
 

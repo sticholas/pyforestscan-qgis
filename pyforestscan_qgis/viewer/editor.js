@@ -7,7 +7,7 @@ let savedNavigation = null;
 let linkedView = null, drawingPurpose = "EDIT";
 let mode = "REPLACE", eventNumber = 0, latestEvent = null, revision = 0, edits = [], selection = [];
 const originals = new WeakMap(), records = new Map();
-const point = new THREE.Vector3(), flat = new THREE.Vector3();
+const point = new THREE.Vector3(), sourcePointValue = new THREE.Vector3(), flat = new THREE.Vector3();
 let pending = [], requestedRevision = 0;
 let gestureMode = null;
 let toolEpoch = 0, insertionPending = false;
@@ -24,6 +24,39 @@ let sceneVisibility = {selection:true, measurements:true, annotations:true, prof
 function sourceAttribute(geometry, name) {
     const extra = geometry._pfsOriginalDimensions && geometry._pfsOriginalDimensions[name];
     return extra ? {array:extra} : geometry.getAttribute(name) || geometry.getAttribute(name.toLowerCase());
+}
+function profileLocal(geometry, x, y) {
+    const path=Array.isArray(geometry.path)&&geometry.path.length>2 ? geometry.path :
+        [geometry.a,geometry.b];
+    let best=null,cumulative=0;
+    for (let i=0;i<path.length-1;i++) {
+        const a=path[i],b=path[i+1],dx=b[0]-a[0],dy=b[1]-a[1],length=Math.hypot(dx,dy);
+        if (!(length>0)) continue;
+        const fraction=Math.max(0,Math.min(1,((x-a[0])*dx+(y-a[1])*dy)/(length*length)));
+        const px=a[0]+fraction*dx,py=a[1]+fraction*dy,distance=(x-px)**2+(y-py)**2;
+        const candidate={distance,along:cumulative+fraction*length,
+            cross:(-(x-a[0])*dy+(y-a[1])*dx)/length};
+        if (!best || candidate.distance<best.distance) best=candidate;
+        cumulative+=length;
+    }
+    return best ? {...best,length:cumulative} : null;
+}
+function profileProjected() {
+    return linkedView && linkedView.view_type === "VERTICAL_SLICE" &&
+        linkedView.display_projection === "PROFILE_DISTANCE";
+}
+function profileContains(geometry,x,y) {
+    const path=Array.isArray(geometry.path)&&geometry.path.length>2 ? geometry.path :
+        [geometry.a,geometry.b];
+    const radius=(geometry.thickness||0)/2,radius2=radius*radius;
+    for (let i=0;i<path.length-1;i++) {
+        const a=path[i],b=path[i+1],dx=b[0]-a[0],dy=b[1]-a[1],length2=dx*dx+dy*dy;
+        const fraction=((x-a[0])*dx+(y-a[1])*dy)/length2;
+        const px=a[0]+fraction*dx,py=a[1]+fraction*dy;
+        if (fraction>=0&&fraction<=1&&(x-px)**2+(y-py)**2<=radius2) return true;
+    }
+    return path.slice(1,-1).some(vertex =>
+        (x-vertex[0])**2+(y-vertex[1])**2<=radius2);
 }
 
 function publish(geometry, primitive = {}) {
@@ -90,11 +123,11 @@ function matches(definitions, xyz, classification, geometry, index) {
         if (hit && item.clip_geometry_triangles)
             hit = item.clip_geometry_triangles.some(triangle => triangle.containsPoint(flat));
         if (hit && item.profile_a) {
-            const [ax, ay] = item.profile_a, [bx, by] = item.profile_b;
-            const length = Math.hypot(bx-ax, by-ay);
-            const along = ((xyz.x-ax)*(bx-ax)+(xyz.y-ay)*(by-ay))/length;
-            const depth = (-(xyz.x-ax)*(by-ay)+(xyz.y-ay)*(bx-ax))/length;
-            hit = along >= 0 && along <= length && Math.abs(depth) <= item.profile_thickness/2;
+            const local=profileLocal({a:item.profile_a,b:item.profile_b,path:item.profile_path},xyz.x,xyz.y);
+            const along=local.along,depth=local.cross,length=local.length;
+            hit = along >= 0 && along <= length && profileContains(
+                {a:item.profile_a,b:item.profile_b,path:item.profile_path,
+                 thickness:item.profile_thickness},xyz.x,xyz.y);
             if (hit && item.profile_geometry_triangles) {
                 const attribute = sourceAttribute(geometry, "HeightAboveGround");
                 const height = item.profile_axis === "HeightAboveGround" ?
@@ -170,20 +203,41 @@ function renderWorkspaceViews(items) {
     const bounds=context.cloud.boundingBox.clone().applyMatrix4(context.cloud.matrixWorld);
     const z=bounds.min.z + Math.max(.01,(bounds.max.z-bounds.min.z)*.01);
     for (const item of workspaceItems.slice(0,100)) {
-        const ring=item&&item.corridor;
-        if (!Array.isArray(ring) || ring.length<4 || ring.length>16 ||
-                ring.some(value=>!Array.isArray(value)||value.length!==2||!value.every(Number.isFinite))) continue;
-        const origin=ring[0];
-        const values=ring.flatMap(value=>[value[0]-origin[0],value[1]-origin[1],0]);
-        const geometry=new THREE.BufferGeometry();
-        geometry.setAttribute("position",new THREE.Float32BufferAttribute(values,3));
-        const line=new THREE.Line(geometry,new THREE.LineBasicMaterial({
-            color:item.active?0xffd166:0x5be4eb,depthTest:false,transparent:true,opacity:.9}));
-        line.position.set(origin[0],origin[1],z);
-        line.renderOrder=1090;
-        line.name=typeof item.title==="string"?item.title:"Profile corridor";
-        line.userData={view_id:item.view_id||"",authority:"DISPLAY_CONTEXT_ONLY"};
-        workspaceGroup.add(line);
+        const rings=Array.isArray(item&&item.segment_corridors)&&item.segment_corridors.length ?
+            item.segment_corridors : [item&&item.corridor];
+        let accepted=false;
+        for (const ring of rings) {
+            if (!Array.isArray(ring) || ring.length<4 || ring.length>16 ||
+                    ring.some(value=>!Array.isArray(value)||value.length!==2||!value.every(Number.isFinite))) continue;
+            const origin=ring[0];
+            const values=ring.flatMap(value=>[value[0]-origin[0],value[1]-origin[1],0]);
+            const geometry=new THREE.BufferGeometry();
+            geometry.setAttribute("position",new THREE.Float32BufferAttribute(values,3));
+            const line=new THREE.Line(geometry,new THREE.LineBasicMaterial({
+                color:item.active?0xffd166:0x5be4eb,depthTest:false,transparent:true,opacity:.9}));
+            line.position.set(origin[0],origin[1],z);
+            line.renderOrder=1090;
+            line.name=typeof item.title==="string"?item.title:"Profile corridor";
+            line.userData={view_id:item.view_id||"",authority:"DISPLAY_CONTEXT_ONLY"};
+            workspaceGroup.add(line);
+            accepted=true;
+        }
+        const path=item&&item.path;
+        if (Array.isArray(path)&&path.length>=2&&path.length<=256&&
+                path.every(value=>Array.isArray(value)&&value.length===2&&value.every(Number.isFinite))) {
+            const origin=path[0],geometry=new THREE.BufferGeometry();
+            geometry.setAttribute("position",new THREE.Float32BufferAttribute(
+                path.flatMap(value=>[value[0]-origin[0],value[1]-origin[1],.01]),3));
+            const centerline=new THREE.Line(geometry,new THREE.LineBasicMaterial({
+                color:item.active?0xffd166:0x5be4eb,depthTest:false}));
+            centerline.position.set(origin[0],origin[1],z);
+            centerline.renderOrder=1091;
+            centerline.name=(item.title||"Profile corridor")+" centerline";
+            centerline.userData={view_id:item.view_id||"",authority:"DISPLAY_CONTEXT_ONLY"};
+            workspaceGroup.add(centerline);
+            accepted=true;
+        }
+        if (!accepted) continue;
         workspaceViewCount++;
     }
     workspaceGroup.visible=sceneVisibility.profiles &&
@@ -312,20 +366,16 @@ function annotationDisplayPoint(item) {
     if (linkedView.view_type === "AREA_DETAIL")
         return pointInRing(value[0],value[1],linkedView.corridor) ? value : null;
     if (linkedView.view_type !== "VERTICAL_SLICE" || !linkedView.geometry) return null;
-    const geometry=linkedView.geometry,a=geometry.a,b=geometry.b;
-    if (!Array.isArray(a)||!Array.isArray(b)) return null;
-    const dx=b[0]-a[0],dy=b[1]-a[1],length=Math.hypot(dx,dy);
-    if (!(length>0)) return null;
-    const along=((value[0]-a[0])*dx+(value[1]-a[1])*dy)/length;
-    const cross=(-(value[0]-a[0])*dy+(value[1]-a[1])*dx)/length;
-    if (along<0 || along>length || Math.abs(cross)>geometry.thickness/2) return null;
+    const geometry=linkedView.geometry,local=profileLocal(geometry,value[0],value[1]);
+    if (!local || local.along<0 || local.along>local.length ||
+            !profileContains(geometry,value[0],value[1])) return null;
     if (geometry.vertical_axis === "HeightAboveGround") {
         if (!Number.isFinite(anchor.height_above_ground)) return null;
         value[2]=anchor.height_above_ground;
     }
     if (Array.isArray(geometry.vertical_limits) &&
             (value[2]<geometry.vertical_limits[0] || value[2]>geometry.vertical_limits[1])) return null;
-    return value;
+    return profileProjected() ? [local.along,local.cross,value[2]] : value;
 }
 function renderAnnotations(items) {
     annotationItems=Array.isArray(items)?items:[];
@@ -372,6 +422,7 @@ function completeDrawing() {
         const projected = ring.map(p => {
             const xyz = sourceXY(p[0], p[1], drawingCamera);
             if (drawingPurpose === "EDIT" && linkedView && linkedView.view_type === "VERTICAL_SLICE") {
+                if (profileProjected()) return [xyz.x, xyz.z];
                 const {a, b} = linkedView.geometry;
                 const length = Math.hypot(b[0]-a[0], b[1]-a[1]);
                 return [((xyz.x-a[0])*(b[0]-a[0])+(xyz.y-a[1])*(b[1]-a[1]))/length, xyz.z];
@@ -384,6 +435,21 @@ function completeDrawing() {
         publish(geometry, primitive);
         drawing.resolving();
     } else latestEvent = {id: ++eventNumber, error: drawing.error};
+    leaveTool();
+}
+function completeProfilePath() {
+    const screenPath=drawing.finishPath(256);
+    if (!screenPath) {
+        latestEvent={id:++eventNumber,error:drawing.error};
+        leaveTool();
+        return;
+    }
+    const geometry=screenPath.map(p => {
+        const xyz=sourceXY(p[0],p[1],drawingCamera);
+        return [xyz.x,xyz.y];
+    });
+    publish(geometry);
+    drawing.resolving();
     leaveTool();
 }
 function initialize(value) {
@@ -428,7 +494,7 @@ function initialize(value) {
             event.preventDefault(); event.stopPropagation();
             return;
         }
-        if (["Polygon", "Line", "AboveLine", "BelowLine"].includes(tool))
+        if (["Polygon", "ProfilePath", "Line", "AboveLine", "BelowLine"].includes(tool))
             drawPolygon([event.offsetX, event.offsetY]);
         if (!rectangleStart || !rectangleBox) return;
         const [x, y] = rectangleStart;
@@ -454,7 +520,8 @@ function initialize(value) {
             const picked=[hit.location.x,hit.location.y,hit.location.z];
             if (tool === "AddAnnotation") {
                 latestEvent={id:++eventNumber,action:"annotation_point",point:picked,
-                    view_id:linkedView&&linkedView.view_id};
+                    view_id:linkedView&&linkedView.view_id,
+                    profile_display:profileProjected()};
                 leaveTool();
                 return;
             }
@@ -512,11 +579,11 @@ function initialize(value) {
                         latestEvent={id:++eventNumber,error:"Above/Below Line is available only in Vertical Slice."};
                         drawing.cancel(); leaveTool();
                     } else {
-                        const {a,b}=linkedView.geometry;
-                        const length=Math.hypot(b[0]-a[0],b[1]-a[1]);
-                        const profileLine=points.map(xyz => [
-                            ((xyz.x-a[0])*(b[0]-a[0])+(xyz.y-a[1])*(b[1]-a[1]))/length,
-                            xyz.z]);
+                        const profileLine=points.map(xyz => {
+                            if (profileProjected()) return [xyz.x,xyz.z];
+                            const local=profileLocal(linkedView.geometry,xyz.x,xyz.y);
+                            return [local.along,xyz.z];
+                        });
                         if (!drawing.finishPath(2)) {
                             latestEvent={id:++eventNumber,error:drawing.error};
                             leaveTool();
@@ -539,6 +606,15 @@ function initialize(value) {
                 if (drawing.vertices.length >= 3 && first &&
                     Math.hypot(first[0]-event.offsetX, first[1]-event.offsetY) <= 6) completeDrawing();
                 else { drawing.vertex(event.offsetX, event.offsetY); drawPolygon(); }
+            }
+            return;
+        }
+        if (tool === "ProfilePath") {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if (event.button === 0) {
+                drawing.vertex(event.offsetX,event.offsetY);
+                drawPolygon();
             }
             return;
         }
@@ -570,20 +646,23 @@ function initialize(value) {
         } else { drawing.cancel(); leaveTool(); latestEvent = {id: ++eventNumber, action: "pointer"}; }
     }, true);
     canvas.addEventListener("dblclick", event => {
-        if (tool !== "Polygon") return;
-        event.preventDefault(); event.stopImmediatePropagation(); completeDrawing();
+        if (!["Polygon","ProfilePath"].includes(tool)) return;
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (tool === "ProfilePath") completeProfilePath(); else completeDrawing();
     }, true);
     canvas.addEventListener("contextmenu", event => {
-        if (tool !== "Polygon") return;
-        event.preventDefault(); event.stopImmediatePropagation(); completeDrawing();
+        if (!["Polygon","ProfilePath"].includes(tool)) return;
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (tool === "ProfilePath") completeProfilePath(); else completeDrawing();
     }, true);
     canvas.addEventListener("pointercancel", () => {
         if (tool === "Pointer") return;
         drawing.cancel(); leaveTool(); latestEvent = {id: ++eventNumber, action: "pointer"};
     }, true);
     document.addEventListener("keydown", event => {
-        if (event.key === "Enter" && tool === "Polygon") {
-            event.preventDefault(); completeDrawing();
+        if (event.key === "Enter" && ["Polygon","ProfilePath"].includes(tool)) {
+            event.preventDefault();
+            if (tool === "ProfilePath") completeProfilePath(); else completeDrawing();
         } else if (event.key === "Escape" && (tool !== "Pointer" || insertionPending)) {
             drawing.cancel();
             leaveTool();
@@ -612,7 +691,7 @@ function paint() {
             removeHighlight(record);
             // Potree metadata bounds are cloud-relative, not node-buffer-relative.
             const box = node.geometryNode.boundingBox.clone().applyMatrix4(context.cloud.matrixWorld);
-            record.edits = edits.filter(edit => edit.definitions.some(definition =>
+            record.edits = profileProjected() ? edits : edits.filter(edit => edit.definitions.some(definition =>
                 definition.selection_mode !== "SUBTRACT" && definition.bounds[0] <= box.max.x &&
                 definition.bounds[2] >= box.min.x && definition.bounds[1] <= box.max.y && definition.bounds[3] >= box.min.y));
         }
@@ -621,11 +700,16 @@ function paint() {
             if (classes.array[i] !== original[i]) record.sourceUnchanged = false;
             point.fromBufferAttribute(positions, i).applyMatrix4(node.sceneNode.matrixWorld);
             const displayZ = point.z;
+            sourcePointValue.copy(point);
+            const originalX = sourceAttribute(geometry, "PFSOriginalX");
+            const originalY = sourceAttribute(geometry, "PFSOriginalY");
             const originalZ = sourceAttribute(geometry, "PFSOriginalZ");
-            if (originalZ) point.z = originalZ.array[i];
+            if (originalX) sourcePointValue.x = originalX.array[i];
+            if (originalY) sourcePointValue.y = originalY.array[i];
+            if (originalZ) sourcePointValue.z = originalZ.array[i];
             let classification = original[i], classified = false, withheld = false, removed = false, objectEdited = false;
             for (const edit of record.edits) {
-                if (!matches(edit.definitions, point, original[i], geometry, i)) continue;
+                if (!matches(edit.definitions, sourcePointValue, original[i], geometry, i)) continue;
                 if (edit.attribute === "Classification") { classification = edit.value; classified = true; }
                 else if (edit.attribute === "Withheld") withheld = Boolean(edit.value);
                 else if (edit.attribute === "DELETE_ON_EXPORT") removed = Boolean(edit.value);
@@ -635,7 +719,7 @@ function paint() {
             const filters = window.editorSelectionFilters();
             const visible = (filters.classes === null || filters.classes.includes(original[i])) &&
                 (!filters.height_filter || displayZ >= filters.height_filter[0] && displayZ <= filters.height_filter[1]);
-            const selected = matches(selection, point, original[i], geometry, i);
+            const selected = matches(selection, sourcePointValue, original[i], geometry, i);
             let color = null;
             if (selected && sceneVisibility.selection) color = selectionColor.toArray();
             else if (removed) color = [1, .25, .65];
@@ -765,7 +849,7 @@ window.pointCloudEditor = {
             return;
         }
         if (command.action === "selection_tool") {
-            if (!["Pointer", "Polygon", "Rectangle", "Box", "Circle", "Sphere", "Brush", "Line", "AboveLine", "BelowLine"].includes(command.tool)) return;
+            if (!["Pointer", "Polygon", "ProfilePath", "Rectangle", "Box", "Circle", "Sphere", "Brush", "Line", "AboveLine", "BelowLine"].includes(command.tool)) return;
             if (command.mode && !["REPLACE", "ADD", "SUBTRACT"].includes(command.mode)) return;
             if (command.tool === "Brush" &&
                     (!Number.isFinite(command.brush_radius) || command.brush_radius <= 0)) return;
@@ -792,11 +876,11 @@ window.pointCloudEditor = {
                 if (epoch !== toolEpoch) return;
                 insertionPending = false;
                 tool = command.tool;
-                drawing.arm(["Line", "Brush", "AboveLine", "BelowLine"].includes(tool) ? "Polygon" :
+                drawing.arm(["ProfilePath", "Line", "Brush", "AboveLine", "BelowLine"].includes(tool) ? "Polygon" :
                     tool === "Circle" || tool === "Sphere" || tool === "Box" ? "Rectangle" : tool, mode);
                 drawingCamera = context.viewer.scene.getActiveCamera().clone();
                 context.viewer.inputHandler.enabled = false;
-                if (["Polygon", "Line", "Brush", "AboveLine", "BelowLine"].includes(tool)) {
+                if (["Polygon", "ProfilePath", "Line", "Brush", "AboveLine", "BelowLine"].includes(tool)) {
                     polygonOverlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
                     polygonOverlay.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
                     polygonLine = document.createElementNS("http://www.w3.org/2000/svg", "polyline");

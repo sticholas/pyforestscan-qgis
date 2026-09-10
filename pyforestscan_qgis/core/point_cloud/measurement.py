@@ -319,13 +319,12 @@ def resolve_profile_anchor_chunks(chunks, expected_points, requested_points,
     profile = (profile_geometry if isinstance(profile_geometry, SliceGeometry)
                else SliceGeometry(**profile_geometry))
     requests = tuple(_point(item, "Profile measurement pick") for item in requested_points)
-    if len(requests) != 2:
-        raise ValueError("Cross-section measurement requires two displayed profile points.")
+    if len(requests) not in (1, 2):
+        raise ValueError("Profile resolution requires one or two displayed profile points.")
     if type(expected_points) is not int or expected_points <= 0:
         raise ValueError("Profile measurement requires a positive verified point count.")
     tolerances = tuple(min(MAX_SNAP_DISTANCE,
                            max(.025, source_pick_tolerance(item))) for item in requests)
-    dx, dy = profile.b[0]-profile.a[0], profile.b[1]-profile.a[1]
     best = [None, None]
     scanned = 0
     started = monotonic()
@@ -344,16 +343,20 @@ def resolve_profile_anchor_chunks(chunks, expected_points, requested_points,
         z = np.asarray(chunk["Z"], dtype="f8")
         vertical = (np.asarray(chunk["HeightAboveGround"], dtype="f8")
                     if profile.vertical_axis == "HeightAboveGround" else z)
-        along = ((x-profile.a[0])*dx+(y-profile.a[1])*dy)/profile.length
-        cross = (-(x-profile.a[0])*dy+(y-profile.a[1])*dx)/profile.length
+        from .profile import profile_coordinates, profile_membership
+        along, cross, _distance = profile_coordinates(profile, x, y, np)
         finite = np.isfinite(x) & np.isfinite(y) & np.isfinite(z) & np.isfinite(vertical)
-        eligible = finite & (np.abs(cross) <= profile.thickness/2)
+        eligible = finite & profile_membership(profile, x, y, np)
         if profile.vertical_limits is not None:
             eligible &= ((vertical >= profile.vertical_limits[0])
                          & (vertical <= profile.vertical_limits[1]))
         for index, request in enumerate(requests):
-            distance2 = ((x-request[0])**2+(y-request[1])**2
-                         +(vertical-request[2])**2)
+            if profile.display_projection == "PROFILE_DISTANCE":
+                distance2 = ((along-request[0])**2+(cross-request[1])**2
+                             +(vertical-request[2])**2)
+            else:
+                distance2 = ((x-request[0])**2+(y-request[1])**2
+                             +(vertical-request[2])**2)
             if not len(distance2):
                 continue
             distance2 = np.where(eligible, distance2, np.inf)
@@ -377,9 +380,12 @@ def resolve_profile_anchor_chunks(chunks, expected_points, requested_points,
     for request, tolerance, candidate in zip(requests, tolerances, best):
         if candidate is None or math.sqrt(candidate[0]) > tolerance:
             raise ValueError("A profile pick could not be matched to an original source point.")
+        display_xyz = ((candidate[6],candidate[7],candidate[5])
+                       if profile.display_projection == "PROFILE_DISTANCE"
+                       else (candidate[2],candidate[3],candidate[5]))
         anchors.append(ProfileAnchor(request,
             (candidate[2],candidate[3],candidate[4]),
-            (candidate[2],candidate[3],candidate[5]),
+            display_xyz,
             (candidate[6],candidate[5]), candidate[7], math.sqrt(candidate[0]),
             candidate[8], candidate[9]))
     return tuple(anchors), monotonic()-started

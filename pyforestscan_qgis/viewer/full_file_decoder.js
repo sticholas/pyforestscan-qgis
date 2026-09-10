@@ -11,7 +11,7 @@ if (Copc.Las.View) {
         originalDimensions = {};
         const count = args[0].byteLength / args[1].pointDataRecordLength;
         if (!Number.isSafeInteger(count) || count < 0) throw Error("Invalid original point record buffer.");
-        for (const name of ["HeightAboveGround", "PFSOriginalZ"]) {
+        for (const name of ["HeightAboveGround", "PFSOriginalX", "PFSOriginalY", "PFSOriginalZ"]) {
             if (!view.dimensions[name]) continue;
             const values = new Float64Array(count), get = view.getter(name);
             for (let i = 0; i < count; i++) values[i] = get(i);

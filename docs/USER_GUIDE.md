@@ -12,9 +12,15 @@ Help has a fixed, scrollable footer. Long status messages keep one compact line
 with complete text in their tooltip. RGB explains missing, sampled-zero or
 constant values separately from renderer failure; no colors are invented.
 
-Area Detail and Vertical Slice are not available yet. Their shared-source,
-global-selection and undo contracts are described in the
-[linked-view architecture](development/POINT_CLOUD_LINKED_VIEWS.md).
+Area Detail and Vertical Slice are linked to the same source, selection, edit
+journal, and undo history as Overview. Use **Profile: Multi-segment Path** in
+Overview or Area Detail to draw a corridor through several areas; finish with
+double-click, Enter, right-click, or the first vertex. The profile displays
+cumulative distance along the path against elevation (or HAG when selected),
+while edits and measurements resolve back to original source records. Use the
+compact Fit, Reverse Profile, and Width controls to adjust the view. The
+[profile progress record](development/PHASE34A9_PROFILE_PROGRESS.md) distinguishes
+qualified behavior from the remaining linked-cursor and interaction work.
 
 Open **Point Cloud**, then **Set Up Viewer** if the optional graphics runtime
 is missing. Setup requires confirmation and uses a separate user-local runtime;

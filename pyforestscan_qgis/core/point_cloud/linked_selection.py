@@ -58,6 +58,7 @@ def linked_constraints(view, *, profile_geometry=None, select_filtered=False,
     elif kind == "VERTICAL_SLICE":
         profile = SliceGeometry(**view["geometry"])
         values.update(profile_a=profile.a, profile_b=profile.b,
+                      profile_path=profile.points if profile.path else None,
                       profile_thickness=profile.thickness, profile_axis=profile.vertical_axis,
                       profile_geometry=profile_geometry, depth_mode="SLICE_CORRIDOR")
         if profile.vertical_limits is not None:

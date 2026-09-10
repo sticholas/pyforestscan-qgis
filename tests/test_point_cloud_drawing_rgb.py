@@ -38,6 +38,10 @@ class DrawingRGBTests(unittest.TestCase):
         self.assertIn("renderWorkspaceViews", source)
         self.assertIn("DISPLAY_CONTEXT_ONLY", source)
         self.assertIn("workspace_profile_count", source)
+        self.assertIn('"ProfilePath"', source)
+        self.assertIn("profileProjected", source)
+        self.assertIn('"PFSOriginalX"', source)
+        self.assertIn('"PFSOriginalY"', source)
 
     def test_help_has_fixed_scrollable_footprint(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_widgets.py").read_text()

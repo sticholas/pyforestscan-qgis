@@ -44,6 +44,7 @@ class SelectionDefinition:
     clip_geometry: tuple[tuple[float, float], ...] | None = None
     profile_a: tuple[float, float] | None = None
     profile_b: tuple[float, float] | None = None
+    profile_path: tuple[tuple[float, float], ...] | None = None
     profile_thickness: float | None = None
     profile_geometry: tuple[tuple[float, float], ...] | None = None
     profile_axis: str = "Z"
@@ -151,13 +152,15 @@ class SelectionDefinition:
                         any(len(p) != 2 or any(type(v) not in (int, float) or not math.isfinite(v) for v in p) for p in polygon)):
                     raise ValueError("Linked selection polygons must be closed and finite.")
                 object.__setattr__(self, name, polygon)
-        profile_fields = (self.profile_a, self.profile_b, self.profile_thickness)
+        profile_fields = (self.profile_a, self.profile_b, self.profile_path, self.profile_thickness)
         if any(value is not None for value in profile_fields) or self.profile_geometry is not None:
             from .workspace import SliceGeometry
             profile = SliceGeometry(self.profile_a or (), self.profile_b or (),
-                                    self.profile_thickness, self.geometry_crs, self.profile_axis)
+                                    self.profile_thickness, self.geometry_crs, self.profile_axis,
+                                    path=self.profile_path or ())
             object.__setattr__(self, "profile_a", profile.a)
             object.__setattr__(self, "profile_b", profile.b)
+            object.__setattr__(self, "profile_path", profile.points if profile.path else None)
         elif self.depth_mode == "SLICE_CORRIDOR":
             raise ValueError("Slice selection requires endpoints and thickness.")
         if self.profile_line is not None or self.profile_line_side is not None:
@@ -170,8 +173,7 @@ class SelectionDefinition:
                 raise ValueError("Profile line requires two finite non-vertical points and Above or Below.")
             if self.profile_a is None or self.depth_mode != "SLICE_CORRIDOR" or self.profile_geometry is not None:
                 raise ValueError("Above/Below Line requires one Vertical Slice line selection.")
-            length = math.hypot(self.profile_b[0]-self.profile_a[0],
-                                self.profile_b[1]-self.profile_a[1])
+            length = profile.length
             if min(point[0] for point in line) < 0 or max(point[0] for point in line) > length:
                 raise ValueError("Profile line must remain inside the Vertical Slice length.")
             object.__setattr__(self, "profile_line", line)
@@ -223,6 +225,18 @@ def reader_spec(source, definitions):
         ymin, ymax = min(p[1] for p in points), max(p[1] for p in points)
         reader["bounds"] = f"([{xmin},{xmax}],[{ymin},{ymax}])"
         reader["threads"] = 2
+        profile_items = [item for item in items
+                         if item.selection_mode != "SUBTRACT" and item.profile_a is not None]
+        if profile_items and len(profile_items) == len(
+                [item for item in items if item.selection_mode != "SUBTRACT"]):
+            import shapely
+            from .profile import profile_corridor_shape
+            from .workspace import SliceGeometry
+            reader["polygon"] = [
+                profile_corridor_shape(SliceGeometry(
+                    item.profile_a,item.profile_b,item.profile_thickness,
+                    item.geometry_crs,item.profile_axis,path=item.profile_path or ()),
+                    shapely).wkt for item in profile_items]
         # No resolution/depth/point-budget option: all intersecting source levels.
     return reader
 
@@ -295,12 +309,14 @@ def selection_mask(chunk, definitions, shapes=None, *, cancelled=lambda: False):
                 raise ValueError("Area intersection polygon is invalid.")
             mask &= shapely.intersects_xy(clip, chunk["X"], chunk["Y"])
         if item.profile_a is not None:
-            ax, ay = item.profile_a
-            bx, by = item.profile_b
-            length = math.hypot(bx-ax, by-ay)
-            along = ((chunk["X"]-ax)*(bx-ax) + (chunk["Y"]-ay)*(by-ay))/length
-            depth = (-(chunk["X"]-ax)*(by-ay) + (chunk["Y"]-ay)*(bx-ax))/length
-            mask &= (along >= 0) & (along <= length) & (np.abs(depth) <= item.profile_thickness/2)
+            from .profile import profile_coordinates, profile_membership
+            from .workspace import SliceGeometry
+            profile = SliceGeometry(item.profile_a,item.profile_b,item.profile_thickness,
+                item.geometry_crs,item.profile_axis,path=item.profile_path or ())
+            along, depth, _distance = profile_coordinates(
+                profile, chunk["X"], chunk["Y"], np)
+            length = profile.length
+            mask &= profile_membership(profile, chunk["X"], chunk["Y"], np)
             if item.profile_geometry is not None:
                 if item.profile_axis not in names:
                     raise ValueError(f"Source does not contain {item.profile_axis}.")
@@ -525,9 +541,20 @@ class SelectionResolver:
         hag_min = hag_max = None
         if self.index is not None and not any(item.invert_result for item in items):
             self.index.ensure(cancelled=cancelled, progress=progress)
-            envelopes = [(min(p[0] for p in item.geometry), min(p[1] for p in item.geometry),
-                          max(p[0] for p in item.geometry), max(p[1] for p in item.geometry))
-                         for item in items if item.selection_mode != "SUBTRACT"]
+            envelopes = []
+            for item in items:
+                if item.selection_mode == "SUBTRACT":
+                    continue
+                if item.profile_a is not None:
+                    from .profile import profile_query_envelopes
+                    from .workspace import SliceGeometry
+                    envelopes.extend(profile_query_envelopes(SliceGeometry(
+                        item.profile_a,item.profile_b,item.profile_thickness,
+                        item.geometry_crs,item.profile_axis,path=item.profile_path or ())))
+                else:
+                    envelopes.append((min(p[0] for p in item.geometry),
+                        min(p[1] for p in item.geometry),max(p[0] for p in item.geometry),
+                        max(p[1] for p in item.geometry)))
             chunks = self.index.chunks(envelopes, cancelled=cancelled)
         else:
             chunks = _candidate_chunks(self.source, items, pdal, np)
