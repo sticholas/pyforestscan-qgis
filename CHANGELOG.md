@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-beta.2 - 2026-09-10
+
+- Repaired bounded local DTM and Point Density execution, exact DTM grid metadata, and Point Density's unnecessary HAG dependency.
+- Routed PAD Derivative, Normalize Heights, and Preprocess Point Cloud through the managed Processing Engine.
+- Corrected managed HAG checkpoint publication, Toolbox preparation product keys, Point Density defaults, and the optional PointSourceID parameter.
+- Qualified all 14 registered QGIS Processing algorithms against bounded real LAS/LAZ and EPT fixtures under QGIS 3.44.13.
+- Preserved `0.2.0-beta.1` as immutable release history; the new installable artifact is versioned independently as `0.2.0-beta.2`.
+
 ## Phase 33C - Results workspace and diagnostic navigation
 
 - Removed the Process workspace stretch that produced a large blank terminal area.

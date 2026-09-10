@@ -2,7 +2,8 @@
 
 ## Release baseline
 
-- Release version: `0.2.0-beta.1`
+- Baseline release version: `0.2.0-beta.1`
+- Maintenance release version: `0.2.0-beta.2`
 - Release commit: `3962a42aed9f4b65e4cc6cebebd45a256b1395e3`
 - Evidence: the repository tag `viewer-editor-baseline-v0.2.0-beta.1` resolves to this commit; the commit's `metadata.txt` and `__version__.py` both declare `0.2.0-beta.1`; Phase 34 viewer development begins at its child commit.
 - Original release artifact/build ID: not retained locally.
@@ -32,7 +33,7 @@ The fixed raster is 50 by 50, one band, EPSG:32605, exact 2 m cells, exact reque
 
 ## Processing provider inventory
 
-This inventory is derived from `PyForestScanProvider.loadAlgorithms`, not documentation. `QGIS TOOLBOX PASS` means the algorithm registered and completed through QGIS 3.44.13 `processing.run(...)` against the bounded real-data fixture. The EPT-only route remains blocked on a retained EPT fixture and therefore still gates packaging.
+This inventory is derived from `PyForestScanProvider.loadAlgorithms`, not documentation. `QGIS TOOLBOX PASS` means the algorithm registered and completed through QGIS 3.44.13 `processing.run(...)` against a bounded real-data fixture.
 
 | Algorithm ID | Display name | Group/module | Backend/science route | Output | Current qualification |
 | --- | --- | --- | --- | --- | --- |
@@ -47,11 +48,11 @@ This inventory is derived from `PyForestScanProvider.loadAlgorithms`, not docume
 | `pyforestscan:advanced_point_density` | Point Density | Metrics / `advanced_point_density.py` | PBM -> adapter -> voxels -> `calculate_point_density` | GeoTIFF | QGIS TOOLBOX PASS; numeric reconciliation |
 | `pyforestscan:advanced_voxel_statistic` | Voxel Statistic | Metrics / `advanced_voxel_stat.py` | PBM -> adapter -> `calculate_voxel_stat` | GeoTIFF | QGIS TOOLBOX PASS |
 | `pyforestscan:normalize_height_above_ground` | Normalize Heights | Preprocessing / `normalize_hag.py` | PBM -> adapter -> `read_lidar`/`write_las` | LAS/LAZ | QGIS TOOLBOX PASS |
-| `pyforestscan:extract_ept_subset` | Extract EPT Subset | I/O / `ept_subset.py` | PBM -> adapter -> `read_lidar`/`write_las` | LAS/LAZ | BLOCKED: no retained EPT fixture |
+| `pyforestscan:extract_ept_subset` | Extract EPT Subset | I/O / `ept_subset.py` | PBM -> adapter -> `read_lidar`/`write_las` | LAS/LAZ | QGIS TOOLBOX PASS |
 | `pyforestscan:advanced_dtm` | Generate DTM | Terrain / `advanced_dtm.py` | PBM -> adapter -> ground filter -> `generate_dtm` | GeoTIFF | QGIS TOOLBOX PASS |
 | `pyforestscan:advanced_point_cloud_preprocess` | Preprocess Point Cloud | Preprocessing / `point_cloud_preprocess.py` | PBM -> adapter -> filters -> `write_las` | LAS/LAZ | QGIS TOOLBOX PASS |
 
-Total registered: 14. Thirteen actual QGIS Toolbox entry points passed; EPT Subset is explicitly blocked, not marked passed or unknown.
+Total registered: 14. All 14 actual QGIS Toolbox entry points passed. The EPT route used a retained EPT fixture built from the same 145,997-point bounded LAZ and extracted the exact 100 m validation area.
 
 Shared product parameters include input LAS/LAZ/COPC/EPT path, CRS, output path, X/Y resolution, and load-to-project. Product-specific parameters are authoritatively registered by each module and covered by `test_advanced_processing.py` and `test_processing_toolbox_registration.py`.
 
@@ -64,13 +65,18 @@ Shared product parameters include input LAS/LAZ/COPC/EPT path, CRS, output path,
 - All nine raster products use PBM dispatch from their Toolbox algorithms.
 - PAD Derivative, Normalize Heights, and Preprocess Point Cloud now dispatch to the managed engine. The optional no-output HAG inspection path uses a managed temporary job folder instead of constructing a bogus `None` path. External Worker code remains disabled legacy infrastructure.
 - PointSourceID is now an optional Toolbox string, matching its disabled-by-default filter; QGIS previously rejected the default empty value before preprocessing could start.
+- Dataset Explorer now advertises DTM and Point Density feasibility to the shared planner. Their Mission Control pipeline stages perform real managed-backend science instead of reporting a successful pipeline while silently skipping product generation.
 
 ## Test and environment status
 
 - Focused processing/parity/provider tests: 46 passed before final regression additions.
 - Full QGIS-free suite: 1,020 passed, 7 dependency/environment skips.
 - Managed Windows engine: PyForestScan 0.4.1; all local-source science routes passed on bounded real LAZ.
-- QGIS 3.44.13: PASS. QtCore imports through `python-qgis-ltr.bat`; the 100-construction/100-navigation lifecycle smoke passed with no scientific imports in the QGIS process; all 14 algorithms registered; 13 local-data Toolbox entry points completed through `processing.run(...)`.
+- QGIS 3.44.13: PASS. QtCore imports through `python-qgis-ltr.bat`; the 100-construction/100-navigation lifecycle smoke passed with no scientific imports in the QGIS process; all 14 algorithms registered and completed through `processing.run(...)`.
+- Real sequential multi-file Mission Control path: PASS. Two 145,997-point LAZ inputs each produced CHM, DTM, and Point Density (six rasters total); an immediate repeat produced the same six-output result.
+- Real polygon mask: PASS. An EPSG:32605 inset polygon was applied to a real CHM raster through `BackendRasterMaskService`, cropped successfully, and outside cells were assigned nodata -9999.
+- Failure injection: PASS. A 145,997-point fixture with ground classifications removed returned the actionable no-ground DTM error through QGIS/PBM without publishing a false output.
+- Cancellation/ownership/failure isolation matrix: 45 passed, including queued-file cancellation, owned-process termination, preparation cancellation, retry/backoff, circuit breaking, and partial-success truthfulness.
 - QGIS 4.0.0: BLOCKED by the equivalent QtCore DLL failure and is not a supported processing target for this release.
 
-Packaging remains blocked. EPT Subset still needs a retained real EPT fixture and execution evidence. Mission Control execution, polygon masking, multi-file execution, cancellation/failure injection, immediate repeated multi-product jobs, and clean-profile package validation also remain to be completed before a product ZIP is created.
+Clean-profile package installation, import, and Mission Control startup remain the final gate before the product ZIP is published.

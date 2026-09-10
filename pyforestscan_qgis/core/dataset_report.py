@@ -463,6 +463,14 @@ def _build_product_feasibility(
             products.append(ProductFeasibility(product, label, "Available", height_reason + vegetation_note))
         else:
             products.append(ProductFeasibility(product, label, "Ready after preparation", height_reason + vegetation_note))
+    if not has_z:
+        products.append(ProductFeasibility(ProductType.DTM, "Digital Terrain Model (DTM)", "Unavailable", "No usable Z dimension was detected."))
+        products.append(ProductFeasibility(ProductType.POINT_DENSITY, "Point Density", "Unavailable", "No usable Z dimension was detected."))
+    else:
+        dtm_status = "Available" if has_ground else "Ready after preparation"
+        dtm_reason = "Z and ground class 2 are present." if has_ground else "Z is present; automatic ground classification is required before DTM generation."
+        products.append(ProductFeasibility(ProductType.DTM, "Digital Terrain Model (DTM)", dtm_status, dtm_reason))
+        products.append(ProductFeasibility(ProductType.POINT_DENSITY, "Point Density", "Available", "XYZ coordinates are present; terrain normalization is not required."))
     return tuple(products)
 
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from pyforestscan_qgis.core.pipeline import build_default_pipeline_registry, registered_product_ids
 from pyforestscan_qgis.core.pipeline_context import load_pipeline_contexts
 from pyforestscan_qgis.core.pipeline_results import PipelineStepStatus
-from pyforestscan_qgis.core.types import CanopyCoverResult, FhdResult, PadResult, PaiResult, RumpleResult
+from pyforestscan_qgis.core.types import CanopyCoverResult, DtmResult, FhdResult, PadResult, PaiResult, PointDensityResult, RumpleResult
 from pyforestscan_qgis.core.pipeline_steps import PipelineStepKind
 
 
@@ -209,6 +209,34 @@ class PipelineFrameworkTests(unittest.TestCase):
             self.assertEqual((root / "outputs" / "custom_rumple.csv",), result.output_paths)
             self.assertEqual(root / "outputs" / "custom_rumple.csv", adapter.rumple_request.output_path)
 
+    def test_dtm_pipeline_executes_scientific_stage(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            report = root / "dataset_report.json"
+            report.write_text(json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8")
+            plan = _write_product_plan(root / "product_plan.json", report, product="dtm", label="Digital Terrain Model (DTM)")
+            context = load_pipeline_contexts(plan, root / "logs")[0]
+            adapter = _FakeTerrainDensityAdapter()
+            result = build_default_pipeline_registry().get("dtm").run(context, adapter=adapter, execute_products=True)
+
+            self.assertTrue(result.passed)
+            self.assertEqual((root / "outputs" / "dtm.tif",), result.output_paths)
+            self.assertEqual(1.5, adapter.dtm_request.resolution)
+
+    def test_point_density_pipeline_executes_scientific_stage(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            report = root / "dataset_report.json"
+            report.write_text(json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8")
+            plan = _write_product_plan(root / "product_plan.json", report, product="point_density", label="Point Density")
+            context = load_pipeline_contexts(plan, root / "logs")[0]
+            adapter = _FakeTerrainDensityAdapter()
+            result = build_default_pipeline_registry().get("point_density").run(context, adapter=adapter, execute_products=True)
+
+            self.assertTrue(result.passed)
+            self.assertEqual((root / "outputs" / "point_density.tif",), result.output_paths)
+            self.assertTrue(adapter.density_request.per_area)
+
 
 
 def _write_product_plan(path: Path, dataset_report: Path, product: str = "chm", label: str = "Canopy Height Model (CHM)") -> Path:
@@ -326,6 +354,23 @@ class _FakeFhdRumpleAdapter:
             grid_resolution=request.grid_resolution,
             crs=request.crs,
         )
+
+
+class _FakeTerrainDensityAdapter:
+    dtm_request = None
+    density_request = None
+
+    def generate_dtm(self, request):  # type: ignore[no-untyped-def]
+        self.dtm_request = request
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        request.output_path.write_text("fake dtm", encoding="utf-8")
+        return DtmResult(request.output_path, (0.0, 1.0, 0.0, 1.0), request.resolution, request.crs)
+
+    def create_point_density(self, request):  # type: ignore[no-untyped-def]
+        self.density_request = request
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        request.output_path.write_text("fake density", encoding="utf-8")
+        return PointDensityResult(request.output_path, (0.0, 1.0, 0.0, 1.0), request.grid_resolution, request.voxel_height, request.crs)
 
 
 if __name__ == "__main__":

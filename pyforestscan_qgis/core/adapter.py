@@ -100,6 +100,7 @@ PBM_ROUTED_PRODUCTS = {
 
 DEFAULT_PRODUCTS = (
     ProductType.CHM,
+    ProductType.DTM,
     ProductType.PAD,
     ProductType.PAI,
     ProductType.FHD,

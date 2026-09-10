@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,7 +68,10 @@ def main() -> int:
                 nodata=args.mask_nodata,
             ),
         )
-        payload["mask_result"] = result.to_dict()
+        payload["mask_result"] = {
+            key: str(value) if isinstance(value, Path) else value
+            for key, value in asdict(result).items()
+        }
     if not payload["mode"]:
         print("Choose --print-output-registry and/or --mask-existing-raster.", file=sys.stderr)
         return 2
