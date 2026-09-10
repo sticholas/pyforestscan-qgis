@@ -23,9 +23,12 @@ def main():
     parser.add_argument("--appearance-check", action="store_true")
     parser.add_argument("--circle-check", action="store_true")
     parser.add_argument("--brush-check", action="store_true")
+    parser.add_argument("--box-check", action="store_true")
     args = parser.parse_args()
-    if args.circle_check and args.brush_check:
+    if sum((args.circle_check, args.brush_check, args.box_check)) > 1:
         parser.error("Choose only one exact selection primitive check.")
+    if args.box_check and not args.selection_hag:
+        parser.error("Box qualification requires explicit --selection-hag limits.")
     args.output_dir.mkdir(parents=True, exist_ok=False)
     from qgis.core import QgsApplication, Qgis
     from qgis.PyQt.QtCore import QTimer
@@ -173,6 +176,10 @@ def main():
                     page.send({"action":"selection_test",
                         "geometry":[[x-d,y-d],[x+d,y-d],[x+d,y+d],[x-d,y+d],[x-d,y-d]],
                         "circle_center":[x,y],"circle_radius":d})
+                elif args.box_check:
+                    editor.tool.buttons["Box"].click()
+                    page.send({"action":"selection_test","geometry":[[x-d,y-d],[x+d,y-d],
+                        [x+d,y+d],[x-d,y+d],[x-d,y-d]]})
                 else:
                     editor.tool.buttons["Rectangle"].click()
                     page.send({"action":"selection_test","geometry":[[x-d,y-d],[x+d,y-d],[x+d,y+d],[x-d,y+d],[x-d,y-d]]})
@@ -183,7 +190,8 @@ def main():
                 assert result["resolved_point_count"] > 0
                 report["area_selection"] = result
                 report["area_selection_shape"] = (
-                    "BRUSH" if args.brush_check else "CIRCLE" if args.circle_check else "RECTANGLE")
+                    "BRUSH" if args.brush_check else "CIRCLE" if args.circle_check else
+                    "BOX" if args.box_check else "RECTANGLE")
                 if args.selection_hag:
                     assert result["hag_min"] >= args.selection_hag[0]
                     assert result["hag_max"] <= args.selection_hag[1]

@@ -19,9 +19,17 @@ def main():
     parser.add_argument("--sphere-center", nargs=3, type=float)
     parser.add_argument("--sphere-radius", type=float)
     parser.add_argument("--sphere-axis", choices=("Z", "HeightAboveGround"), default="Z")
+    parser.add_argument("--box-bounds", nargs=4, type=float,
+                        metavar=("XMIN", "YMIN", "XMAX", "YMAX"))
+    parser.add_argument("--height-range", nargs=2, type=float, metavar=("MIN", "MAX"))
+    parser.add_argument("--height-axis", choices=("Z", "HeightAboveGround"), default="Z")
     args = parser.parse_args()
-    if (args.sphere_center is None) != (args.sphere_radius is None) or args.large and args.sphere_center:
-        parser.error("Sphere center and radius are required together and cannot use --large.")
+    sphere = args.sphere_center is not None or args.sphere_radius is not None
+    box = args.box_bounds is not None or args.height_range is not None
+    if ((args.sphere_center is None) != (args.sphere_radius is None)
+            or (args.box_bounds is None) != (args.height_range is None)
+            or sum((bool(args.large), sphere, box)) > 1):
+        parser.error("Choose one complete large, sphere, or box qualification.")
     dll = Path(sys.executable).parent / "Library/bin"
     dll_handle = os.add_dll_directory(str(dll)) if os.name == "nt" and dll.is_dir() else None
     import numpy as np
@@ -47,6 +55,13 @@ def main():
                 raise ValueError("Full-reference sphere test is limited to three million points.")
             x, y, _height = args.sphere_center
             width = args.sphere_radius
+        elif args.box_bounds:
+            if not 0 < meta["num_points"] <= 3_000_000:
+                raise ValueError("Full-reference box test is limited to three million points.")
+            xmin_box, ymin_box, xmax_box, ymax_box = args.box_bounds
+            if xmin_box >= xmax_box or ymin_box >= ymax_box:
+                raise ValueError("Box bounds must have positive width and height.")
+            x, y, width = xmin_box, ymin_box, xmax_box-xmin_box
         elif args.large:
             if source.source_type != "COPC":
                 raise ValueError("Large qualification must use indexed COPC.")
@@ -57,12 +72,18 @@ def main():
                 raise ValueError("Full-reference test is limited to small fixtures.")
             x, y = xmin, ymin
             width = min(xmax - xmin, ymax - ymin) * .55
-        ring = ((x, y), (x + width, y), (x, y + width), (x, y))
+        ring = (((xmin_box,ymin_box),(xmax_box,ymin_box),(xmax_box,ymax_box),
+                 (xmin_box,ymax_box),(xmin_box,ymin_box)) if args.box_bounds else
+                ((x, y), (x + width, y), (x, y + width), (x, y)))
         definition = SelectionDefinition("triangle", "qualification", source.sha256,
                                          source.source_type, ring, crs)
         if args.sphere_center:
             definition = spherical_selection(definition, center=args.sphere_center,
                                              radius=args.sphere_radius, axis=args.sphere_axis)
+        elif args.box_bounds:
+            key = "hag_filter" if args.height_axis == "HeightAboveGround" else "z_filter"
+            definition = replace(definition, **{key: tuple(args.height_range),
+                "depth_mode": "CUSTOM_DEPTH_RANGE"})
         resolver = SelectionResolver(source)
         result = resolver.resolve([definition])
         report["result"] = asdict(result)
@@ -84,6 +105,24 @@ def main():
             report["reference_kind"] = f"all original points, independent source-{args.sphere_axis} sphere"
             report["sphere"] = {"center": args.sphere_center, "radius": args.sphere_radius,
                                 "axis": args.sphere_axis}
+        elif args.box_bounds:
+            reference = pdal.Pipeline(json.dumps([read]))
+            reference.execute()
+            points = reference.arrays[0]
+            if args.height_axis not in (points.dtype.names or ()):
+                raise ValueError(f"Source does not contain {args.height_axis}.")
+            xmin_box, ymin_box, xmax_box, ymax_box = args.box_bounds
+            low, high = args.height_range
+            mask = ((points["X"] >= xmin_box) & (points["X"] <= xmax_box) &
+                    (points["Y"] >= ymin_box) & (points["Y"] <= ymax_box) &
+                    (points[args.height_axis] >= low) & (points[args.height_axis] <= high))
+            expected = int(mask.sum())
+            codes, counts = np.unique(points["Classification"][mask], return_counts=True)
+            report["classification_reference_passed"] = result.classification_counts == tuple(
+                (int(c), int(n)) for c, n in zip(codes, counts))
+            report["reference_kind"] = f"all original points, independent XY/{args.height_axis} box"
+            report["box"] = {"bounds": args.box_bounds, "height_range": args.height_range,
+                             "height_axis": args.height_axis}
         elif args.large:
             # Independently resolve with PDAL's own crop stage, not a display LOD.
             wkt = "POLYGON ((" + ", ".join(f"{px} {py}" for px, py in ring) + "))"

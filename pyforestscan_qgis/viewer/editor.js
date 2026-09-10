@@ -189,7 +189,7 @@ function initialize(value) {
             event.preventDefault(); event.stopPropagation();
             return;
         }
-        if (!["Rectangle", "Circle"].includes(tool) || event.button !== 0) return;
+        if (!["Rectangle", "Box", "Circle"].includes(tool) || event.button !== 0) return;
         if (tool === "Circle" && linkedView && linkedView.view_type === "VERTICAL_SLICE") {
             latestEvent = {id: ++eventNumber, error: "Circle Select currently works in Overview and Area Detail. Use Polygon Select in Vertical Slice."};
             leaveTool();
@@ -276,7 +276,7 @@ function initialize(value) {
             }
             return;
         }
-        if (!rectangleStart || !["Rectangle", "Circle"].includes(tool)) return;
+        if (!rectangleStart || !["Rectangle", "Box", "Circle"].includes(tool)) return;
         const [x, y] = rectangleStart, xx = event.offsetX, yy = event.offsetY;
         if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
         if (tool === "Circle" && Math.hypot(x-xx, y-yy) > 2) {
@@ -296,7 +296,7 @@ function initialize(value) {
                 [center.x-radius,center.y-radius]];
             publish(geometry, {circle_center:[center.x,center.y], circle_radius:radius});
             drawing.resolving(); leaveTool();
-        } else if (tool === "Rectangle" && Math.abs(x - xx) > 2 && Math.abs(y - yy) > 2) {
+        } else if (["Rectangle", "Box"].includes(tool) && Math.abs(x - xx) > 2 && Math.abs(y - yy) > 2) {
             for (const p of [[x,y], [xx,y], [xx,yy], [x,yy]]) drawing.vertex(...p);
             completeDrawing();
         } else { drawing.cancel(); leaveTool(); latestEvent = {id: ++eventNumber, action: "pointer"}; }
@@ -443,7 +443,7 @@ window.pointCloudEditor = {
         if (command.action === "linked_view") linkedView = command.view || null;
         if (!context) return;
         if (command.action === "selection_tool") {
-            if (!["Pointer", "Polygon", "Rectangle", "Circle", "Brush", "Line"].includes(command.tool)) return;
+            if (!["Pointer", "Polygon", "Rectangle", "Box", "Circle", "Brush", "Line"].includes(command.tool)) return;
             if (command.mode && !["REPLACE", "ADD", "SUBTRACT"].includes(command.mode)) return;
             if (command.tool === "Brush" &&
                     (!Number.isFinite(command.brush_radius) || command.brush_radius <= 0)) return;
@@ -467,7 +467,8 @@ window.pointCloudEditor = {
                 if (epoch !== toolEpoch) return;
                 insertionPending = false;
                 tool = command.tool;
-                drawing.arm(tool === "Line" || tool === "Brush" ? "Polygon" : tool === "Circle" ? "Rectangle" : tool, mode);
+                drawing.arm(tool === "Line" || tool === "Brush" ? "Polygon" :
+                    tool === "Circle" || tool === "Box" ? "Rectangle" : tool, mode);
                 drawingCamera = context.viewer.scene.getActiveCamera().clone();
                 context.viewer.inputHandler.enabled = false;
                 if (tool === "Polygon" || tool === "Line" || tool === "Brush") {

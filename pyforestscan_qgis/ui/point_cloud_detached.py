@@ -143,6 +143,17 @@ class DetachedView(QDialog):
         self.selection_error = ""
 
     def change_tool(self, value):
+        if value == "Box":
+            from ..core.point_cloud.linked_selection import box_selection_error
+            view = self.controller.page.workspace.views[self.view_id]
+            self.selection_error = box_selection_error(view.view_type, self.controller.depth)
+            if self.selection_error:
+                self.tool.blockSignals(True)
+                self.tool.setCurrentText("Pointer")
+                self.tool.blockSignals(False)
+                self.send({"action":"selection_tool", "tool":"Pointer"})
+                self.status.setText(self.selection_error)
+                return
         options = {"brush_radius": self.tool.brushRadius()} if value == "Brush" else {}
         self.send({"action":"selection_tool", "tool":value,
                    "mode":self.selection_mode.currentText().upper(), **options})

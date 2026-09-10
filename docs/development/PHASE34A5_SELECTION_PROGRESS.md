@@ -73,6 +73,14 @@ human interaction, long-run/resource, and source-format gates remain open.
   bounded reader chunk, selection operation, and Brush segment. The editor
   acknowledges one cancellation request, disables duplicate cancellation, and
   retains the prior authoritative selection and journal when interrupted.
+- Added direct Box Select without adding a second volume engine. In Overview
+  and Area Detail it requires explicit stored Elevation or HAG limits, then
+  combines those with a dragged source-XY rectangle. In Vertical Slice, the
+  profile rectangle and existing source-XY corridor thickness define the
+  volume. Replace/Add/Subtract, linked-area clipping, source identity, resolver,
+  journal, undo/redo and export remain the existing shared contracts. Missing
+  vertical limits in a 3D view fail before the tool arms; camera depth is never
+  inferred.
 
 ## MEASURED EVIDENCE
 
@@ -175,6 +183,17 @@ Observed total resolver time was 0.797 seconds. This is one local-source
 measurement, not a massive-cloud latency guarantee. The reusable qualification
 is `scripts/testing/pbm_point_cloud_selection_cancel.py`.
 
+A managed-runtime Box qualification used source XY bounds
+(215240, 2114740)-(215260, 2114760) and stored HAG 8-18 on the same immutable
+2,287,408-point LAZ. It resolved 1,139 original class-5 points in 0.500 seconds,
+exactly matching an independent predicate over every source record. Add did not
+double-count, Subtract returned empty, and source SHA256 remained
+0c688c22d42b0240c6cba19973087ee59606721289872a3f8237253548db34bb.
+The production drag contract and direct compact button pass QGIS 3.44/Qt5 and
+QGIS 4.0/Qt6 focused tests. A full linked-view/export canary was attempted but
+could not acquire a viewer host while an older live QGIS session retained all
+three configured runtime slots; that user session was not interrupted.
+
 ## IN PROGRESS
 
 Circle/cylinder selection is exposed but remains experimental pending human
@@ -189,6 +208,9 @@ shared with the edit-confirmation policy.
 Sphere membership and transport are implemented but deliberately have no user
 gesture yet. A renderer sample, camera depth, or guessed vertical center cannot
 become sphere authority.
+Box Select is exposed with explicit depth semantics and automated contract and
+real-source evidence. Human drawing acceptance and a full QGIS export canary
+remain open.
 
 ## NEXT
 
@@ -196,10 +218,15 @@ become sphere authority.
    including Add/Subtract and the active height limits.
 2. Human Brush acceptance plus cancellation qualification on the 104.8-million
    point source or another representative massive local cloud.
-3. Design and qualify an explicit 3D sphere/volume placement gesture, then add
-   a compact direct action without camera-depth or rendered-point authority.
+3. Complete human Box drawing acceptance and its full linked-view/export
+   canary, then design an explicit sphere placement gesture without camera-depth
+   or rendered-point authority.
 
 ## BLOCKED
 
-No access blocker. Do not promote to editor beta until the inherited linked-view
-gates and professional selection acceptance are actually satisfied.
+No source/test-data access blocker. Do not promote to editor beta until the
+inherited linked-view gates and professional selection acceptance are actually
+satisfied.
+The current full Box canary is temporarily blocked by all configured viewer
+runtime slots being retained by an older live QGIS session. No user process was
+terminated; rerun after those viewer windows or that QGIS session close.

@@ -36,6 +36,8 @@ class SelectionTools(QWidget):
              "Polygon Select: click vertices, then double-click, Enter or right-click to finish; Escape cancels. Selects original points within the active depth limits, not just displayed points. 3D views temporarily use top view; Slice stays in profile."),
             ("Rectangle", "Rectangle Select", "mActionSelectRectangle.svg",
              "Rectangle Select: drag a rectangle; Escape cancels. Selects original points within the active depth limits. 3D views temporarily use top view; Slice stays in profile. Staged edits are unchanged until you apply an edit."),
+            ("Box", "Box Select", "mActionSelectRectangle.svg",
+             "Box Select: in Overview or Area Detail, first choose explicit Elevation or HAG limits, then drag the XY footprint. In Vertical Slice, drag a profile rectangle; slice thickness supplies depth. The full-resolution source query uses those exact bounds."),
             ("Circle", "Circle Select", "mActionSelectRadius.svg",
              "Circle Select: drag from the center to set a radius in dataset XY coordinates; Escape cancels. Full column selects a circular column; Elevation or HAG limits make it a bounded cylinder. Selection resolves original points, not displayed samples. Vertical Slice support is not yet enabled."),
             ("Brush", "Brush Select", "mActionSelectFreehand.svg",

@@ -326,6 +326,17 @@ class EditorPanel(QWidget):
 
     def change_tool(self, tool):
         if self.viewer_ready and not self.page.linked.depth_error:
+            if tool == "Box":
+                from ..core.point_cloud.linked_selection import box_selection_error
+                view = self.page.workspace.views[self.page.workspace.active_view_id]
+                error = box_selection_error(view.view_type, self.page.linked.depth)
+                if error:
+                    self.summary.setText(error)
+                    self.tool.blockSignals(True)
+                    self.tool.setCurrentText("Pointer")
+                    self.tool.blockSignals(False)
+                    self.page.send({"action": "selection_tool", "tool": "Pointer"})
+                    return
             values = {"brush_radius": self.tool.brushRadius()} if tool == "Brush" else {}
             self.page.send({"action": "selection_tool", "tool": tool,
                             "mode": self.mode.currentText().upper(), **values})

@@ -4,6 +4,18 @@ from .linked_query import area_ring
 from .workspace import AreaGeometry, SliceGeometry
 
 
+def box_selection_error(view_type, depth):
+    """Return why an explicit box volume cannot be armed, or an empty string."""
+    if view_type == "VERTICAL_SLICE":
+        return ""
+    if view_type not in ("OVERVIEW_3D", "AREA_DETAIL"):
+        return "Box Select is unavailable in this view."
+    if not isinstance(depth, dict) or not any(depth.get(key) is not None
+                                               for key in ("z_filter", "hag_filter")):
+        return "Box Select requires Elevation or HAG selection limits before drawing its XY footprint."
+    return ""
+
+
 def selection_limit_values(values):
     """Validate saved UI limits, retaining inverted bounds for visible correction."""
     if not isinstance(values, dict) or set(values) - {"z_filter", "hag_filter"}:

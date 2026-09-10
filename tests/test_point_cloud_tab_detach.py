@@ -136,6 +136,9 @@ class SelectionToolTests(unittest.TestCase):
         self.tools.buttons["Circle"].click()
         self.assertEqual(self.events[-1], "Circle")
         self.assertTrue(self.tools.buttons["Circle"].isChecked())
+        self.tools.buttons["Box"].click()
+        self.assertEqual(self.events[-1], "Box")
+        self.assertTrue(self.tools.buttons["Box"].isChecked())
 
     def test_reset_and_rearm_without_a_hidden_combo(self):
         self.tools.setCurrentText("Rectangle")
