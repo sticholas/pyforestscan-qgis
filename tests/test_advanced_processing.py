@@ -356,6 +356,47 @@ class AdvancedProcessingTests(unittest.TestCase):
         self.assertEqual((2.0, 3.0, 1.5), calls["voxel_resolution"])
         self.assertEqual((True, 6.0), calls["density_args"])
 
+    def test_point_density_uses_bounded_pdal_read_for_local_laz(self) -> None:
+        request = PointDensityRequest(
+            input_path="plot.laz",
+            output_path=Path("density.tif"),
+            grid_resolution=2.0,
+            voxel_height=1.0,
+            crs="EPSG:32610",
+            bounds=((0.0, 10.0), (0.0, 10.0)),
+        )
+        point_array = np.array(
+            [(1.0, 1.0, 2.0)],
+            dtype=[("X", "f8"), ("Y", "f8"), ("HeightAboveGround", "f8")],
+        )
+        with patch("pyforestscan_qgis.core.adapter._read_bounded_local_lidar", return_value=(point_array,)) as bounded:
+            result = PyForestScanAdapter()._read_point_density_array(request)
+        bounded.assert_called_once_with(request)
+        self.assertIs(result, point_array)
+
+    def test_point_density_without_hag_preserves_xy_counts(self) -> None:
+        request = PointDensityRequest(
+            input_path="plot.laz",
+            output_path=Path("density.tif"),
+            grid_resolution=1.0,
+            voxel_height=1.0,
+            crs="EPSG:32610",
+        )
+        points = np.array(
+            [(0.1, 0.1, 100.0), (0.2, 0.2, 104.0), (1.1, 0.1, 102.0)],
+            dtype=[("X", "f8"), ("Y", "f8"), ("Z", "f8")],
+        )
+        fake_handlers = types.ModuleType("pyforestscan.handlers")
+        fake_handlers.read_lidar = lambda *args, **kwargs: (points,)  # type: ignore[attr-defined]
+        with patch.dict(sys.modules, {"pyforestscan.handlers": fake_handlers}):
+            prepared = PyForestScanAdapter()._read_point_density_array(request)
+        self.assertEqual((0.0, 4.0, 2.0), tuple(prepared["HeightAboveGround"]))
+        cells: dict[tuple[int, int], int] = {}
+        for point in prepared:
+            key = (int(point["X"]), int(point["Y"]))
+            cells[key] = cells.get(key, 0) + 1
+        self.assertEqual({(0, 0): 2, (1, 0): 1}, cells)
+
     def test_adapter_voxel_stat_mapping_uses_exact_calculate_parameters(self) -> None:
         calls: dict[str, object] = {}
         point_array = np.array(
@@ -426,6 +467,7 @@ class AdvancedProcessingTests(unittest.TestCase):
 
         def create_geotiff(layer, output_file, crs, spatial_extent, nodata=-9999):
             calls.append(f"create_geotiff:{nodata}")
+            calls.append(tuple(spatial_extent))
             Path(output_file).write_text("fake", encoding="utf-8")
 
         fake_pyforestscan.generate_dtm = generate_dtm  # type: ignore[attr-defined]
@@ -437,7 +479,29 @@ class AdvancedProcessingTests(unittest.TestCase):
             )
             self.assertTrue(result.output_path.exists())
 
-        self.assertEqual(["classify_ground_points", "filter_select_ground", "generate_dtm:5.0", "create_geotiff:-999.0"], calls)
+        self.assertEqual(["classify_ground_points", "filter_select_ground", "generate_dtm:5.0", "create_geotiff:-999.0", (0.0, 5.0, -4.0, 1.0)], calls)
+
+    def test_dtm_uses_bounded_pdal_read_for_local_laz(self) -> None:
+        point_array = np.array(
+            [(1.0, 1.0, 2.0, 2)],
+            dtype=[("X", "f8"), ("Y", "f8"), ("Z", "f8"), ("Classification", "u1")],
+        )
+        fake_pyforestscan = types.ModuleType("pyforestscan")
+        fake_handlers = types.ModuleType("pyforestscan.handlers")
+        fake_filters = types.ModuleType("pyforestscan.filters")
+        fake_filters.filter_select_ground = lambda arrays: arrays  # type: ignore[attr-defined]
+        fake_pyforestscan.generate_dtm = lambda points, resolution=2.0: (np.ones((1, 1)), [0.0, 1.0, 0.0, 1.0])  # type: ignore[attr-defined]
+        fake_handlers.create_geotiff = lambda layer, output_file, crs, extent, nodata=-9999: Path(output_file).write_text("fake", encoding="utf-8")  # type: ignore[attr-defined]
+        request = DtmRequest(
+            "plot.laz",
+            Path(tempfile.mkdtemp()) / "dtm.tif",
+            "EPSG:32610",
+            bounds=((0.0, 10.0), (0.0, 10.0)),
+        )
+        with patch.dict(sys.modules, {"pyforestscan": fake_pyforestscan, "pyforestscan.handlers": fake_handlers, "pyforestscan.filters": fake_filters}):
+            with patch("pyforestscan_qgis.core.adapter._read_bounded_local_lidar", return_value=(point_array,)) as bounded:
+                PyForestScanAdapter().generate_dtm(request)
+        bounded.assert_called_once_with(request)
 
     def test_preprocess_request_maps_full_filter_parameters(self) -> None:
         request = build_point_cloud_preprocess_request(

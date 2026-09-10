@@ -34,7 +34,7 @@ class AdvancedPointDensityAlgorithm(AdvancedPyForestScanAlgorithm):
         """Register Processing parameters."""
         self.add_input_dataset(); self.add_crs(); self.add_xy_resolution()
         self.addParameter(QgsProcessingParameterNumber(self.VOXEL_HEIGHT, self.tr("voxel_resolution Z / voxel height"), type=QgsProcessingParameterNumber.Double, defaultValue=1.0, minValue=0.01))
-        self.addParameter(QgsProcessingParameterBoolean(self.PER_AREA, self.tr("per_area"), defaultValue=False))
+        self.addParameter(QgsProcessingParameterBoolean(self.PER_AREA, self.tr("per_area"), defaultValue=True))
         self.addParameter(QgsProcessingParameterNumber(self.CELL_AREA, self.tr("cell_area"), type=QgsProcessingParameterNumber.Double, defaultValue=None, minValue=0.000001, optional=True))
         self.add_geotiff_output("Output Point Density GeoTIFF")
         self.addOutput(QgsProcessingOutputString(self.OUTPUT_MESSAGE, self.tr("Status message")))

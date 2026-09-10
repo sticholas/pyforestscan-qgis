@@ -750,7 +750,7 @@ class PyForestScanAdapter:
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_array = self._read_hag_point_array(request, "point density")
+            point_array = self._read_point_density_array(request)
             x_resolution, y_resolution = _xy_resolution(request.grid_resolution, request.y_resolution)
             voxel_returns, extent = pyforestscan.assign_voxels(point_array, (x_resolution, y_resolution, request.voxel_height))
             self._progress.update(55, "Voxel returns calculated")
@@ -908,7 +908,10 @@ class PyForestScanAdapter:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
             filters = _import_required("pyforestscan.filters", ProcessingError)
-            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **_read_lidar_spatial_kwargs(request, hag=False))
+            if _requires_local_bounded_read(request):
+                point_cloud = _read_bounded_local_lidar(request)
+            else:
+                point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **_read_lidar_spatial_kwargs(request, hag=False))
             if point_cloud is None:
                 raise ProcessingError("PyForestScan returned no point data for DTM generation.")
             self._progress.update(30, "Point cloud loaded")
@@ -917,6 +920,7 @@ class PyForestScanAdapter:
             ground_points = _point_cloud_array_sequence(ground_arrays, operation="DTM generation")
             self._progress.update(60, "Ground points selected")
             dtm, extent = pyforestscan.generate_dtm(ground_points, resolution=request.resolution)
+            extent = _aligned_dtm_extent(dtm, extent, request.resolution)
             self._progress.update(80, "DTM array calculated")
             handlers.create_geotiff(dtm, str(output_path), request.crs, extent, nodata=request.nodata)
             _validate_created_output(output_path)
@@ -1174,7 +1178,9 @@ class PyForestScanAdapter:
             crs = str(getattr(request_or_path, "crs", "") or "")
         handlers = _import_required("pyforestscan.handlers", ProcessingError)
         input_path = getattr(request_or_path, "input_path", request_or_path)
-        if not crs:
+        if _requires_local_bounded_read(request_or_path):
+            point_cloud = _read_bounded_local_lidar(request_or_path)
+        elif not crs:
             point_cloud = _read_source_local_lidar(request_or_path)
         else:
             point_cloud = handlers.read_lidar(str(input_path), str(crs), **_read_lidar_spatial_kwargs(request_or_path, hag=True))
@@ -1194,6 +1200,45 @@ class PyForestScanAdapter:
             raise SourceDimensionMismatch(expected, names)
         _write_source_local_adapter_trace(request_or_path, "pdal_read", {"dimensions": list(names), "has_existing_hag": True})
         return point_array
+
+    def _read_point_density_array(self, request: PointDensityRequest) -> object:
+        """Read points for density without imposing a scientific HAG prerequisite.
+
+        PyForestScan's voxel assignment requires a non-negative
+        ``HeightAboveGround`` coordinate, but point density subsequently sums
+        every Z bin.  A source-Z offset therefore preserves the exact count in
+        every XY cell while avoiding an unrelated terrain-normalization step.
+        """
+        handlers = _import_required("pyforestscan.handlers", ProcessingError)
+        if _requires_local_bounded_read(request):
+            point_cloud = _read_bounded_local_lidar(request)
+        else:
+            point_cloud = handlers.read_lidar(
+                str(request.input_path),
+                request.crs,
+                **_read_lidar_spatial_kwargs(request, hag=False),
+            )
+        if point_cloud is None:
+            raise ProcessingError("PyForestScan returned no point data for Point Density generation.")
+        point_array = _merge_point_cloud_arrays(point_cloud)
+        point_array, capabilities = _canonicalize_hag_dimension(point_array)
+        if capabilities.has_existing_hag:
+            return point_array
+        names = capabilities.names
+        if "Z" not in names:
+            raise ProcessingError("Point Density input is missing the required Z dimension.")
+        numpy = _import_required("numpy", ProcessingError)
+        z = numpy.asarray(point_array["Z"], dtype=float)
+        finite = numpy.isfinite(z)
+        if not finite.any():
+            raise ProcessingError("Point Density input contains no finite elevation values.")
+        dtype = [(name, point_array.dtype.fields[name][0]) for name in names]
+        dtype.append(("HeightAboveGround", "f8"))
+        prepared = numpy.empty(point_array.shape, dtype=dtype)
+        for name in names:
+            prepared[name] = point_array[name]
+        prepared["HeightAboveGround"] = z - float(z[finite].min())
+        return prepared
 
     def clip_dataset(self, *args: object, **kwargs: object) -> None:
         """Placeholder for future adapter-managed clipping."""
@@ -1862,6 +1907,8 @@ def _point_cloud_array_sequence(point_cloud: object, *, operation: str) -> list[
         if getattr(array, "size", len(array) if hasattr(array, "__len__") else 0) > 0
     ]
     if not arrays:
+        if operation == "DTM generation":
+            raise ProcessingError("No usable ground points were available for DTM generation.")
         raise ProcessingError(f"PyForestScan returned no point arrays for {operation}.")
     for index, array in enumerate(arrays):
         fields = getattr(getattr(array, "dtype", None), "names", None)
@@ -1876,6 +1923,29 @@ def _point_cloud_array_sequence(point_cloud: object, *, operation: str) -> list[
                 f"PyForestScan point array for {operation} is missing fields: {', '.join(missing)}."
             )
     return arrays
+
+
+def _aligned_dtm_extent(dtm: object, extent: object, resolution: float) -> list[float]:
+    """Return the exact grid extent represented by a PyForestScan DTM array.
+
+    PyForestScan 0.4.x returns the raw point extrema while the DTM dimensions
+    are derived from resolution-sized bins.  Publishing the raw extrema makes
+    rasterio infer a fractional cell size.  Keep the calculated terrain values
+    unchanged and describe their actual grid instead.
+    """
+    shape = getattr(dtm, "shape", ())
+    if len(shape) != 2 or shape[0] <= 0 or shape[1] <= 0:
+        raise ProcessingError("PyForestScan returned an invalid DTM raster grid.")
+    try:
+        x_min, _x_max, _y_min, y_max = (float(value) for value in extent)
+    except (TypeError, ValueError) as exc:
+        raise ProcessingError("PyForestScan returned an invalid DTM spatial extent.") from exc
+    return [
+        x_min,
+        x_min + float(shape[0]) * resolution,
+        y_max - float(shape[1]) * resolution,
+        y_max,
+    ]
 
 
 def _detect_format(path: str) -> DatasetFormat | None:
