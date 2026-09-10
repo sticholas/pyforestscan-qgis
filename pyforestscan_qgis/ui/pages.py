@@ -2222,6 +2222,9 @@ class BatchPage(MissionPage):
         self._current_result_paths: tuple[Path, ...] = ()
         self._current_output_folder: Path | None = None
         self._current_report_path: Path | None = None
+        self._processing_started_at: float | None = None
+        self._processing_current_file = "Waiting for a dataset"
+        self._processing_current_product = "Waiting for a product"
 
         self.mode_section, mode_layout = self.create_section("Processing Mode")
         self.batch_mode_combo = QComboBox()
@@ -2995,7 +2998,13 @@ class BatchPage(MissionPage):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("%p% complete")
         process_layout.addWidget(self.progress_bar)
+        self.processing_detail_label = _body_label(
+            "Elapsed 00:00  |  Step: Waiting  |  File: none  |  Product: none"
+        )
+        self.processing_detail_label.setWordWrap(True)
+        process_layout.addWidget(self.processing_detail_label)
         self.status_label = QLabel()
         _set_status_badge(self.status_label, "NOT CONFIGURED", "Status: Needs Attention - choose data and run the Prerun Check.")
         self.status_label.setProperty("compactProcessingStatus", True)
@@ -3086,6 +3095,9 @@ class BatchPage(MissionPage):
         self._processing_watchdog.setInterval(2500)
         self._processing_watchdog.timeout.connect(self._reconcile_processing_ui)
         self._processing_watchdog.start()
+        self._processing_elapsed_timer = QTimer(self)
+        self._processing_elapsed_timer.setInterval(1000)
+        self._processing_elapsed_timer.timeout.connect(self._refresh_processing_elapsed)
 
     def _install_process_workspace(self) -> None:
         """Compose one top-to-bottom workflow with responsive section internals."""
@@ -4579,6 +4591,7 @@ class BatchPage(MissionPage):
         self._mark_selected_files_queued()
         self.batch_results.clear()
         self.progress_bar.setValue(0)
+        BatchPage._start_processing_clock(self)
         self.run_button.setEnabled(False)
         self.resume_button.setEnabled(False)
         self.pause_button.setEnabled(True)
@@ -4713,6 +4726,7 @@ class BatchPage(MissionPage):
         self.pause_requested = False
         self.batch_results.clear()
         self.progress_bar.setValue(0)
+        BatchPage._start_processing_clock(self)
         self.run_button.setEnabled(False)
         self.resume_button.setEnabled(False)
         self.pause_button.setEnabled(True)
@@ -4985,6 +4999,9 @@ class BatchPage(MissionPage):
         self.active_workers = 0
         self.worker_status_label.setText("Processing capacity: Automatic")
         self.processing_confidence_label.setVisible(False)
+        timer = getattr(self, "_processing_elapsed_timer", None)
+        if timer is not None:
+            timer.stop()
 
     def _transition_processing_ui_state(self, state: ProcessingUiState) -> None:
         """Project one authoritative processing state onto all workflow controls."""
@@ -5211,6 +5228,7 @@ class BatchPage(MissionPage):
         else:
             self.progress_bar.setRange(0, 0)
         dataset_name = Path(getattr(item, "dataset_path")).name
+        self._processing_current_file = dataset_name
         message = getattr(item, "message")
         run_folder = getattr(getattr(item, "run_context"), "run_folder")
         bounds = getattr(item, "bounds_summary", "Unavailable")
@@ -5219,7 +5237,6 @@ class BatchPage(MissionPage):
             self.failed_paths.append(Path(getattr(item, "dataset_path")))
         self._refresh_batch_results()
         _set_status_badge(self.status_label, "RUNNING", f"Status: Running - Datasets: {self._processed_items} / {total} complete.")
-        QApplication.processEvents()
 
     def _on_polygon_progress(self, event: object) -> None:
         """Update current progress without creating dataset completion records."""
@@ -5261,9 +5278,47 @@ class BatchPage(MissionPage):
         _set_status_badge(self.status_label, "RUNNING", f"Status: Running - {projection.summary()}.")
 
     def _on_batch_job_update(self, job: JobRecord) -> None:
+        title = str(getattr(job, "title", ""))
+        marker = "PyForestScan Batch - "
+        if title.startswith(marker):
+            self._processing_current_file = title[len(marker):]
+        message = str(getattr(getattr(job, "progress", None), "message", "") or job.status.value.title())
+        products = tuple(getattr(job, "requested_products", ()) or ())
+        completed_products = len(tuple(getattr(job, "pipeline_results", ()) or ()))
+        if message.startswith("Processing "):
+            self._processing_current_product = message.removeprefix("Processing ").split(" (", 1)[0]
+        elif completed_products < len(products):
+            self._processing_current_product = str(products[completed_products]).replace("_", " ").title()
+        elif products:
+            self._processing_current_product = str(products[-1]).replace("_", " ").title()
+        percent = float(getattr(getattr(job, "progress", None), "percent", 0.0) or 0.0)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(max(0, min(99, int(percent))))
+        self._refresh_processing_elapsed(step=message)
         self.jobUpdated.emit(job)
         self.jobUpdatedForJob.emit(job,self._current_job_token)
-        QApplication.processEvents()
+
+    def _start_processing_clock(self) -> None:
+        self._processing_started_at = time.monotonic()
+        self._processing_current_file = "Preparing dataset"
+        self._processing_current_product = "Preparing products"
+        timer = getattr(self, "_processing_elapsed_timer", None)
+        if timer is not None:
+            timer.start()
+        if hasattr(self, "processing_detail_label"):
+            self._refresh_processing_elapsed(step="Starting")
+
+    def _refresh_processing_elapsed(self, *, step: str | None = None) -> None:
+        started = self._processing_started_at
+        elapsed = 0.0 if started is None else max(0.0, time.monotonic() - started)
+        if step is None:
+            step = str(self.processing_detail_label.property("currentStep") or "Processing")
+        else:
+            self.processing_detail_label.setProperty("currentStep", step)
+        self.processing_detail_label.setText(
+            f"Elapsed {_compact_duration(elapsed)}  |  Step: {step}  |  "
+            f"File: {self._processing_current_file}  |  Product: {self._processing_current_product}"
+        )
 
     def _batch_control_state(self) -> str | None:
         """Return pause/cancel state for the core batch runner."""

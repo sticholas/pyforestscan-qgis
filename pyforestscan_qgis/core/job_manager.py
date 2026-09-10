@@ -139,6 +139,11 @@ class JobManager:
             total = max(1, len(contexts))
             for index, pipeline_context in enumerate(contexts, start=1):
                 pipeline = self._pipeline_registry.get(pipeline_context.product)
+                job = self._progress(
+                    job,
+                    10 + ((index - 1) / total) * 80,
+                    f"Processing {pipeline.label} ({index} of {total}).",
+                )
                 pipeline_result = pipeline.run(pipeline_context, adapter=self._adapter, execute_products=execute_products)
                 pipeline_results.append(pipeline_result)
                 job = self._store(job.with_pipeline_results(tuple(pipeline_results)))
@@ -147,7 +152,7 @@ class JobManager:
                         result_type, description = _job_result_metadata(pipeline_result.product, pipeline_result.label, output_path)
                         job = self._store(job.with_result(JobResultRecord(output_path, result_type, description)))
                 percent = 10 + (index / total) * 80
-                job = self._progress(job, percent, f"Validated pipeline: {pipeline.label}.")
+                job = self._progress(job, percent, f"Finished {pipeline.label} ({index} of {total}).")
                 if self._is_cancelled(job):
                     return self._finalize_cancelled(job)
             blocked = [(result, result.validation) for result in pipeline_results if not result.validation.ready]

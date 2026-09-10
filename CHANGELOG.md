@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-beta.3 - 2026-09-10
+
+- Added truthful live processing status with elapsed time, percent complete, current step, current file, and current product.
+- Removed re-entrant event-loop pumping and duplicate early batch layer loading from worker progress callbacks.
+- Made a new, empty QGIS project adopt the detected output raster CRS before automatic result loading.
+- Propagated raster CRS metadata into the generated-output registry and processing history.
+- Preserved all earlier versioned packages; this correction is published only as a distinct beta.3 artifact.
+
 ## 0.2.0-beta.2 - 2026-09-10
 
 - Repaired bounded local DTM and Point Density execution, exact DTM grid metadata, and Point Density's unnecessary HAG dependency.

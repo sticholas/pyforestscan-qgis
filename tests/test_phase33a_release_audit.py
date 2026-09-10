@@ -15,14 +15,14 @@ class Phase33AReleaseAuditTests(unittest.TestCase):
     def test_version_drop_is_consistent(self) -> None:
         version = (ROOT / "pyforestscan_qgis/__version__.py").read_text(encoding="utf-8")
         metadata = (ROOT / "pyforestscan_qgis/metadata.txt").read_text(encoding="utf-8")
-        self.assertIn('PLUGIN_VERSION = "0.2.0-beta.2"', version)
-        self.assertIn("version=0.2.0-beta.2", metadata)
+        self.assertIn('PLUGIN_VERSION = "0.2.0-beta.3"', version)
+        self.assertIn("version=0.2.0-beta.3", metadata)
 
     def test_release_audit_files_exist(self) -> None:
         for relative in (
             "docs/development/PHASE_33A_RELEASE_PRODUCT_MAP.md",
             "docs/release/PHASE_33A_RELEASE_READINESS_SCORECARD.md",
-            "docs/releases/v0.2.0-beta.2.md",
+            "docs/releases/v0.2.0-beta.3.md",
             "scripts/audit_qgis_controls.py",
         ):
             self.assertTrue((ROOT / relative).is_file(), relative)

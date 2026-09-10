@@ -117,6 +117,26 @@ class JobManagerTests(unittest.TestCase):
             self.assertTrue(payload["parameters"]["chm_interpolate_valid_region"])
             self.assertTrue(payload["parameters"]["chm_clean_edges"])
 
+    def test_processing_emits_current_product_before_science_runs(self) -> None:
+        """The UI receives a named product update before a potentially long calculation."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "dataset_report.json").write_text(
+                json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8"
+            )
+            events = []
+            manager = JobManager(event_sink=events.append, adapter=_FakeAdapter())
+
+            manager.run_pipeline(
+                _write_plan(root / "product_plan.json", include_pai=False),
+                root / "logs",
+                title="PyForestScan Batch - plot.laz",
+            )
+
+            messages = [event.progress.message for event in events]
+            self.assertIn("Processing Canopy Height Model (CHM) (1 of 1).", messages)
+            self.assertIn("Finished Canopy Height Model (CHM) (1 of 1).", messages)
+
 
     def test_processing_job_creates_canopy_cover_result_record(self) -> None:
         """A canopy cover processing job records the GeoTIFF output artifact."""

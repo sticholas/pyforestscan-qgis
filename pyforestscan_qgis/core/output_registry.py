@@ -86,6 +86,7 @@ def generated_output_for_path(
     inferred = product_key or _infer_product_key(output_path)
     suffix = output_path.suffix.lower()
     kind = "raster" if suffix in RASTER_SUFFIXES else ("table" if suffix in TABLE_SUFFIXES else "file")
+    crs = _raster_crs(output_path) if kind == "raster" else ""
     return GeneratedOutput(
         output_id=hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16],
         job_id=job_id,
@@ -101,6 +102,7 @@ def generated_output_for_path(
         masked=masked,
         mask_geometry_id=mask_geometry_id,
         source_mode=source_mode,
+        crs=crs,
         display_role=_display_role(inferred, kind),
         recommended_renderer=_renderer(inferred, kind),
         group_name=group_name,
@@ -111,6 +113,31 @@ def generated_output_for_path(
         output_role=_output_role(inferred),
         required_for_success=_output_role(inferred) == "primary",
     )
+
+
+def _raster_crs(path: Path) -> str:
+    """Read an output CRS when GDAL is available, without making it a dependency."""
+    try:
+        from osgeo import gdal  # type: ignore
+
+        dataset = gdal.OpenEx(str(path), gdal.OF_RASTER)
+        if dataset is None:
+            return ""
+        spatial_ref = dataset.GetSpatialRef()
+        if spatial_ref is None:
+            return ""
+        authority = spatial_ref.GetAuthorityName(None)
+        code = spatial_ref.GetAuthorityCode(None)
+        return f"{authority}:{code}" if authority and code else spatial_ref.ExportToWkt()
+    except Exception:  # noqa: BLE001 - fall through to the managed backend reader.
+        pass
+    try:
+        import rasterio  # type: ignore
+
+        with rasterio.open(path) as dataset:
+            return dataset.crs.to_string() if dataset.crs else ""
+    except Exception:  # noqa: BLE001 - registry creation must survive optional readers.
+        return ""
 
 
 def write_output_registry(outputs: Iterable[GeneratedOutput], folder: Path | str) -> Path:
