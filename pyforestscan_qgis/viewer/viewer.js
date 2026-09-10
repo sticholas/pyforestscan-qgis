@@ -1,10 +1,39 @@
 /* Local renderer commands contain values only, never executable user scripts. */
 "use strict";
 const message = document.getElementById("message");
+const profileAxes = document.getElementById("profile-axes");
 const state = {ready: false, js_ready: false, source_requested: false, errors: [], mode: "Classification", classes: null, height_filter: null, quality: "Automatic", script_revision: "framing-guard-1"};
 let viewer, cloud, heightVolume, previousCamera = "", lastFrame = performance.now(), frameMs = 16;
 let linkedContext = null, profileDragInstalled = false;
 let cameraSyncFallbacks = 0;
+function updateProfileAxes() {
+    const profile = linkedContext && linkedContext.view_type === "VERTICAL_SLICE" &&
+        linkedContext.display_projection === "PROFILE_DISTANCE";
+    profileAxes.style.display = profile ? "block" : "none";
+    if (!profile || !cloud) {
+        state.profile_axes = null;
+        return;
+    }
+    const geometry = linkedContext.geometry || {};
+    const path = Array.isArray(geometry.path) && geometry.path.length > 1 ?
+        geometry.path : [geometry.a, geometry.b];
+    const length = path.slice(1).reduce((sum, point, index) =>
+        sum + Math.hypot(point[0]-path[index][0],point[1]-path[index][1]),0);
+    cloud.updateMatrixWorld(true);
+    const bounds = cloud.boundingBox.clone().applyMatrix4(cloud.matrixWorld);
+    const vertical = geometry.vertical_limits || [bounds.min.z,bounds.max.z];
+    const unit = linkedContext.horizontal_unit || "source units";
+    const verticalUnit = linkedContext.vertical_unit || "source height units";
+    const axis = geometry.vertical_axis === "HeightAboveGround" ? "Height above ground" : "Elevation";
+    document.getElementById("profile-x-min").textContent = "0";
+    document.getElementById("profile-x-max").textContent = length.toFixed(1);
+    document.getElementById("profile-x-title").textContent = `Distance along profile (${unit})`;
+    document.getElementById("profile-y-min").textContent = Number(vertical[0]).toFixed(1);
+    document.getElementById("profile-y-max").textContent = Number(vertical[1]).toFixed(1);
+    document.getElementById("profile-y-title").textContent = `${axis} (${verticalUnit})`;
+    state.profile_axes = {distance:[0,length],vertical:[Number(vertical[0]),Number(vertical[1])],
+        horizontal_unit:unit,vertical_unit:verticalUnit,vertical_axis:axis};
+}
 function syncRenderCameras() {
     const view = viewer.scene.view;
     const active = viewer.scene.getActiveCamera();
@@ -181,6 +210,7 @@ window.command = function(command) {
         if (action === "point_display") pointDisplay(command.style, command.size);
         if (action === "linked_view") {
             linkedContext = command.view || null;
+            updateProfileAxes();
             if (linkedContext && linkedContext.view_type === "VERTICAL_SLICE") {
                 viewer.setControls(viewer.orbitControls);
                 viewer.orbitControls.rotationSpeed = 0;
@@ -196,6 +226,7 @@ window.command = function(command) {
                     profileDragInstalled = true;
                 }
                 fitProfile();
+                updateProfileAxes();
             }
         }
         if (action === "quality") {
@@ -379,6 +410,7 @@ try {
         cloud.updateMatrixWorld(true);
         const bounds = cloud.boundingBox.clone().applyMatrix4(cloud.matrixWorld);
         state.z_range = [bounds.min.z, bounds.max.z];
+        updateProfileAxes();
         fitSource("source_open");
         state.ready = true;
         message.textContent = "";

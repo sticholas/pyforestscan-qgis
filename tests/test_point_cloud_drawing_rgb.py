@@ -65,6 +65,16 @@ class DrawingRGBTests(unittest.TestCase):
         self.assertIn("WidgetWidth", source)
         self.assertIn("setReadOnly(True)", source)
 
+    def test_profile_renderer_has_visible_axis_and_unit_contract(self):
+        html = (ROOT / "pyforestscan_qgis/viewer/viewer.html").read_text()
+        script = (ROOT / "pyforestscan_qgis/viewer/viewer.js").read_text()
+        for identifier in ("profile-axes", "profile-x-title", "profile-y-title"):
+            self.assertIn(identifier, html)
+        self.assertIn("Distance along profile", script)
+        self.assertIn("Height above ground", script)
+        self.assertIn("state.profile_axes", script)
+        self.assertIn("updateProfileAxes();\n        fitSource", script)
+
     def test_editor_acknowledges_one_cooperative_cancel_request(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_editor.py").read_text()
         self.assertIn("self.cancel_requested = False", source)

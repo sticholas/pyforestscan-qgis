@@ -4,8 +4,23 @@
 <style>
 html,body,#view{width:100%;height:100%;margin:0;overflow:hidden;background:#202427}
 #message{position:absolute;bottom:8px;left:8px;right:8px;color:white;font:12px sans-serif;pointer-events:none}
+#profile-axes{display:none;position:absolute;inset:12px 18px 34px 52px;color:#eef4f5;
+  font:11px sans-serif;pointer-events:none;text-shadow:0 1px 2px #111}
+#profile-x{position:absolute;left:0;right:0;bottom:0;border-top:1px solid rgba(238,244,245,.8)}
+#profile-x-min{position:absolute;left:0;top:4px}#profile-x-max{position:absolute;right:0;top:4px}
+#profile-x-title{display:block;text-align:center;padding-top:4px;font-weight:600}
+#profile-y{position:absolute;left:0;top:0;bottom:0;border-left:1px solid rgba(238,244,245,.8)}
+#profile-y-min{position:absolute;right:6px;bottom:0;white-space:nowrap}
+#profile-y-max{position:absolute;right:6px;top:0;white-space:nowrap}
+#profile-y-title{position:absolute;left:-42px;top:50%;transform:rotate(-90deg) translateX(-50%);
+  transform-origin:left top;white-space:nowrap;font-weight:600}
 </style></head>
-<body><div id="view"></div><div id="message">Opening point cloud</div>
+<body><div id="view"></div>
+<div id="profile-axes" aria-label="Profile axes">
+  <div id="profile-x"><span id="profile-x-min"></span><span id="profile-x-title"></span><span id="profile-x-max"></span></div>
+  <div id="profile-y"><span id="profile-y-min"></span><span id="profile-y-title"></span><span id="profile-y-max"></span></div>
+</div>
+<div id="message">Opening point cloud</div>
 <script src="assets/libs/jquery/jquery-3.1.1.min.js"></script>
 <script src="assets/libs/jquery-ui/jquery-ui.min.js"></script>
 <script src="assets/libs/other/BinaryHeap.js"></script>

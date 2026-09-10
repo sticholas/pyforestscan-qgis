@@ -37,7 +37,7 @@ class TabDetachTests(unittest.TestCase):
         source = (Path(__file__).parents[1]/"pyforestscan_qgis"/"ui"/
                   "point_cloud_linked_views.py").read_text(encoding="utf-8")
         for label in ("Save Current Viewpoint...", "Open Saved Viewpoint...",
-                      "Remove Saved Viewpoint...", "Rename Active View...",
+                      "Remove Saved Viewpoint...", "Rename...",
                       "Linked Views", "Scene overlays", "Current selection",
                       "Measurements", "Linked markers", "Open Comparison Cloud..."):
             self.assertIn(label, source)
@@ -154,6 +154,16 @@ class TabDetachTests(unittest.TestCase):
         LinkedViews.fit_profile(owner)
         worker.send.assert_called_once_with({"action":"fit"})
         page.status.setText.assert_called_once_with("Profile fitted to the active view.")
+
+    def test_profile_axis_units_are_derived_from_projected_source_crs(self):
+        owner = SimpleNamespace(source_crs=lambda: "EPSG:32605")
+        horizontal, vertical = LinkedViews.source_units(owner)
+        self.assertIn("met", horizontal)
+        self.assertEqual(vertical, horizontal)
+
+        owner.source_crs = lambda: "SOURCE_LOCAL:unknown"
+        self.assertEqual(LinkedViews.source_units(owner),
+                         ("source units", "source height units"))
 
     def test_profile_reverse_updates_existing_view_and_requeries(self):
         from pyforestscan_qgis.core.point_cloud.workspace import (
@@ -467,6 +477,35 @@ class SelectionToolTests(unittest.TestCase):
         self.assertTrue(all(not action.icon().isNull()
                             for action in editor.quick_targets.menu().actions()))
 
+    def test_selection_combination_uses_plain_labels_and_stable_command_values(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        self.assertEqual(editor.mode_label.text(), "New shape:")
+        self.assertEqual(
+            [(editor.mode.itemText(index), editor.mode.itemData(index))
+             for index in range(editor.mode.count())],
+            [("Start new selection", "REPLACE"),
+             ("Add to selection", "ADD"),
+             ("Remove from selection", "SUBTRACT")])
+
+    def test_explicit_classification_requires_confirmation_before_staging(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        editor.state = {"selection": {"selection_id": "exact",
+                                      "resolved_point_count": 42}}
+        with patch.object(editor, "send") as send, patch(
+                "pyforestscan_qgis.ui.point_cloud_editor.QMessageBox.question",
+                return_value=qt_enum(QMessageBox, "No", "StandardButton")):
+            editor.stage("Classification", 5)
+            send.assert_not_called()
+        with patch.object(editor, "send") as send, patch(
+                "pyforestscan_qgis.ui.point_cloud_editor.QMessageBox.question",
+                return_value=qt_enum(QMessageBox, "Yes", "StandardButton")):
+            editor.stage("Classification", 5)
+            send.assert_called_once_with(
+                "stage", attribute="Classification", value=5,
+                selection_id="exact")
+
     def test_classification_audit_actions_are_contextual_and_nonautomatic(self):
         editor = EditorPanel(None)
         self.addCleanup(editor.deleteLater)
@@ -779,7 +818,7 @@ class SelectionToolTests(unittest.TestCase):
             refresh_controls=Mock(), stage=Mock(), sent_overlay=None,
             exportReady=Mock(), source_changed=Mock(), code=SimpleNamespace(value=lambda:5))
         EditorPanel.update_state(owner, value)
-        owner.stage.assert_called_once_with("Classification", 5)
+        owner.stage.assert_called_once_with("Classification", 5, confirm=False)
         self.assertIn("Selected:", owner.summary.setText.call_args.args[0])
         self.assertIsNone(owner.pending_action)
         owner.stage.reset_mock()
@@ -898,7 +937,7 @@ class SelectionLimitsTests(unittest.TestCase):
         self.app.processEvents()
 
     def test_full_column_default_has_no_invented_height_limits(self):
-        self.assertEqual(self.limits.mode.currentText(), "Full column")
+        self.assertEqual(self.limits.mode.currentText(), "All heights")
         self.assertEqual(self.controller.depth, {})
         self.assertTrue(self.limits.minimum.isHidden())
 
@@ -924,7 +963,7 @@ class SelectionLimitsTests(unittest.TestCase):
         self.view.view_type = "VERTICAL_SLICE"
         self.view.geometry = {"thickness": 4}
         self.limits.refresh()
-        self.assertEqual(self.limits.mode.currentText(), "Within slice thickness")
+        self.assertEqual(self.limits.mode.currentText(), "All profile heights")
         self.assertIn("4 XY units", self.limits.context.text())
 
     def test_missing_hag_is_not_presented_as_full_column(self):
@@ -933,6 +972,16 @@ class SelectionLimitsTests(unittest.TestCase):
         self.limits.refresh()
         self.assertEqual(self.limits.mode.currentText(), "HAG unavailable")
         self.assertEqual(self.controller.depth_error, "Source has no stored HAG")
+
+    def test_elevation_mode_starts_at_source_bounds_and_one_unit_band_is_explicit(self):
+        self.controller.original_info = {
+            "metadata": {"bounds": {"minz": 894.28, "maxz": 993.31}}}
+        self.limits.mode.setCurrentIndex(self.limits.mode.findData("z_filter"))
+        self.assertEqual(self.controller.depth, {"z_filter": [894.28, 993.31]})
+        self.limits.minimum.setValue(910)
+        self.limits.set_one_unit_band()
+        self.assertEqual(self.controller.depth, {"z_filter": [910, 911]})
+        self.assertIn("Elevation Z", self.limits.context.text())
 
     def test_refresh_does_not_replace_unfinished_height_entry(self):
         self.controller.set_depth({"z_filter": [0, 50]})

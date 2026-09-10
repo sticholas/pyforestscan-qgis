@@ -10,7 +10,7 @@ import time
 from uuid import uuid4
 
 from qgis.core import QgsApplication
-from qgis.PyQt.QtCore import QThread, QUrl, pyqtSignal
+from qgis.PyQt.QtCore import QThread, QUrl, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QDesktopServices, QIcon, QPalette, QPixmap
 from qgis.PyQt.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QLabel,
     QToolButton, QSpinBox, QMenu, QStyle, QFileDialog, QMessageBox, QListWidget,
@@ -145,8 +145,14 @@ class EditorPanel(QWidget):
         from .point_cloud_tools import SelectionTools, spatial_button
         self.tool = SelectionTools(self)
         self.mode = QComboBox()
-        self.mode.addItems(("Replace", "Add", "Subtract"))
-        self.mode.setToolTip("Replace, add or subtract a filtered source region. Hold Shift for Add or Alt for Subtract when starting a shape in the viewer. Esc returns to navigation. Rendered point count is not edit membership.")
+        from ..core.point_cloud.selection_presentation import SELECTION_COMBINE_OPTIONS
+        for label, value in SELECTION_COMBINE_OPTIONS:
+            self.mode.addItem(label, value)
+        self.mode.setAccessibleName("How this shape changes the current selection")
+        self.mode.setToolTip(
+            "Start new selection clears the previous selection first. Add keeps it and adds matching "
+            "points. Remove subtracts matching points. Hold Shift for Add or Alt for Remove when "
+            "starting a shape. Rendered points are never edit membership.")
         self.tool.currentTextChanged.connect(self.change_tool)
         self.tool.brushRadiusChanged.connect(
             lambda _value: self.change_tool("Brush") if self.tool.currentText() == "Brush" else None)
@@ -154,7 +160,10 @@ class EditorPanel(QWidget):
             lambda _axis, _height: self.change_tool("Sphere") if self.tool.currentText() == "Sphere" else None)
         self.mode.currentTextChanged.connect(lambda _: self.change_tool(self.tool.currentText()))
         row.addWidget(self.tool)
-        row.addWidget(self.mode, 1)
+        self.mode_label = QLabel("New shape:")
+        self.mode_label.setToolTip(self.mode.toolTip())
+        row.addWidget(self.mode_label)
+        row.addWidget(self.mode)
         self.clear = self.button("Clear Selection", "SP_DialogResetButton", lambda: self.send("clear"),
                                  "Clear only the current selection. Staged edits and history remain.")
         row.addWidget(self.clear)
@@ -181,24 +190,32 @@ class EditorPanel(QWidget):
         self.measurement_button.setCheckable(True)
         self.measurement_button.clicked.connect(self.start_measurement)
         measurement_menu = QMenu(self.measurement_button)
-        self.area_measurement_action = measurement_menu.addAction("Measure Planar Area")
+        distance_menu = measurement_menu.addMenu("Distance")
+        point_measurement_action = distance_menu.addAction("3D Point-to-Point")
+        point_measurement_action.setToolTip(
+            "Pick two source points in Overview or Area Detail and report horizontal, vertical, "
+            "and 3D distance with source units.")
+        point_measurement_action.triggered.connect(self.start_measurement)
+        self.profile_measurement_action = distance_menu.addAction(
+            "Cross-Section Distance (Profile)")
+        self.profile_measurement_action.setToolTip(
+            "In Profile, pick two points and report distance along the profile, vertical change, "
+            "and cross-section distance in source units.")
+        self.profile_measurement_action.triggered.connect(self.start_profile_measurement)
+        self.tree_height_action = distance_menu.addAction("Tree Height (Profile)")
+        self.tree_height_action.setToolTip(
+            "In Profile, pick the tree base and top. Original source records are resolved; HAG is "
+            "used when the profile vertical axis is Height Above Ground.")
+        self.tree_height_action.triggered.connect(self.start_tree_height_measurement)
+        measurement_menu.addSeparator()
+        self.area_measurement_action = measurement_menu.addAction("Planar Area from Polygon")
         self.area_measurement_action.setToolTip(
             "Draw a horizontal boundary in source coordinates and report its area and perimeter.")
         self.area_measurement_action.triggered.connect(self.start_area_measurement)
-        self.profile_measurement_action = measurement_menu.addAction(
-            "Measure in Vertical Slice")
-        self.profile_measurement_action.setToolTip(
-            "Choose two displayed profile points. The managed worker resolves original source Z or stored HAG values before reporting cross-section distance.")
-        self.profile_measurement_action.triggered.connect(self.start_profile_measurement)
-        self.tree_height_action = measurement_menu.addAction("Measure Tree Height")
-        self.tree_height_action.setToolTip(
-            "In a Vertical Slice, pick a tree base and top. Both displayed points are resolved "
-            "against original source records; HAG is used when the slice uses stored HAG.")
-        self.tree_height_action.triggered.connect(self.start_tree_height_measurement)
-        self.annotation_action = measurement_menu.addAction("Add Linked Marker...")
+        self.annotation_action = measurement_menu.addAction("Place Linked Marker...")
         self.annotation_action.setToolTip(
-            "Name a location, then click a displayed point. The managed worker resolves the marker "
-            "against the immutable original source and shares it across linked views.")
+            "Place a named reference point shared across views. This is an annotation, not a "
+            "distance measurement or point-cloud edit.")
         self.annotation_action.triggered.connect(self.start_annotation)
         self.measurement_button.setMenu(measurement_menu)
         self.measurement_button.setPopupMode(
@@ -231,8 +248,8 @@ class EditorPanel(QWidget):
         actions.addWidget(self.classes, 1)
         actions.addWidget(self.code)
         self.quick_targets = QToolButton()
-        self.quick_targets.setText("Quick target")
-        self.quick_targets.setAccessibleName("Quick classification target")
+        self.quick_targets.setText("Class presets")
+        self.quick_targets.setAccessibleName("Classification presets")
         self.quick_targets.setToolTip(
             "Choose a common forestry LAS class. This only changes the proposed target; "
             "Apply Classification or a later automatic Replace selection stages the edit.")
@@ -247,11 +264,16 @@ class EditorPanel(QWidget):
         self.quick_targets.setMenu(quick_menu)
         self.quick_targets.setPopupMode(qt_enum(QToolButton, "InstantPopup", "ToolButtonPopupMode"))
         actions.addWidget(self.quick_targets)
-        actions.addWidget(self.button("Apply Classification", "SP_DialogApplyButton",
+        self.apply_classification = self.button("Stage Classification", "SP_DialogApplyButton",
             lambda: self.stage("Classification", self.code.value()),
-            "Stage classification for all resolved source points. The original is never rewritten; export creates a new file."))
+            "Review and stage this class for all selected original-source points. The change is "
+            "undoable and appears in a new export only; the original is never rewritten.")
+        self.apply_classification.setText("Stage Classification")
+        self.apply_classification.setToolButtonStyle(
+            qt_enum(Qt, "ToolButtonTextBesideIcon", "ToolButtonStyle"))
+        actions.addWidget(self.apply_classification)
         self.classify_while = QToolButton()
-        self.classify_while.setText("Classify each selection")
+        self.classify_while.setText("Auto-stage new selections")
         self.classify_while.setCheckable(True)
         self.classify_while.setAccessibleName("Classify each new Replace selection")
         self.classify_while.setToolTip(
@@ -260,8 +282,9 @@ class EditorPanel(QWidget):
         self.classify_while.toggled.connect(lambda _checked: self.refresh_controls())
         actions.addWidget(self.classify_while)
         flags = QToolButton()
-        flags.setText("Cleanup")
-        flags.setToolTip("Noise changes Classification; Withheld retains flagged points; Removal omits them only from a new export.")
+        flags.setText("Point flags")
+        flags.setToolTip("Stage a clear point treatment: noise changes Classification; Withheld "
+                         "retains flagged points; Remove on Export affects only a new derivative.")
         menu = QMenu(flags)
         for label, attribute, value in (("Low Noise (7)", "Classification", 7), ("High Noise (18)", "Classification", 18),
                                         ("Mark Withheld", "Withheld", 1), ("Remove on Export", "DELETE_ON_EXPORT", 1)):
@@ -531,8 +554,13 @@ class EditorPanel(QWidget):
         self.refresh_classification_guidance()
 
     def refresh_classification_guidance(self):
-        from ..core.point_cloud.las_classification import classification_target_guidance
-        self.target_guidance.setText("Target guidance | " + classification_target_guidance(self.code.value()))
+        from ..core.point_cloud.las_classification import (
+            classification_entry, classification_target_guidance)
+        count = (self.state.get("selection") or {}).get("resolved_point_count", 0)
+        target = classification_entry(self.code.value()).label
+        prefix = f"Will stage {count:,} selected points as {target}. " if count else f"Target: {target}. "
+        self.target_guidance.setText(
+            prefix + classification_target_guidance(self.code.value()) + " Undo remains available.")
 
     def set_classification_target(self, code):
         from ..core.point_cloud.las_classification import classification_entry
@@ -636,7 +664,7 @@ class EditorPanel(QWidget):
                 values = {"sphere_axis": self.tool.sphereAxis(),
                           "sphere_height": self.tool.sphereHeight()}
             self.page.send({"action": "selection_tool", "tool": tool,
-                            "mode": self.mode.currentText().upper(), **values})
+                            "mode": self.mode.currentData() or "REPLACE", **values})
 
     def start_measurement(self):
         if not self.viewer_ready or self.busy:
@@ -804,8 +832,19 @@ class EditorPanel(QWidget):
             self.sent_overlay = signature
         self.refresh_controls()
 
-    def stage(self, attribute, value):
+    def stage(self, attribute, value, *, confirm=True):
         selected = self.state.get("selection") or {}
+        count = selected.get("resolved_point_count", 0)
+        if attribute == "Classification" and confirm and count:
+            from ..core.point_cloud.las_classification import classification_entry
+            target = classification_entry(value).label
+            answer = QMessageBox.question(
+                self, "Stage Classification",
+                f"Stage {count:,} selected original-source points as {target}?\n\n"
+                "This is undoable and will appear only in a new exported derivative. "
+                "The original point cloud will not be changed.")
+            if answer != qt_enum(QMessageBox, "Yes", "StandardButton"):
+                return
         self.send("stage", attribute=attribute, value=value, selection_id=selected.get("selection_id"))
 
     def show_selection_details(self):
@@ -1175,6 +1214,10 @@ class EditorPanel(QWidget):
             suffix = f" | {classes}" if classes else ""
             impact = selection_impact_suffix(count, value.get("point_count", 0))
             self.summary.setText(f"Selected: {count:,} source points | {value['edits']} staged edits" + suffix + impact)
+            if count == 0 and getattr(self.page.linked, "depth", {}):
+                self.summary.setText(
+                    "Selected: 0 source points | No points matched the active selection height. "
+                    "Adjust it or choose All heights.")
             if auto_classify.message:
                 self.summary.setText(self.summary.text() + " | " + auto_classify.message)
             if completed_action == "classification_audit" and value.get("classification_audit"):
@@ -1286,7 +1329,7 @@ class EditorPanel(QWidget):
                 self.send(next_action, **command, confirmed=True)
         self.refresh_controls()
         if auto_classify and auto_classify.apply and not self.busy:
-            self.stage("Classification", self.code.value())
+            self.stage("Classification", self.code.value(), confirm=False)
 
     def save_to(self, path):
         self.send("save", path=path)

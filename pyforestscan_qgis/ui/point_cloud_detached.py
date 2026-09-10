@@ -111,7 +111,13 @@ class DetachedView(QDialog):
             controller.page.workspace.views[view_id].view_type == "VERTICAL_SLICE")
         row.addWidget(self.tool)
         self.selection_mode = QComboBox()
-        self.selection_mode.addItems(("Replace","Add","Subtract"))
+        from ..core.point_cloud.selection_presentation import SELECTION_COMBINE_OPTIONS
+        for label, value in SELECTION_COMBINE_OPTIONS:
+            self.selection_mode.addItem(label, value)
+        self.selection_mode.setAccessibleName("How this shape changes the current selection")
+        self.selection_mode.setToolTip(
+            "Start new selection clears the previous selection. Add keeps it. Remove subtracts "
+            "matching original-source points.")
         row.addWidget(self.selection_mode)
         self.tool.setBrushRadius(controller.brush_radius)
         self.tool.currentTextChanged.connect(self.change_tool)
@@ -193,7 +199,7 @@ class DetachedView(QDialog):
             options = {"sphere_axis": self.tool.sphereAxis(),
                        "sphere_height": self.tool.sphereHeight()}
         self.send({"action":"selection_tool", "tool":value,
-                   "mode":self.selection_mode.currentText().upper(), **options})
+                   "mode":self.selection_mode.currentData() or "REPLACE", **options})
 
     def refresh_edit_controls(self):
         editor = self.controller.page.editor

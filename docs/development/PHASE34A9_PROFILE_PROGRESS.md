@@ -143,3 +143,42 @@ explained; elevation/HAG range filtering can make a selection appear to vanish;
 profile axes and units are not visible enough; view and measurement selectors
 are overcrowded; and classification actions need stronger staged-edit
 confirmation. These are accepted Phase 34A9 UX work, not qualified behavior.
+
+## Selection And Measurement UX Slice
+
+The editor now presents the existing selection combination contract as **Start
+new selection**, **Add to selection**, and **Remove from selection** beneath an
+explicit **New shape** label. The worker protocol continues to receive
+`REPLACE`, `ADD`, and `SUBTRACT`; no second selection state was introduced.
+
+The selection-height row now names its scope, active view, axis, low/high
+interval, and the fact that it applies to the next shape. Choosing Elevation
+initializes from the source's actual Z bounds rather than the previous invented
+0-50 interval. A **1-unit band** action sets High exactly one source-height unit
+above Low, so a user can combine a thin vertical interval with Rectangle,
+Circle, Brush, Polygon, Box, or Profile geometry. HAG remains available only
+when the immutable source exposes a stored `HeightAboveGround` dimension. A
+zero-result replacement now explains that no authoritative points matched the
+active height interval instead of presenting an unexplained empty highlight.
+
+Profile renders now include visible X and Y axes. X reports distance along the
+profile; Y reports elevation or stored HAG. Projected source CRS units are
+derived through QGIS where possible and source-local data is explicitly labeled
+as source units. Axis setup runs both when the linked-view context arrives and
+when the point cloud finishes loading, so command ordering cannot suppress it.
+
+View options are grouped by linked view, scene overlay, view creation, current
+view, comparison, and saved viewpoint. Measurement actions are grouped into
+3D distance, profile cross-section distance, tree height, planar area, and
+linked-marker annotation. Classification now uses **Class presets**, **Stage
+Classification**, **Auto-stage new selections**, and **Point flags** wording.
+Explicit classification staging confirms the authoritative point count, target
+class, undoability, derivative-only behavior, and source immutability before it
+enters the shared journal.
+
+The focused controller suite passes 66 tests under QGIS 3.44.13/Qt5 and 66 under
+QGIS 4.0.0/Qt6. QGIS-free presentation and renderer-contract tests pass, as does
+the production JavaScript gesture harness. Human layout and interaction review
+of these controls remains required. More realistic forest rendering, improved
+depth cues, and appearance presets remain a separate unfinished slice; this UX
+change does not claim those visual-quality gates.

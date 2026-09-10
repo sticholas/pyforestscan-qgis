@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
+from qgis.core import QgsCoordinateReferenceSystem, QgsUnitTypes
 from qgis.PyQt.QtCore import QObject, Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (QToolButton, QMenu, QInputDialog, QCheckBox, QDialog,
     QFormLayout, QDialogButtonBox, QDoubleSpinBox, QComboBox, QStyle, QFileDialog, QLabel)
@@ -100,25 +101,29 @@ class LinkedViews(QObject):
             action.triggered.connect(
                 lambda checked=False, overlay=key: self.set_scene_visibility(overlay, checked))
             self.scene_actions[key] = action
-        for label, tool, purpose in (("Area Detail: Polygon", "Polygon", "CREATE_AREA"),):
-            action = menu.addAction(label)
+        create_menu = menu.addMenu("Create linked view")
+        for label, tool, purpose in (("Area Detail from Polygon", "Polygon", "CREATE_AREA"),):
+            action = create_menu.addAction(label)
             action.triggered.connect(lambda _=False, t=tool, p=purpose: self.draw(t,p))
-        profile_path = menu.addAction("Profile: Multi-segment Path")
+        profile_path = create_menu.addAction("Profile from Multi-segment Path")
         profile_path.setToolTip(
             "Draw an open path through multiple areas. Double-click, right-click or press Enter to finish; the profile uses cumulative source distance.")
         profile_path.triggered.connect(
             lambda _checked=False: self.draw("ProfilePath", "CREATE_SLICE"))
-        menu.addAction("Open Selection in Area Detail", self.from_selection)
-        menu.addAction("Adjust Active View", self.adjust)
-        self.rename_view_action = menu.addAction("Rename Active View...", self.rename_active_view)
-        menu.addAction("Selection Depth", self.adjust_depth)
-        menu.addAction("Move Active View to Window", lambda:self.detach(self.page.workspace.active_view_id))
-        menu.addAction("Dock All Views", self.dock_all)
-        menu.addAction("Open Comparison Cloud...", self.open_comparison)
-        menu.addSeparator()
-        self.save_viewpoint_action = menu.addAction("Save Current Viewpoint...", self.save_viewpoint)
-        self.open_viewpoint_action = menu.addAction("Open Saved Viewpoint...", self.open_viewpoint)
-        self.remove_viewpoint_action = menu.addAction("Remove Saved Viewpoint...", self.remove_viewpoint)
+        create_menu.addAction("Area Detail from Current Selection", self.from_selection)
+        current_menu = menu.addMenu("Current view")
+        current_menu.addAction("Adjust Region or Profile...", self.adjust)
+        self.rename_view_action = current_menu.addAction("Rename...", self.rename_active_view)
+        current_menu.addAction("Selection Height...", self.adjust_depth)
+        current_menu.addAction(
+            "Move to Separate Window", lambda:self.detach(self.page.workspace.active_view_id))
+        current_menu.addAction("Dock All Views", self.dock_all)
+        comparison_menu = menu.addMenu("Comparison")
+        comparison_menu.addAction("Open Comparison Cloud...", self.open_comparison)
+        viewpoint_menu = menu.addMenu("Saved viewpoints")
+        self.save_viewpoint_action = viewpoint_menu.addAction("Save Current Viewpoint...", self.save_viewpoint)
+        self.open_viewpoint_action = viewpoint_menu.addAction("Open Saved Viewpoint...", self.open_viewpoint)
+        self.remove_viewpoint_action = viewpoint_menu.addAction("Remove Saved Viewpoint...", self.remove_viewpoint)
         menu.aboutToShow.connect(self.refresh_view_actions)
         self.create.setMenu(menu)
         self.create.setPopupMode(qt_enum(QToolButton, "InstantPopup", "ToolButtonPopupMode"))
@@ -404,6 +409,22 @@ class LinkedViews(QObject):
             return self.page.editor.state["source_crs"]
         srs = self.original_info.get("metadata",{}).get("srs",{})
         return srs.get("wkt") or (str(srs.get("authority","EPSG"))+":"+str(srs["horizontal"]) if srs.get("horizontal") else "")
+
+    def source_units(self):
+        """Return concise display units without making a vertical-unit conversion claim."""
+        source_crs = self.source_crs()
+        if not source_crs or source_crs.startswith("SOURCE_LOCAL:"):
+            return "source units", "source height units"
+        try:
+            crs = QgsCoordinateReferenceSystem(source_crs)
+            if not crs.isValid():
+                return "source units", "source height units"
+            label = QgsUnitTypes.toString(crs.mapUnits()).strip().lower()
+            if label:
+                return label, label
+        except (AttributeError, TypeError, ValueError):
+            pass
+        return "source units", "source height units"
 
     def restore(self, payload):
         from ..core.point_cloud.workspace import PointCloudWorkspaceModel
@@ -865,6 +886,7 @@ class LinkedViews(QObject):
         result = self.query_results.get(view.view_id) or {}
         context["display_projection"] = result.get(
             "display_projection", view.geometry.get("display_projection", "SOURCE_XY"))
+        context["horizontal_unit"], context["vertical_unit"] = self.source_units()
         self.page.send({"action":"linked_view","view":context})
         self.page.send(self.profile_footprints())
         self.page.send({"action":"scene_visibility", "visibility":view.scene_visibility})

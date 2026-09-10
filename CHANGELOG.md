@@ -2,6 +2,17 @@
 
 ## Phase 34A9 - Professional profile workbench (in progress)
 
+- Replaced raw Replace/Add/Subtract labels with plain-language new-shape
+  behavior while preserving the same shared selection authority and command
+  values.
+- Made elevation selection start from the real source bounds, exposed active
+  height constraints beside the tools, and added a one-source-unit band action
+  for bounded rectangle, circle, brush, polygon, and profile selections.
+- Added visible Profile distance and elevation/HAG axes with CRS-derived units;
+  grouped linked-view and measurement menus to reduce selector overload.
+- Renamed classification controls around staged edits and added confirmation
+  before explicit classification changes. Automatic staging remains opt-in and
+  defaults off.
 - Added transient linked profile/3D cursor projection with source-coordinate,
   elevation/HAG, classification, and distance-along-profile readouts. Profile
   hover uses original XYZ cache provenance without creating another selection
