@@ -13,6 +13,7 @@ try:
     from pyforestscan_qgis.ui.point_cloud_linked_views import LinkedViews
     from pyforestscan_qgis.ui.point_cloud_selection_limits import SelectionLimits
     from pyforestscan_qgis.ui.point_cloud_appearance import PointAppearance
+    from pyforestscan_qgis.ui.point_cloud_editor import EditorPanel
 except ImportError:
     QApplication = None
 
@@ -136,6 +137,17 @@ class SelectionToolTests(unittest.TestCase):
         for name in ("AboveLine", "BelowLine"):
             self.assertFalse(self.tools.buttons[name].isHidden())
             self.assertIn("original points", self.tools.buttons[name].toolTip())
+
+    def test_editor_uses_complete_swatch_backed_classification_catalog(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        self.assertEqual(editor.classes.count(), 23)
+        self.assertEqual(editor.classes.currentData(), 5)
+        self.assertEqual(editor.classes.currentText(), "High vegetation (5)")
+        self.assertTrue(all(not editor.classes.itemIcon(index).isNull()
+                            for index in range(editor.classes.count())))
+        self.assertEqual(editor.classes.itemData(17), 17)
+        self.assertEqual(editor.classes.itemText(18), "High noise (18)")
 
     def test_exclusive_buttons_dispatch_existing_tool_names(self):
         self.tools.buttons["Polygon"].click()

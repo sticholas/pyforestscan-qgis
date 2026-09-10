@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import QThread, QUrl, pyqtSignal
-from qgis.PyQt.QtGui import QDesktopServices, QPalette
+from qgis.PyQt.QtGui import QColor, QDesktopServices, QIcon, QPalette, QPixmap
 from qgis.PyQt.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QLabel,
     QToolButton, QSpinBox, QMenu, QStyle, QFileDialog, QMessageBox, QListWidget,
     QInputDialog)
@@ -181,11 +181,12 @@ class EditorPanel(QWidget):
         actions = QHBoxLayout(self.edit_controls)
         actions.setContentsMargins(0, 0, 0, 0)
         self.classes = QComboBox()
-        for code, name in ((0,"Created"),(1,"Unclassified"),(2,"Ground"),(3,"Low vegetation"),
-                           (4,"Medium vegetation"),(5,"High vegetation"),(6,"Building"),
-                           (7,"Low noise"),(9,"Water"),(17,"Bridge deck"),(18,"High noise")):
-            self.classes.addItem(f"{name} ({code})", code)
-        self.classes.setCurrentIndex(5)
+        from ..core.point_cloud.las_classification import STANDARD_CLASSES
+        for item in STANDARD_CLASSES:
+            swatch = QPixmap(12, 12)
+            swatch.fill(QColor(item.color))
+            self.classes.addItem(QIcon(swatch), item.label, item.code)
+        self.classes.setCurrentIndex(self.classes.findData(5))
         self.classes.setToolTip("Choose a common original LAS classification target. Ground changes can affect terrain and height normalization.")
         self.code = QSpinBox()
         self.code.setRange(0, 255)
