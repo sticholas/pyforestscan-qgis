@@ -37,6 +37,10 @@ operations remain experimental and incomplete.
   in the same undo/redo/autosave/recovery/export path, and never mutate source
   buffers. Large edits use the existing confirmation gate. Export validation
   now reports net changed point counts per object field.
+- New-object creation uses the current authoritative selection and the same
+  `SET_OBJECT_ID` journal operation. Allocation reserves every active staged
+  target as well as every original catalog ID, recalculates after undo/redo,
+  and reports storage exhaustion instead of reusing an ID.
 - Added linked-view object focus as presentation-only state. Show All, Fade
   Others and Isolate Selected Object reuse the current authoritative object
   selection overlay across Overview, Area Detail and Vertical Slice renderers.
@@ -46,8 +50,9 @@ operations remain experimental and incomplete.
 
 ## IN PROGRESS
 
-Discovery, navigation, guarded assignment/unassignment and presentation-only
-focus are foundations. Split/merge, catalog-aware effective counts, reviewed
+Discovery, navigation, guarded assignment/unassignment, collision-safe object
+creation and presentation-only focus are foundations. Split/merge,
+catalog-aware effective counts, reviewed
 state and notes are not yet complete. Live object-focus acceptance still needs
 a source with a meaningful segmentation field.
 
@@ -79,9 +84,10 @@ integer identifiers with an unfamiliar name are discoverable without a
 hardcoded schema.
 
 The managed object-export canary created a five-point LAS with an `int32`
-`Tree_ID` Extra Bytes field, staged one `SET_OBJECT_ID` operation and validated
-a new LAZ in 0.031 seconds. Readback was exactly `[8, 8, 2, 2, 2]`, the export
-reported two net `Tree_ID` changes, every output dimension matched journal
-replay, and source SHA-256
+`Tree_ID` Extra Bytes field, allocated new ID `3`, staged one `SET_OBJECT_ID`
+operation, then proved the next safe ID advanced to `4`. It validated a new LAZ
+in 0.047 seconds. Readback was exactly `[3, 3, 2, 2, 2]`, the export reported
+two net `Tree_ID` changes, every output dimension matched journal replay, and
+source SHA-256
 `2e9418479610a698a52edcbbaaf096fae2a991002afd667e2f824e55b457f9bc`
 remained unchanged.

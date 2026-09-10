@@ -186,12 +186,14 @@ class SelectionToolTests(unittest.TestCase):
         self.assertIn("Previous Object", actions)
         self.assertIn("Next Object", actions)
         self.assertIn("Object Focus", actions)
+        self.assertIn("Create New Object from Selection", actions)
         self.assertIn("Assign Selection to Object ID...", actions)
         self.assertIn("Unassign Selected Points", actions)
         self.assertFalse(editor.object_results_action.isEnabled())
         self.assertFalse(editor.build_object_catalog_action.isEnabled())
         self.assertFalse(editor.select_object_action.isEnabled())
         self.assertFalse(editor.configure_object_ids_action.isEnabled())
+        self.assertFalse(editor.create_object_action.isEnabled())
         self.assertFalse(editor.assign_object_action.isEnabled())
         self.assertFalse(editor.unassign_object_action.isEnabled())
         self.assertTrue(editor.show_all_objects_action.isChecked())
@@ -217,6 +219,7 @@ class SelectionToolTests(unittest.TestCase):
         self.assertTrue(editor.configure_object_ids_action.isEnabled())
         self.assertTrue(editor.previous_object_action.isEnabled())
         self.assertTrue(editor.next_object_action.isEnabled())
+        self.assertTrue(editor.create_object_action.isEnabled())
         self.assertTrue(editor.assign_object_action.isEnabled())
         self.assertTrue(editor.unassign_object_action.isEnabled())
         self.assertTrue(editor.fade_other_objects_action.isEnabled())
@@ -239,6 +242,22 @@ class SelectionToolTests(unittest.TestCase):
                    return_value=qt_enum(QMessageBox, "Yes", "StandardButton")):
             editor.configure_object_ids()
         editor.send.assert_called_once_with("configure_object_id_policy", unassigned_id="0")
+
+    def test_create_object_uses_reserved_next_id_only_after_confirmation(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        editor.state = {
+            "object_id_policy":{"field":"Tree_ID", "next_available_object_id":9},
+            "selection":{"selection_id":"selected", "resolved_point_count":12}}
+        editor.send = Mock()
+        with patch("pyforestscan_qgis.ui.point_cloud_editor.QMessageBox.question",
+                   return_value=qt_enum(QMessageBox, "No", "StandardButton")):
+            editor.create_object_from_selection()
+        editor.send.assert_not_called()
+        with patch("pyforestscan_qgis.ui.point_cloud_editor.QMessageBox.question",
+                   return_value=qt_enum(QMessageBox, "Yes", "StandardButton")):
+            editor.create_object_from_selection()
+        editor.send.assert_called_once_with("stage_object_id", selection_id="selected", value="9")
 
     def test_large_object_edit_confirmation_preserves_worker_action(self):
         editor = EditorPanel(None)

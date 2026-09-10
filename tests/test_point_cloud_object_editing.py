@@ -96,6 +96,8 @@ class ObjectEditingContractTests(unittest.TestCase):
         self.assertIn("session.stage_object_id(definitions, result, policy, value", worker)
         self.assertIn("objectEdited = true", viewer)
         self.assertIn('changes["object_id_changed"]', exporter)
+        self.assertIn("reserved_ids=reserved", worker)
+        self.assertIn('"allocation_exhausted"', worker)
 
     @unittest.skipIf(np is None or shapely is None, "Managed NumPy/Shapely tier")
     def test_replay_rejects_storage_type_drift_before_assignment(self):

@@ -31,7 +31,9 @@ def main():
     import numpy as np
     import pdal
     from pyforestscan_qgis.core.point_cloud.export import export_edited
-    from pyforestscan_qgis.core.point_cloud.object_id_policy import ObjectIdPolicy
+    from pyforestscan_qgis.core.point_cloud.object_catalog import build_object_catalog
+    from pyforestscan_qgis.core.point_cloud.object_id_policy import (
+        ObjectIdPolicy, next_available_object_id)
     from pyforestscan_qgis.core.point_cloud.selection import SelectionDefinition, SelectionResult
     from pyforestscan_qgis.core.point_cloud.session import PointCloudEditSession, SourceIdentity
 
@@ -59,18 +61,28 @@ def main():
     result = SelectionResult("object-selection", "RESOLVED", 2, (1,1,2,2,2,3),
         ((5,2),),2,3,None,None,(identity.path,),0.0,2)
     policy = ObjectIdPolicy(identity.sha256, "Tree_ID", "int32", -(2**31), 2**31-1, 0)
-    session.stage_object_id((definition,), result, policy, 8, note="Managed export canary")
+    catalog = build_object_catalog((points,), len(points), "Tree_ID",
+                                   args.output_dir/"objects.sqlite", identity.sha256)
+    allocated = next_available_object_id(catalog["catalog_path"], policy)
+    if allocated != 3:
+        raise RuntimeError("Original object catalog did not allocate the expected first gap.")
+    session.stage_object_id((definition,), result, policy, allocated, note="Managed export canary")
+    next_id = next_available_object_id(catalog["catalog_path"], policy,
+        reserved_ids=tuple(op.value for op in session.operations if op.kind == "SET_OBJECT_ID"))
+    if next_id != 4:
+        raise RuntimeError("Staged object target was not reserved from later allocation.")
     report = export_edited(session, output)
     readback = pdal.Pipeline(json.dumps([{"type":"readers.las", "filename":str(output)}]))
     readback.execute()
     actual = readback.arrays[0]
-    if actual["Tree_ID"].tolist() != [8,8,2,2,2]:
+    if actual["Tree_ID"].tolist() != [3,3,2,2,2]:
         raise RuntimeError("Exported object IDs do not match the staged journal.")
     after = sha256(source)
     if before != after or report["attribute_changes"]["object_id_changed"] != {"Tree_ID":2}:
         raise RuntimeError("Object export immutability or change accounting failed.")
     evidence = {"status":"PASS", "source":str(source), "output":str(output),
         "source_sha256":before, "original_unchanged":True, "point_count":len(actual),
+        "allocated_object_id":allocated, "next_available_object_id":next_id,
         "tree_ids":actual["Tree_ID"].tolist(), "report":report}
     print(json.dumps(evidence, sort_keys=True))
     if handle is not None:

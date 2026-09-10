@@ -51,6 +51,16 @@ class ObjectIdPolicyTests(unittest.TestCase):
             self.assertEqual(next_available_object_id(report["catalog_path"], policy,
                                                       preferred_start=4), 5)
 
+    def test_next_id_reserves_active_journal_targets(self):
+        with TemporaryDirectory() as folder:
+            report = self.catalog(folder, [1, 1, 2], "i4")
+            policy = create_object_id_policy(report, 0)
+            self.assertEqual(next_available_object_id(report["catalog_path"], policy,
+                reserved_ids=(3, 4, 4)), 5)
+            with self.assertRaisesRegex(ValueError, "Reserved object IDs"):
+                next_available_object_id(report["catalog_path"], policy,
+                                         reserved_ids=(3.5,))
+
     def test_unassigned_value_is_never_allocated_and_overflow_is_explicit(self):
         with TemporaryDirectory() as folder:
             report = self.catalog(folder, [1,2], "u1")

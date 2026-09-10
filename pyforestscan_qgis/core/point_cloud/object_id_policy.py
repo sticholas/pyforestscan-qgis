@@ -61,12 +61,18 @@ def create_object_id_policy(catalog_report, unassigned_id):
         dtype, low, high, unassigned_id)
 
 
-def next_available_object_id(catalog_path, policy, *, preferred_start=1):
-    """Find the first unused ID in constant memory without assuming zero is unassigned."""
+def next_available_object_id(catalog_path, policy, *, preferred_start=1,
+                             reserved_ids=()):
+    """Find the first source/staged-unused ID without assuming zero is unassigned."""
     if not isinstance(policy, ObjectIdPolicy):
         raise ValueError("A confirmed object ID policy is required.")
     if type(preferred_start) is not int:
         raise ValueError("Preferred object ID must be an integer.")
+    reserved = set()
+    for value in reserved_ids:
+        if type(value) is not int or not policy.storage_minimum <= value <= policy.storage_maximum:
+            raise ValueError("Reserved object IDs must be integers inside the field storage range.")
+        reserved.add(value)
     report = object_catalog_report(catalog_path)
     if ((report["source_sha256"], report["field"], report["field_dtype"])
             != (policy.source_sha256, policy.field, policy.field_dtype)):
@@ -82,8 +88,9 @@ def next_available_object_id(catalog_path, policy, *, preferred_start=1):
     with closing(sqlite3.connect(Path(catalog_path))) as connection:
         rows = connection.execute(
             "SELECT object_id FROM objects WHERE object_id>=? ORDER BY object_id", (candidate,))
-        for (identifier,) in rows:
-            identifier = int(identifier)
+        import heapq
+        catalog_ids = (int(row[0]) for row in rows)
+        for identifier in heapq.merge(catalog_ids, sorted(value for value in reserved if value >= candidate)):
             if identifier < candidate:
                 continue
             if identifier > candidate:

@@ -309,6 +309,11 @@ class EditorPanel(QWidget):
         self.isolate_object_action.setToolTip(
             "Show the exact selected object overlay while hiding other points in every linked view. No edit is staged.")
         self.object_menu.addSeparator()
+        self.create_object_action = self.object_menu.addAction("Create New Object from Selection")
+        self.create_object_action.setToolTip(
+            "Assign the current authoritative source selection to the next unused object ID. "
+            "The operation is journal-backed and does not rewrite the source.")
+        self.create_object_action.triggered.connect(self.create_object_from_selection)
         self.assign_object_action = self.object_menu.addAction("Assign Selection to Object ID...")
         self.assign_object_action.setToolTip(
             "Stage the current authoritative source selection into an existing or new object ID. "
@@ -399,6 +404,8 @@ class EditorPanel(QWidget):
             and current != catalog.get("maximum_object_id"))
         selected = (self.state.get("selection") or {}).get("resolved_point_count", 0) > 0
         has_policy = bool(self.state.get("object_id_policy"))
+        self.create_object_action.setEnabled(ready and selected and has_policy and
+            self.state["object_id_policy"].get("next_available_object_id") is not None)
         self.assign_object_action.setEnabled(ready and selected and has_policy)
         self.unassign_object_action.setEnabled(ready and selected and has_policy)
         focus_mode = (self.page.linked.object_focus_mode if hasattr(self.page, "linked") else "SHOW_ALL")
@@ -689,6 +696,20 @@ class EditorPanel(QWidget):
         if accepted:
             self.send("stage_object_id", selection_id=selection["selection_id"], value=value)
 
+    def create_object_from_selection(self):
+        policy = self.state.get("object_id_policy") or {}
+        selection = self.state.get("selection") or {}
+        value = policy.get("next_available_object_id")
+        if value is None or not selection.get("resolved_point_count"):
+            return
+        answer = QMessageBox.question(self, "Create New Object",
+            f"Create {policy['field']} object {value} from "
+            f"{selection['resolved_point_count']:,} selected source points? "
+            "This stages an undoable edit; the original remains unchanged.")
+        if answer == qt_enum(QMessageBox, "Yes", "StandardButton"):
+            self.send("stage_object_id", selection_id=selection["selection_id"],
+                      value=str(value))
+
     def unassign_selection_from_object(self):
         policy = self.state.get("object_id_policy") or {}
         selection = self.state.get("selection") or {}
@@ -718,7 +739,9 @@ class EditorPanel(QWidget):
         policy = self.state.get("object_id_policy") or {}
         if policy:
             lines.extend(("", f"Confirmed unassigned value: {policy['unassigned_id']}",
-                f"Next safe object ID: {policy['next_available_object_id']}"))
+                ("No unused object ID remains in this field's storage range."
+                 if policy.get("allocation_exhausted") else
+                 f"Next safe object ID: {policy['next_available_object_id']}")))
         QMessageBox.information(self, "Exact Object Catalog", "\n".join(lines))
 
     def update_state(self, value):
@@ -779,7 +802,9 @@ class EditorPanel(QWidget):
                 from ..core.point_cloud.object_id_policy import ObjectIdPolicy, object_id_policy_summary
                 payload = dict(value["object_id_policy"])
                 next_id = payload.pop("next_available_object_id")
-                self.summary.setText(object_id_policy_summary(ObjectIdPolicy(**payload), next_id))
+                exhausted = payload.pop("allocation_exhausted", False)
+                self.summary.setText("Object ID range exhausted" if exhausted else
+                    object_id_policy_summary(ObjectIdPolicy(**payload), next_id))
             if completed_action in ("select_object", "neighbor_object") and value.get("active_object"):
                 active = value["active_object"]
                 self.summary.setText(

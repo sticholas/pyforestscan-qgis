@@ -105,6 +105,25 @@ def main():
         nonlocal revision
         revision += 1
         session.visibility["selection_definitions"] = [asdict(item) for item in definitions]
+        policy_payload = session.visibility.get("object_id_policy")
+        catalog = session.visibility.get("object_catalog")
+        if policy_payload and catalog:
+            from pyforestscan_qgis.core.point_cloud.object_id_policy import (
+                ObjectIdPolicy, next_available_object_id)
+            base = dict(policy_payload)
+            base.pop("next_available_object_id", None)
+            base.pop("allocation_exhausted", None)
+            policy = ObjectIdPolicy(**base)
+            reserved = [op.value for op in session.operations
+                        if isinstance(op, ObjectIdEditOperation) and op.attribute == policy.field]
+            try:
+                base["next_available_object_id"] = next_available_object_id(
+                    catalog["catalog_path"], policy, reserved_ids=reserved)
+                base["allocation_exhausted"] = False
+            except OverflowError:
+                base["next_available_object_id"] = None
+                base["allocation_exhausted"] = True
+            session.visibility["object_id_policy"] = base
         session.save(autosave)
         edits = []
         history = []
@@ -314,6 +333,7 @@ def main():
                         continue
                     payload = dict(session.visibility.get("object_id_policy") or {})
                     payload.pop("next_available_object_id", None)
+                    payload.pop("allocation_exhausted", None)
                     policy = ObjectIdPolicy(**payload)
                     try:
                         value = int(str(command.get("value", "")), 10)
@@ -379,7 +399,8 @@ def main():
                     policy = create_object_id_policy(catalog, unassigned_id)
                     next_id = next_available_object_id(catalog["catalog_path"], policy)
                     session.visibility["object_id_policy"] = {
-                        **policy.to_dict(), "next_available_object_id":next_id}
+                        **policy.to_dict(), "next_available_object_id":next_id,
+                        "allocation_exhausted":False}
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action in ("select_object", "neighbor_object"):
