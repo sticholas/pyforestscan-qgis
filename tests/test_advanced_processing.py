@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from pyforestscan_qgis.core.adapter import PyForestScanAdapter
+from pyforestscan_qgis.core.adapter import PyForestScanAdapter, _product_key_from_label
 from pyforestscan_qgis.core.advanced_processing import (
     AdvancedCanopyCoverParameters,
     AdvancedChmParameters,
@@ -48,6 +48,11 @@ from pyforestscan_qgis.core.types import (
 
 class AdvancedProcessingTests(unittest.TestCase):
     """Advanced request builders and adapter mappings are QGIS-free."""
+
+    def test_display_labels_map_to_preparation_registry_keys(self) -> None:
+        self.assertEqual("pad", _product_key_from_label("PAD"))
+        self.assertEqual("canopy_cover", _product_key_from_label("canopy cover"))
+        self.assertEqual("voxel_stat", _product_key_from_label("voxel statistic"))
 
     def test_advanced_chm_none_interpolation_maps_to_adapter_none(self) -> None:
         request = build_chm_request(

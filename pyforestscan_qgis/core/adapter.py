@@ -1190,7 +1190,8 @@ class PyForestScanAdapter:
         point_array = _merge_point_cloud_arrays(point_cloud)
         point_array, capabilities = _canonicalize_hag_dimension(point_array)
         resolution = _resolve_product_spatial_reference(request_or_path, source_local_allowed=True)
-        point_array, preparation_plan = _ensure_hag_for_product(point_array, request_or_path, resolution, str(product_label), handlers=handlers)
+        product_key = _product_key_from_label(product_label)
+        point_array, preparation_plan = _ensure_hag_for_product(point_array, request_or_path, resolution, product_key, handlers=handlers)
         capabilities = PointDimensionCapabilities.from_names(point_array.dtype.names)
         names = capabilities.names
         required = {"X", "Y", "HeightAboveGround"}
@@ -1923,6 +1924,12 @@ def _point_cloud_array_sequence(point_cloud: object, *, operation: str) -> list[
                 f"PyForestScan point array for {operation} is missing fields: {', '.join(missing)}."
             )
     return arrays
+
+
+def _product_key_from_label(label: object) -> str:
+    """Normalize human-facing adapter labels to preparation registry keys."""
+    key = str(label).strip().lower().replace(" ", "_")
+    return {"voxel_statistic": "voxel_stat"}.get(key, key)
 
 
 def _aligned_dtm_extent(dtm: object, extent: object, resolution: float) -> list[float]:
