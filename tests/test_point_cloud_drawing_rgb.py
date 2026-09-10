@@ -38,6 +38,14 @@ class DrawingRGBTests(unittest.TestCase):
         self.assertIn("WidgetWidth", source)
         self.assertIn("setReadOnly(True)", source)
 
+    def test_editor_acknowledges_one_cooperative_cancel_request(self):
+        source = (ROOT / "pyforestscan_qgis/ui/point_cloud_editor.py").read_text()
+        self.assertIn("self.cancel_requested = False", source)
+        self.assertIn("self.cancel.setEnabled(self.busy and not self.cancel_requested)", source)
+        self.assertIn('if action == "cancel" and (not self.busy or self.cancel_requested):', source)
+        self.assertIn("Cancellation requested | Waiting for the current bounded source read", source)
+        self.assertIn("source points checked", source)
+
     def test_exact_geometry_metadata_reaches_docked_and_detached_editor(self):
         for name in ("point_cloud_editor.py", "point_cloud_detached.py"):
             source = (ROOT / "pyforestscan_qgis/ui" / name).read_text()

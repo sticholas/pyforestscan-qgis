@@ -131,6 +131,7 @@ class EditorPanel(QWidget):
         self.sent_overlay = None
         self.pending_initial = None
         self.pending_action = None
+        self.cancel_requested = False
         self.folder = None
         self.restored_view = None
         layout = QVBoxLayout(self)
@@ -253,6 +254,7 @@ class EditorPanel(QWidget):
         self.export_button.setEnabled(ready and self.state.get("edits", 0) > 0)
         self.use_button.setEnabled(bool(self.state.get("exported")) and not self.busy)
         self.cancel.setVisible(self.busy)
+        self.cancel.setEnabled(self.busy and not self.cancel_requested)
         self.recover_action.setEnabled(not self.busy)
         self.logs_action.setEnabled(bool(self.folder))
 
@@ -283,6 +285,7 @@ class EditorPanel(QWidget):
             return
         self.state = {}
         self.busy = True
+        self.cancel_requested = False
         self.summary.setText("Editor: Verifying source")
         worker = EditorWorker(initial)
         self.worker = worker
@@ -300,6 +303,8 @@ class EditorPanel(QWidget):
             return
         if action not in ("cancel",) and self.busy:
             return
+        if action == "cancel" and (not self.busy or self.cancel_requested):
+            return
         command = {"action": action, **values}
         self.page.linked.capture()
         if self.state.get("ready"):
@@ -309,9 +314,14 @@ class EditorPanel(QWidget):
         if self.page._source_info:
             command["view_cache"] = {key: self.page._source_info.get(key)
                                     for key in ("sha256", "strategy", "cache_fingerprint")}
-        if self.worker.send(command) and action != "cancel":
-            self.pending_action = action
-            self.busy = True
+        if self.worker.send(command):
+            if action == "cancel":
+                self.cancel_requested = True
+                self.summary.setText("Cancellation requested | Waiting for the current bounded source read")
+            else:
+                self.pending_action = action
+                self.cancel_requested = False
+                self.busy = True
             self.refresh_controls()
 
     def change_tool(self, tool):
@@ -382,7 +392,13 @@ class EditorPanel(QWidget):
         if value.get("folder"):
             self.folder = value["folder"]
         if value.get("progress"):
-            self.summary.setText(f"{value['progress']} | {value.get('count', 0):,}")
+            stage = str(value["progress"])
+            count = value.get("count", 0)
+            selection_progress = stage in ("Resolving original source points",
+                                           "Restoring original source selection")
+            suffix = (f" | {count:,} source points checked" if count and selection_progress
+                      else f" | {count:,}" if count else "")
+            self.summary.setText(stage + suffix)
         if value.get("ready"):
             self.page.send({"action": "selection_resolution"})
             old_export = self.state.get("exported")
@@ -391,6 +407,7 @@ class EditorPanel(QWidget):
             self.page.workspace.accept_editor_snapshot(self.state)
             self.page.linked.sync_tabs()
             self.busy = False
+            self.cancel_requested = False
             self.source = value["source"]
             selection = value.get("selection") or {}
             count = selection.get("resolved_point_count", 0)
@@ -416,12 +433,14 @@ class EditorPanel(QWidget):
         if value.get("saved"):
             self.page.session_status.setText("Session: Saved | Edited cloud requires explicit export")
             self.busy = False
+            self.cancel_requested = False
         if value.get("error"):
             self.page.send({"action": "selection_resolution", "error": str(value["error"])})
             suffix = " Previous authoritative selection retained." if self.pending_action == "select" else ""
             self.summary.setText(value["error"] + suffix)
             self.sent_overlay = None
             self.busy = False
+            self.cancel_requested = False
         if value.get("handoff_ready"):
             self.busy = False
             self.exportReady.emit(value["handoff_ready"])
@@ -500,6 +519,7 @@ class EditorPanel(QWidget):
     def finished(self):
         self.worker = None
         self.busy = False
+        self.cancel_requested = False
         self.state["ready"] = False
         self.refresh_controls()
         if self.pending_initial:
@@ -509,6 +529,7 @@ class EditorPanel(QWidget):
     def close_editor(self):
         self.page.workspace.detach_editor()
         self.pending_initial = None
+        self.cancel_requested = False
         if self.worker:
             try:
                 self.worker.update.disconnect()

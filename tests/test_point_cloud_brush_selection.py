@@ -51,6 +51,18 @@ class BrushContractTests(unittest.TestCase):
 @unittest.skipUnless(importlib.util.find_spec("numpy") and importlib.util.find_spec("shapely"),
                      "Managed geometry runtime required")
 class BrushMembershipTests(BrushContractTests):
+    def test_long_corridor_polls_cooperative_cancellation(self):
+        import numpy as np
+        points=np.array([(0,0,1)], dtype=[("X","f8"),("Y","f8"),("Z","f8")])
+        brush=brush_selection(self.base, path=tuple((float(i), float(i % 2)) for i in range(64)), radius=1)
+        polls=[]
+        def cancelled():
+            polls.append(True)
+            return len(polls) > 8
+        with self.assertRaisesRegex(InterruptedError, "cancelled"):
+            selection_mask(points,[brush],cancelled=cancelled)
+        self.assertGreater(len(polls), 8)
+
     def test_segment_endpoint_corner_and_turn_membership(self):
         import numpy as np
         points=np.array([(-1,0,3),(2,.75,3),(4.75,2,3),(5,5,3),(2,1.01,3)],

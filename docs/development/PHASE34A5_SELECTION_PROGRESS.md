@@ -67,6 +67,12 @@ human interaction, long-run/resource, and source-format gates remain open.
   at one quarter of Brush radius; paths that still exceed 512 vertices fail
   clearly rather than being silently distorted. The exact simplified path and
   tolerance are preserved in selection/session/journal/overlay/export metadata.
+- Selection progress now reports original-source candidate records examined,
+  rather than only matched records, so a narrow Brush does not appear stalled
+  while valid chunks contain no matches. Cancellation is polled at every
+  bounded reader chunk, selection operation, and Brush segment. The editor
+  acknowledges one cancellation request, disables duplicate cancellation, and
+  retains the prior authoritative selection and journal when interrupted.
 
 ## MEASURED EVIDENCE
 
@@ -159,6 +165,16 @@ simplification time was 1.698 ms over 50 iterations on the test machine. An
 adversarial 700-point zigzag exceeding the radius/4 deviation bound is rejected.
 These are algorithm measurements, not dense-source selection-resolution times.
 
+A managed-runtime cancellation qualification used a maximal 512-vertex Brush
+against the immutable 2,287,408-point HAG LAZ. After the first 65,536 original
+records were examined, cancellation was requested while resolution continued.
+The worker acknowledged it in 0.406 seconds, raised `Selection cancelled; no
+edits staged.`, and retained the source unchanged at SHA256
+0c688c22d42b0240c6cba19973087ee59606721289872a3f8237253548db34bb.
+Observed total resolver time was 0.797 seconds. This is one local-source
+measurement, not a massive-cloud latency guarantee. The reusable qualification
+is `scripts/testing/pbm_point_cloud_selection_cancel.py`.
+
 ## IN PROGRESS
 
 Circle/cylinder selection is exposed but remains experimental pending human
@@ -166,8 +182,8 @@ interaction acceptance. Radius remains explicitly in source XY units; no
 screen-pixel or implicit metre conversion is allowed.
 Circle plus HAG range is a height-relative column, not a Euclidean 3D cylinder.
 Brush is exposed and end-to-end automated evidence passes, but human freehand
-acceptance, cancellation responsiveness, and progress behavior remain required
-before user release. Resolution already
+acceptance and massive-source cancellation qualification remain required before
+user release. Resolution already
 runs in the managed background and large-selection impact feedback is now
 shared with the edit-confirmation policy.
 Sphere membership and transport are implemented but deliberately have no user
@@ -178,8 +194,8 @@ become sphere authority.
 
 1. Human circle/cylinder interaction acceptance in Overview and Area Detail,
    including Add/Subtract and the active height limits.
-2. Human Brush acceptance plus background progress and cancellation
-   responsiveness on long and dense-source strokes.
+2. Human Brush acceptance plus cancellation qualification on the 104.8-million
+   point source or another representative massive local cloud.
 3. Design and qualify an explicit 3D sphere/volume placement gesture, then add
    a compact direct action without camera-depth or rendered-point authority.
 

@@ -103,11 +103,13 @@ class SelectionTests(unittest.TestCase):
         self_outer = self
         resolver = SelectionResolver(self.source)
         with patch.dict("sys.modules", {"pdal": types.SimpleNamespace(Pipeline=Pipeline)}):
-            result = resolver.resolve([self.definition])
+            progress = []
+            result = resolver.resolve([self.definition], progress=progress.append)
             # Triangle includes boundary (1,1), excludes its envelope corner (2,2).
             self.assertEqual(result.resolved_point_count, 3)
             self.assertEqual(result.classification_counts, ((2, 2), (5, 1)))
             self.assertEqual(result.z_max, 4)
+            self.assertEqual(progress, [2, 4])
             added = replace(self.definition, selection_id="b", selection_mode="ADD")
             self.assertEqual(resolver.resolve([self.definition, added]).resolved_point_count, 3)
             with patch.object(Pipeline, "iterator", lambda self, **kwargs: iter((np.concatenate((points, points)),))):

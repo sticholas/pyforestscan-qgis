@@ -239,7 +239,7 @@ def _candidate_chunks(source, items, pdal, np):
                              max(p[0] for p in ring), max(p[1] for p in ring)))
 
 
-def selection_mask(chunk, definitions, shapes=None):
+def selection_mask(chunk, definitions, shapes=None, *, cancelled=lambda: False):
     """Shared original-attribute membership for resolution and journal replay."""
     import numpy as np
     import shapely
@@ -250,6 +250,8 @@ def selection_mask(chunk, definitions, shapes=None):
     names = set(chunk.dtype.names or ())
     selected = np.zeros(len(chunk), dtype=bool)
     for item, shape in zip(items, shapes):
+        if cancelled():
+            raise InterruptedError("Selection cancelled; no edits staged.")
         mask = shapely.intersects_xy(shape, chunk["X"], chunk["Y"])
         if item.circle_center is not None:
             cx, cy = item.circle_center
@@ -258,7 +260,8 @@ def selection_mask(chunk, definitions, shapes=None):
             mask &= np.hypot((chunk["X"] - cx) / item.circle_radius,
                              (chunk["Y"] - cy) / item.circle_radius) <= 1.0
         if item.brush_path is not None:
-            mask &= _brush_mask(chunk, item.brush_path, item.brush_radius, np)
+            mask &= _brush_mask(chunk, item.brush_path, item.brush_radius, np,
+                                cancelled=cancelled)
         if item.sphere_center is not None:
             if item.sphere_axis not in names:
                 raise ValueError(f"Source does not contain {item.sphere_axis}.")
@@ -363,13 +366,17 @@ def spherical_selection(definition, *, center, radius, axis="Z"):
                    sphere_axis=axis, depth_mode="SPHERE_VOLUME")
 
 
-def _brush_mask(chunk, path, radius, np):
+def _brush_mask(chunk, path, radius, np, *, cancelled=lambda: False):
+    if cancelled():
+        raise InterruptedError("Selection cancelled; no edits staged.")
     x, y = chunk["X"], chunk["Y"]
     selected = np.zeros(len(chunk), dtype=bool)
     radius_squared = radius * radius
     if len(path) == 1:
         return (x-path[0][0])**2 + (y-path[0][1])**2 <= radius_squared
     for a, b in zip(path, path[1:]):
+        if cancelled():
+            raise InterruptedError("Selection cancelled; no edits staged.")
         vx, vy = b[0]-a[0], b[1]-a[1]
         along = np.clip(((x-a[0])*vx + (y-a[1])*vy)/(vx*vx+vy*vy), 0, 1)
         selected |= (x-(a[0]+along*vx))**2 + (y-(a[1]+along*vy))**2 <= radius_squared
@@ -467,8 +474,8 @@ class SelectionResolver:
             names = set(chunk.dtype.names or ())
             if not {"X", "Y", "Z", "Classification"} <= names:
                 raise ValueError("Source lacks required XYZ/classification dimensions.")
-            selected = selection_mask(chunk, items, shapes)
             candidates += len(chunk)
+            selected = selection_mask(chunk, items, shapes, cancelled=cancelled)
             matched = chunk[selected]
             count += len(matched)
             if len(matched):
@@ -486,7 +493,9 @@ class SelectionResolver:
                         low, high = float(values.min()), float(values.max())
                         hag_min = low if hag_min is None else min(hag_min, low)
                         hag_max = high if hag_max is None else max(hag_max, high)
-            progress(count)
+            # Progress describes deterministic work examined. Narrow filters may
+            # match zero points for most of a scan, which must not look stalled.
+            progress(candidates)
         if cancelled():
             raise InterruptedError("Selection cancelled; no edits staged.")
         self._check_source()
