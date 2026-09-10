@@ -34,8 +34,11 @@ from pyforestscan_qgis.core.types import (
     ChmRequest,
     DtmRequest,
     FhdRequest,
+    HagNormalizationRequest,
+    PadDerivativeRequest,
     PadRequest,
     PaiRequest,
+    PointCloudPreprocessRequest,
     PointDensityRequest,
     RumpleRequest,
     VoxelStatRequest,
@@ -47,6 +50,7 @@ PRODUCT_REQUESTS = {
     "chm": (ChmRequest, "create_chm"),
     "canopy_cover": (CanopyCoverRequest, "create_canopy_cover"),
     "pad": (PadRequest, "create_pad"),
+    "pad_derivative": (PadDerivativeRequest, "create_pad_derivative"),
     "pai": (PaiRequest, "create_pai"),
     "fhd": (FhdRequest, "create_fhd"),
     "rumple": (RumpleRequest, "create_rumple"),
@@ -54,6 +58,8 @@ PRODUCT_REQUESTS = {
     "point_density": (PointDensityRequest, "create_point_density"),
     "voxel_stat": (VoxelStatRequest, "create_voxel_stat"),
     "ept_subset_extract": (EptSubsetRequest, "extract_lidar_subset"),
+    "normalize_hag": (HagNormalizationRequest, "normalize_heights"),
+    "point_cloud_preprocess": (PointCloudPreprocessRequest, "preprocess_point_cloud"),
 }
 
 
@@ -109,7 +115,8 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
             if preparation is not None:
                 metrics["preparation"] = {"mode": preparation.plan.height_mode.value, "signature": preparation.plan.signature, "provenance": str(preparation.provenance_path), "reused": preparation.reused}
                 _tag_preparation_output(Path(metrics.get("output_path", "")), preparation)
-            outputs = {"primary": Path(metrics.get("output_path", spec.output_paths.get("primary", "")))}
+            raw_primary = metrics.get("output_path") or spec.output_paths.get("primary")
+            outputs = {"primary": Path(raw_primary)} if raw_primary else {}
         heartbeat_state.update(stage="Finalizing Output", activity="Product calculation completed.", completed_count=heartbeat_state["total_count"])
         _write_heartbeat(spec, heartbeat_state, heartbeat_started)
         _update_source_local_trace(spec, "terminal", {"status": "success", "outputs": {key: str(value) for key, value in outputs.items()}})

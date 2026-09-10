@@ -251,6 +251,30 @@ class PadResult:
 
 
 @dataclass(frozen=True)
+class PadDerivativeRequest:
+    """Managed request for a single-band derivative of a PAD volume."""
+
+    input_path: Path | str
+    output_path: Path
+    derivative_type: str
+    voxel_height: float
+    min_height: float | None = None
+    max_height: float | None = None
+    slice_height: float | None = None
+    band_index: int | None = None
+    crs: str | None = None
+
+
+@dataclass(frozen=True)
+class PadDerivativeResult:
+    """Result for a managed PAD derivative raster."""
+
+    output_path: Path
+    derivative_type: str
+    band_count: int = 1
+
+
+@dataclass(frozen=True)
 class PaiRequest:
     """Adapter request for PAI generation."""
 

@@ -74,7 +74,7 @@ class PointCloudPreprocessAlgorithm(AdvancedPyForestScanAlgorithm):
         self.addParameter(QgsProcessingParameterNumber(self.SMRF_WINDOW, self.tr("window"), type=QgsProcessingParameterNumber.Double, defaultValue=18.0, minValue=0.01))
         self.addParameter(QgsProcessingParameterEnum(self.GROUND_ACTION, self.tr("Ground filter action"), options=list(self.GROUND_OPTIONS), defaultValue=0))
         self.addParameter(QgsProcessingParameterBoolean(self.FILTER_POINTSOURCEID, self.tr("Filter PointSourceId"), defaultValue=False))
-        self.addParameter(QgsProcessingParameterString(self.POINTSOURCE_IDS, self.tr("pointsource_ids"), defaultValue=""))
+        self.addParameter(QgsProcessingParameterString(self.POINTSOURCE_IDS, self.tr("pointsource_ids"), defaultValue="", optional=True))
         self.addParameter(QgsProcessingParameterBoolean(self.ADD_HAG, self.tr("Add HeightAboveGround"), defaultValue=False))
         self.addParameter(QgsProcessingParameterEnum(self.HAG_METHOD, self.tr("HAG method"), options=list(self.HAG_OPTIONS), defaultValue=0))
         self.addParameter(QgsProcessingParameterFile(self.DTM, self.tr("DTM GeoTIFF"), behavior=QgsProcessingParameterFile.File, fileFilter=self.tr("GeoTIFF files (*.tif *.tiff);;All files (*.*)"), optional=True))

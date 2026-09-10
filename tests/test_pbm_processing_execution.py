@@ -17,7 +17,7 @@ from pyforestscan_qgis.core.backend.paths import resolve_backend_paths
 from pyforestscan_qgis.core.batch import BatchProductSettings, BatchRequest
 from pyforestscan_qgis.core.batch_preflight import run_batch_preflight
 from pyforestscan_qgis.core.dependency_check import EnvironmentReport, ReadinessStatus
-from pyforestscan_qgis.core.types import Bounds3D, ChmRequest, DatasetFormat, DatasetInspection, DatasetSource, ProductType
+from pyforestscan_qgis.core.types import Bounds3D, ChmRequest, DatasetFormat, DatasetInspection, DatasetSource, HagNormalizationRequest, ProductType
 
 
 def ready_verification(paths):
@@ -45,6 +45,14 @@ class PBMProcessingExecutionTests(unittest.TestCase):
         self.assertEqual(loaded.product, "chm")
         self.assertEqual(loaded.output_paths["primary"].name, "chm.tif")
         self.assertEqual(loaded.product_parameters["grid_resolution"], 1.0)
+
+    def test_job_spec_supports_read_only_request_without_output(self) -> None:
+        request = HagNormalizationRequest(Path("plot.laz"), "EPSG:32610", output_path=None)
+        spec = build_job_spec_from_request("normalize_hag", request, job_id="hag-read-only")
+
+        self.assertEqual(spec.output_paths, {})
+        self.assertIsNone(spec.product_parameters["output_path"])
+        self.assertEqual(spec.run_folder.name, "jobs")
 
     def test_job_result_serialization(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

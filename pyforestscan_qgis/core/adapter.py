@@ -22,7 +22,7 @@ from .exceptions import AdapterError, DatasetError, EnvironmentError, Processing
 from .scientific_boundary import assert_scientific_import_allowed, qgis_runtime_active
 from .ept_bounds import EptBounds, EptBoundsError, validate_pyforestscan_bounds_value
 from .ept_spatial_reference import resolve_ept_spatial_reference
-from .pad_products import pad_band_mapping, pad_metadata_tags
+from .pad_products import PadDerivativeSpec, calculate_pad_derivative, pad_band_mapping, pad_metadata_tags
 from .spatial_reference_resolver import SpatialReferenceResolver, SpatialReferenceStatus
 from .point_dimensions import PointDimensionCapabilities, SourceDimensionMismatch
 from .spatial_reference_contract import SpatialReferenceMode
@@ -53,6 +53,8 @@ from .types import (
     HagNormalizationRequest,
     HagNormalizationResult,
     PadRequest,
+    PadDerivativeRequest,
+    PadDerivativeResult,
     PadResult,
     PointCloudPreprocessRequest,
     PointCloudPreprocessResult,
@@ -457,6 +459,58 @@ class PyForestScanAdapter:
             self._progress.fail("PAD generation failed")
             raise ProcessingError(f"PAD generation failed: {exc}") from exc
 
+    def create_pad_derivative(self, request: PadDerivativeRequest) -> PadDerivativeResult:
+        """Create a single-band visualization from an authoritative PAD volume."""
+        derivative_type = str(request.derivative_type).strip().lower()
+        if derivative_type not in {"slice", "maximum", "mean", "integrated"}:
+            raise ProcessingError(f"Unsupported PAD derivative type: {request.derivative_type}")
+        if request.voxel_height <= 0:
+            raise ProcessingError("PAD derivative voxel height must be greater than zero.")
+        input_path = Path(request.input_path)
+        if not input_path.is_file():
+            raise ProcessingError(f"PAD derivative input does not exist: {input_path}")
+        output_path = Path(request.output_path)
+        _validate_output_path(output_path)
+        pbm_result = self._run_pbm_auxiliary_if_selected("pad_derivative", request)
+        if pbm_result is not None:
+            metrics = getattr(pbm_result, "product_metrics", {}) or {}
+            outputs = getattr(pbm_result, "outputs", {}) or {}
+            return PadDerivativeResult(
+                output_path=Path(outputs.get("primary") or metrics.get("output_path") or output_path),
+                derivative_type=str(metrics.get("derivative_type") or derivative_type),
+                band_count=int(metrics.get("band_count", 1)),
+            )
+        try:
+            rasterio = _import_required("rasterio", ProcessingError)
+            spec = PadDerivativeSpec(
+                derivative_type=derivative_type,
+                output_path=output_path,
+                voxel_height=request.voxel_height,
+                min_height=request.min_height,
+                max_height=request.max_height,
+                slice_height=request.slice_height,
+                band_index=request.band_index,
+            )
+            with rasterio.open(input_path) as src:
+                volume = src.read().transpose(2, 1, 0)
+                profile = src.profile.copy()
+            derivative = calculate_pad_derivative(volume, spec)
+            profile.update(count=1, dtype=derivative.dtype.name)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with rasterio.open(output_path, "w", **profile) as dst:
+                dst.write(derivative.T, 1)
+                dst.update_tags(
+                    pyforestscan_product="PAD derivative visualization",
+                    derivative_type=derivative_type,
+                    source_pad=str(input_path),
+                )
+            _validate_created_output(output_path)
+            return PadDerivativeResult(output_path=output_path, derivative_type=derivative_type)
+        except ProcessingError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            raise ProcessingError(f"PAD derivative generation failed: {exc}") from exc
+
     def create_pai(self, request: PaiRequest) -> PaiResult:
         """Generate a PAI GeoTIFF through PyForestScan."""
         if request.grid_resolution <= 0:
@@ -853,6 +907,18 @@ class PyForestScanAdapter:
             raise ProcessingError("DTM-backed HAG requires a DTM raster path.")
         if request.output_path is not None:
             _validate_las_output_path(Path(request.output_path))
+        pbm_result = self._run_pbm_auxiliary_if_selected("normalize_hag", request)
+        if pbm_result is not None:
+            metrics = getattr(pbm_result, "product_metrics", {}) or {}
+            outputs = getattr(pbm_result, "outputs", {}) or {}
+            raw_output = metrics.get("output_path") or outputs.get("primary") or request.output_path
+            return HagNormalizationResult(
+                output_path=Path(raw_output) if raw_output else None,
+                point_count=int(metrics["point_count"]) if metrics.get("point_count") is not None else None,
+                crs=str(metrics.get("crs") or request.crs),
+                written=bool(metrics.get("written", raw_output is not None)),
+                limitation=metrics.get("limitation"),
+            )
         self._progress.start("Reading lidar with HeightAboveGround")
         self._log(LogLevel.INFO, "Starting HAG normalization", input=str(request.input_path))
         try:
@@ -939,6 +1005,17 @@ class PyForestScanAdapter:
             raise ProcessingError("Point-cloud preprocessing requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_las_output_path(output_path)
+        pbm_result = self._run_pbm_auxiliary_if_selected("point_cloud_preprocess", request)
+        if pbm_result is not None:
+            metrics = getattr(pbm_result, "product_metrics", {}) or {}
+            outputs = getattr(pbm_result, "outputs", {}) or {}
+            result_path = Path(metrics.get("output_path") or outputs.get("primary") or output_path)
+            return PointCloudPreprocessResult(
+                output_path=result_path,
+                point_count=int(metrics["point_count"]) if metrics.get("point_count") is not None else None,
+                crs=str(metrics.get("crs") or request.crs),
+                operations=tuple(str(item) for item in metrics.get("operations", ())),
+            )
         operations: list[str] = []
         self._progress.start("Reading lidar for preprocessing")
         try:
@@ -1079,6 +1156,26 @@ class PyForestScanAdapter:
             message=str(metrics.get("message") or f"EPT subset written to {output_path}"),
         )
 
+    def _run_pbm_auxiliary_if_selected(self, product: str, request: object) -> object | None:
+        """Dispatch non-raster Toolbox operations to managed Python."""
+        if self.execution_mode == EXECUTION_MODE_QGIS_PYTHON:
+            return None
+        service = self._backend_service()
+        try:
+            availability = service.can_execute_processing()
+        except Exception as exc:  # noqa: BLE001
+            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND or qgis_runtime_active():
+                raise ProcessingError(f"Managed Processing Engine is unavailable for {product}: {exc}") from exc
+            return None
+        if not availability.ready:
+            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND or qgis_runtime_active():
+                raise ProcessingError(availability.message)
+            return None
+        try:
+            return service.run_product(product, request)
+        except Exception as exc:  # noqa: BLE001
+            raise ProcessingError(f"Managed Processing Engine {product} failed: {exc}") from exc
+
     def selected_execution_backend(self) -> str:
         """Return the currently selected processing backend label."""
         if self._can_use_pbm_backend():
@@ -1210,10 +1307,10 @@ class PyForestScanAdapter:
         every Z bin.  A source-Z offset therefore preserves the exact count in
         every XY cell while avoiding an unrelated terrain-normalization step.
         """
-        handlers = _import_required("pyforestscan.handlers", ProcessingError)
         if _requires_local_bounded_read(request):
             point_cloud = _read_bounded_local_lidar(request)
         else:
+            handlers = _import_required("pyforestscan.handlers", ProcessingError)
             point_cloud = handlers.read_lidar(
                 str(request.input_path),
                 request.crs,

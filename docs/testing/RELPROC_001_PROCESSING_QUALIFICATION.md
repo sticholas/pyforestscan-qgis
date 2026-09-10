@@ -32,26 +32,26 @@ The fixed raster is 50 by 50, one band, EPSG:32605, exact 2 m cells, exact reque
 
 ## Processing provider inventory
 
-This inventory is derived from `PyForestScanProvider.loadAlgorithms`, not documentation. `CONTRACT PASS` means registration, parameter construction, request mapping, and managed route are covered by the QGIS-free provider/backend suite. `QGIS BLOCKED` means the installed QGIS runtime fails while importing QtCore before the provider can load. `FAIL` identifies a known release-contract defect that still needs migration.
+This inventory is derived from `PyForestScanProvider.loadAlgorithms`, not documentation. `QGIS TOOLBOX PASS` means the algorithm registered and completed through QGIS 3.44.13 `processing.run(...)` against the bounded real-data fixture. The EPT-only route remains blocked on a retained EPT fixture and therefore still gates packaging.
 
 | Algorithm ID | Display name | Group/module | Backend/science route | Output | Current qualification |
 | --- | --- | --- | --- | --- | --- |
-| `pyforestscan:environment_check` | Environment Check | Diagnostics / `placeholder_algorithms.py` | PBM environment diagnostics | status/report | QGIS BLOCKED; contract pass |
-| `pyforestscan:advanced_chm` | CHM | Metrics / `advanced_chm.py` | PBM -> adapter -> `calculate_chm` | GeoTIFF | QGIS BLOCKED; real backend pass |
-| `pyforestscan:advanced_pad` | PAD | Metrics / `advanced_pad.py` | PBM -> adapter -> voxels -> `calculate_pad` | multiband GeoTIFF | QGIS BLOCKED; real backend pass |
-| `pyforestscan:pad_derivative_raster` | PAD Derivative Raster | Metrics / `pad_derivative.py` | direct QGIS-Python rasterio | GeoTIFF | FAIL: managed-engine bypass |
-| `pyforestscan:advanced_pai` | PAI | Metrics / `advanced_pai.py` | PBM -> adapter -> PAD -> `calculate_pai` | GeoTIFF | QGIS BLOCKED; real backend pass |
-| `pyforestscan:advanced_canopy_cover` | Canopy Cover | Metrics / `advanced_canopy_cover.py` | PBM -> adapter -> PAD -> `calculate_canopy_cover` | GeoTIFF | QGIS BLOCKED; real backend pass |
-| `pyforestscan:advanced_fhd` | FHD | Metrics / `advanced_fhd.py` | PBM -> adapter -> voxels -> `calculate_fhd` | GeoTIFF | QGIS BLOCKED; real backend pass |
-| `pyforestscan:advanced_rumple` | Rumple Index Raster | Metrics / `advanced_rumple.py` | PBM -> adapter -> CHM -> rumple extension | GeoTIFF + CSV | QGIS BLOCKED; real backend pass |
-| `pyforestscan:advanced_point_density` | Point Density | Metrics / `advanced_point_density.py` | PBM -> adapter -> voxels -> `calculate_point_density` | GeoTIFF | QGIS BLOCKED; real backend pass and numeric reconciliation |
-| `pyforestscan:advanced_voxel_statistic` | Voxel Statistic | Metrics / `advanced_voxel_stat.py` | PBM -> adapter -> `calculate_voxel_stat` | GeoTIFF | QGIS BLOCKED; real backend pass after key fix |
-| `pyforestscan:normalize_height_above_ground` | Normalize Heights | Preprocessing / `normalize_hag.py` | adapter currently imports PyForestScan in QGIS process | LAS/LAZ | FAIL: advertised PBM mode is not dispatched |
-| `pyforestscan:extract_ept_subset` | Extract EPT Subset | I/O / `ept_subset.py` | PBM -> adapter -> `read_lidar`/`write_las` | LAS/LAZ | QGIS BLOCKED; contract pass; no retained EPT fixture |
-| `pyforestscan:advanced_dtm` | Generate DTM | Terrain / `advanced_dtm.py` | PBM -> adapter -> ground filter -> `generate_dtm` | GeoTIFF | QGIS BLOCKED; real backend pass |
-| `pyforestscan:advanced_point_cloud_preprocess` | Preprocess Point Cloud | Preprocessing / `point_cloud_preprocess.py` | adapter currently imports PyForestScan in QGIS process | LAS/LAZ | FAIL: advertised PBM mode is not dispatched |
+| `pyforestscan:environment_check` | Environment Check | Diagnostics / `placeholder_algorithms.py` | PBM environment diagnostics | status/report | QGIS TOOLBOX PASS |
+| `pyforestscan:advanced_chm` | CHM | Metrics / `advanced_chm.py` | PBM -> adapter -> `calculate_chm` | GeoTIFF | QGIS TOOLBOX PASS |
+| `pyforestscan:advanced_pad` | PAD | Metrics / `advanced_pad.py` | PBM -> adapter -> voxels -> `calculate_pad` | multiband GeoTIFF | QGIS TOOLBOX PASS |
+| `pyforestscan:pad_derivative_raster` | PAD Derivative Raster | Metrics / `pad_derivative.py` | PBM -> adapter -> rasterio derivative | GeoTIFF | QGIS TOOLBOX PASS |
+| `pyforestscan:advanced_pai` | PAI | Metrics / `advanced_pai.py` | PBM -> adapter -> PAD -> `calculate_pai` | GeoTIFF | QGIS TOOLBOX PASS |
+| `pyforestscan:advanced_canopy_cover` | Canopy Cover | Metrics / `advanced_canopy_cover.py` | PBM -> adapter -> PAD -> `calculate_canopy_cover` | GeoTIFF | QGIS TOOLBOX PASS |
+| `pyforestscan:advanced_fhd` | FHD | Metrics / `advanced_fhd.py` | PBM -> adapter -> voxels -> `calculate_fhd` | GeoTIFF | QGIS TOOLBOX PASS |
+| `pyforestscan:advanced_rumple` | Rumple Index Raster | Metrics / `advanced_rumple.py` | PBM -> adapter -> CHM -> rumple extension | GeoTIFF + CSV | QGIS TOOLBOX PASS |
+| `pyforestscan:advanced_point_density` | Point Density | Metrics / `advanced_point_density.py` | PBM -> adapter -> voxels -> `calculate_point_density` | GeoTIFF | QGIS TOOLBOX PASS; numeric reconciliation |
+| `pyforestscan:advanced_voxel_statistic` | Voxel Statistic | Metrics / `advanced_voxel_stat.py` | PBM -> adapter -> `calculate_voxel_stat` | GeoTIFF | QGIS TOOLBOX PASS |
+| `pyforestscan:normalize_height_above_ground` | Normalize Heights | Preprocessing / `normalize_hag.py` | PBM -> adapter -> `read_lidar`/`write_las` | LAS/LAZ | QGIS TOOLBOX PASS |
+| `pyforestscan:extract_ept_subset` | Extract EPT Subset | I/O / `ept_subset.py` | PBM -> adapter -> `read_lidar`/`write_las` | LAS/LAZ | BLOCKED: no retained EPT fixture |
+| `pyforestscan:advanced_dtm` | Generate DTM | Terrain / `advanced_dtm.py` | PBM -> adapter -> ground filter -> `generate_dtm` | GeoTIFF | QGIS TOOLBOX PASS |
+| `pyforestscan:advanced_point_cloud_preprocess` | Preprocess Point Cloud | Preprocessing / `point_cloud_preprocess.py` | PBM -> adapter -> filters -> `write_las` | LAS/LAZ | QGIS TOOLBOX PASS |
 
-Total registered: 14. Real scientific backend passes in this ticket: CHM, DTM, PAD, PAI, FHD, Canopy Cover, Rumple, Point Density, and Voxel Statistic. No algorithm has an UNKNOWN status.
+Total registered: 14. Thirteen actual QGIS Toolbox entry points passed; EPT Subset is explicitly blocked, not marked passed or unknown.
 
 Shared product parameters include input LAS/LAZ/COPC/EPT path, CRS, output path, X/Y resolution, and load-to-project. Product-specific parameters are authoritatively registered by each module and covered by `test_advanced_processing.py` and `test_processing_toolbox_registration.py`.
 
@@ -62,14 +62,15 @@ Shared product parameters include input LAS/LAZ/COPC/EPT path, CRS, output path,
 - Toolbox Point Density now defaults to per-area, matching Mission Control and the released product definition.
 - HAG checkpoint publication now passes a list of arrays to PyForestScan 0.4.1. The former tuple was nested by upstream and rejected by PDAL.
 - All nine raster products use PBM dispatch from their Toolbox algorithms.
-- PAD Derivative, Normalize Heights, and Preprocess Point Cloud still bypass the managed engine and remain release blockers. External Worker code remains disabled legacy infrastructure.
+- PAD Derivative, Normalize Heights, and Preprocess Point Cloud now dispatch to the managed engine. The optional no-output HAG inspection path uses a managed temporary job folder instead of constructing a bogus `None` path. External Worker code remains disabled legacy infrastructure.
+- PointSourceID is now an optional Toolbox string, matching its disabled-by-default filter; QGIS previously rejected the default empty value before preprocessing could start.
 
 ## Test and environment status
 
-- Focused processing/parity/provider tests: 43 passed.
-- Full QGIS-free suite: 1,014 passed, 4 failed. Two failures are caused by the stale WSL scientific environment (PyForestScan 0.3.6 and a missing PROJ database), one is an existing polygon partial-success fixture/validation mismatch, and one is an existing CRS-message assertion mismatch.
-- Managed Windows engine: PyForestScan 0.4.1; all nine raster science routes listed above passed on bounded real LAZ.
-- QGIS 3.44.13: BLOCKED before plugin import by `ImportError: DLL load failed while importing QtCore`.
+- Focused processing/parity/provider tests: 46 passed before final regression additions.
+- Full QGIS-free suite: 1,020 passed, 7 dependency/environment skips.
+- Managed Windows engine: PyForestScan 0.4.1; all local-source science routes passed on bounded real LAZ.
+- QGIS 3.44.13: PASS. QtCore imports through `python-qgis-ltr.bat`; the 100-construction/100-navigation lifecycle smoke passed with no scientific imports in the QGIS process; all 14 algorithms registered; 13 local-data Toolbox entry points completed through `processing.run(...)`.
 - QGIS 4.0.0: BLOCKED by the equivalent QtCore DLL failure and is not a supported processing target for this release.
 
-Package installation, Mission Control execution, actual Processing Toolbox entry-point execution, polygon masking, multi-file execution, cancellation/failure injection, immediate repeated multi-product jobs, and clean-profile package validation are not claimed while the QGIS runtime is unavailable.
+Packaging remains blocked. EPT Subset still needs a retained real EPT fixture and execution evidence. Mission Control execution, polygon masking, multi-file execution, cancellation/failure injection, immediate repeated multi-product jobs, and clean-profile package validation also remain to be completed before a product ZIP is created.

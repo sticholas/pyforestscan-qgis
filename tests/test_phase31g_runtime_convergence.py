@@ -77,7 +77,7 @@ class RuntimeConvergenceTests(unittest.TestCase):
         self.assertEqual(BackendJobSpec.from_dict(spec.to_dict()).runtime_token, token)
 
     def test_contract_covers_every_advertised_product_and_parameters(self):
-        self.assertEqual(set(PRODUCT_CAPABILITIES), {"chm", "rumple", "pad", "pai", "fhd", "canopy_cover", "dtm", "point_density", "voxel_stat"})
+        self.assertEqual(set(PRODUCT_CAPABILITIES), {"chm", "rumple", "pad", "pad_derivative", "pai", "fhd", "canopy_cover", "dtm", "point_density", "voxel_stat", "normalize_hag", "point_cloud_preprocess"})
         self.assertIn("read_lidar", PYFORESTSCAN_FUNCTION_CONTRACT["pyforestscan.handlers"])
         self.assertTrue(all(item.function and item.argument for item in PRODUCT_PARAMETERS))
 

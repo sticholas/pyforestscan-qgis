@@ -121,7 +121,7 @@ class AuthoritativeProcessingEngineTests(unittest.TestCase):
     def test_product_contract_has_complete_smoke_matrix(self):
         self.assertEqual(
             set(PRODUCT_CAPABILITIES),
-            {"chm", "rumple", "pad", "pai", "fhd", "canopy_cover", "dtm", "point_density", "voxel_stat"},
+            {"chm", "rumple", "pad", "pad_derivative", "pai", "fhd", "canopy_cover", "dtm", "point_density", "voxel_stat", "normalize_hag", "point_cloud_preprocess"},
         )
         runtime = (Path(__file__).parents[1] / "pyforestscan_qgis/backend_runner/runtime_contract.py").read_text(encoding="utf-8")
         self.assertIn('"capability_smoke_results": capability_smoke', runtime)
@@ -139,6 +139,16 @@ class AuthoritativeProcessingEngineTests(unittest.TestCase):
         self.assertEqual(offenders, [], f"Default/auto scientific adapters found: {offenders}")
         pages = production[1].read_text(encoding="utf-8")
         self.assertIn('adapter_factory=lambda: PyForestScanAdapter(execution_mode="pbm_backend")', pages)
+
+    def test_toolbox_modules_do_not_import_scientific_dependencies(self):
+        root = Path(__file__).parents[1]
+        forbidden = ("import numpy", "import rasterio", "import pdal", "import pyforestscan", "from numpy", "from rasterio", "from pdal", "from pyforestscan")
+        offenders = []
+        for path in (root / "pyforestscan_qgis/algorithms").rglob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            if any(token in source for token in forbidden):
+                offenders.append(str(path.relative_to(root)))
+        self.assertEqual(offenders, [], f"Scientific imports found in QGIS Toolbox modules: {offenders}")
 
 
 if __name__ == "__main__":
