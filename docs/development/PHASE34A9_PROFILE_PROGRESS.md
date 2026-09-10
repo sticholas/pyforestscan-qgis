@@ -47,8 +47,9 @@ Overview, Area Detail, and Profile renderer as a subtle linked marker. Ordinary
 Overview/Detail hover is truthfully labeled as a displayed source-record
 coordinate; profile provenance is labeled as original-source coordinate data.
 Cursor state is intentionally neither persisted nor admitted to selection or
-edit authority. Picking temporarily exposes CPU provenance to Potree and removes
-the temporary GPU attributes immediately afterward.
+edit authority. Potree returns hidden CPU-only node/index metadata after its
+ordinary pick, allowing the editor to read provenance without changing the
+registered GPU attribute layout.
 
 The shared display row now names its rendering selector **Color By** and remains
 directly available in Profile. Color mode, circular/square point style, point
@@ -125,3 +126,20 @@ The canary intentionally scanned all 2,287,408 fixture points to provide an
 independent reference; indexed production display/selection remains bounded by
 the source corridor. The source SHA256 remained
 <code>0c688c22d42b0240c6cba19973087ee59606721289872a3f8237253548db34bb</code>.
+
+A QGIS 3.44.13 human session then exposed an unsafe first implementation:
+hover had added provenance attributes after Potree created the geometry's GPU
+buffers, and Potree dereferenced a missing buffer version. The corrected path
+leaves geometry attributes untouched and fails a transient cursor read closed.
+The follow-up small-LAZ session ran for 1,095.39 seconds with no renderer
+errors, reached 1,003,046 displayed points at full-cloud scale, created one
+multi-segment profile, and repeatedly resolved profile selections. The final
+selection contained 327 original records from 589,824 candidates in 3.719
+seconds; source buffers remained unchanged.
+
+Human review confirmed Profile Brush interaction works, while identifying
+unfinished usability gates: Replace/Add/Subtract semantics are not adequately
+explained; elevation/HAG range filtering can make a selection appear to vanish;
+profile axes and units are not visible enough; view and measurement selectors
+are overcrowded; and classification actions need stronger staged-edit
+confirmation. These are accepted Phase 34A9 UX work, not qualified behavior.

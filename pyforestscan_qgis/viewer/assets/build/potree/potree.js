@@ -61093,6 +61093,11 @@ void main() {
 
 				}
 
+				Object.defineProperty(point, "_pfsPick", {
+					value: {geometry: geometry, index: hit.pIndex,
+						sourceDimensions: node.geometryNode.gpsTime && node.geometryNode.gpsTime.originalDimensions},
+					enumerable: false
+				});
 				hit.point = point;
 			}
 
@@ -62240,6 +62245,11 @@ void main() {
 					
 				}
 
+				Object.defineProperty(point, "_pfsPick", {
+					value: {geometry: geometry, index: hit.pIndex,
+						sourceDimensions: node.geometryNode.gpsTime && node.geometryNode.gpsTime.originalDimensions},
+					enumerable: false
+				});
 				hit.point = point;
 			}
 

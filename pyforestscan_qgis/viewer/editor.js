@@ -84,27 +84,20 @@ function scalar(value) {
     return null;
 }
 function pickWithSourceProvenance(x,y) {
-    const attached=[];
+    const hit=Potree.Utils&&Potree.Utils.getMousePointCloudIntersection(
+        {x,y},context.viewer.scene.getActiveCamera(),context.viewer,[context.cloud],
+        {pickWindowSize:17});
+    const picked=hit&&hit.point&&hit.point._pfsPick;
+    if (!picked||!picked.geometry||!Number.isInteger(picked.index)) return hit;
     const aliases={HeightAboveGround:"_pfsHag",PFSOriginalX:"_pfsOriginalX",
         PFSOriginalY:"_pfsOriginalY",PFSOriginalZ:"_pfsOriginalZ"};
-    for (const node of context.cloud.visibleNodes || []) {
-        const geometry=node.geometryNode&&node.geometryNode.geometry;
-        const extra=node.geometryNode&&node.geometryNode.gpsTime&&
-            node.geometryNode.gpsTime.originalDimensions;
-        if (!geometry||!extra) continue;
-        for (const [name,alias] of Object.entries(aliases)) {
-            if (!extra[name]||geometry.getAttribute(alias)) continue;
-            geometry.setAttribute(alias,new THREE.BufferAttribute(extra[name],1));
-            attached.push([geometry,alias]);
-        }
+    for (const [name,alias] of Object.entries(aliases)) {
+        const values=picked.sourceDimensions&&picked.sourceDimensions[name];
+        const attribute=values ? {array:values} : sourceAttribute(picked.geometry,name);
+        if (attribute&&picked.index>=0&&picked.index<attribute.array.length)
+            hit.point[alias]=attribute.array[picked.index];
     }
-    try {
-        return Potree.Utils&&Potree.Utils.getMousePointCloudIntersection(
-            {x,y},context.viewer.scene.getActiveCamera(),context.viewer,[context.cloud],
-            {pickWindowSize:17});
-    } finally {
-        for (const [geometry,alias] of attached) geometry.deleteAttribute(alias);
-    }
+    return hit;
 }
 function clearHoverCursor() {
     if (cursorTimer) clearTimeout(cursorTimer);
@@ -142,7 +135,14 @@ function inspectHoverCursor(x,y) {
 function scheduleHoverCursor(event) {
     if (cursorTimer) clearTimeout(cursorTimer);
     const x=event.offsetX,y=event.offsetY;
-    cursorTimer=setTimeout(()=>inspectHoverCursor(x,y),90);
+    cursorTimer=setTimeout(()=>{
+        try {
+            inspectHoverCursor(x,y);
+        } catch (error) {
+            clearHoverCursor();
+            console.warn("Linked cursor inspection was skipped.",error);
+        }
+    },90);
 }
 
 function publish(geometry, primitive = {}) {

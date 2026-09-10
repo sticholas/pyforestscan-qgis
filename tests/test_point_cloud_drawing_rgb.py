@@ -46,10 +46,18 @@ class DrawingRGBTests(unittest.TestCase):
         self.assertIn('"PFSOriginalX"', source)
         self.assertIn('"PFSOriginalY"', source)
         self.assertIn("pickWithSourceProvenance", source)
-        self.assertIn("geometry.deleteAttribute(alias)", source)
+        self.assertNotIn("geometry.setAttribute(alias", source)
+        self.assertIn("hit.point._pfsPick", source)
+        self.assertIn("Linked cursor inspection was skipped.", source)
         self.assertIn('command.action === "linked_cursor"', source)
         self.assertIn('authority:"TRANSIENT_LINKED_CURSOR"', source)
         self.assertIn("linked_cursor_markers", source)
+
+    def test_potree_pick_exposes_cpu_metadata_without_gpu_attributes(self):
+        source = (ROOT / "pyforestscan_qgis/viewer/assets/build/potree/potree.js").read_text()
+        self.assertGreaterEqual(source.count('Object.defineProperty(point, "_pfsPick"'), 2)
+        self.assertIn("sourceDimensions: node.geometryNode.gpsTime", source)
+        self.assertIn("enumerable: false", source)
 
     def test_help_has_fixed_scrollable_footprint(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_widgets.py").read_text()

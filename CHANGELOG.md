@@ -15,6 +15,13 @@
 - Added a repeatable managed-runtime Profile Brush canary that compares the
   bounded production resolver with independent original-record membership and
   verifies source immutability.
+- Fixed a live Potree hover crash caused by adding CPU provenance fields after
+  GPU buffer registration. Ordinary picking now returns hidden node/index
+  metadata, provenance remains CPU-only, and cursor errors fail closed.
+- Completed an 18-minute QGIS 3.44 small-LAZ profile session without renderer
+  errors. Human review accepted brush behavior and identified selection-mode,
+  vertical-range, profile-axis, measurement, and staged-classification UX as
+  remaining Phase 34A9 gates.
 
 - Added compact Fit, Reverse and corridor Width controls to the existing
   source-linked Vertical Slice workflow.

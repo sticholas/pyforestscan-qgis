@@ -345,10 +345,7 @@ cloud.visibleNodes=[node];
 editor.command({action:"linked_view",view:{view_id:"overview",view_type:"OVERVIEW_3D"}});
 editor.command({action:"selection_tool",tool:"Pointer",mode:"REPLACE",purpose:"EDIT"});
 pickPointOverride=()=>({classification:5,
-    _pfsOriginalX:nodeGeometry.getAttribute("_pfsOriginalX").array[0],
-    _pfsOriginalY:nodeGeometry.getAttribute("_pfsOriginalY").array[0],
-    _pfsOriginalZ:nodeGeometry.getAttribute("_pfsOriginalZ").array[0],
-    _pfsHag:nodeGeometry.getAttribute("_pfsHag").array[0]});
+    _pfsPick:{geometry:nodeGeometry,index:0,sourceDimensions:originalDimensions}});
 canvas.emit("pointermove",{offsetX:10,offsetY:20,buttons:0});
 for(const fn of timers.splice(0))fn();
 const hover=tick().cursor;
