@@ -156,6 +156,7 @@ def main():
               "classification_audit": session.visibility.get("classification_audit"),
               "object_field_discovery": session.visibility.get("object_field_discovery"),
               "object_catalog": session.visibility.get("object_catalog"),
+              "effective_object_audit": session.visibility.get("effective_object_audit"),
               "active_object": session.visibility.get("active_object"),
               "object_split_source": session.visibility.get("object_split_source"),
               "object_id_policy": session.visibility.get("object_id_policy"),
@@ -319,6 +320,7 @@ def main():
                     session.stage_resolved(definitions, result, command["attribute"], command["value"],
                                            note=("View: " + origin) if origin else "")
                     session.visibility.pop("classification_audit", None)
+                    session.visibility.pop("effective_object_audit", None)
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action == "stage_object_id":
@@ -343,12 +345,14 @@ def main():
                     session.stage_object_id(definitions, result, policy, value,
                         note=f"Object field {policy.field}")
                     session.visibility.pop("active_object", None)
+                    session.visibility.pop("effective_object_audit", None)
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action in ("undo", "redo"):
                     changed = getattr(session, action)()
                     if changed:
                         session.visibility.pop("classification_audit", None)
+                        session.visibility.pop("effective_object_audit", None)
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action == "classification_audit":
@@ -383,6 +387,7 @@ def main():
                         cancelled=cancelled.is_set,
                         progress=lambda count: progress(f"Cataloging exact {field} objects", count))
                     session.visibility["object_catalog"] = report
+                    session.visibility.pop("effective_object_audit", None)
                     session.visibility.pop("active_object", None)
                     session.visibility.pop("object_split_source", None)
                     session.visibility.pop("object_id_policy", None)
@@ -404,6 +409,7 @@ def main():
                         **policy.to_dict(), "next_available_object_id":next_id,
                         "allocation_exhausted":False}
                     session.visibility.pop("object_split_source", None)
+                    session.visibility.pop("effective_object_audit", None)
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action in ("select_object", "neighbor_object"):
@@ -502,6 +508,7 @@ def main():
                     definitions, result = pending, resolved
                     session.visibility.pop("active_object", None)
                     session.visibility.pop("object_split_source", None)
+                    session.visibility.pop("effective_object_audit", None)
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action == "merge_object":
@@ -540,6 +547,29 @@ def main():
                         note=f"Merge {policy.field} object {active['object_id']} into {target_id}")
                     session.visibility.pop("active_object", None)
                     session.visibility.pop("object_split_source", None)
+                    session.visibility.pop("effective_object_audit", None)
+                    session.save(autosave)
+                    snapshot(highlight=False)
+                elif action == "effective_object_audit":
+                    from pyforestscan_qgis.core.point_cloud.object_audit import audit_source_objects
+                    from pyforestscan_qgis.core.point_cloud.object_id_policy import ObjectIdPolicy
+                    payload = dict(session.visibility.get("object_id_policy") or {})
+                    payload.pop("next_available_object_id", None)
+                    payload.pop("allocation_exhausted", None)
+                    policy = ObjectIdPolicy(**payload)
+                    catalog = session.visibility.get("object_catalog") or {}
+                    if (catalog.get("source_sha256") != session.source.sha256
+                            or catalog.get("field") != policy.field):
+                        raise ValueError("Build a current exact catalog and confirm object ID semantics first.")
+                    token = hashlib.sha256(policy.field.encode("utf-8")).hexdigest()[:12]
+                    destination = args.folder/f"effective-objects-{token}.sqlite"
+                    progress(f"Auditing effective {policy.field} membership")
+                    report = audit_source_objects(session.source, session.operations, point_count,
+                        policy.field, destination, policy.unassigned_id,
+                        cancelled=cancelled.is_set,
+                        progress=lambda count: progress(
+                            f"Auditing effective {policy.field} membership", count))
+                    session.visibility["effective_object_audit"] = report
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action == "save":

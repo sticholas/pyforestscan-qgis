@@ -345,6 +345,14 @@ class EditorPanel(QWidget):
         self.merge_object_action.triggered.connect(self.merge_active_object)
         self.object_catalog_results_action = self.object_menu.addAction("Catalog Details")
         self.object_catalog_results_action.triggered.connect(self.show_object_catalog)
+        self.effective_object_audit_action = self.object_menu.addAction("Audit Effective Object Counts")
+        self.effective_object_audit_action.setToolTip(
+            "Explicitly stream the original source and replay staged edits to calculate exact current object counts. "
+            "This is read-only, cancellable, and may take time on a large cloud.")
+        self.effective_object_audit_action.triggered.connect(
+            lambda: self.send("effective_object_audit"))
+        self.effective_object_results_action = self.object_menu.addAction("Effective Count Results")
+        self.effective_object_results_action.triggered.connect(self.show_effective_object_audit)
         self.recover_action = details_menu.addAction("Recover Autosaved Session")
         self.recover_action.triggered.connect(self.recover_session)
         self.logs_action = details_menu.addAction("Open Editor Diagnostics")
@@ -427,6 +435,9 @@ class EditorPanel(QWidget):
             self.state["object_id_policy"].get("next_available_object_id") is not None)
         self.assign_object_action.setEnabled(ready and selected and has_policy)
         self.unassign_object_action.setEnabled(ready and selected and has_policy)
+        self.effective_object_audit_action.setEnabled(ready and bool(catalog) and has_policy)
+        self.effective_object_results_action.setEnabled(
+            bool(self.state.get("effective_object_audit")))
         split_source = self.state.get("object_split_source") or {}
         exact_active = bool(active_object and active_object.get("selection_id") ==
                             (self.state.get("selection") or {}).get("selection_id"))
@@ -797,6 +808,26 @@ class EditorPanel(QWidget):
                  f"Next safe object ID: {policy['next_available_object_id']}")))
         QMessageBox.information(self, "Exact Object Catalog", "\n".join(lines))
 
+    def show_effective_object_audit(self):
+        report = self.state.get("effective_object_audit")
+        if not report:
+            return
+        lines = [
+            f"Field: {report['field']}",
+            f"Source objects: {report['source_object_count']:,}",
+            f"Effective objects: {report['effective_object_count']:,}",
+            f"Staged membership changes: {report['object_id_changed']:,} points",
+            f"Effective unassigned points: {report['effective_unassigned_count']:,}",
+            f"Removed on export: {report['removed_on_export']:,}",
+            "",
+            "Largest effective objects:",
+        ]
+        lines.extend(f"ID {identifier}: {count:,} points"
+                     for identifier, count in report.get("largest_effective_objects", []))
+        lines.extend(("", "Counts include the active journal and exclude points staged for removal. "
+                      "The original catalog and source are unchanged."))
+        QMessageBox.information(self, "Effective Object Counts", "\n".join(lines))
+
     def update_state(self, value):
         completed_action = self.pending_action
         if value.get("ready") or value.get("error"):
@@ -876,6 +907,10 @@ class EditorPanel(QWidget):
             if completed_action == "merge_object":
                 self.summary.setText(
                     f"Object merge staged | {value['edits']} total edits | Original source unchanged")
+            if completed_action == "effective_object_audit" and value.get("effective_object_audit"):
+                from ..core.point_cloud.object_audit import effective_object_audit_summary
+                self.summary.setText(effective_object_audit_summary(
+                    value["effective_object_audit"]))
             self.page.session_status.setText(f"Session: Autosaved | {value['edits']} staged edits, not a source rewrite")
             self.history.clear()
             self.history.addItems(value.get("history", []))

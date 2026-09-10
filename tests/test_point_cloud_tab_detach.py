@@ -205,6 +205,8 @@ class SelectionToolTests(unittest.TestCase):
         self.assertFalse(editor.finish_object_split_action.isEnabled())
         self.assertFalse(editor.cancel_object_split_action.isEnabled())
         self.assertFalse(editor.merge_object_action.isEnabled())
+        self.assertFalse(editor.effective_object_audit_action.isEnabled())
+        self.assertFalse(editor.effective_object_results_action.isEnabled())
         self.assertTrue(editor.show_all_objects_action.isChecked())
         self.assertFalse(editor.fade_other_objects_action.isEnabled())
         self.assertFalse(editor.isolate_object_action.isEnabled())
@@ -234,6 +236,8 @@ class SelectionToolTests(unittest.TestCase):
         self.assertTrue(editor.unassign_object_action.isEnabled())
         self.assertTrue(editor.begin_object_split_action.isEnabled())
         self.assertTrue(editor.merge_object_action.isEnabled())
+        self.assertTrue(editor.effective_object_audit_action.isEnabled())
+        self.assertFalse(editor.effective_object_results_action.isEnabled())
         self.assertFalse(editor.finish_object_split_action.isEnabled())
         editor.state["object_split_source"] = {"field":"Tree_ID", "object_id":2,
             "original_point_count":12, "source_sha256":"a"*64}

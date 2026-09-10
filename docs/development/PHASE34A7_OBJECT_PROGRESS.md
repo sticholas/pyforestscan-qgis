@@ -55,20 +55,25 @@ operations remain experimental and incomplete.
   existing, distinct target ID. Both operations stage ordinary `SET_OBJECT_ID`
   journal entries and therefore retain undo/redo, recovery, export validation,
   large-edit confirmation and immutable-source behavior.
+- Added an explicit disk-backed effective-object audit. It streams the verified
+  original source in 65,536-point chunks, replays the active journal, excludes
+  points staged for removal, and atomically records exact source/effective
+  counts without mutating or replacing the original catalog. Any journal change
+  invalidates the prior result, so stale effective totals are not presented as
+  current. The audit is user-invoked, cancellable and bounded by SQLite rather
+  than the number of object IDs fitting in QGIS memory.
 
 ## IN PROGRESS
 
 Discovery, navigation, guarded assignment/unassignment, collision-safe object
-creation, guarded split/merge and presentation-only focus are foundations.
-Catalog-aware effective counts, reviewed
+creation, guarded split/merge, exact effective counts and presentation-only
+focus are foundations. Reviewed
 state and notes are not yet complete. Live object-focus acceptance still needs
 a source with a meaningful segmentation field.
 
 ## NEXT
 
-1. Refresh effective catalog counts without changing original selection
-   predicates or silently rebuilding the exact source catalog.
-2. Add reviewed/unreviewed state and notes without encoding review metadata into
+1. Add reviewed/unreviewed state and notes without encoding review metadata into
    immutable source dimensions implicitly.
 3. Qualify linked-view focus on a real segmented forestry source and record
    frame-time, displayed-point and source-immutability evidence.
@@ -109,5 +114,8 @@ object `2` into existing object `3`. Validated LAZ readback was exactly
 every output dimension matched ordered journal replay, and source SHA-256
 `d6f209aaa54dbf9f959b8371908b441a44cbeeb4e216fcfc85eda041468e6d72`
 remained unchanged. Export duration was 0.031 seconds in this synthetic-scale
-qualification. Evidence is retained under
-`C:/Users/Milo/AppData/Local/Temp/pfs-object-split-merge-6f18c91c`.
+qualification. The extended run's disk-backed effective audit independently
+reported three effective objects, exact largest counts `3:4`, `1:2`, `4:2`,
+four staged membership changes and zero unassigned points in 0.016 seconds.
+Evidence is retained under
+`C:/Users/Milo/AppData/Local/Temp/pfs-object-effective-audit-906e21ad`.

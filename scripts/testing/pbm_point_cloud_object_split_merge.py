@@ -33,6 +33,7 @@ def main():
     import numpy as np
     import pdal
     from pyforestscan_qgis.core.point_cloud.export import export_edited
+    from pyforestscan_qgis.core.point_cloud.object_audit import audit_source_objects
     from pyforestscan_qgis.core.point_cloud.object_catalog import (
         build_source_object_catalog, catalog_object, object_selection_definition)
     from pyforestscan_qgis.core.point_cloud.object_id_policy import (
@@ -93,6 +94,12 @@ def main():
     session.stage_object_id((merge_definition,), merge_result, policy, target_id,
         note="Authoritative merge canary")
 
+    audit = audit_source_objects(identity, session.operations, len(points), "Tree_ID",
+        args.output_dir/"effective-objects.sqlite", policy.unassigned_id)
+    if (audit["effective_object_count"] != 3 or audit["object_id_changed"] != 4
+            or audit["largest_effective_objects"] != [[3,4],[1,2],[4,2]]):
+        raise RuntimeError("Effective object audit does not match staged split/merge truth.")
+
     report = export_edited(session, output)
     reader = pdal.Pipeline(json.dumps([{"type":"readers.las", "filename":str(output)}]))
     reader.execute()
@@ -110,6 +117,7 @@ def main():
         "parent_object_id":1, "split_point_count":split_result.resolved_point_count,
         "allocated_object_id":new_id, "merged_source_object_id":2,
         "merged_target_object_id":target_id, "tree_ids":actual, "report":report,
+        "effective_object_audit":audit,
     }
     print(json.dumps(evidence, sort_keys=True))
     if handle is not None:
