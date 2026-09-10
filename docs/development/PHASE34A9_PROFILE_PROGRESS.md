@@ -39,6 +39,17 @@ measurements, and annotations project through the shared path geometry and
 resolve against original source records. Display samples never become edit
 authority.
 
+Pointer hover now publishes a transient, source-bound linked cursor. Hovering a
+flattened profile uses the cache's reserved original XYZ provenance to report
+source coordinates, distance along path, cross-track distance, elevation or
+HAG, and classification. The same source record is projected into every open
+Overview, Area Detail, and Profile renderer as a subtle linked marker. Ordinary
+Overview/Detail hover is truthfully labeled as a displayed source-record
+coordinate; profile provenance is labeled as original-source coordinate data.
+Cursor state is intentionally neither persisted nor admitted to selection or
+edit authority. Picking temporarily exposes CPU provenance to Potree and removes
+the temporary GPU attributes immediately afterward.
+
 Architecture decision: **REUSE** PDAL reader polygon clipping plus the
 established linked-workspace and scene-visibility state; **ADAPT** the raw-source
 range index to per-segment envelopes; **WRAP** flattened display caches with
@@ -53,7 +64,7 @@ membership, per-segment source queries, authoritative selection, measurements,
 annotations, and renderer gesture completion. Existing linked-view tests cover
 the shared workspace and journal boundaries.
 
-Linked cursor/readouts, remembered profile camera, profile-specific point-size
+Remembered profile camera, profile-specific point-size
 and color quick actions, and sustained human editing acceptance remain
 unfinished. Two-point Vertical Slice remains available alongside the new path
 profile.

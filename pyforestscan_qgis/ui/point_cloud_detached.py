@@ -241,6 +241,9 @@ class DetachedView(QDialog):
             context = asdict(view)
             if view.view_type != "OVERVIEW_3D":
                 context["corridor"] = view_ring(context)
+            result = self.controller.query_results.get(view.view_id) or {}
+            context["display_projection"] = result.get(
+                "display_projection", view.geometry.get("display_projection", "SOURCE_XY"))
             self.send({"action":"linked_view","view":context})
             self.send({"action":"scene_visibility", "visibility":view.scene_visibility})
             if view.camera:
@@ -275,6 +278,7 @@ class DetachedView(QDialog):
             self.tool.setCurrentText("Pointer")
             self.tool.blockSignals(False)
         if acknowledged:
+            self.controller.observe_cursor(self.view_id, telemetry["editor"].get("cursor"))
             self.controller.page.workspace.update_view(self.view_id,camera=telemetry.get("camera",{}),
                 render_mode=telemetry.get("mode","Classification"),
                 display_filters={"classes":telemetry.get("classes"),"height_filter":telemetry.get("height_filter")},
@@ -287,8 +291,11 @@ class DetachedView(QDialog):
         selected = (editor.state.get("selection") or {}).get("resolved_point_count",0)
         impact = selection_impact_suffix(selected, editor.state.get("point_count", 0))
         read_only = str(editor.source).lower().endswith("ept.json")
-        self.status.setText("EPT view-only | Editing requires an immutable local derivative." if read_only else
-            self.selection_error or f"Selected: {selected:,} source points | {editor.state.get('edits',0)} staged edits{impact}")
+        cursor = self.controller.cursor_summary(self.view_id)
+        self.status.setText(cursor["text"] or (
+            "EPT view-only | Editing requires an immutable local derivative." if read_only else
+            self.selection_error or f"Selected: {selected:,} source points | {editor.state.get('edits',0)} staged edits{impact}"))
+        self.status.setToolTip(cursor["details"])
         self.controller.coordinate_resources()
 
     def finished(self):
@@ -310,6 +317,7 @@ class DetachedView(QDialog):
     def shutdown(self):
         if self.closing:
             return
+        self.controller.clear_cursor(self.view_id)
         self.closing = True
         if self.worker:
             self.worker.update.disconnect(self.update_view)

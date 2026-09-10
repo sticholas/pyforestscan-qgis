@@ -2,6 +2,11 @@
 
 ## Phase 34A9 - Professional profile workbench (in progress)
 
+- Added transient linked profile/3D cursor projection with source-coordinate,
+  elevation/HAG, classification, and distance-along-profile readouts. Profile
+  hover uses original XYZ cache provenance without creating another selection
+  or edit authority.
+
 - Added compact Fit, Reverse and corridor Width controls to the existing
   source-linked Vertical Slice workflow.
 - Added exact corridor point and classification summaries from original source
@@ -12,8 +17,8 @@
   per-segment bounded source queries, exact corridor membership, and original-XYZ
   provenance for source-authoritative selection, editing, measurement, and
   annotation from flattened profile views.
-- Linked cursor readouts and sustained live human profile qualification remain
-  unfinished. The editor stays experimental at `0.2.0-beta.1`.
+- Sustained live human profile qualification remains unfinished. The editor
+  stays experimental at `0.2.0-beta.1`.
 
 ## Phase 34A3.4 - Editor closure and linked-view foundation (experimental)
 

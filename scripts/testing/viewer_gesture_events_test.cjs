@@ -7,7 +7,7 @@ function surface() {
     return {listeners,style:{},clientWidth:500,clientHeight:500,
         addEventListener(name,callback){(listeners[name] ||= []).push(callback);},
         emit(name,props={}) {
-            const event={button:0,offsetX:0,offsetY:0,pointerId:1,
+            const event={button:0,buttons:0,offsetX:0,offsetY:0,pointerId:1,
                 preventDefault(){},stopPropagation(){},stopImmediatePropagation(){},...props};
             for(const fn of listeners[name]||[]) fn(event);
         },
@@ -21,6 +21,7 @@ class BufferGeometry {
     constructor(){this.attributes={};}
     setAttribute(name,value){this.attributes[name]=value;return this;}
     getAttribute(name){return this.attributes[name];}
+    deleteAttribute(name){delete this.attributes[name];}
     clone(){const value=new BufferGeometry();value.attributes={...this.attributes};return value;}
     dispose(){}
 }
@@ -43,6 +44,7 @@ class Vector3 {
 }
 const THREE={Vector3,Vector2:class {constructor(x,y){Object.assign(this,{x,y});}},
     Color:class {toArray(){return [.35,.9,.92];}},Group,BufferGeometry,
+    BufferAttribute:class {constructor(values,size){this.array=values;this.itemSize=size;this.count=values.length/size;}},
     Float32BufferAttribute:class {constructor(values,size){this.values=values;this.array=values;this.itemSize=size;this.count=values.length/size;}getX(i){return this.values[i*this.itemSize];}getY(i){return this.values[i*this.itemSize+1];}getZ(i){return this.values[i*this.itemSize+2];}},
     Triangle:class {containsPoint(){return true;}},
     Line:SceneObject,Points:SceneObject,LineBasicMaterial:class {dispose(){}},
@@ -54,9 +56,13 @@ const viewer={renderer:{domElement:canvas},inputHandler:{enabled:true},
     setCameraMode(mode){this.scene.cameraMode=mode;},
     setTopView(){this.scene.view.yaw=0;this.scene.view.pitch=-Math.PI/2;}};
 const cloud={visibleNodes:[],material:{activeAttributeName:"classification"},updateMatrixWorld(){}};
+let pickPointOverride=null;
+const timers=[];
 const context={THREE,DrawingTool,simplifySourcePath,document,Potree:{CameraMode:{PERSPECTIVE:1,ORTHOGRAPHIC:2},
-    Utils:{getMousePointCloudIntersection(mouse){return {location:new Vector3(mouse.x,mouse.y,mouse.x+mouse.y)};}}},
-    requestAnimationFrame:fn=>queue.push(fn),performance:{now:()=>0}};
+    Utils:{getMousePointCloudIntersection(mouse){return {location:new Vector3(mouse.x,mouse.y,mouse.x+mouse.y),
+        point:typeof pickPointOverride==="function"?pickPointOverride():{}};}}},
+    requestAnimationFrame:fn=>queue.push(fn),setTimeout:fn=>{timers.push(fn);return timers.length;},
+    clearTimeout(){},performance:{now:()=>0}};
 context.window=context; context.editorSelectionFilters=()=>({classes:null,height_filter:null});
 context.viewerRenderPolicy={objectFocus(mode){return {requested:mode,effective:mode,opacity:1};}};
 vm.createContext(context);
@@ -321,11 +327,34 @@ const sourcePositions=new Float32Array([10,20,30]);
 const nodeGeometry=new BufferGeometry();
 nodeGeometry.setAttribute("classification",new THREE.Float32BufferAttribute(sourceClasses,1));
 nodeGeometry.setAttribute("position",new THREE.Float32BufferAttribute(sourcePositions,3));
-const node={name:"root",geometryNode:{geometry:nodeGeometry,boundingBox:{clone(){return {min:{x:0,y:0},max:{x:100,y:100},applyMatrix4(){return this;}};}}},
+const originalDimensions={PFSOriginalX:new Float64Array([1010]),PFSOriginalY:new Float64Array([2020]),
+    PFSOriginalZ:new Float64Array([130]),HeightAboveGround:new Float32Array([12])};
+const node={name:"root",geometryNode:{geometry:nodeGeometry,gpsTime:{originalDimensions},boundingBox:{clone(){return {min:{x:0,y:0},max:{x:100,y:100},applyMatrix4(){return this;}};}}},
     sceneNode:{matrixWorld:{elements:Array(16).fill(0)}}};
 cloud.visibleNodes=[node];
 editor.command({action:"linked_view",view:{view_id:"overview",view_type:"OVERVIEW_3D"}});
 editor.command({action:"selection_tool",tool:"Pointer",mode:"REPLACE",purpose:"EDIT"});
+pickPointOverride=()=>({classification:5,
+    _pfsOriginalX:nodeGeometry.getAttribute("_pfsOriginalX").array[0],
+    _pfsOriginalY:nodeGeometry.getAttribute("_pfsOriginalY").array[0],
+    _pfsOriginalZ:nodeGeometry.getAttribute("_pfsOriginalZ").array[0],
+    _pfsHag:nodeGeometry.getAttribute("_pfsHag").array[0]});
+canvas.emit("pointermove",{offsetX:10,offsetY:20,buttons:0});
+for(const fn of timers.splice(0))fn();
+const hover=tick().cursor;
+assert.deepEqual(Array.from(hover.source_xyz),[1010,2020,130]);
+assert.equal(hover.height_above_ground,12);
+assert.equal(hover.authority,"ORIGINAL_SOURCE_RECORD_COORDINATES");
+for(const alias of ["_pfsOriginalX","_pfsOriginalY","_pfsOriginalZ","_pfsHag"])
+    assert.equal(nodeGeometry.getAttribute(alias),undefined);
+editor.command({action:"linked_cursor",view_id:"overview",visible:true,
+    display_xyz:[10,20,30],source_xyz:[1010,2020,130]});
+assert.equal(tick().linked_cursor_markers,2);
+const cursorGroup=viewer.scene.scene.items.find(item=>item.name==="PyForestScan linked cursor");
+assert.equal(cursorGroup.children[0].userData.authority,"TRANSIENT_LINKED_CURSOR");
+editor.command({action:"linked_cursor",view_id:"overview",visible:false});
+assert.equal(tick().linked_cursor_markers,0);
+pickPointOverride=null;
 editor.command({action:"selection_test",geometry:[[0,0],[20,0],[20,40],[0,0]]});
 tick();
 for(const fn of queue.splice(0))fn();

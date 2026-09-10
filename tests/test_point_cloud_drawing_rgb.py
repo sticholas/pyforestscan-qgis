@@ -42,6 +42,11 @@ class DrawingRGBTests(unittest.TestCase):
         self.assertIn("profileProjected", source)
         self.assertIn('"PFSOriginalX"', source)
         self.assertIn('"PFSOriginalY"', source)
+        self.assertIn("pickWithSourceProvenance", source)
+        self.assertIn("geometry.deleteAttribute(alias)", source)
+        self.assertIn('command.action === "linked_cursor"', source)
+        self.assertIn('authority:"TRANSIENT_LINKED_CURSOR"', source)
+        self.assertIn("linked_cursor_markers", source)
 
     def test_help_has_fixed_scrollable_footprint(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_widgets.py").read_text()

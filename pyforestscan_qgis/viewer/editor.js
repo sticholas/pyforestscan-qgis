@@ -20,6 +20,8 @@ let measurementDraft = [], measurementGroup = null, measurementCount = 0;
 let measurementKind = "POINT_DISTANCE", measurementPurpose = "CROSS_SECTION", measurementItems = [];
 let annotationGroup = null, annotationCount = 0, annotationItems = [];
 let workspaceGroup = null, workspaceViewCount = 0, workspaceItems = [];
+let cursorGroup = null, linkedCursor = null, hoverCursor = {sequence:0,active:false};
+let cursorTimer = null;
 let sceneVisibility = {selection:true, measurements:true, annotations:true, profiles:true};
 function sourceAttribute(geometry, name) {
     const extra = geometry._pfsOriginalDimensions && geometry._pfsOriginalDimensions[name];
@@ -57,6 +59,90 @@ function profileContains(geometry,x,y) {
     }
     return path.slice(1,-1).some(vertex =>
         (x-vertex[0])**2+(y-vertex[1])**2<=radius2);
+}
+function profileSource(along,cross) {
+    if (!linkedView || !linkedView.geometry) return null;
+    const geometry=linkedView.geometry;
+    const path=Array.isArray(geometry.path)&&geometry.path.length>2 ? geometry.path :
+        [geometry.a,geometry.b];
+    let cumulative=0;
+    for (let i=0;i<path.length-1;i++) {
+        const a=path[i],b=path[i+1],dx=b[0]-a[0],dy=b[1]-a[1],length=Math.hypot(dx,dy);
+        if (!(length>0)) continue;
+        if (along<=cumulative+length || i===path.length-2) {
+            const distance=Math.max(0,Math.min(length,along-cumulative));
+            return [a[0]+distance*dx/length-cross*dy/length,
+                    a[1]+distance*dy/length+cross*dx/length];
+        }
+        cumulative+=length;
+    }
+    return null;
+}
+function scalar(value) {
+    if (Number.isFinite(value)) return Number(value);
+    if (value && Number.isFinite(value[0])) return Number(value[0]);
+    return null;
+}
+function pickWithSourceProvenance(x,y) {
+    const attached=[];
+    const aliases={HeightAboveGround:"_pfsHag",PFSOriginalX:"_pfsOriginalX",
+        PFSOriginalY:"_pfsOriginalY",PFSOriginalZ:"_pfsOriginalZ"};
+    for (const node of context.cloud.visibleNodes || []) {
+        const geometry=node.geometryNode&&node.geometryNode.geometry;
+        const extra=node.geometryNode&&node.geometryNode.gpsTime&&
+            node.geometryNode.gpsTime.originalDimensions;
+        if (!geometry||!extra) continue;
+        for (const [name,alias] of Object.entries(aliases)) {
+            if (!extra[name]||geometry.getAttribute(alias)) continue;
+            geometry.setAttribute(alias,new THREE.BufferAttribute(extra[name],1));
+            attached.push([geometry,alias]);
+        }
+    }
+    try {
+        return Potree.Utils&&Potree.Utils.getMousePointCloudIntersection(
+            {x,y},context.viewer.scene.getActiveCamera(),context.viewer,[context.cloud],
+            {pickWindowSize:17});
+    } finally {
+        for (const [geometry,alias] of attached) geometry.deleteAttribute(alias);
+    }
+}
+function clearHoverCursor() {
+    if (cursorTimer) clearTimeout(cursorTimer);
+    cursorTimer=null;
+    if (hoverCursor.active) hoverCursor={sequence:hoverCursor.sequence+1,active:false};
+}
+function inspectHoverCursor(x,y) {
+    cursorTimer=null;
+    if (!context||tool!=="Pointer") return;
+    const hit=pickWithSourceProvenance(x,y);
+    if (!hit||!hit.location||!hit.point) {
+        clearHoverCursor();
+        return;
+    }
+    const display=[hit.location.x,hit.location.y,hit.location.z];
+    const ox=scalar(hit.point._pfsOriginalX),oy=scalar(hit.point._pfsOriginalY);
+    const oz=scalar(hit.point._pfsOriginalZ),hag=scalar(hit.point._pfsHag);
+    const inverse=profileProjected()?profileSource(display[0],display[1]):null;
+    const source=[ox??(inverse?inverse[0]:display[0]),
+                  oy??(inverse?inverse[1]:display[1]),
+                  oz??display[2]];
+    if (source.some(value=>!Number.isFinite(value))) {
+        clearHoverCursor();
+        return;
+    }
+    const local=linkedView&&linkedView.view_type==="VERTICAL_SLICE" ?
+        profileLocal(linkedView.geometry,source[0],source[1]):null;
+    hoverCursor={sequence:hoverCursor.sequence+1,active:true,source_xyz:source,
+        display_xyz:display,height_above_ground:hag,
+        classification:scalar(hit.point.classification),
+        distance_along:local&&local.along,cross_track:local&&local.cross,
+        authority:ox!==null&&oy!==null&&oz!==null ?
+            "ORIGINAL_SOURCE_RECORD_COORDINATES":"DISPLAYED_SOURCE_RECORD_COORDINATES"};
+}
+function scheduleHoverCursor(event) {
+    if (cursorTimer) clearTimeout(cursorTimer);
+    const x=event.offsetX,y=event.offsetY;
+    cursorTimer=setTimeout(()=>inspectHoverCursor(x,y),90);
 }
 
 function publish(geometry, primitive = {}) {
@@ -406,6 +492,32 @@ function renderAnnotations(items) {
         annotationCount++;
     }
 }
+function renderLinkedCursor(command) {
+    linkedCursor=command&&typeof command==="object"?command:null;
+    if (!cursorGroup) {
+        cursorGroup=new THREE.Group();
+        cursorGroup.name="PyForestScan linked cursor";
+        context.viewer.scene.scene.add(cursorGroup);
+    }
+    while (cursorGroup.children.length) {
+        const child=cursorGroup.children.pop();
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+    }
+    if (!linkedCursor||!linkedCursor.visible||!Array.isArray(linkedCursor.display_xyz)||
+            linkedCursor.display_xyz.length!==3||linkedCursor.display_xyz.some(v=>!Number.isFinite(v))||
+            !linkedView||linkedCursor.view_id!==linkedView.view_id) return;
+    for (const [size,color,order] of [[14,0x5be4eb,1120],[5,0xffffff,1121]]) {
+        const geometry=new THREE.BufferGeometry();
+        geometry.setAttribute("position",new THREE.Float32BufferAttribute([0,0,0],3));
+        const marker=new THREE.Points(geometry,new THREE.PointsMaterial(
+            {color,size,sizeAttenuation:false,depthTest:false,transparent:true,opacity:.95}));
+        marker.position.set(...linkedCursor.display_xyz);
+        marker.renderOrder=order;
+        marker.userData={authority:"TRANSIENT_LINKED_CURSOR",source_xyz:linkedCursor.source_xyz};
+        cursorGroup.add(marker);
+    }
+}
 function sourceXY(x, y, camera) {
     const canvas = context.viewer.renderer.domElement;
     return new THREE.Vector3(x / canvas.clientWidth * 2 - 1, 1 - y / canvas.clientHeight * 2, 0)
@@ -456,6 +568,7 @@ function initialize(value) {
     context = value;
     const canvas = context.viewer.renderer.domElement;
     canvas.addEventListener("pointerdown", event => {
+        if (tool === "Pointer") clearHoverCursor();
         if (tool !== "Pointer" && gestureMode === null)
             gestureMode = event.altKey ? "SUBTRACT" : event.shiftKey ? "ADD" : mode;
         if (tool === "Brush" && event.button === 0) {
@@ -486,6 +599,8 @@ function initialize(value) {
         event.stopPropagation();
     }, true);
     canvas.addEventListener("pointermove", event => {
+        if (tool === "Pointer" && event.buttons === 0) scheduleHoverCursor(event);
+        else if (hoverCursor.active) clearHoverCursor();
         if (tool === "Brush" && brushPointer === event.pointerId) {
             const previous=drawing.vertices.at(-1);
             if (!previous || Math.hypot(previous[0]-event.offsetX,previous[1]-event.offsetY)>=3)
@@ -506,6 +621,7 @@ function initialize(value) {
             top: Math.min(y, event.offsetY) + "px", width: Math.abs(event.offsetX - x) + "px",
             height: Math.abs(event.offsetY - y) + "px"});
     }, true);
+    canvas.addEventListener("pointerleave", clearHoverCursor, true);
     canvas.addEventListener("pointerup", event => {
         if (tool === "MeasureDistance" || tool === "AddAnnotation") {
             event.preventDefault(); event.stopImmediatePropagation();
@@ -786,6 +902,8 @@ window.pointCloudEditor = {
         const objectFocus = applyObjectFocus();
         return {event: latestEvent, tool, drawing_state: drawing.state, revision, pending_nodes: pending.length, ready: true,
             view_id: linkedView && linkedView.view_id,
+            cursor: {...hoverCursor},
+            linked_cursor_markers: cursorGroup ? cursorGroup.children.length : 0,
             highlighted_points: highlighted, effective_classes: effectiveClasses,
             object_focus_mode: objectFocus.requested, object_focus_effective: objectFocus.effective,
             measurement_count: measurementCount,
@@ -805,6 +923,7 @@ window.pointCloudEditor = {
             if (context && measurementGroup) renderMeasurements(measurementItems);
             if (context && annotationGroup) renderAnnotations(annotationItems);
             if (context && workspaceGroup) renderWorkspaceViews(workspaceItems);
+            if (context && cursorGroup) renderLinkedCursor(linkedCursor);
         }
         if (!context) return;
         if (command.action === "scene_visibility") {
@@ -848,6 +967,10 @@ window.pointCloudEditor = {
             renderWorkspaceViews(command.profiles || []);
             return;
         }
+        if (command.action === "linked_cursor") {
+            renderLinkedCursor(command);
+            return;
+        }
         if (command.action === "selection_tool") {
             if (!["Pointer", "Polygon", "ProfilePath", "Rectangle", "Box", "Circle", "Sphere", "Brush", "Line", "AboveLine", "BelowLine"].includes(command.tool)) return;
             if (command.mode && !["REPLACE", "ADD", "SUBTRACT"].includes(command.mode)) return;
@@ -855,6 +978,7 @@ window.pointCloudEditor = {
                     (!Number.isFinite(command.brush_radius) || command.brush_radius <= 0)) return;
             if (command.tool === "Sphere" &&
                     (!Number.isFinite(command.sphere_height) || !["Z", "HeightAboveGround"].includes(command.sphere_axis))) return;
+            clearHoverCursor();
             leaveTool();
             drawing.cancel();
             mode = command.mode || "REPLACE";

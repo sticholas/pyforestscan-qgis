@@ -36,6 +36,9 @@ class LinkedViews(QObject):
         self.detached = {}
         self.comparisons = {}
         self.resource_signature = None
+        self.cursor_sequences = {}
+        self.cursor_source = None
+        self.cursor_commands = {}
         from .point_cloud_resident_views import ResidentViews
         self.residents = ResidentViews(page)
         from .point_cloud_tools import spatial_button
@@ -159,6 +162,12 @@ class LinkedViews(QObject):
         from ..core.point_cloud.profile import profile_workbench_summary
         summary = profile_workbench_summary(
             view.geometry, self.query_results.get(view.view_id))
+        cursor = self.cursor_commands.get(view.view_id)
+        if cursor:
+            from ..core.point_cloud.linked_cursor import linked_cursor_summary
+            readout = linked_cursor_summary(cursor)
+            if readout["text"]:
+                summary = readout
         self.profile_summary.setText(summary["text"])
         self.profile_summary.setToolTip(summary["details"])
         self.profile_width.blockSignals(True)
@@ -308,6 +317,46 @@ class LinkedViews(QObject):
         command = self.profile_footprints()
         for worker in self.viewer_workers():
             worker.send(command)
+
+    def observe_cursor(self, view_id, payload):
+        """Broadcast changed transient hover state without persisting it."""
+        if not isinstance(payload, dict) or view_id not in self.page.workspace.views:
+            return
+        sequence = payload.get("sequence")
+        if self.cursor_sequences.get(view_id) == sequence:
+            return
+        descriptor = self.source_descriptor() or {}
+        try:
+            from ..core.point_cloud.linked_cursor import (
+                linked_cursor_command, validate_linked_cursor)
+            cursor = validate_linked_cursor(payload, descriptor.get("sha256", ""), view_id)
+        except ValueError:
+            return
+        self.cursor_sequences[view_id] = sequence
+        if cursor["active"]:
+            self.cursor_source = view_id
+        elif self.cursor_source != view_id:
+            return
+        else:
+            self.cursor_source = None
+        self.cursor_commands = {}
+        for target_id, view in self.page.workspace.views.items():
+            command = linked_cursor_command(cursor, view)
+            self.cursor_commands[target_id] = command
+            worker = self.view_worker(target_id)
+            if worker:
+                worker.send(command)
+        self.refresh_profile_controls()
+
+    def clear_cursor(self, view_id):
+        if self.cursor_source != view_id:
+            return
+        sequence = self.cursor_sequences.get(view_id, 0) + 1
+        self.observe_cursor(view_id, {"sequence": sequence, "active": False})
+
+    def cursor_summary(self, view_id):
+        from ..core.point_cloud.linked_cursor import linked_cursor_summary
+        return linked_cursor_summary(self.cursor_commands.get(view_id) or {})
 
     def view_worker(self, view_id):
         if view_id == self.rendered_id and self.page.worker:
@@ -524,6 +573,7 @@ class LinkedViews(QObject):
             window.raise_()
             window.activateWindow()
             return
+        self.clear_cursor(self.page.workspace.active_view_id)
         self.capture()
         self.page.workspace.activate(view_id)
         index = next((i for i in range(self.page.view_tabs.count())
@@ -705,6 +755,8 @@ class LinkedViews(QObject):
         key = self.page.view_tabs.tabData(index)
         if key not in self.page.workspace.views:
             return
+        previous = self.page.workspace.active_view_id
+        self.clear_cursor(previous)
         self.capture()
         self.page.workspace.activate(key)
         self.refresh_profile_controls()
@@ -796,6 +848,9 @@ class LinkedViews(QObject):
     def observe(self, telemetry):
         if not telemetry.get("ready") or not telemetry.get("editor",{}).get("ready") or self.page._pending_source or self.waiting:
             return
+        editor = telemetry.get("editor", {})
+        if editor.get("view_id") == self.page.workspace.active_view_id:
+            self.observe_cursor(editor["view_id"], editor.get("cursor"))
         if self.context_sent:
             if telemetry.get("editor",{}).get("view_id") == self.page.workspace.active_view_id:
                 self.rendered_id = self.page.workspace.active_view_id
@@ -859,6 +914,7 @@ class LinkedViews(QObject):
         key = self.page.view_tabs.tabData(index)
         if self.page.workspace.views[key].view_type == ViewType.OVERVIEW_3D:
             return
+        self.clear_cursor(key)
         self.residents.discard(key)
         self.query_results.pop(key, None)
         was_active = key == self.page.workspace.active_view_id

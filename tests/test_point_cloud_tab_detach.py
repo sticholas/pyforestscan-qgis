@@ -122,8 +122,10 @@ class TabDetachTests(unittest.TestCase):
         page = SimpleNamespace(workspace=model, view_tabs=Mock(), status=Mock())
         page.view_tabs.count.return_value = 1
         page.view_tabs.tabData.return_value = "overview"
-        owner = SimpleNamespace(page=page, detached={}, capture=Mock(), open_active=Mock())
+        owner = SimpleNamespace(page=page, detached={}, clear_cursor=Mock(),
+                                capture=Mock(), open_active=Mock())
         LinkedViews.open_linked_view(owner, "overview")
+        owner.clear_cursor.assert_called_once_with("overview")
         owner.capture.assert_called_once()
         owner.open_active.assert_called_once()
         page.view_tabs.setCurrentIndex.assert_called_once_with(0)
@@ -209,6 +211,42 @@ class TabDetachTests(unittest.TestCase):
         LinkedViews.set_profile_footprints(owner)
         for worker in workers:
             worker.send.assert_called_once_with(command)
+
+    def test_linked_cursor_broadcasts_source_record_to_each_view_once(self):
+        from pyforestscan_qgis.core.point_cloud.workspace import (
+            PointCloudWorkspaceModel, SliceGeometry, ViewType)
+        from dataclasses import asdict
+        model = PointCloudWorkspaceModel()
+        model.register(view_id="overview")
+        model.register(ViewType.VERTICAL_SLICE, "Profile", view_id="profile",
+            geometry=asdict(SliceGeometry((0,0),(10,0),4,"EPSG:32605",
+                display_projection="PROFILE_DISTANCE")))
+        workers = {key:Mock() for key in model.views}
+        owner = SimpleNamespace(page=SimpleNamespace(workspace=model),
+            cursor_sequences={}, cursor_source=None, cursor_commands={},
+            source_descriptor=lambda:{"sha256":"a"*64},
+            view_worker=lambda key:workers.get(key), refresh_profile_controls=Mock())
+        payload = {"sequence":1,"active":True,"source_xyz":[5,1,9],
+            "display_xyz":[5,1,9],"classification":5,
+            "authority":"DISPLAYED_SOURCE_RECORD_COORDINATES"}
+        LinkedViews.observe_cursor(owner,"overview",payload)
+        self.assertTrue(owner.cursor_commands["overview"]["visible"])
+        self.assertTrue(owner.cursor_commands["profile"]["visible"])
+        self.assertEqual(owner.cursor_commands["profile"]["display_xyz"],(5.,1.,9.))
+        for worker in workers.values():
+            worker.send.assert_called_once()
+        LinkedViews.observe_cursor(owner,"overview",payload)
+        for worker in workers.values():
+            worker.send.assert_called_once()
+
+    def test_cursor_clear_is_owned_by_the_hovering_view(self):
+        owner = SimpleNamespace(cursor_source="profile", cursor_sequences={"profile":3},
+            observe_cursor=Mock())
+        LinkedViews.clear_cursor(owner,"overview")
+        owner.observe_cursor.assert_not_called()
+        LinkedViews.clear_cursor(owner,"profile")
+        owner.observe_cursor.assert_called_once_with(
+            "profile",{"sequence":4,"active":False})
 
     def test_rename_active_view_updates_existing_workspace_authority(self):
         from pyforestscan_qgis.core.point_cloud.workspace import (
