@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from qgis.PyQt.QtCore import QObject, Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (QToolButton, QMenu, QInputDialog, QCheckBox, QDialog,
-    QFormLayout, QDialogButtonBox, QDoubleSpinBox, QComboBox, QStyle)
+    QFormLayout, QDialogButtonBox, QDoubleSpinBox, QComboBox, QStyle, QFileDialog)
 from ..compat.qt import qt_enum
 from ..core.point_cloud.workspace import ViewType
 from ..core.point_cloud.linked_query import view_ring
@@ -33,6 +33,7 @@ class LinkedViews(QObject):
         self.depth = {}
         self.original_info = {}
         self.detached = {}
+        self.comparisons = {}
         self.resource_signature = None
         from .point_cloud_resident_views import ResidentViews
         self.residents = ResidentViews(page)
@@ -75,6 +76,7 @@ class LinkedViews(QObject):
         menu.addAction("Selection Depth", self.adjust_depth)
         menu.addAction("Move Active View to Window", lambda:self.detach(self.page.workspace.active_view_id))
         menu.addAction("Dock All Views", self.dock_all)
+        menu.addAction("Open Comparison Cloud...", self.open_comparison)
         menu.addSeparator()
         self.save_viewpoint_action = menu.addAction("Save Current Viewpoint...", self.save_viewpoint)
         self.open_viewpoint_action = menu.addAction("Open Saved Viewpoint...", self.open_viewpoint)
@@ -433,6 +435,28 @@ class LinkedViews(QObject):
         self.open_active()
         self.page.status.setText(f"Opening linked view: {self.page.workspace.views[view_id].title}")
 
+    def open_comparison(self):
+        from ..core.point_cloud.comparison import MAX_COMPARISON_VIEWS
+        if not self.source_descriptor() or not self.page.workspace.source_fingerprint:
+            self.page.status.setText(
+                "Open and verify the primary point cloud before adding a comparison source.")
+            return
+        if len(self.comparisons) >= MAX_COMPARISON_VIEWS:
+            self.page.status.setText(
+                f"Close a comparison window before opening another. The limit is {MAX_COMPARISON_VIEWS}.")
+            return
+        path, _ = QFileDialog.getOpenFileName(self.page, "Open comparison cloud", "",
+            "Point clouds (*.las *.laz ept.json)")
+        if not path:
+            return
+        key = uuid4().hex
+        from .point_cloud_comparison import ComparisonView
+        window = ComparisonView(self, key, path)
+        self.comparisons[key] = window
+        window.closed.connect(lambda comparison_id:self.comparisons.pop(comparison_id, None))
+        self.page.status.setText(
+            "Opening read-only comparison. Selection and edits remain with the primary source.")
+
     def rename_active_view(self):
         view = self.active()
         if view.view_type == ViewType.OVERVIEW_3D:
@@ -738,6 +762,9 @@ class LinkedViews(QObject):
 
     def close(self):
         self.closing = True
+        for window in list(self.comparisons.values()):
+            window.close()
+        self.comparisons.clear()
         self.residents.clear()
         self.dock_all(shutdown=True)
         if self.query_worker:
@@ -819,6 +846,9 @@ class LinkedViews(QObject):
             visible.append((self.rendered_id,page.worker,page._view_state or {}))
         visible.extend((key,window.worker,window.telemetry) for key,window in self.detached.items()
                        if window.worker and window.isVisible())
+        visible.extend((f"comparison:{key}",window.worker,window.telemetry)
+                       for key,window in self.comparisons.items()
+                       if window.worker and window.isVisible() and window.telemetry)
         if not visible:
             return
         memory = system_memory_pressure() or {}
@@ -827,8 +857,11 @@ class LinkedViews(QObject):
             quality=page.quality.currentText())
         roots = {key:max(0,int(telemetry.get("render_diagnostics",{}).get("root_points",0)))
                  for key,_,telemetry in visible}
-        focused = next((key for key,window in self.detached.items()
-                        if key in roots and window.isActiveWindow()), visible[0][0])
+        focused = next((f"comparison:{key}" for key,window in self.comparisons.items()
+                        if f"comparison:{key}" in roots and window.isActiveWindow()), None)
+        if focused is None:
+            focused = next((key for key,window in self.detached.items()
+                            if key in roots and window.isActiveWindow()), visible[0][0])
         allocation = page.workspace.resources.visible_allocations(roots,focused,point_budget=policy.ceiling)
         signature = tuple((key,id(worker),allocation[key]) for key,worker,_ in visible)
         if signature != self.resource_signature:

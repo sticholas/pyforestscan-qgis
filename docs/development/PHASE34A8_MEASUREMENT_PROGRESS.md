@@ -70,26 +70,44 @@ Editor and do not change the `0.2.0-beta.1` release boundary.
   renderer. Hiding an overlay never clears a selection, changes a staged edit,
   modifies the journal or rebuilds the cloud; legacy saved workspaces restore
   with all overlays visible.
+- View options can open up to two additional local LAS/LAZ/COPC/EPT sources in
+  independent read-only comparison windows. Each comparison uses its own
+  managed viewer process and verified fingerprint, participates in the shared
+  visible-view point budget, and accepts only display commands. Primary-source
+  selection, measurement, annotation, journal and export commands fail closed
+  at the comparison boundary. Camera linking and persisted comparison layouts
+  remain future work.
 
 ## IN PROGRESS
 
 Point-to-point, planar-area, cross-section, tree-height and linked-marker tools have contract,
 renderer, worker and dual-Qt test coverage. Human point picking/drawing, marker
 readability, dense-source latency and detached-view visual agreement still
-require live qualification.
+require live qualification. Source-isolated comparison has core/UI coverage,
+but its live first-frame gate remains open after the same zero-rendered-point
+condition reproduced in the established main-viewer control canary.
 
 ## NEXT
 
 1. Qualify point picking, markers and linked overlays in a fresh human viewer
    session.
 2. Qualify named-view switching and detached-window raising in a live session.
-3. Design source-isolated multiple-cloud comparison views without merging edit
-   journals or source fingerprints.
+3. Qualify source-isolated comparison windows and design opt-in camera/location
+   linking without merging edit journals or source fingerprints.
 
 ## BLOCKED
 
 Human interaction acceptance requires an available embedded-viewer session.
 Automated gesture and camera assertions do not replace mouse acceptance.
+
+Three pre-existing managed viewer hosts were active during the comparison
+qualification attempt and were treated as user-owned. Neither they nor their
+WebEngine children were stopped. On the normal Windows Qt platform, both the
+new comparison canary and the established main-viewer canary reached verified
+source open, healthy WebGL and `INTERACTION_READY`, but remained at zero visible
+nodes until their bounded timeout. Comparison acceptance is therefore blocked
+on a clean viewer-session rerun; the control result shows this is not evidence
+of a comparison-only failure.
 
 ## MEASURED EVIDENCE
 
@@ -123,6 +141,15 @@ it did not interpret rendered samples as source truth.
 Measurement overlays store segment vertices relative to the first endpoint and
 place the Three.js object at the source-coordinate origin. This retains
 sub-metre Float32 geometry precision for large projected coordinates.
+
+The comparison/control experiment reused the valid 22,806,851-byte managed
+COPC view cache for the 2,287,408-point source. PDAL 2.8.1 independently opened
+that cache with `readers.copc` and reported the expected EPSG:6635 bounds and
+point count. Both runs initialized Qt 6.11.2 WebEngine and NVIDIA RTX 4090
+WebGL, opened the source, and preserved the original SHA256, but requested no
+point nodes because framing remained at the default radius-one camera. The
+permanent `qgis_point_cloud_comparison_smoke.py` canary retains this gate for a
+clean-session rerun.
 
 The linked-marker canary resolved source coordinate
 `215000.000, 2114534.320, 908.650` through all 2,287,408 original records in

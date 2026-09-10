@@ -12,6 +12,7 @@ try:
     from pyforestscan_qgis.ui.point_cloud_detached import LinkedTabBar, DetachedView
     from pyforestscan_qgis.ui.point_cloud_tools import SelectionTools
     from pyforestscan_qgis.ui.point_cloud_linked_views import LinkedViews
+    from pyforestscan_qgis.ui.point_cloud_comparison import ComparisonView
     from pyforestscan_qgis.ui.point_cloud_selection_limits import SelectionLimits
     from pyforestscan_qgis.ui.point_cloud_appearance import PointAppearance
     from pyforestscan_qgis.ui.point_cloud_class_visibility import ClassVisibilityMenu
@@ -29,8 +30,38 @@ class TabDetachTests(unittest.TestCase):
         for label in ("Save Current Viewpoint...", "Open Saved Viewpoint...",
                       "Remove Saved Viewpoint...", "Rename Active View...",
                       "Linked Views", "Scene overlays", "Current selection",
-                      "Measurements", "Linked markers"):
+                      "Measurements", "Linked markers", "Open Comparison Cloud..."):
             self.assertIn(label, source)
+
+    def test_comparison_window_send_rejects_editor_authority(self):
+        worker = Mock()
+        owner = SimpleNamespace(worker=worker, closing=False)
+        ComparisonView.send(owner, {"action":"fit"})
+        worker.send.assert_called_once_with({"action":"fit"})
+        with self.assertRaisesRegex(ValueError, "display commands only"):
+            ComparisonView.send(owner, {"action":"editor_overlay", "path":"primary.json"})
+        with self.assertRaisesRegex(ValueError, "display commands only"):
+            ComparisonView.send(owner, {"action":"selection_tool", "tool":"Rectangle"})
+
+    def test_comparison_first_ready_state_fits_once_before_points_are_visible(self):
+        owner = SimpleNamespace(closing=False, telemetry={}, appearance=Mock(),
+            fit_sent=False, fit_attempts=0, last_fit_at=0.0,
+            send=Mock(), status=Mock(), details=Mock(),
+            source_record=None, controller=SimpleNamespace(coordinate_resources=Mock()))
+        telemetry = {"ready":True, "displayed":0, "render_diagnostics":{}}
+        ComparisonView.update_view(owner, {"telemetry":telemetry})
+        ComparisonView.update_view(owner, {"telemetry":telemetry})
+        owner.send.assert_called_once_with({"action":"fit"})
+        self.assertTrue(owner.fit_sent)
+
+    def test_comparison_requires_verified_primary_source(self):
+        page = SimpleNamespace(workspace=SimpleNamespace(source_fingerprint=""),
+                               status=Mock())
+        owner = SimpleNamespace(page=page, comparisons={}, source_descriptor=lambda:None)
+        with patch("pyforestscan_qgis.ui.point_cloud_linked_views.QFileDialog.getOpenFileName") as choose:
+            LinkedViews.open_comparison(owner)
+        choose.assert_not_called()
+        page.status.setText.assert_called_once()
 
     def test_scene_visibility_updates_only_active_view_and_its_renderer(self):
         from pyforestscan_qgis.core.point_cloud.workspace import (
