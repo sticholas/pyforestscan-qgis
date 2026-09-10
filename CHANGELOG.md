@@ -1,5 +1,14 @@
 # Changelog
 
+## Phase 34A9 - Professional profile workbench (in progress)
+
+- Added compact Fit, Reverse and corridor Width controls to the existing
+  source-linked Vertical Slice workflow.
+- Added exact corridor point and classification summaries from original source
+  records before display sampling; rendered points remain non-authoritative.
+- Multi-segment paths, linked cursor readouts and live human qualification remain
+  unfinished. The editor stays experimental at `0.2.0-beta.1`.
+
 ## Phase 34A3.4 - Editor closure and linked-view foundation (experimental)
 
 - Replaced clipping-cancellation-dependent selection with a tested drawing state

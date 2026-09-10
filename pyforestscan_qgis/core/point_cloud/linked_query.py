@@ -86,6 +86,7 @@ def extract_view(source, view, output_dir, *, index_root, point_budget,
     random = np.random.default_rng(seed)
     sample = keys = None
     count = candidates = 0
+    class_counts = {}
     for chunk in chunks:
         if cancelled():
             raise InterruptedError("Linked view query cancelled.")
@@ -101,6 +102,11 @@ def extract_view(source, view, output_dir, *, index_root, point_budget,
         selected = chunk[mask]
         count += len(selected)
         if len(selected):
+            if profile and "Classification" in selected.dtype.names:
+                classes, totals = np.unique(selected["Classification"], return_counts=True)
+                for code, total in zip(classes, totals):
+                    key = int(code)
+                    class_counts[key] = class_counts.get(key, 0) + int(total)
             new_keys = random.random(len(selected))
             sample = selected if sample is None else np.concatenate((sample,selected))
             keys = new_keys if keys is None else np.concatenate((keys,new_keys))
@@ -144,6 +150,7 @@ def extract_view(source, view, output_dir, *, index_root, point_budget,
             folder.rmdir()
     return {"path":str(output),"view_id":view["view_id"],"source_fingerprint":source.sha256,
             "source_points":count,"display_points":len(sample),"candidate_points":candidates,
+            "classification_counts":sorted(class_counts.items(), key=lambda item:(-item[1],item[0])),
             "point_budget":point_budget,"query_seconds":time.monotonic()-started,
             "geometry":view["geometry"],"view_type":view["view_type"],
             "identity_scope":"EPT_METADATA_ONLY" if kind=="EPT" else "FULL_ORIGINAL_FILE",

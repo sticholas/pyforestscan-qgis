@@ -3,6 +3,8 @@
 Point Cloud editor closure: [Phase 34A3.4 evidence](testing/PHASE_34A3_4_EDITOR_CLOSURE.md)
 and [linked-view architecture / next gates](development/POINT_CLOUD_LINKED_VIEWS.md).
 
+Professional profiles: [Phase 34A9 incremental progress](development/PHASE34A9_PROFILE_PROGRESS.md).
+
 Point Cloud stability: [contract](development/POINT_CLOUD_VIEWER_STABILITY_CONTRACT.md),
 [dense pipeline profile](testing/PHASE_34A3_2_DENSE_VIEW_PIPELINE_PROFILE.md), and
 [Phase 34A3.3 evidence / release gate](testing/PHASE_34A3_3_STABILITY_EVIDENCE.md).

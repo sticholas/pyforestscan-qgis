@@ -133,6 +133,54 @@ class TabDetachTests(unittest.TestCase):
         window.raise_.assert_called_once()
         window.activateWindow.assert_called_once()
 
+    def test_profile_fit_uses_the_resident_viewer_without_changing_authority(self):
+        worker = Mock()
+        view = SimpleNamespace(view_type="VERTICAL_SLICE", view_id="profile")
+        page = SimpleNamespace(status=Mock())
+        owner = SimpleNamespace(page=page, active=lambda:view,
+                                view_worker=lambda view_id:worker)
+        LinkedViews.fit_profile(owner)
+        worker.send.assert_called_once_with({"action":"fit"})
+        page.status.setText.assert_called_once_with("Profile fitted to the active view.")
+
+    def test_profile_reverse_updates_existing_view_and_requeries(self):
+        from pyforestscan_qgis.core.point_cloud.workspace import (
+            PointCloudWorkspaceModel, SliceGeometry, ViewType)
+        from dataclasses import asdict
+        model = PointCloudWorkspaceModel()
+        model.register(view_id="overview")
+        key = model.register(ViewType.VERTICAL_SLICE, "Profile", view_id="profile",
+            geometry=asdict(SliceGeometry((1,2),(8,9),4,"EPSG:32605")))
+        model.activate(key)
+        owner = SimpleNamespace(page=SimpleNamespace(workspace=model),
+            active=lambda:model.views[model.active_view_id],
+            query_results={key:{"source_points":10}},
+            refresh_profile_controls=Mock(), open_active=Mock())
+        LinkedViews.reverse_profile(owner)
+        self.assertEqual(model.views[key].geometry["a"], (8,9))
+        self.assertEqual(model.views[key].geometry["b"], (1,2))
+        self.assertNotIn(key, owner.query_results)
+        owner.open_active.assert_called_once()
+
+    def test_profile_width_updates_existing_view_and_requeries(self):
+        from pyforestscan_qgis.core.point_cloud.workspace import (
+            PointCloudWorkspaceModel, SliceGeometry, ViewType)
+        from dataclasses import asdict
+        model = PointCloudWorkspaceModel()
+        model.register(view_id="overview")
+        key = model.register(ViewType.VERTICAL_SLICE, "Profile", view_id="profile",
+            geometry=asdict(SliceGeometry((0,0),(10,0),4,"EPSG:32605")))
+        model.activate(key)
+        owner = SimpleNamespace(page=SimpleNamespace(workspace=model),
+            active=lambda:model.views[model.active_view_id],
+            profile_width=SimpleNamespace(value=lambda:7.5),
+            query_results={key:{"source_points":10}},
+            refresh_profile_controls=Mock(), open_active=Mock())
+        LinkedViews.set_profile_width(owner)
+        self.assertEqual(model.views[key].geometry["thickness"], 7.5)
+        self.assertNotIn(key, owner.query_results)
+        owner.open_active.assert_called_once()
+
     def test_rename_active_view_updates_existing_workspace_authority(self):
         from pyforestscan_qgis.core.point_cloud.workspace import (
             AreaGeometry, PointCloudWorkspaceModel, ViewType)

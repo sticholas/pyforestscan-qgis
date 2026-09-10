@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from qgis.PyQt.QtCore import QObject, Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (QToolButton, QMenu, QInputDialog, QCheckBox, QDialog,
-    QFormLayout, QDialogButtonBox, QDoubleSpinBox, QComboBox, QStyle, QFileDialog)
+    QFormLayout, QDialogButtonBox, QDoubleSpinBox, QComboBox, QStyle, QFileDialog, QLabel)
 from ..compat.qt import qt_enum
 from ..core.point_cloud.workspace import ViewType
 from ..core.point_cloud.linked_query import view_ring
@@ -25,6 +25,7 @@ class LinkedViews(QObject):
         self.query_worker = None
         self.request_id = None
         self.cache = {}
+        self.query_results = {}
         self.rendered_id = "overview"
         self.context_sent = False
         self.waiting = False
@@ -46,6 +47,33 @@ class LinkedViews(QObject):
             "Vertical Slice: choose two endpoints in Overview, then set the corridor thickness. Opens a profile of the same cloud; it does not write or edit points.")
         self.slice_button.clicked.connect(lambda: self.draw("Line", "CREATE_SLICE"))
         toolbar.addWidget(self.slice_button)
+        self.profile_summary = QLabel()
+        self.profile_summary.setAccessibleName("Profile summary")
+        self.profile_summary.setMaximumWidth(370)
+        self.profile_summary.setToolTip(
+            "Profile axes, exact corridor point count and display-sample context. "
+            "Edits always resolve against original source records.")
+        toolbar.addWidget(self.profile_summary)
+        self.profile_fit = spatial_button("Fit Profile", "mActionZoomFullExtent.svg",
+            "Fit Profile: fit the active cross-section without changing its source corridor, selection or staged edits.")
+        self.profile_fit.clicked.connect(self.fit_profile)
+        toolbar.addWidget(self.profile_fit)
+        self.profile_reverse = spatial_button("Reverse Profile", "mActionReverseLine.svg",
+            "Reverse Profile: swap profile start and end so distance runs in the opposite direction. The same source corridor and edits remain authoritative.")
+        self.profile_reverse.clicked.connect(self.reverse_profile)
+        toolbar.addWidget(self.profile_reverse)
+        self.profile_width = QDoubleSpinBox()
+        self.profile_width.setRange(.001, 1000000)
+        self.profile_width.setDecimals(3)
+        self.profile_width.setKeyboardTracking(False)
+        self.profile_width.setPrefix("Width ")
+        self.profile_width.setSuffix(" XY")
+        self.profile_width.setMaximumWidth(145)
+        self.profile_width.setAccessibleName("Profile corridor width in source XY units")
+        self.profile_width.setToolTip(
+            "Total source-coordinate corridor width. Changing it reruns the bounded display query; selections and edits stay source-resolved.")
+        self.profile_width.editingFinished.connect(self.set_profile_width)
+        toolbar.addWidget(self.profile_width)
         self.create = QToolButton()
         self.create.setText("View options")
         self.create.setAccessibleName("View options")
@@ -111,6 +139,57 @@ class LinkedViews(QObject):
         page.editor.tool.spherePlacementChanged.connect(self.set_sphere_placement)
         self.spherePlacementChanged.connect(page.editor.tool.setSpherePlacement)
         self.sync_tabs()
+        self.refresh_profile_controls()
+
+    def refresh_profile_controls(self):
+        view = self.active()
+        visible = view.view_type == ViewType.VERTICAL_SLICE
+        for widget in (self.profile_summary, self.profile_fit, self.profile_reverse,
+                       self.profile_width):
+            widget.setVisible(visible)
+        if not visible:
+            return
+        from ..core.point_cloud.profile import profile_workbench_summary
+        summary = profile_workbench_summary(
+            view.geometry, self.query_results.get(view.view_id))
+        self.profile_summary.setText(summary["text"])
+        self.profile_summary.setToolTip(summary["details"])
+        self.profile_width.blockSignals(True)
+        self.profile_width.setValue(view.geometry["thickness"])
+        self.profile_width.blockSignals(False)
+
+    def fit_profile(self):
+        if self.active().view_type != ViewType.VERTICAL_SLICE:
+            return
+        worker = self.view_worker(self.active().view_id)
+        if worker:
+            worker.send({"action": "fit"})
+            self.page.status.setText("Profile fitted to the active view.")
+
+    def reverse_profile(self):
+        view = self.active()
+        if view.view_type != ViewType.VERTICAL_SLICE:
+            return
+        geometry = dict(view.geometry)
+        geometry["a"], geometry["b"] = geometry["b"], geometry["a"]
+        self.page.workspace.update_view(view.view_id, geometry=geometry, camera={})
+        self.query_results.pop(view.view_id, None)
+        self.refresh_profile_controls()
+        self.open_active()
+
+    def set_profile_width(self):
+        view = self.active()
+        if view.view_type != ViewType.VERTICAL_SLICE:
+            return
+        value = self.profile_width.value()
+        if value == view.geometry.get("thickness"):
+            return
+        geometry = dict(view.geometry)
+        geometry["thickness"] = value
+        self.page.workspace.update_view(view.view_id, geometry=geometry, camera={})
+        self.query_results.pop(view.view_id, None)
+        self.refresh_profile_controls()
+        self.open_active()
 
     @property
     def depth(self):
@@ -605,11 +684,13 @@ class LinkedViews(QObject):
             return
         self.capture()
         self.page.workspace.activate(key)
+        self.refresh_profile_controls()
         self.open_active()
 
     def open_active(self):
         page = self.page
         view = self.active()
+        self.refresh_profile_controls()
         if view.view_id in self.detached:
             self.detached[view.view_id].raise_()
             self.detached[view.view_id].activateWindow()
@@ -682,6 +763,8 @@ class LinkedViews(QObject):
             self.waiting = False
             result = value["linked_ready"]
             self.cache[self.request_key] = result
+            self.query_results[result["view_id"]] = result
+            self.refresh_profile_controls()
             self.page.start_source(result["path"],render_only=True)
         elif value.get("error"):
             self.waiting = False
@@ -750,6 +833,7 @@ class LinkedViews(QObject):
         if self.page.workspace.views[key].view_type == ViewType.OVERVIEW_3D:
             return
         self.residents.discard(key)
+        self.query_results.pop(key, None)
         was_active = key == self.page.workspace.active_view_id
         self.page.workspace.close_view(key)
         self.sync_tabs()
