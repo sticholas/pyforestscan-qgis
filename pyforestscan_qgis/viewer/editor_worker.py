@@ -132,6 +132,7 @@ def main():
               "edits": len(session.operations), "autosave": str(autosave),
               "history": list(reversed(history[-20:])),
               "classification_audit": session.visibility.get("classification_audit"),
+              "object_field_discovery": session.visibility.get("object_field_discovery"),
               "restored": session_view_state(session) if restored else None, "exported": exported,
               "last_action": action, "last_attribute": command.get("attribute")})
     emit({"started": True})
@@ -303,6 +304,15 @@ def main():
                         cancelled=cancelled.is_set,
                         progress=lambda count: progress("Auditing original and staged classifications", count))
                     session.visibility["classification_audit"] = report
+                    session.save(autosave)
+                    snapshot(highlight=False)
+                elif action == "discover_object_fields":
+                    from pyforestscan_qgis.core.point_cloud.object_fields import discover_source_object_fields
+                    progress("Discovering object and segment fields")
+                    report = discover_source_object_fields(session.source, point_count,
+                        cancelled=cancelled.is_set,
+                        progress=lambda count: progress("Discovering object and segment fields", count))
+                    session.visibility["object_field_discovery"] = report
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action == "save":

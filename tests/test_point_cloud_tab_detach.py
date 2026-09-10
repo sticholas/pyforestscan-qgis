@@ -174,11 +174,21 @@ class SelectionToolTests(unittest.TestCase):
         self.assertIn("Classification Audit Results", actions)
         self.assertFalse(editor.audit_result_action.isEnabled())
 
+    def test_object_field_discovery_is_explicit_and_results_start_disabled(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        actions = [action.text() for action in editor.details_button.menu().actions()]
+        self.assertIn("Discover Object Fields", actions)
+        self.assertIn("Object Field Results", actions)
+        self.assertFalse(editor.object_results_action.isEnabled())
+
     def test_classify_while_selecting_stages_once_only_after_select_snapshot(self):
         value = {"ready":True, "source":"source.laz", "edits":0, "point_count":100,
             "selection":{"selection_id":"selected", "resolved_point_count":12,
                          "classification_counts":[[2,12]]},
             "selection_definitions":[{"selection_mode":"REPLACE"}],
+            "classification_audit":{"status":"NO_FLAGS", "source_point_count":100,
+                "classification_changed":0, "removed_on_export":0},
             "history":[], "overlay":"overlay.json", "revision":1}
         page = SimpleNamespace(send=Mock(), workspace=SimpleNamespace(
             accept_editor_snapshot=Mock()), linked=SimpleNamespace(sync_tabs=Mock()),
@@ -190,6 +200,7 @@ class SelectionToolTests(unittest.TestCase):
             exportReady=Mock(), source_changed=Mock(), code=SimpleNamespace(value=lambda:5))
         EditorPanel.update_state(owner, value)
         owner.stage.assert_called_once_with("Classification", 5)
+        self.assertIn("Selected:", owner.summary.setText.call_args.args[0])
         self.assertIsNone(owner.pending_action)
         owner.stage.reset_mock()
         EditorPanel.update_state(owner, value)

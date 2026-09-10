@@ -55,8 +55,8 @@ not yet complete.
 1. Qualify the classification workflow and full-source audit in a fresh human
    viewer session.
 2. Expand factual data-health summaries without silent edit suggestions.
-3. Begin Phase 34A7 categorical object-field discovery without hardcoding one
-   segmentation schema.
+3. Continue Phase 34A7 from schema-independent discovery into an authoritative
+   catalog for a user-selected object field.
 
 ## BLOCKED
 

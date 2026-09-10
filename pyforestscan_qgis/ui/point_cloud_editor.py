@@ -268,6 +268,13 @@ class EditorPanel(QWidget):
         self.audit_action.triggered.connect(lambda: self.send("classification_audit"))
         self.audit_result_action = details_menu.addAction("Classification Audit Results")
         self.audit_result_action.triggered.connect(self.show_classification_audit)
+        self.object_discovery_action = details_menu.addAction("Discover Object Fields")
+        self.object_discovery_action.setToolTip(
+            "Explicitly scan nonstandard source dimensions for repeated categorical identifiers. "
+            "Names improve ranking but no tree or segment schema is required; this does not edit points.")
+        self.object_discovery_action.triggered.connect(lambda: self.send("discover_object_fields"))
+        self.object_results_action = details_menu.addAction("Object Field Results")
+        self.object_results_action.triggered.connect(self.show_object_field_discovery)
         self.recover_action = details_menu.addAction("Recover Autosaved Session")
         self.recover_action.triggered.connect(self.recover_session)
         self.logs_action = details_menu.addAction("Open Editor Diagnostics")
@@ -329,6 +336,8 @@ class EditorPanel(QWidget):
         self.logs_action.setEnabled(bool(self.folder))
         self.audit_action.setEnabled(ready)
         self.audit_result_action.setEnabled(bool(self.state.get("classification_audit")))
+        self.object_discovery_action.setEnabled(ready)
+        self.object_results_action.setEnabled(bool(self.state.get("object_field_discovery")))
         self.refresh_classification_guidance()
 
     def refresh_classification_guidance(self):
@@ -522,6 +531,31 @@ class EditorPanel(QWidget):
         lines.extend(("", "The audit streamed the immutable source in bounded chunks and replayed the active journal."))
         QMessageBox.information(self, "Classification Audit Results", "\n".join(lines))
 
+    def show_object_field_discovery(self):
+        report = self.state.get("object_field_discovery")
+        if not report:
+            return
+        lines = [
+            "Full-resolution object / segment field discovery",
+            f"Source points inspected: {report['source_point_count']:,}",
+            "",
+        ]
+        candidates = report.get("candidate_fields", [])
+        if not candidates:
+            lines.append("No categorical object or segment candidates were found.")
+        else:
+            lines.append("Candidates:")
+            for item in candidates:
+                lines.append(
+                    f"{item['name']} | {item['role'].title()} | {item['confidence'].title()} confidence | "
+                    f"{item['sample_unique_count']:,} sampled values")
+                lines.append("  " + item["reason"])
+        rejected = len(report.get("nonstandard_numeric_fields", [])) - len(candidates)
+        if rejected:
+            lines.extend(("", f"Other nonstandard numeric fields reviewed: {rejected}"))
+        lines.extend(("", "Discovery is read-only. Object editing is not enabled by this report."))
+        QMessageBox.information(self, "Object Field Results", "\n".join(lines))
+
     def update_state(self, value):
         completed_action = self.pending_action
         if value.get("ready") or value.get("error"):
@@ -562,9 +596,12 @@ class EditorPanel(QWidget):
             self.summary.setText(f"Selected: {count:,} source points | {value['edits']} staged edits" + suffix + impact)
             if auto_classify.message:
                 self.summary.setText(self.summary.text() + " | " + auto_classify.message)
-            if value.get("classification_audit"):
+            if completed_action == "classification_audit" and value.get("classification_audit"):
                 from ..core.point_cloud.classification_audit import classification_audit_summary
                 self.summary.setText(classification_audit_summary(value["classification_audit"]))
+            if completed_action == "discover_object_fields" and value.get("object_field_discovery"):
+                from ..core.point_cloud.object_fields import object_field_discovery_summary
+                self.summary.setText(object_field_discovery_summary(value["object_field_discovery"]))
             self.page.session_status.setText(f"Session: Autosaved | {value['edits']} staged edits, not a source rewrite")
             self.history.clear()
             self.history.addItems(value.get("history", []))
