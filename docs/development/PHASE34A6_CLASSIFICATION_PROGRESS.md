@@ -35,18 +35,26 @@ State: IN PROGRESS. The Point Cloud Editor remains EDITOR_EXPERIMENTAL.
   updates the proposed LAS class and its guidance; it cannot bypass Apply,
   classify-while-selecting guards, large-edit confirmation or the journal.
   Noise, Withheld and Remove-on-Export remain explicit actions under Cleanup.
+- Added an explicit source-wide classification audit under Editing Details. It
+  streams the verified original in fixed 65,536-point chunks, replays only the
+  active journal, counts original/effective classes, reclassified/withheld/
+  remove-on-export points, and records factual ground/unclassified/noise review
+  prompts. It is cancellable, source-immutable, never automatic on open, and is
+  invalidated by stage/undo/redo so stale totals are not presented as current.
 
 ## IN PROGRESS
 
 The catalog, guarded classify-while-selecting policy and view-local class
 visibility, authoritative selected-class counts, target guidance and the
-forestry quick-target palette are foundations. Effective source-wide counts,
-data-health summaries, and human interaction acceptance are not yet complete.
+forestry quick-target palette and explicit bounded source-wide audit are
+foundations. Broader data-health analysis and human interaction acceptance are
+not yet complete.
 
 ## NEXT
 
-1. Design bounded source-wide effective counts and first data-health summaries.
-2. Qualify the classification workflow in a fresh human viewer session.
+1. Qualify the classification workflow and full-source audit in a fresh human
+   viewer session.
+2. Expand factual data-health summaries without silent edit suggestions.
 3. Begin Phase 34A7 categorical object-field discovery without hardcoding one
    segmentation schema.
 
@@ -55,3 +63,12 @@ data-health summaries, and human interaction acceptance are not yet complete.
 Human classification-workbench acceptance requires a fresh viewer session; old
 user-owned viewer hosts currently occupy the configured runtime slots and are
 not terminated automatically.
+
+## MEASURED EVIDENCE
+
+The managed-engine smoke audited
+`215000_2114500_g_h_c_h_unbuf_hag.laz` at source SHA-256
+`0c688c22d42b0240c6cba19973087ee59606721289872a3f8237253548db34bb`.
+It streamed all 2,287,408 records in 0.469 seconds with a 65,536-point chunk
+contract, reconciled exact class totals, reported 16,081 unclassified points
+(0.7%), and verified the original identity unchanged before publication.

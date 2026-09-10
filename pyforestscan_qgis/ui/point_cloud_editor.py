@@ -262,6 +262,12 @@ class EditorPanel(QWidget):
         details_menu = QMenu(self.details_button)
         stats = details_menu.addAction("Selection Details")
         stats.triggered.connect(self.show_selection_details)
+        self.audit_action = details_menu.addAction("Audit All Classifications")
+        self.audit_action.setToolTip(
+            "Explicitly scan the full original source in bounded chunks and replay staged edits to count effective classes. This can take time but never writes source points.")
+        self.audit_action.triggered.connect(lambda: self.send("classification_audit"))
+        self.audit_result_action = details_menu.addAction("Classification Audit Results")
+        self.audit_result_action.triggered.connect(self.show_classification_audit)
         self.recover_action = details_menu.addAction("Recover Autosaved Session")
         self.recover_action.triggered.connect(self.recover_session)
         self.logs_action = details_menu.addAction("Open Editor Diagnostics")
@@ -321,6 +327,8 @@ class EditorPanel(QWidget):
         self.cancel.setEnabled(self.busy and not self.cancel_requested)
         self.recover_action.setEnabled(not self.busy)
         self.logs_action.setEnabled(bool(self.folder))
+        self.audit_action.setEnabled(ready)
+        self.audit_result_action.setEnabled(bool(self.state.get("classification_audit")))
         self.refresh_classification_guidance()
 
     def refresh_classification_guidance(self):
@@ -492,6 +500,28 @@ class EditorPanel(QWidget):
         lines.append("Counts describe the frozen original-source selection, not rendered LOD or staged attributes.")
         QMessageBox.information(self, "Authoritative Selection Details", "\n".join(lines))
 
+    def show_classification_audit(self):
+        report = self.state.get("classification_audit")
+        if not report:
+            return
+        from ..core.point_cloud.las_classification import classification_entry
+        lines = [
+            "Full-resolution source-wide classification audit",
+            f"Source points: {report['source_point_count']:,}",
+            f"Effective points after staged removals: {report['effective_point_count']:,}",
+            f"Reclassified by active journal: {report['classification_changed']:,}",
+            f"Withheld: {report['withheld']:,}",
+            f"Removed on export: {report['removed_on_export']:,}",
+            "",
+            "Effective classes:",
+        ]
+        lines.extend(f"{classification_entry(int(code)).label}: {count:,}"
+                     for code, count in report["effective_classification_counts"].items())
+        if report.get("findings"):
+            lines.extend(["", "Review:", *report["findings"]])
+        lines.extend(("", "The audit streamed the immutable source in bounded chunks and replayed the active journal."))
+        QMessageBox.information(self, "Classification Audit Results", "\n".join(lines))
+
     def update_state(self, value):
         completed_action = self.pending_action
         if value.get("ready") or value.get("error"):
@@ -532,6 +562,9 @@ class EditorPanel(QWidget):
             self.summary.setText(f"Selected: {count:,} source points | {value['edits']} staged edits" + suffix + impact)
             if auto_classify.message:
                 self.summary.setText(self.summary.text() + " | " + auto_classify.message)
+            if value.get("classification_audit"):
+                from ..core.point_cloud.classification_audit import classification_audit_summary
+                self.summary.setText(classification_audit_summary(value["classification_audit"]))
             self.page.session_status.setText(f"Session: Autosaved | {value['edits']} staged edits, not a source rewrite")
             self.history.clear()
             self.history.addItems(value.get("history", []))

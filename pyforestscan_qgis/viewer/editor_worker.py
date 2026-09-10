@@ -131,6 +131,7 @@ def main():
               "can_undo": session.can_undo, "can_redo": session.can_redo,
               "edits": len(session.operations), "autosave": str(autosave),
               "history": list(reversed(history[-20:])),
+              "classification_audit": session.visibility.get("classification_audit"),
               "restored": session_view_state(session) if restored else None, "exported": exported,
               "last_action": action, "last_attribute": command.get("attribute")})
     emit({"started": True})
@@ -286,10 +287,22 @@ def main():
                     origin = definitions[-1].view_name
                     session.stage_resolved(definitions, result, command["attribute"], command["value"],
                                            note=("View: " + origin) if origin else "")
+                    session.visibility.pop("classification_audit", None)
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action in ("undo", "redo"):
-                    getattr(session, action)()
+                    changed = getattr(session, action)()
+                    if changed:
+                        session.visibility.pop("classification_audit", None)
+                    session.save(autosave)
+                    snapshot(highlight=False)
+                elif action == "classification_audit":
+                    from pyforestscan_qgis.core.point_cloud.classification_audit import audit_source_classifications
+                    progress("Auditing original and staged classifications")
+                    report = audit_source_classifications(session.source, session.operations, point_count,
+                        cancelled=cancelled.is_set,
+                        progress=lambda count: progress("Auditing original and staged classifications", count))
+                    session.visibility["classification_audit"] = report
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action == "save":

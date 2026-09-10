@@ -166,6 +166,14 @@ class SelectionToolTests(unittest.TestCase):
         self.assertTrue(all(not action.icon().isNull()
                             for action in editor.quick_targets.menu().actions()))
 
+    def test_classification_audit_actions_are_contextual_and_nonautomatic(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        actions = [action.text() for action in editor.details_button.menu().actions()]
+        self.assertIn("Audit All Classifications", actions)
+        self.assertIn("Classification Audit Results", actions)
+        self.assertFalse(editor.audit_result_action.isEnabled())
+
     def test_classify_while_selecting_stages_once_only_after_select_snapshot(self):
         value = {"ready":True, "source":"source.laz", "edits":0, "point_count":100,
             "selection":{"selection_id":"selected", "resolved_point_count":12,
