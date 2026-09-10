@@ -163,7 +163,10 @@ def checkpoint_is_compatible(path: Path, signature: str) -> bool:
 def _write_prepared_checkpoint(arrays, path, assessment, handlers):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.stem + ".partial" + path.suffix)
-    handlers.write_las(arrays, str(temporary), srs=assessment.crs or "", compress=True)
+    # PyForestScan 0.4.x accepts either one ndarray or a list of ndarrays.
+    # Passing our immutable tuple makes its compatibility wrapper nest the
+    # tuple inside a list, which PDAL rejects as a non-array input.
+    handlers.write_las(list(arrays), str(temporary), srs=assessment.crs or "", compress=True)
     temporary.replace(path)
 
 
