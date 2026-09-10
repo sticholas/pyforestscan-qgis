@@ -498,6 +498,21 @@ class SelectionToolTests(unittest.TestCase):
             {"action":"measurement_tool","kind":"PROFILE_DISTANCE"})
         self.assertTrue(editor.summary.text().startswith("Cross-section:"))
 
+    def test_tree_height_uses_profile_resolver_with_explicit_scientific_purpose(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        editor.viewer_ready = True
+        editor.state = {"ready":True}
+        view = SimpleNamespace(view_type="VERTICAL_SLICE",view_id="slice",
+                               title="Tree Slice",geometry={})
+        editor.page = SimpleNamespace(send=Mock(),linked=SimpleNamespace(
+            depth_error="",active=lambda:view))
+        editor.start_tree_height_measurement()
+        editor.page.send.assert_called_once_with(
+            {"action":"measurement_tool","kind":"PROFILE_DISTANCE",
+             "purpose":"TREE_HEIGHT"})
+        self.assertTrue(editor.summary.text().startswith("Tree height:"))
+
     def test_measurements_broadcast_once_to_all_linked_renderers(self):
         workers = [Mock(), Mock(), Mock()]
         owner = SimpleNamespace(

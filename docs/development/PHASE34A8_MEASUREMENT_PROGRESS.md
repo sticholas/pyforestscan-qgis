@@ -58,10 +58,16 @@ Editor and do not change the `0.2.0-beta.1` release boundary.
   tabbed views through the existing lazy renderer lifecycle, and raises detached
   windows directly. It introduces no second scene registry and reserves no
   permanent viewer space.
+- The Measure menu now includes a guided Tree Height action for Vertical Slice.
+  The user picks a base and top while the same managed profile resolver resolves
+  both against original records. Results report absolute tree height,
+  horizontal offset and whether the vertical basis is elevation or stored HAG.
+  HAG bases outside a one-unit ground tolerance and all elevation-based heights
+  receive explicit interpretation guidance; zero-height picks fail closed.
 
 ## IN PROGRESS
 
-Point-to-point, planar-area, cross-section and linked-marker tools have contract,
+Point-to-point, planar-area, cross-section, tree-height and linked-marker tools have contract,
 renderer, worker and dual-Qt test coverage. Human point picking/drawing, marker
 readability, dense-source latency and detached-view visual agreement still
 require live qualification.
@@ -101,6 +107,12 @@ stored source points, retained original elevations 908.65 and 944.71 metres,
 and used HAG values 0.00 and 18.850 metres for the profile. It reported 111.763
 metres along the transect, +18.850 metres HAG change and 113.341 metres
 cross-section distance. The source hash remained unchanged.
+
+Those same exact source anchors produced a guided tree-height result of 18.850
+metres with a 111.763 metre horizontal offset and an explicit HAG basis. The
+base anchor was classification 2 at HAG 0.0, so no questionable-base warning
+was required. This result reused the authoritative profile resolution evidence;
+it did not interpret rendered samples as source truth.
 
 Measurement overlays store segment vertices relative to the first endpoint and
 place the Three.js object at the source-coordinate origin. This retains

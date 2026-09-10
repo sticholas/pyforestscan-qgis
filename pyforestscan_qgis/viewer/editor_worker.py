@@ -661,7 +661,8 @@ def main():
                         command.get("view_name") or "", pdal_module=pdal, crs_type=CRS,
                         cancelled=cancelled.is_set,
                         progress=lambda count: progress(
-                            "Resolving original source profile anchors",count))
+                            "Resolving original source profile anchors",count),
+                        purpose=command.get("purpose") or "CROSS_SECTION")
                     session.visibility["measurements"] = [*current,measurement.to_dict()]
                     session.save(autosave)
                     snapshot(highlight=False)

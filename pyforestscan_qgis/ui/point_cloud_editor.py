@@ -190,6 +190,11 @@ class EditorPanel(QWidget):
         self.profile_measurement_action.setToolTip(
             "Choose two displayed profile points. The managed worker resolves original source Z or stored HAG values before reporting cross-section distance.")
         self.profile_measurement_action.triggered.connect(self.start_profile_measurement)
+        self.tree_height_action = measurement_menu.addAction("Measure Tree Height")
+        self.tree_height_action.setToolTip(
+            "In a Vertical Slice, pick a tree base and top. Both displayed points are resolved "
+            "against original source records; HAG is used when the slice uses stored HAG.")
+        self.tree_height_action.triggered.connect(self.start_tree_height_measurement)
         self.annotation_action = measurement_menu.addAction("Add Linked Marker...")
         self.annotation_action.setToolTip(
             "Name a location, then click a displayed point. The managed worker resolves the marker "
@@ -454,6 +459,7 @@ class EditorPanel(QWidget):
         self.measurement_button.setEnabled(ready)
         self.area_measurement_action.setEnabled(ready)
         self.profile_measurement_action.setEnabled(ready and self.active_vertical_slice())
+        self.tree_height_action.setEnabled(ready and self.active_vertical_slice())
         self.annotation_action.setEnabled(ready)
         self.measurements_action.setEnabled(bool(self.state.get("measurements")))
         self.clear_measurements_action.setEnabled(ready and bool(self.state.get("measurements")))
@@ -668,6 +674,22 @@ class EditorPanel(QWidget):
         self.measurement_button.setChecked(True)
         self.summary.setText("Cross-section: Click the first displayed profile point")
 
+    def start_tree_height_measurement(self):
+        if not self.viewer_ready or self.busy:
+            self.measurement_button.setChecked(False)
+            return
+        if not self.active_vertical_slice():
+            self.summary.setText("Open a Vertical Slice before measuring tree height.")
+            self.measurement_button.setChecked(False)
+            return
+        self.tool.blockSignals(True)
+        self.tool.setCurrentText("Pointer")
+        self.tool.blockSignals(False)
+        self.page.send({"action":"measurement_tool", "kind":"PROFILE_DISTANCE",
+                        "purpose":"TREE_HEIGHT"})
+        self.measurement_button.setChecked(True)
+        self.summary.setText("Tree height: Click the tree base, then the top")
+
     def start_area_measurement(self):
         if not self.viewer_ready or self.busy:
             return
@@ -746,7 +768,8 @@ class EditorPanel(QWidget):
                 else:
                     self.send("add_profile_measurement", points=event.get("points"),
                               profile_geometry=asdict(view)["geometry"],
-                              view_id=view.view_id, view_name=view.title)
+                              view_id=view.view_id, view_name=view.title,
+                              purpose=event.get("purpose") or "CROSS_SECTION")
             elif event.get("action") == "annotation_point":
                 details = self.pending_annotation
                 self.pending_annotation = None

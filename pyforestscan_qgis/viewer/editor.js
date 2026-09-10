@@ -17,7 +17,7 @@ let displaySignature = "";
 let selectionColor = new THREE.Color("#5be4eb");
 let objectFocusMode = "SHOW_ALL";
 let measurementDraft = [], measurementGroup = null, measurementCount = 0;
-let measurementKind = "POINT_DISTANCE", measurementItems = [];
+let measurementKind = "POINT_DISTANCE", measurementPurpose = "CROSS_SECTION", measurementItems = [];
 let annotationGroup = null, annotationCount = 0, annotationItems = [];
 function sourceAttribute(geometry, name) {
     const extra = geometry._pfsOriginalDimensions && geometry._pfsOriginalDimensions[name];
@@ -414,7 +414,8 @@ function initialize(value) {
                     action:measurementKind === "PROFILE_DISTANCE" ?
                         "measure_profile_points" : "measure_points",
                     points:measurementDraft.map(value=>value.slice()),
-                    view_id:linkedView&&linkedView.view_id};
+                    view_id:linkedView&&linkedView.view_id,
+                    purpose:measurementPurpose};
                 leaveTool();
             }
             return;
@@ -678,6 +679,7 @@ window.pointCloudEditor = {
             drawing.cancel();
             tool = "MeasureDistance";
             measurementKind = command.kind || "POINT_DISTANCE";
+            measurementPurpose = command.purpose || "CROSS_SECTION";
             measurementDraft = [];
             context.viewer.inputHandler.enabled = false;
             context.viewer.renderer.domElement.style.cursor = "crosshair";

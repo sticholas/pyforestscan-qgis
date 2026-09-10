@@ -10,7 +10,7 @@ except ImportError:
     np = None
 
 from pyforestscan_qgis.core.point_cloud.measurement import (
-    AreaMeasurement, MeasurementAnchor, create_area_measurement,
+    AreaMeasurement, MeasurementAnchor, ProfileAnchor, create_area_measurement,
     create_point_measurement, create_profile_measurement, measurement_summary,
     measurement_unit_context, resolve_anchor_chunks, resolve_profile_anchor_chunks,
     source_pick_tolerance,
@@ -151,6 +151,45 @@ class PointMeasurementTests(unittest.TestCase):
         self.assertIn("HAG change +12.000 metre",measurement_summary(item))
         restored = validate_measurements([item.to_dict()],"a"*64)
         self.assertEqual(restored[0]["kind"],"PROFILE_DISTANCE")
+        legacy = item.to_dict()
+        legacy.pop("purpose")
+        self.assertEqual(validate_measurements([legacy],"a"*64)[0]["purpose"],
+                         "CROSS_SECTION")
+
+    def test_tree_height_reuses_profile_anchors_with_explicit_basis_and_guidance(self):
+        profile = SliceGeometry((0,0),(10,0),4,"EPSG:32605","HeightAboveGround")
+        anchors = (
+            ProfileAnchor((1,0,0),(1,0,100),(1,0,0),(1,0),0,0,2,0),
+            ProfileAnchor((2,0,20),(2,0,120),(2,0,20),(2,20),0,0,5,20),
+        )
+        item = create_profile_measurement("a"*64,"EPSG:32605","slice","Tree Slice",
+            profile,anchors,horizontal_unit="metre",source_point_count=100,
+            purpose="TREE_HEIGHT",measurement_id="tree",created_at="fixed")
+        self.assertEqual(item.vertical_distance,20)
+        self.assertEqual(item.along_distance,1)
+        self.assertEqual(item.purpose,"TREE_HEIGHT")
+        self.assertIn("Tree height 20.000 metre",measurement_summary(item))
+        self.assertIn("Basis HAG",measurement_summary(item))
+        self.assertEqual(item.unit_warning,"")
+        restored = validate_measurements([item.to_dict()],"a"*64)
+        self.assertEqual(restored[0]["purpose"],"TREE_HEIGHT")
+
+    def test_tree_height_warns_for_questionable_base_and_rejects_zero_height(self):
+        profile = SliceGeometry((0,0),(10,0),4,"EPSG:32605","HeightAboveGround")
+        anchors = (
+            ProfileAnchor((1,0,5),(1,0,105),(1,0,5),(1,5),0,0,2,5),
+            ProfileAnchor((2,0,20),(2,0,120),(2,0,20),(2,20),0,0,5,20),
+        )
+        item = create_profile_measurement("a"*64,"EPSG:32605","slice","Tree Slice",
+            profile,anchors,horizontal_unit="metre",source_point_count=100,
+            purpose="TREE_HEIGHT")
+        self.assertIn("verify that it represents the tree base",item.unit_warning)
+        level = (anchors[0], ProfileAnchor((2,0,5),(2,0,105),(2,0,5),
+                 (2,5),0,0,5,5))
+        with self.assertRaisesRegex(ValueError,"distinct base and top"):
+            create_profile_measurement("a"*64,"EPSG:32605","slice","Tree Slice",
+                profile,level,horizontal_unit="metre",source_point_count=100,
+                purpose="TREE_HEIGHT")
 
     @unittest.skipIf(np is None, "NumPy required")
     def test_profile_missing_axis_and_outside_corridor_fail_closed(self):

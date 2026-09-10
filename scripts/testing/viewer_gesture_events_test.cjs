@@ -271,4 +271,9 @@ editor.command({action:"linked_view",view:{view_id:"slice",view_type:"VERTICAL_S
         vertical_limits:[0,10]}}});
 assert.equal(tick().annotation_count,1);
 assert.deepEqual(annotationGroup.children[0].origin,[10,1,5]);
+editor.command({action:"measurement_tool",kind:"PROFILE_DISTANCE",purpose:"TREE_HEIGHT"});
+click(5,0);click(9,20);
+const treeHeight=tick().event;
+assert.equal(treeHeight.action,"measure_profile_points");
+assert.equal(treeHeight.purpose,"TREE_HEIGHT");
 console.log("Production editor gesture handlers passed all completion/cancel paths.");

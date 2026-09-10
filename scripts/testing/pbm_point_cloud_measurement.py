@@ -117,6 +117,16 @@ def main():
         raise RuntimeError("Profile anchors did not retain original source XYZ.")
     if not profile_progress or profile_progress[-1] != point_count:
         raise RuntimeError("Profile resolver did not report the complete source scan.")
+    from pyforestscan_qgis.core.point_cloud.measurement import create_profile_measurement
+    tree_height = create_profile_measurement(identity.sha256, source_crs,
+        "real-source-slice", "HAG Slice", profile,
+        (profile_measurement.start, profile_measurement.end),
+        horizontal_unit=profile_measurement.horizontal_unit,
+        vertical_unit=profile_measurement.vertical_unit,
+        source_point_count=point_count, resolution_seconds=profile_measurement.resolution_seconds,
+        purpose="TREE_HEIGHT")
+    if tree_height.vertical_distance != profile_measurement.vertical_distance:
+        raise RuntimeError("Tree height differs from the authoritative HAG anchor difference.")
     annotation_progress = []
     annotation = resolve_source_annotation(identity, point_count, requested[0],
         source_crs, "Real-source marker", "Managed qualification",
@@ -132,6 +142,7 @@ def main():
         "source_point_count":point_count, "measurement":measurement.to_dict(),
         "area_measurement":area.to_dict(),
         "profile_measurement":profile_measurement.to_dict(),
+        "tree_height":tree_height.to_dict(),
         "annotation":annotation.to_dict(),
         "progress_final":progress[-1]}, sort_keys=True))
     if handle is not None:

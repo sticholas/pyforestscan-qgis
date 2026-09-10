@@ -212,6 +212,7 @@ class ProfileMeasurement:
     created_at: str = ""
     addressing: str = "FULL_RESOLUTION_ORIGINAL_SOURCE_PROFILE_RESOLUTION"
     kind: str = "PROFILE_DISTANCE"
+    purpose: str = "CROSS_SECTION"
 
     def __post_init__(self):
         from .workspace import SliceGeometry
@@ -219,7 +220,8 @@ class ProfileMeasurement:
                 or not self.source_crs or not isinstance(self.view_id, str) or not self.view_id
                 or not isinstance(self.view_name, str) or not self.view_name.strip()
                 or self.addressing != "FULL_RESOLUTION_ORIGINAL_SOURCE_PROFILE_RESOLUTION"
-                or self.kind != "PROFILE_DISTANCE"):
+                or self.kind != "PROFILE_DISTANCE"
+                or self.purpose not in ("CROSS_SECTION", "TREE_HEIGHT")):
             raise ValueError("Profile measurement source or view identity is invalid.")
         profile = SliceGeometry(**self.profile_geometry)
         object.__setattr__(self, "profile_geometry", asdict(profile))
@@ -245,6 +247,8 @@ class ProfileMeasurement:
                 or not math.isclose(self.cross_section_distance, math.hypot(along, vertical),
                                     rel_tol=1e-12, abs_tol=1e-9)):
             raise ValueError("Saved profile measurement metrics do not match its anchors.")
+        if self.purpose == "TREE_HEIGHT" and self.vertical_distance <= 0:
+            raise ValueError("Tree height requires distinct base and top heights.")
 
     def to_dict(self):
         return asdict(self)
@@ -422,7 +426,8 @@ def create_area_measurement(source_sha256, source_crs, vertices, *,
 def create_profile_measurement(source_sha256, source_crs, view_id, view_name,
                                profile_geometry, anchors, *, horizontal_unit,
                                vertical_unit=None, unit_warning="", resolution_seconds=0,
-                               source_point_count=1, measurement_id=None, created_at=None):
+                               source_point_count=1, measurement_id=None, created_at=None,
+                               purpose="CROSS_SECTION"):
     from .workspace import SliceGeometry
     profile = (profile_geometry if isinstance(profile_geometry, SliceGeometry)
                else SliceGeometry(**profile_geometry))
@@ -431,12 +436,23 @@ def create_profile_measurement(source_sha256, source_crs, view_id, view_name,
         raise ValueError("Cross-section measurement requires two resolved profile anchors.")
     along = abs(items[1].profile_position[0]-items[0].profile_position[0])
     vertical = items[1].profile_position[1]-items[0].profile_position[1]
+    if purpose == "TREE_HEIGHT" and vertical == 0:
+        raise ValueError("Tree height requires distinct base and top heights.")
+    if purpose == "TREE_HEIGHT":
+        lower = min(item.profile_position[1] for item in items)
+        if profile.vertical_axis == "HeightAboveGround" and not -1 <= lower <= 1:
+            warning = (f"Lower pick is {lower:,.3f} {vertical_unit or horizontal_unit} HAG; "
+                       "verify that it represents the tree base.")
+            unit_warning = (unit_warning + " " + warning).strip()
+        elif profile.vertical_axis == "Z":
+            unit_warning = (unit_warning +
+                " Elevation-based tree height depends on selecting a valid base point.").strip()
     return ProfileMeasurement(measurement_id or uuid4().hex, source_sha256,
         source_crs, view_id, view_name, asdict(profile), items[0], items[1],
         along, abs(vertical), vertical, math.hypot(along, vertical), horizontal_unit,
         vertical_unit or horizontal_unit, profile.vertical_axis, unit_warning,
         resolution_seconds, source_point_count,
-        created_at or datetime.now(timezone.utc).isoformat())
+        created_at or datetime.now(timezone.utc).isoformat(), purpose=purpose)
 
 
 def measurement_unit_context(source_crs, crs_type):
@@ -499,7 +515,8 @@ def resolve_source_anchors(source, expected_points, requested_points, *, pdal_mo
 def resolve_source_profile_measurement(source, expected_points, requested_points,
                                        source_crs, profile_geometry, view_id, view_name, *,
                                        pdal_module=None, crs_type=None,
-                                       cancelled=lambda: False, progress=lambda count: None):
+                                       cancelled=lambda: False, progress=lambda count: None,
+                                       purpose="CROSS_SECTION"):
     """Resolve two picks from one Vertical Slice against original source records."""
     from .workspace import SliceGeometry
     profile = (profile_geometry if isinstance(profile_geometry, SliceGeometry)
@@ -530,13 +547,17 @@ def resolve_source_profile_measurement(source, expected_points, requested_points
     return create_profile_measurement(source.sha256, source_crs, view_id, view_name,
         profile, anchors, horizontal_unit=horizontal, vertical_unit=vertical,
         unit_warning=warning, resolution_seconds=duration,
-        source_point_count=expected_points)
+        source_point_count=expected_points, purpose=purpose)
 
 
 def measurement_summary(measurement):
     item = measurement if isinstance(measurement, (PointMeasurement, AreaMeasurement, ProfileMeasurement)) else measurement_from_dict(measurement)
     if isinstance(item, ProfileMeasurement):
         axis = "HAG" if item.vertical_axis == "HeightAboveGround" else "Elevation"
+        if item.purpose == "TREE_HEIGHT":
+            return (f"Tree height {item.vertical_distance:,.3f} {item.vertical_unit} | "
+                    f"Horizontal offset {item.along_distance:,.3f} {item.horizontal_unit} | "
+                    f"Basis {axis}")
         return (f"Cross-section {item.cross_section_distance:,.3f} {item.horizontal_unit} | "
                 f"Along {item.along_distance:,.3f} {item.horizontal_unit} | "
                 f"{axis} change {item.vertical_difference:+,.3f} {item.vertical_unit}")
