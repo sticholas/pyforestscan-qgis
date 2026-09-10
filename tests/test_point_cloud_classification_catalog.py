@@ -3,9 +3,9 @@ from pathlib import Path
 import unittest
 
 from pyforestscan_qgis.core.point_cloud.las_classification import (
-    STANDARD_CLASSES, classification_entry, classification_warning,
+    FORESTRY_TARGET_PRESETS, STANDARD_CLASSES, classification_entry, classification_warning,
     classification_counts_summary, classification_target_guidance,
-    classify_while_selecting_decision)
+    classify_while_selecting_decision, forestry_target_presets)
 
 
 class ClassificationCatalogTests(unittest.TestCase):
@@ -64,6 +64,13 @@ class ClassificationCatalogTests(unittest.TestCase):
         self.assertIn("excluded", classification_target_guidance(18))
         self.assertIn("reserved", classification_target_guidance(8))
         self.assertIn("user-defined", classification_target_guidance(64))
+
+    def test_forestry_presets_are_explicit_valid_and_unique(self):
+        self.assertEqual(FORESTRY_TARGET_PRESETS, (2, 3, 4, 5, 6, 9, 7, 18))
+        presets = forestry_target_presets()
+        self.assertEqual(tuple(item.code for item in presets), FORESTRY_TARGET_PRESETS)
+        self.assertEqual(len(set(FORESTRY_TARGET_PRESETS)), len(FORESTRY_TARGET_PRESETS))
+        self.assertTrue(all(item.common_target and item.color for item in presets))
 
 
 if __name__ == "__main__":

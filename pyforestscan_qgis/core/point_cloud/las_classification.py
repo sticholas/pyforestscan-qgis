@@ -50,6 +50,10 @@ STANDARD_CLASSES = (
 )
 _BY_CODE = {item.code: item for item in STANDARD_CLASSES}
 
+# High-frequency forestry cleanup targets. Choosing one proposes a value; the
+# editor's existing Apply/automatic-selection path remains the only edit action.
+FORESTRY_TARGET_PRESETS = (2, 3, 4, 5, 6, 9, 7, 18)
+
 
 def classification_entry(code):
     """Describe one uint8 LAS class without treating unknown values as standard."""
@@ -60,6 +64,10 @@ def classification_entry(code):
     if code >= 64:
         return LasClass(code, "User-defined", "#4d9999")
     return LasClass(code, "Reserved", "#777777", reserved=True)
+
+
+def forestry_target_presets():
+    return tuple(classification_entry(code) for code in FORESTRY_TARGET_PRESETS)
 
 
 def classification_warning(code):

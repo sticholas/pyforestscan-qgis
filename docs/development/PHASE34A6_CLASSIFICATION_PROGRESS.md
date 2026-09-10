@@ -30,19 +30,25 @@ State: IN PROGRESS. The Point Cloud Editor remains EDITOR_EXPERIMENTAL.
   now show a stable one-line LAS/scientific impact message for ground,
   vegetation, noise, building, water, unclassified, reserved and user-defined
   targets without expanding the viewer layout.
+- Added a compact `Quick target` palette for Ground, Low/Medium/High
+  Vegetation, Building, Water, Low Noise and High Noise. Choosing a preset only
+  updates the proposed LAS class and its guidance; it cannot bypass Apply,
+  classify-while-selecting guards, large-edit confirmation or the journal.
+  Noise, Withheld and Remove-on-Export remain explicit actions under Cleanup.
 
 ## IN PROGRESS
 
 The catalog, guarded classify-while-selecting policy and view-local class
-visibility, authoritative selected-class counts and target guidance are
-foundations. Effective source-wide counts, presets, data-health summaries, and
-human interaction acceptance are not yet complete.
+visibility, authoritative selected-class counts, target guidance and the
+forestry quick-target palette are foundations. Effective source-wide counts,
+data-health summaries, and human interaction acceptance are not yet complete.
 
 ## NEXT
 
-1. Add compact classification presets without bypassing journal confirmation.
-2. Design bounded source-wide effective counts and first data-health summaries.
-3. Qualify the classification workflow in a fresh human viewer session.
+1. Design bounded source-wide effective counts and first data-health summaries.
+2. Qualify the classification workflow in a fresh human viewer session.
+3. Begin Phase 34A7 categorical object-field discovery without hardcoding one
+   segmentation schema.
 
 ## BLOCKED
 

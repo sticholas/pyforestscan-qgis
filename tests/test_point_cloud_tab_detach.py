@@ -154,6 +154,18 @@ class SelectionToolTests(unittest.TestCase):
         editor.code.setValue(2)
         self.assertIn("DTM", editor.target_guidance.toolTip())
 
+    def test_quick_target_changes_proposal_without_staging_an_edit(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        with patch.object(editor, "stage") as stage:
+            editor.set_classification_target(9)
+        self.assertEqual(editor.code.value(), 9)
+        self.assertEqual(editor.classes.currentData(), 9)
+        stage.assert_not_called()
+        self.assertEqual(len(editor.quick_targets.menu().actions()), 8)
+        self.assertTrue(all(not action.icon().isNull()
+                            for action in editor.quick_targets.menu().actions()))
+
     def test_classify_while_selecting_stages_once_only_after_select_snapshot(self):
         value = {"ready":True, "source":"source.laz", "edits":0, "point_count":100,
             "selection":{"selection_id":"selected", "resolved_point_count":12,

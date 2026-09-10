@@ -199,6 +199,23 @@ class EditorPanel(QWidget):
         self.classes.currentIndexChanged.connect(lambda _: self.code.setValue(self.classes.currentData()))
         actions.addWidget(self.classes, 1)
         actions.addWidget(self.code)
+        self.quick_targets = QToolButton()
+        self.quick_targets.setText("Quick target")
+        self.quick_targets.setAccessibleName("Quick classification target")
+        self.quick_targets.setToolTip(
+            "Choose a common forestry LAS class. This only changes the proposed target; "
+            "Apply Classification or a later automatic Replace selection stages the edit.")
+        quick_menu = QMenu(self.quick_targets)
+        from ..core.point_cloud.las_classification import forestry_target_presets
+        for item in forestry_target_presets():
+            swatch = QPixmap(12, 12)
+            swatch.fill(QColor(item.color))
+            action = quick_menu.addAction(QIcon(swatch), item.label)
+            action.triggered.connect(lambda _checked=False, code=item.code:
+                                     self.set_classification_target(code))
+        self.quick_targets.setMenu(quick_menu)
+        self.quick_targets.setPopupMode(qt_enum(QToolButton, "InstantPopup", "ToolButtonPopupMode"))
+        actions.addWidget(self.quick_targets)
         actions.addWidget(self.button("Apply Classification", "SP_DialogApplyButton",
             lambda: self.stage("Classification", self.code.value()),
             "Stage classification for all resolved source points. The original is never rewritten; export creates a new file."))
@@ -212,7 +229,7 @@ class EditorPanel(QWidget):
         self.classify_while.toggled.connect(lambda _checked: self.refresh_controls())
         actions.addWidget(self.classify_while)
         flags = QToolButton()
-        flags.setText("Flags / Noise")
+        flags.setText("Cleanup")
         flags.setToolTip("Noise changes Classification; Withheld retains flagged points; Removal omits them only from a new export.")
         menu = QMenu(flags)
         for label, attribute, value in (("Low Noise (7)", "Classification", 7), ("High Noise (18)", "Classification", 18),
@@ -309,6 +326,14 @@ class EditorPanel(QWidget):
     def refresh_classification_guidance(self):
         from ..core.point_cloud.las_classification import classification_target_guidance
         self.target_guidance.setText("Target guidance | " + classification_target_guidance(self.code.value()))
+
+    def set_classification_target(self, code):
+        from ..core.point_cloud.las_classification import classification_entry
+        classification_entry(code)
+        self.code.setValue(code)
+        index = self.classes.findData(code)
+        if index >= 0:
+            self.classes.setCurrentIndex(index)
 
     def attach(self, source):
         if str(source).lower().endswith("ept.json"):
