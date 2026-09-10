@@ -19,18 +19,25 @@ State: IN PROGRESS. The Point Cloud Editor remains EDITOR_EXPERIMENTAL.
   invert, resize, undo/redo, errors and telemetry cannot trigger automatic
   edits. The managed editor remains the only journal writer, so large-selection
   confirmation, autosave, undo/redo and immutable export rules remain active.
+- Upgraded view-local class visibility to the shared LAS catalog. Docked and
+  detached views can show, hide, isolate or restore classes without sending an
+  edit command. Rows use class names and swatches and may show explicitly
+  approximate resident-view counts after staged edits; they are not presented
+  as authoritative full-source totals. Each linked view retains its own filter.
 
 ## IN PROGRESS
 
-The catalog and first classify-while-selecting policy are foundations.
-Visibility/isolation, richer counts, presets, data-health summaries, target
-warnings, and human interaction acceptance are not yet complete.
+The catalog, guarded classify-while-selecting policy and view-local class
+visibility are foundations. Authoritative/effective source-wide counts,
+presets, data-health summaries, target warnings, and human interaction
+acceptance are not yet complete.
 
 ## NEXT
 
-1. Build compact class visibility/isolation using the shared catalog.
-2. Surface selection and effective-class counts without permanent large panels.
-3. Add target warnings and presets without bypassing journal confirmation.
+1. Surface authoritative selection and effective-class counts without permanent
+   large panels.
+2. Add target warnings and presets without bypassing journal confirmation.
+3. Qualify the classification workflow in a fresh human viewer session.
 
 ## BLOCKED
 

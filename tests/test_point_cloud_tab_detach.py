@@ -6,14 +6,16 @@ from unittest.mock import Mock, patch
 try:
     from qgis.PyQt.QtCore import QEvent, QPoint, QPointF, Qt, QObject, pyqtSignal
     from qgis.PyQt.QtGui import QMouseEvent
-    from qgis.PyQt.QtWidgets import QApplication
+    from qgis.PyQt.QtWidgets import QApplication, QListWidget
     from pyforestscan_qgis.compat.qt import qt_enum
     from pyforestscan_qgis.ui.point_cloud_detached import LinkedTabBar, DetachedView
     from pyforestscan_qgis.ui.point_cloud_tools import SelectionTools
     from pyforestscan_qgis.ui.point_cloud_linked_views import LinkedViews
     from pyforestscan_qgis.ui.point_cloud_selection_limits import SelectionLimits
     from pyforestscan_qgis.ui.point_cloud_appearance import PointAppearance
+    from pyforestscan_qgis.ui.point_cloud_class_visibility import ClassVisibilityMenu
     from pyforestscan_qgis.ui.point_cloud_editor import EditorPanel
+    from pyforestscan_qgis.ui.point_cloud_page import PointCloudPage
 except ImportError:
     QApplication = None
 
@@ -362,6 +364,52 @@ class PointAppearanceControlTests(unittest.TestCase):
         self.control.sync({"point_style": "Square", "point_size": 6})
         self.assertEqual(self.control.size_spin.value(), 6)
         self.send.assert_not_called()
+
+
+@unittest.skipIf(QApplication is None, "Requires QGIS Qt")
+class ClassVisibilityControlTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.send = Mock()
+        self.control = ClassVisibilityMenu(self.send)
+
+    def tearDown(self):
+        self.control.deleteLater()
+        self.app.processEvents()
+
+    def test_catalog_menu_toggles_and_isolates_without_edit_commands(self):
+        self.control.sync({"observed_classes": [2, 5], "classes": None,
+                           "editor": {"effective_classes": {"5": 120}}})
+        texts = [action.text() for action in self.control.menu().actions()]
+        self.assertIn("Ground (2)", texts)
+        self.assertIn("High vegetation (5) | ~120 in view", texts)
+        self.control.change(2, False)
+        command = self.send.call_args.args[0]
+        self.assertEqual(command["action"], "classes")
+        self.assertNotIn(2, command["classes"])
+        self.control.change(5, False)
+        self.assertNotIn(2, self.send.call_args.args[0]["classes"])
+        self.assertNotIn(5, self.send.call_args.args[0]["classes"])
+        self.control.isolate(5)
+        self.send.assert_called_with({"action": "classes", "classes": [5]})
+        self.assertNotIn("stage", repr(self.send.call_args_list))
+
+    def test_docked_rows_use_catalog_swatches_and_remove_stale_effective_class(self):
+        owner = SimpleNamespace(class_list=QListWidget(), send=Mock())
+        self.addCleanup(owner.class_list.deleteLater)
+        PointCloudPage.solo_class(owner)
+        owner.send.assert_not_called()
+        PointCloudPage._observe_classes(owner, [2], None, {"5": 120})
+        self.assertEqual(owner.class_list.count(), 2)
+        self.assertEqual(owner.class_list.item(0).text(), "Ground (2)")
+        self.assertFalse(owner.class_list.item(0).icon().isNull())
+        self.assertEqual(owner.class_list.item(1).text(), "High vegetation (5) | ~120 in view")
+        PointCloudPage._observe_classes(owner, [2], None, {})
+        self.assertEqual(owner.class_list.count(), 1)
+        self.assertEqual(owner.class_list.item(0).text(), "Ground (2)")
 
 
 if __name__ == "__main__":

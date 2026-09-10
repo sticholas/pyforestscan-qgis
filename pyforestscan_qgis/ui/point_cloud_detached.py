@@ -102,6 +102,9 @@ class DetachedView(QDialog):
         from .point_cloud_appearance import PointAppearance
         self.appearance = PointAppearance(self.send, self)
         row.addWidget(self.appearance)
+        from .point_cloud_class_visibility import ClassVisibilityMenu
+        self.class_visibility = ClassVisibilityMenu(self.send, self)
+        row.addWidget(self.class_visibility)
         from .point_cloud_tools import SelectionTools
         self.tool = SelectionTools(self)
         self.tool.setProfileToolsVisible(
@@ -230,6 +233,7 @@ class DetachedView(QDialog):
             return
         self.telemetry = telemetry
         self.appearance.sync(telemetry)
+        self.class_visibility.sync(telemetry)
         view = self.controller.page.workspace.views.get(self.view_id)
         if view is None:
             return

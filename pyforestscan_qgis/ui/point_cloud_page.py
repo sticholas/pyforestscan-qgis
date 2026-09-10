@@ -370,11 +370,11 @@ class PointCloudPage(QWidget):
         form.addRow("Quality", self.quality)
         self.class_list = QListWidget()
         self.class_list.setMaximumHeight(100)
-        self.class_list.setToolTip("Classes observed in streamed points. More may appear as the view refines. Check a class to show it; this never edits the source.")
+        self.class_list.setToolTip("Source and staged classes observed in resident view points. Approximate counts refine with the view. Check a class to show it; this never edits the source.")
         self.class_list.itemChanged.connect(self.apply_class_visibility)
         form.addRow("Observed classes", self.class_list)
         class_actions = QHBoxLayout()
-        self.solo_class_button = QPushButton("Solo Class")
+        self.solo_class_button = QPushButton("Isolate Class")
         self.solo_class_button.setToolTip("Display only the selected observed class. This does not change classification values.")
         self.solo_class_button.clicked.connect(self.solo_class)
         self.show_classes_button = QPushButton("Show All Classes")
@@ -606,17 +606,28 @@ class PointCloudPage(QWidget):
             item.setCheckState(qt_enum(Qt, "Checked" if visible is None or code in visible else "Unchecked", "CheckState"))
         self.class_list.blockSignals(False)
 
-    def _observe_classes(self, codes, visible):
-        known = {self.class_list.item(i).data(qt_enum(Qt, "UserRole", "ItemDataRole")) for i in range(self.class_list.count())}
+    def _observe_classes(self, codes, visible, resident_counts=None):
+        from ..core.point_cloud.view_filters import class_visibility_rows
+        from .point_cloud_class_visibility import class_swatch_icon
+        rows = class_visibility_rows(codes, visible, resident_counts)
+        known = {self.class_list.item(i).data(qt_enum(Qt, "UserRole", "ItemDataRole")):
+                 self.class_list.item(i) for i in range(self.class_list.count())}
         self.class_list.blockSignals(True)
-        for code in sorted(set(codes) - known):
-            if type(code) is not int or not 0 <= code <= 255:
-                continue
-            item = QListWidgetItem(f"Class {code}")
-            item.setData(qt_enum(Qt, "UserRole", "ItemDataRole"), code)
-            item.setFlags(item.flags() | qt_enum(Qt, "ItemIsUserCheckable", "ItemFlag"))
-            item.setCheckState(qt_enum(Qt, "Checked" if visible is None or code in visible else "Unchecked", "CheckState"))
-            self.class_list.addItem(item)
+        row_codes = {row.code for row in rows}
+        for index in reversed(range(self.class_list.count())):
+            if self.class_list.item(index).data(qt_enum(Qt, "UserRole", "ItemDataRole")) not in row_codes:
+                self.class_list.takeItem(index)
+        for row in rows:
+            item = known.get(row.code)
+            if item is None:
+                item = QListWidgetItem()
+                item.setData(qt_enum(Qt, "UserRole", "ItemDataRole"), row.code)
+                item.setFlags(item.flags() | qt_enum(Qt, "ItemIsUserCheckable", "ItemFlag"))
+                self.class_list.addItem(item)
+            item.setText(row.text)
+            item.setIcon(class_swatch_icon(row.color))
+            item.setToolTip("Approximate count covers resident points in this view after staged edits; authoritative selected counts are shown in Selection Details.")
+            item.setCheckState(qt_enum(Qt, "Checked" if row.visible else "Unchecked", "CheckState"))
         self.class_list.blockSignals(False)
 
     def apply_class_visibility(self):
@@ -634,7 +645,8 @@ class PointCloudPage(QWidget):
         if item is not None:
             classes = [item.data(qt_enum(Qt, "UserRole", "ItemDataRole"))]
             self._sync_classes(classes)
-            self.send({"action": "classes", "classes": classes})
+            from ..core.point_cloud.view_filters import isolated_class
+            self.send({"action": "classes", "classes": isolated_class(classes[0])})
 
     def show_all_classes(self):
         self._sync_classes(None)
@@ -767,7 +779,8 @@ class PointCloudPage(QWidget):
             self.linked.observe(telemetry)
             self.editor.observe(telemetry)
             self.linked.coordinate_resources()
-            self._observe_classes(telemetry.get("observed_classes", []), telemetry.get("classes"))
+            self._observe_classes(telemetry.get("observed_classes", []), telemetry.get("classes"),
+                                  (telemetry.get("editor") or {}).get("effective_classes", {}))
             self._controls(True)
             if self._session_worker is None:
                 self.status.setText("Source open | Original unchanged")
