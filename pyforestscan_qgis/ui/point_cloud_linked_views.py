@@ -17,6 +17,7 @@ from .point_cloud_editor import EditorWorker, _WORKERS
 class LinkedViews(QObject):
     limitsChanged = pyqtSignal()
     brushRadiusChanged = pyqtSignal(float)
+    spherePlacementChanged = pyqtSignal(str, float)
 
     def __init__(self, page, toolbar):
         super().__init__(page)
@@ -81,6 +82,10 @@ class LinkedViews(QObject):
         page.editor.tool.setBrushRadius(self.brush_radius)
         page.editor.tool.brushRadiusChanged.connect(self.set_brush_radius)
         self.brushRadiusChanged.connect(page.editor.tool.setBrushRadius)
+        page.editor.tool.setSpherePlacement(self.sphere_axis, self.sphere_height,
+            "HeightAboveGround" in page.editor.state.get("dimensions", []))
+        page.editor.tool.spherePlacementChanged.connect(self.set_sphere_placement)
+        self.spherePlacementChanged.connect(page.editor.tool.setSpherePlacement)
         self.sync_tabs()
 
     @property
@@ -112,6 +117,27 @@ class LinkedViews(QObject):
             self.persist()
 
     @property
+    def sphere_axis(self):
+        value = self.page.workspace.global_filters.get("sphere_axis", "Z")
+        return value if value in ("Z", "HeightAboveGround") else "Z"
+
+    @property
+    def sphere_height(self):
+        value = self.page.workspace.global_filters.get("sphere_height", 0.0)
+        return float(value) if type(value) in (int, float) and -10000000 <= value <= 10000000 else 0.0
+
+    def set_sphere_placement(self, axis, height, *, persist=True):
+        if (axis not in ("Z", "HeightAboveGround") or type(height) not in (int, float)
+                or not -10000000 <= height <= 10000000):
+            return
+        if axis == "HeightAboveGround" and "HeightAboveGround" not in self.page.editor.state.get("dimensions", []):
+            return
+        self.page.workspace.global_filters.update(sphere_axis=axis, sphere_height=float(height))
+        self.spherePlacementChanged.emit(axis, float(height))
+        if persist:
+            self.persist()
+
+    @property
     def depth_error(self):
         for key, limits in self.depth.items():
             if limits[0] > limits[1]:
@@ -138,6 +164,7 @@ class LinkedViews(QObject):
             self.page.editor.state["source_fingerprint"], self.page.editor.send)
         self.page.workspace = restored
         self.brushRadiusChanged.emit(self.brush_radius)
+        self.spherePlacementChanged.emit(self.sphere_axis, self.sphere_height)
         self.sync_tabs()
         self.open_active()
 

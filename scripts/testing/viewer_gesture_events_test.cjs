@@ -95,6 +95,16 @@ assert.deepEqual(Array.from(box.geometry[0]),[930,2060]);
 assert.deepEqual(Array.from(box.geometry[2]),[990,2000]);
 assert.equal(tick().drawing_state,"RESOLVING");
 editor.command({action:"selection_resolution"});
+editor.command({action:"selection_tool",tool:"Sphere",mode:"REPLACE",sphere_axis:"HeightAboveGround",sphere_height:12});
+for(let i=0;i<2;i++){ const callbacks=queue.splice(0);callbacks.forEach(fn=>fn()); }
+canvas.emit("pointerdown",{offsetX:250,offsetY:250});
+canvas.emit("pointermove",{offsetX:300,offsetY:250});
+canvas.emit("pointerup",{offsetX:300,offsetY:250});
+const sphereGesture=tick().event;
+assert.deepEqual(Array.from(sphereGesture.sphere_center),[1000,2000,12]);
+assert.equal(sphereGesture.sphere_radius,20);
+assert.equal(sphereGesture.sphere_axis,"HeightAboveGround");
+editor.command({action:"selection_resolution"});
 arm("Circle");
 canvas.emit("pointerdown",{offsetX:250,offsetY:250});
 canvas.emit("pointermove",{offsetX:300,offsetY:250});

@@ -168,6 +168,25 @@ class SelectionToolTests(unittest.TestCase):
         self.tools.buttons["Pointer"].click()
         self.assertTrue(self.tools.brush_radius.isHidden())
 
+    def test_sphere_placement_is_explicit_contextual_and_hag_aware(self):
+        placements = []
+        self.tools.spherePlacementChanged.connect(lambda axis, height: placements.append((axis,height)))
+        self.assertTrue(self.tools.sphere_height.isHidden())
+        self.tools.setSpherePlacement("HeightAboveGround", 12.5, True)
+        self.tools.buttons["Sphere"].click()
+        self.assertFalse(self.tools.sphere_height.isHidden())
+        self.assertEqual((self.tools.sphereAxis(), self.tools.sphereHeight()),
+                         ("HeightAboveGround", 12.5))
+        self.tools.sphere_height.setValue(13)
+        self.assertEqual(placements[-1], ("HeightAboveGround", 13.0))
+        self.tools.setSpherePlacement("HeightAboveGround", 13, False)
+        self.assertEqual(self.tools.sphereAxis(), "Z")
+        self.assertIn("not camera depth", self.tools.sphere_height.toolTip())
+        self.tools.sphere_height.lineEdit().setText("14.")
+        with patch.object(self.tools.sphere_height, "hasFocus", return_value=True):
+            self.tools.setSpherePlacement("Z", 20, False)
+        self.assertEqual(self.tools.sphere_height.lineEdit().text(), "14.")
+
     def test_selection_detail_margin_is_zero_by_default_and_only_expands_region(self):
         owner = SimpleNamespace(page=SimpleNamespace(editor=SimpleNamespace(state={
             "selection": {"bounds": [0, 0, 5, 10, 20, 15]}, "source_crs": "EPSG:6635"})),

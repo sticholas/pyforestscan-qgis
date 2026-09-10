@@ -146,6 +146,8 @@ class EditorPanel(QWidget):
         self.tool.currentTextChanged.connect(self.change_tool)
         self.tool.brushRadiusChanged.connect(
             lambda _value: self.change_tool("Brush") if self.tool.currentText() == "Brush" else None)
+        self.tool.spherePlacementChanged.connect(
+            lambda _axis, _height: self.change_tool("Sphere") if self.tool.currentText() == "Sphere" else None)
         self.mode.currentTextChanged.connect(lambda _: self.change_tool(self.tool.currentText()))
         row.addWidget(self.tool)
         row.addWidget(self.mode, 1)
@@ -241,6 +243,9 @@ class EditorPanel(QWidget):
         return button
 
     def refresh_controls(self):
+        if hasattr(self.page, "linked"):
+            self.tool.setSpherePlacement(self.page.linked.sphere_axis, self.page.linked.sphere_height,
+                "HeightAboveGround" in self.state.get("dimensions", []))
         ready = bool(self.state.get("ready")) and not self.busy and self.viewer_ready
         for control in (self.tool, self.mode, self.clear):
             control.setEnabled(ready)
@@ -338,6 +343,9 @@ class EditorPanel(QWidget):
                     self.page.send({"action": "selection_tool", "tool": "Pointer"})
                     return
             values = {"brush_radius": self.tool.brushRadius()} if tool == "Brush" else {}
+            if tool == "Sphere":
+                values = {"sphere_axis": self.tool.sphereAxis(),
+                          "sphere_height": self.tool.sphereHeight()}
             self.page.send({"action": "selection_tool", "tool": tool,
                             "mode": self.mode.currentText().upper(), **values})
 

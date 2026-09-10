@@ -81,6 +81,16 @@ human interaction, long-run/resource, and source-format gates remain open.
   journal, undo/redo and export remain the existing shared contracts. Missing
   vertical limits in a 3D view fail before the tool arms; camera depth is never
   inferred.
+- Exposed the existing exact Sphere contract as a compact direct action with
+  explicit placement. The linked workspace owns one persisted center-height
+  axis (source Z or stored HAG) and value shared by docked and detached views;
+  center-to-edge drag supplies source XY center and source-unit radius. The
+  contextual controls are visible only while Sphere is active, preserve
+  partially typed values during telemetry refresh, and remove HAG when the
+  source lacks that dimension. Vertical Slice use fails clearly. The gesture
+  emits the same sphere fields already used by the resolver, renderer overlay,
+  journal replay and export; camera depth and rendered point identity remain
+  irrelevant.
 
 ## MEASURED EVIDENCE
 
@@ -194,6 +204,15 @@ QGIS 4.0/Qt6 focused tests. A full linked-view/export canary was attempted but
 could not acquire a viewer host while an older live QGIS session retained all
 three configured runtime slots; that user session was not interrupted.
 
+The direct Sphere placement gesture passes the production JavaScript event
+contract with center (1000, 2000, HAG 12) and radius 20, including camera
+restoration. Its shared contextual controls and native icon pass focused tests
+under QGIS 3.44/Qt5 and QGIS 4.0/Qt6. The earlier managed all-record sphere
+qualification remains the authoritative membership evidence: 138 source points
+at center (215250, 2114750, HAG 10), radius 5, with exact independent predicate
+agreement and unchanged source SHA256. Human placement acceptance and the full
+QGIS export canary remain open while viewer runtime slots are occupied.
+
 ## IN PROGRESS
 
 Circle/cylinder selection is exposed but remains experimental pending human
@@ -205,9 +224,9 @@ acceptance and massive-source cancellation qualification remain required before
 user release. Resolution already
 runs in the managed background and large-selection impact feedback is now
 shared with the edit-confirmation policy.
-Sphere membership and transport are implemented but deliberately have no user
-gesture yet. A renderer sample, camera depth, or guessed vertical center cannot
-become sphere authority.
+Sphere membership, transport and explicit placement are implemented. Human
+placement acceptance remains required; a renderer sample, camera depth, or
+guessed vertical center cannot become sphere authority.
 Box Select is exposed with explicit depth semantics and automated contract and
 real-source evidence. Human drawing acceptance and a full QGIS export canary
 remain open.
@@ -218,9 +237,8 @@ remain open.
    including Add/Subtract and the active height limits.
 2. Human Brush acceptance plus cancellation qualification on the 104.8-million
    point source or another representative massive local cloud.
-3. Complete human Box drawing acceptance and its full linked-view/export
-   canary, then design an explicit sphere placement gesture without camera-depth
-   or rendered-point authority.
+3. Complete human Box and Sphere drawing acceptance and their full linked-view/
+   export canary after viewer runtime capacity is available.
 
 ## BLOCKED
 

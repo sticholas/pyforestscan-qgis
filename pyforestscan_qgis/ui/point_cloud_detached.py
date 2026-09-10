@@ -97,6 +97,10 @@ class DetachedView(QDialog):
         self.tool.currentTextChanged.connect(self.change_tool)
         self.tool.brushRadiusChanged.connect(controller.set_brush_radius)
         controller.brushRadiusChanged.connect(self.tool.setBrushRadius)
+        self.tool.setSpherePlacement(controller.sphere_axis, controller.sphere_height,
+            "HeightAboveGround" in controller.page.editor.state.get("dimensions", []))
+        self.tool.spherePlacementChanged.connect(controller.set_sphere_placement)
+        controller.spherePlacementChanged.connect(self.tool.setSpherePlacement)
         classify = QToolButton()
         classify.setText("Classify")
         classify.clicked.connect(self.classify)
@@ -155,6 +159,9 @@ class DetachedView(QDialog):
                 self.status.setText(self.selection_error)
                 return
         options = {"brush_radius": self.tool.brushRadius()} if value == "Brush" else {}
+        if value == "Sphere":
+            options = {"sphere_axis": self.tool.sphereAxis(),
+                       "sphere_height": self.tool.sphereHeight()}
         self.send({"action":"selection_tool", "tool":value,
                    "mode":self.selection_mode.currentText().upper(), **options})
 

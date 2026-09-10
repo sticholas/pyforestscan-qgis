@@ -2,7 +2,7 @@
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import QSize, pyqtSignal
 from qgis.PyQt.QtWidgets import (QWidget, QHBoxLayout, QToolButton, QButtonGroup,
-                                 QLabel, QDoubleSpinBox)
+                                 QLabel, QDoubleSpinBox, QComboBox)
 
 
 def spatial_button(label, icon, help_text, parent=None):
@@ -19,6 +19,7 @@ def spatial_button(label, icon, help_text, parent=None):
 class SelectionTools(QWidget):
     currentTextChanged = pyqtSignal(str)
     brushRadiusChanged = pyqtSignal(float)
+    spherePlacementChanged = pyqtSignal(str, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -40,6 +41,8 @@ class SelectionTools(QWidget):
              "Box Select: in Overview or Area Detail, first choose explicit Elevation or HAG limits, then drag the XY footprint. In Vertical Slice, drag a profile rectangle; slice thickness supplies depth. The full-resolution source query uses those exact bounds."),
             ("Circle", "Circle Select", "mActionSelectRadius.svg",
              "Circle Select: drag from the center to set a radius in dataset XY coordinates; Escape cancels. Full column selects a circular column; Elevation or HAG limits make it a bounded cylinder. Selection resolves original points, not displayed samples. Vertical Slice support is not yet enabled."),
+            ("Sphere", "Sphere Select", "mIconPointCloudLayer.svg",
+             "Sphere Select: choose an explicit source Z or stored HAG center, then drag center-to-edge for radius in source coordinate units. Exact 3D membership resolves against original points. Camera depth and displayed samples are never selection authority. Vertical Slice support is not enabled."),
             ("Brush", "Brush Select", "mActionSelectFreehand.svg",
              "Brush Select: drag a continuous round stroke with radius in dataset XY units. Full column selects through the cloud; Elevation or HAG limits bound its depth. Shift adds and Alt subtracts. Original points are resolved in the background; screen pixels are never edit addresses. Vertical Slice support is not yet enabled."),
         )
@@ -63,7 +66,24 @@ class SelectionTools(QWidget):
         self.brush_radius.valueChanged.connect(self.brushRadiusChanged.emit)
         layout.addWidget(self.brush_label)
         layout.addWidget(self.brush_radius)
-        self._show_brush_options(False)
+        self.sphere_label = QLabel("Center")
+        self.sphere_axis = QComboBox()
+        self.sphere_axis.addItem("Z", "Z")
+        self.sphere_axis.setAccessibleName("Sphere center height axis")
+        self.sphere_axis.setToolTip("Use source elevation Z or stored HeightAboveGround for the exact sphere center.")
+        self.sphere_height = QDoubleSpinBox()
+        self.sphere_height.setRange(-10000000, 10000000)
+        self.sphere_height.setDecimals(3)
+        self.sphere_height.setKeyboardTracking(False)
+        self.sphere_height.setAccessibleName("Sphere center height")
+        self.sphere_height.setToolTip("Exact sphere-center height in the selected stored source dimension. This is not camera depth.")
+        self.sphere_height.setMaximumWidth(115)
+        self.sphere_axis.currentIndexChanged.connect(self._sphere_changed)
+        self.sphere_height.valueChanged.connect(self._sphere_changed)
+        layout.addWidget(self.sphere_label)
+        layout.addWidget(self.sphere_axis)
+        layout.addWidget(self.sphere_height)
+        self._show_options()
 
     def currentText(self):
         return self._value
@@ -73,7 +93,7 @@ class SelectionTools(QWidget):
             return
         self._value = value
         self.buttons[value].setChecked(True)
-        self._show_brush_options(value == "Brush")
+        self._show_options()
         self.currentTextChanged.emit(value)
 
     def activate(self, value):
@@ -90,6 +110,36 @@ class SelectionTools(QWidget):
         self.brush_radius.setValue(value)
         self.brush_radius.blockSignals(False)
 
-    def _show_brush_options(self, visible):
-        self.brush_label.setVisible(visible)
-        self.brush_radius.setVisible(visible)
+    def sphereAxis(self):
+        return self.sphere_axis.currentData()
+
+    def sphereHeight(self):
+        return self.sphere_height.value()
+
+    def setSpherePlacement(self, axis, height, has_hag=True):
+        self.sphere_axis.blockSignals(True)
+        self.sphere_height.blockSignals(True)
+        existing = [self.sphere_axis.itemData(i) for i in range(self.sphere_axis.count())]
+        if has_hag and "HeightAboveGround" not in existing:
+            self.sphere_axis.addItem("HAG", "HeightAboveGround")
+        elif not has_hag and "HeightAboveGround" in existing:
+            self.sphere_axis.removeItem(existing.index("HeightAboveGround"))
+        index = self.sphere_axis.findData(axis)
+        self.sphere_axis.setCurrentIndex(max(0, index))
+        if not self.sphere_height.hasFocus():
+            self.sphere_height.setValue(height)
+        self.sphere_axis.blockSignals(False)
+        self.sphere_height.blockSignals(False)
+
+    def _sphere_changed(self, _value=None):
+        self.spherePlacementChanged.emit(self.sphereAxis(), self.sphereHeight())
+        if self._value == "Sphere":
+            self.currentTextChanged.emit("Sphere")
+
+    def _show_options(self):
+        brush = self._value == "Brush"
+        sphere = self._value == "Sphere"
+        self.brush_label.setVisible(brush)
+        self.brush_radius.setVisible(brush)
+        for widget in (self.sphere_label, self.sphere_axis, self.sphere_height):
+            widget.setVisible(sphere)

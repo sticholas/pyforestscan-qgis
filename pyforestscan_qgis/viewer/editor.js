@@ -12,6 +12,7 @@ let pending = [], requestedRevision = 0;
 let gestureMode = null;
 let toolEpoch = 0, insertionPending = false;
 let brushPointer = null, brushRadius = 1;
+let sphereAxis = "Z", sphereHeight = 0;
 let displaySignature = "";
 let selectionColor = new THREE.Color("#5be4eb");
 function sourceAttribute(geometry, name) {
@@ -189,16 +190,16 @@ function initialize(value) {
             event.preventDefault(); event.stopPropagation();
             return;
         }
-        if (!["Rectangle", "Box", "Circle"].includes(tool) || event.button !== 0) return;
-        if (tool === "Circle" && linkedView && linkedView.view_type === "VERTICAL_SLICE") {
-            latestEvent = {id: ++eventNumber, error: "Circle Select currently works in Overview and Area Detail. Use Polygon Select in Vertical Slice."};
+        if (!["Rectangle", "Box", "Circle", "Sphere"].includes(tool) || event.button !== 0) return;
+        if (["Circle", "Sphere"].includes(tool) && linkedView && linkedView.view_type === "VERTICAL_SLICE") {
+            latestEvent = {id: ++eventNumber, error: tool + " Select currently works in Overview and Area Detail. Use Polygon Select in Vertical Slice."};
             leaveTool();
             return;
         }
         rectangleStart = [event.offsetX, event.offsetY];
         rectangleBox = document.createElement("div");
         rectangleBox.style.cssText = "position:absolute;border:2px dashed #5be4eb;pointer-events:none;box-sizing:border-box";
-        if (tool === "Circle") rectangleBox.style.borderRadius = "50%";
+        if (["Circle", "Sphere"].includes(tool)) rectangleBox.style.borderRadius = "50%";
         canvas.parentElement.appendChild(rectangleBox);
         canvas.setPointerCapture(event.pointerId);
         event.preventDefault();
@@ -276,10 +277,10 @@ function initialize(value) {
             }
             return;
         }
-        if (!rectangleStart || !["Rectangle", "Box", "Circle"].includes(tool)) return;
+        if (!rectangleStart || !["Rectangle", "Box", "Circle", "Sphere"].includes(tool)) return;
         const [x, y] = rectangleStart, xx = event.offsetX, yy = event.offsetY;
         if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
-        if (tool === "Circle" && Math.hypot(x-xx, y-yy) > 2) {
+        if (["Circle", "Sphere"].includes(tool) && Math.hypot(x-xx, y-yy) > 2) {
             const screenRadius = Math.hypot(x-xx, y-yy);
             for (const p of [[x-screenRadius,y-screenRadius], [x+screenRadius,y-screenRadius],
                     [x+screenRadius,y+screenRadius], [x-screenRadius,y+screenRadius]])
@@ -294,7 +295,9 @@ function initialize(value) {
             const geometry = [[center.x-radius,center.y-radius], [center.x+radius,center.y-radius],
                 [center.x+radius,center.y+radius], [center.x-radius,center.y+radius],
                 [center.x-radius,center.y-radius]];
-            publish(geometry, {circle_center:[center.x,center.y], circle_radius:radius});
+            publish(geometry, tool === "Sphere" ?
+                {sphere_center:[center.x,center.y,sphereHeight],sphere_radius:radius,sphere_axis:sphereAxis} :
+                {circle_center:[center.x,center.y], circle_radius:radius});
             drawing.resolving(); leaveTool();
         } else if (["Rectangle", "Box"].includes(tool) && Math.abs(x - xx) > 2 && Math.abs(y - yy) > 2) {
             for (const p of [[x,y], [xx,y], [xx,yy], [x,yy]]) drawing.vertex(...p);
@@ -443,15 +446,18 @@ window.pointCloudEditor = {
         if (command.action === "linked_view") linkedView = command.view || null;
         if (!context) return;
         if (command.action === "selection_tool") {
-            if (!["Pointer", "Polygon", "Rectangle", "Box", "Circle", "Brush", "Line"].includes(command.tool)) return;
+            if (!["Pointer", "Polygon", "Rectangle", "Box", "Circle", "Sphere", "Brush", "Line"].includes(command.tool)) return;
             if (command.mode && !["REPLACE", "ADD", "SUBTRACT"].includes(command.mode)) return;
             if (command.tool === "Brush" &&
                     (!Number.isFinite(command.brush_radius) || command.brush_radius <= 0)) return;
+            if (command.tool === "Sphere" &&
+                    (!Number.isFinite(command.sphere_height) || !["Z", "HeightAboveGround"].includes(command.sphere_axis))) return;
             leaveTool();
             drawing.cancel();
             mode = command.mode || "REPLACE";
             drawingPurpose = command.purpose || "EDIT";
             if (command.tool === "Brush") brushRadius=command.brush_radius;
+            if (command.tool === "Sphere") { sphereAxis=command.sphere_axis; sphereHeight=command.sphere_height; }
             if (command.tool === "Pointer") {
                 return;
             }
@@ -468,7 +474,7 @@ window.pointCloudEditor = {
                 insertionPending = false;
                 tool = command.tool;
                 drawing.arm(tool === "Line" || tool === "Brush" ? "Polygon" :
-                    tool === "Circle" || tool === "Box" ? "Rectangle" : tool, mode);
+                    tool === "Circle" || tool === "Sphere" || tool === "Box" ? "Rectangle" : tool, mode);
                 drawingCamera = context.viewer.scene.getActiveCamera().clone();
                 context.viewer.inputHandler.enabled = false;
                 if (tool === "Polygon" || tool === "Line" || tool === "Brush") {
