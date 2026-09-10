@@ -52,6 +52,7 @@ class CircleContractTests(unittest.TestCase):
             "classification_filter", "attribute_filters", "view_id", "view_name", "clip_geometry",
             "profile_a", "profile_b", "profile_path", "profile_thickness", "profile_geometry", "profile_axis",
             "depth_mode", "circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
+            "profile_brush_path", "profile_brush_radius", "profile_brush_tolerance",
             "sphere_center", "sphere_radius", "sphere_axis", "invert_result",
             "profile_line", "profile_line_side"})
 

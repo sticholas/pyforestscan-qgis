@@ -9,6 +9,9 @@
 - Made the existing Color By and Point Size controls explicit profile quick
   controls and extended exact session restoration to acknowledge camera, color,
   filters, quality, point style, and point size together.
+- Enabled Profile Brush selection through a dedicated distance/elevation or HAG
+  stroke primitive resolved against original source records inside the bounded
+  corridor; Replace/Add/Subtract and journal replay remain shared across views.
 
 - Added compact Fit, Reverse and corridor Width controls to the existing
   source-linked Vertical Slice workflow.

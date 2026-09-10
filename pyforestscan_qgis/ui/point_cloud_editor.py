@@ -746,6 +746,7 @@ class EditorPanel(QWidget):
                     constraints = self.page.linked.selection_values(event)
                     values = {key: event[key] for key in (
                         "circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
+                        "profile_brush_path", "profile_brush_radius", "profile_brush_tolerance",
                         "sphere_center", "sphere_radius", "sphere_axis", "profile_line",
                         "profile_line_side") if key in event}
                     self.send("select", geometry=event["geometry"], mode=event["mode"],

@@ -24,6 +24,23 @@ def _range(value, label):
     return result
 
 
+def _brush_values(path, radius, tolerance, label):
+    if path is None or not 1 <= len(path) <= 512:
+        raise ValueError(f"{label} requires 1-512 path points.")
+    points = tuple(tuple(point) for point in path)
+    if (any(len(point) != 2 or any(type(value) not in (int, float)
+                                   or not math.isfinite(value) for value in point)
+            for point in points)
+            or any(first == second for first, second in zip(points, points[1:]))
+            or type(radius) not in (int, float) or not math.isfinite(radius) or radius <= 0
+            or type(tolerance) not in (int, float) or not math.isfinite(tolerance)
+            or tolerance < 0 or tolerance > radius/4):
+        raise ValueError(
+            f"{label} requires distinct finite points, positive radius, and "
+            "tolerance no greater than one quarter radius.")
+    return points
+
+
 @dataclass(frozen=True)
 class SelectionDefinition:
     selection_id: str
@@ -54,6 +71,9 @@ class SelectionDefinition:
     brush_path: tuple[tuple[float, float], ...] | None = None
     brush_radius: float | None = None
     brush_tolerance: float = 0.0
+    profile_brush_path: tuple[tuple[float, float], ...] | None = None
+    profile_brush_radius: float | None = None
+    profile_brush_tolerance: float = 0.0
     sphere_center: tuple[float, float, float] | None = None
     sphere_radius: float | None = None
     sphere_axis: str = "Z"
@@ -82,8 +102,13 @@ class SelectionDefinition:
         object.__setattr__(self, "geometry", ring)
         if self.sphere_axis not in ("Z", "HeightAboveGround"):
             raise ValueError("Sphere height axis must be Z or HeightAboveGround.")
+        source_brush = (self.brush_path is not None or self.brush_radius is not None
+                        or self.brush_tolerance != 0)
+        profile_brush = (self.profile_brush_path is not None
+                         or self.profile_brush_radius is not None
+                         or self.profile_brush_tolerance != 0)
         primitives = sum((self.circle_center is not None or self.circle_radius is not None,
-                          self.brush_path is not None or self.brush_radius is not None or self.brush_tolerance != 0,
+                          source_brush, profile_brush,
                           self.sphere_center is not None or self.sphere_radius is not None))
         if primitives > 1:
             raise ValueError("Selection cannot contain competing spatial primitives.")
@@ -98,18 +123,10 @@ class SelectionDefinition:
             if ring != envelope:
                 raise ValueError("Circle query envelope must match its exact source-space bounds.")
             object.__setattr__(self, "circle_center", center)
-        if self.brush_path is not None or self.brush_radius is not None or self.brush_tolerance != 0:
-            path, radius, tolerance = self.brush_path, self.brush_radius, self.brush_tolerance
-            if path is None or not 1 <= len(path) <= 512:
-                raise ValueError("Brush requires 1-512 source XY path points.")
-            path = tuple(tuple(point) for point in path)
-            if (any(len(point) != 2 or any(type(v) not in (int, float) or not math.isfinite(v)
-                                          for v in point) for point in path)
-                    or any(a == b for a, b in zip(path, path[1:]))
-                    or type(radius) not in (int, float) or not math.isfinite(radius) or radius <= 0
-                    or type(tolerance) not in (int, float) or not math.isfinite(tolerance)
-                    or tolerance < 0 or tolerance > radius/4):
-                raise ValueError("Brush requires distinct finite source XY points, positive radius, and tolerance no greater than one quarter radius.")
+        if source_brush:
+            path = _brush_values(self.brush_path, self.brush_radius,
+                                 self.brush_tolerance, "Brush")
+            radius = self.brush_radius
             if ring != brush_envelope(path, radius):
                 raise ValueError("Brush query envelope must match its exact source-space bounds.")
             object.__setattr__(self, "brush_path", path)
@@ -163,6 +180,16 @@ class SelectionDefinition:
             object.__setattr__(self, "profile_path", profile.points if profile.path else None)
         elif self.depth_mode == "SLICE_CORRIDOR":
             raise ValueError("Slice selection requires endpoints and thickness.")
+        if profile_brush:
+            path = _brush_values(self.profile_brush_path, self.profile_brush_radius,
+                                 self.profile_brush_tolerance, "Profile Brush")
+            if (self.profile_a is None or self.depth_mode != "SLICE_CORRIDOR"
+                    or self.profile_geometry is not None or self.profile_line is not None):
+                raise ValueError(
+                    "Profile Brush requires one Vertical Slice and cannot compete with another profile primitive.")
+            if any(not 0 <= point[0] <= profile.length for point in path):
+                raise ValueError("Profile Brush path must remain inside the profile length.")
+            object.__setattr__(self, "profile_brush_path", path)
         if self.profile_line is not None or self.profile_line_side is not None:
             line = tuple(tuple(point) for point in (self.profile_line or ()))
             if (len(line) != 2 or any(len(point) != 2 or any(
@@ -334,6 +361,12 @@ def selection_mask(chunk, definitions, shapes=None, *, cancelled=lambda: False):
                 mask &= (chunk[item.profile_axis] >= line_height if
                          item.profile_line_side == "ABOVE" else
                          chunk[item.profile_axis] <= line_height)
+            if item.profile_brush_path is not None:
+                if item.profile_axis not in names:
+                    raise ValueError(f"Source does not contain {item.profile_axis}.")
+                mask &= _brush_mask_values(
+                    along, chunk[item.profile_axis], item.profile_brush_path,
+                    item.profile_brush_radius, np, cancelled=cancelled)
         for dimension, limits in (("Z", item.z_filter), ("HeightAboveGround", item.hag_filter)):
             if limits is not None:
                 if dimension not in names:
@@ -447,10 +480,14 @@ def resized_selection(definitions, distance, *, selection_id=None):
 
 
 def _brush_mask(chunk, path, radius, np, *, cancelled=lambda: False):
+    return _brush_mask_values(chunk["X"], chunk["Y"], path, radius, np,
+                              cancelled=cancelled)
+
+
+def _brush_mask_values(x, y, path, radius, np, *, cancelled=lambda: False):
     if cancelled():
         raise InterruptedError("Selection cancelled; no edits staged.")
-    x, y = chunk["X"], chunk["Y"]
-    selected = np.zeros(len(chunk), dtype=bool)
+    selected = np.zeros(len(x), dtype=bool)
     radius_squared = radius * radius
     if len(path) == 1:
         return (x-path[0][0])**2 + (y-path[0][1])**2 <= radius_squared

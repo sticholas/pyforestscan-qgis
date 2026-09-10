@@ -44,7 +44,7 @@ class SelectionTools(QWidget):
             ("Sphere", "Sphere Select", "mIconPointCloudLayer.svg",
              "Sphere Select: choose an explicit source Z or stored HAG center, then drag center-to-edge for radius in source coordinate units. Exact 3D membership resolves against original points. Camera depth and displayed samples are never selection authority. Vertical Slice support is not enabled."),
             ("Brush", "Brush Select", "mActionSelectFreehand.svg",
-             "Brush Select: drag a continuous round stroke with radius in dataset XY units. Full column selects through the cloud; Elevation or HAG limits bound its depth. Shift adds and Alt subtracts. Original points are resolved in the background; screen pixels are never edit addresses. Vertical Slice support is not yet enabled."),
+             "Brush Select: drag a continuous round stroke. In 3D views, radius uses dataset XY units and optional height limits control depth. In Profile, radius uses distance/elevation or HAG units inside the source corridor. Shift adds and Alt subtracts. Original points are resolved in the background; screen pixels are never edit addresses."),
             ("AboveLine", "Select Above Line", "mActionArrowUp.svg",
              "Select Above Line: in Vertical Slice, draw two points across the profile. Selects original points above the exact source-coordinate line, within its horizontal span and the slice corridor."),
             ("BelowLine", "Select Below Line", "mActionArrowDown.svg",
@@ -64,8 +64,9 @@ class SelectionTools(QWidget):
         self.brush_radius.setDecimals(3)
         self.brush_radius.setValue(1)
         self.brush_radius.setKeyboardTracking(False)
-        self.brush_radius.setAccessibleName("Brush radius in dataset XY units")
-        self.brush_radius.setToolTip("Round Brush radius in dataset XY coordinate units. Elevation or HAG limits independently control vertical depth.")
+        self.brush_radius.setAccessibleName(
+            "Brush radius in dataset XY or active Profile coordinate units")
+        self.brush_radius.setToolTip("Round Brush radius in dataset XY units for 3D views, or distance/elevation or HAG units in Profile. Source points are resolved independently of display density.")
         self.brush_radius.setMaximumWidth(105)
         self.brush_radius.valueChanged.connect(self.brushRadiusChanged.emit)
         layout.addWidget(self.brush_label)

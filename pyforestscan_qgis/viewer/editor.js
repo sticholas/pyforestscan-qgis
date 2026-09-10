@@ -153,7 +153,7 @@ function publish(geometry, primitive = {}) {
     }
     latestEvent = {id: ++eventNumber, geometry, mode: effectiveMode, ...primitive};
     if (linkedView && linkedView.view_type === "VERTICAL_SLICE") {
-        latestEvent.profile_geometry = geometry;
+        if (!primitive.profile_brush_path) latestEvent.profile_geometry = geometry;
         latestEvent.geometry = linkedView.corridor;
         return; // Only the authoritative worker publishes a profile selection overlay.
     }
@@ -230,6 +230,15 @@ function matches(definitions, xyz, classification, geometry, index) {
                 const lineHeight=h1+(along-x1)*(h2-h1)/(x2-x1);
                 hit = Number.isFinite(height) && along >= low && along <= high &&
                     (item.profile_line_side === "ABOVE" ? height >= lineHeight : height <= lineHeight);
+            }
+            if (hit && item.profile_brush_path && item.profile_brush_radius) {
+                const attribute = sourceAttribute(geometry, "HeightAboveGround");
+                const height = item.profile_axis === "HeightAboveGround" ?
+                    (attribute ? attribute.array[index] : NaN) : xyz.z;
+                hit = Number.isFinite(height) && insideBrush(
+                    {brush_path:item.profile_brush_path,
+                     brush_radius:item.profile_brush_radius},
+                    {x:along,y:height});
             }
         }
         if (item.legacy_bounds) {
@@ -572,11 +581,6 @@ function initialize(value) {
         if (tool !== "Pointer" && gestureMode === null)
             gestureMode = event.altKey ? "SUBTRACT" : event.shiftKey ? "ADD" : mode;
         if (tool === "Brush" && event.button === 0) {
-            if (linkedView && linkedView.view_type === "VERTICAL_SLICE") {
-                latestEvent = {id: ++eventNumber, error: "Brush Select currently works in Overview and Area Detail. Use Polygon Select in Vertical Slice."};
-                leaveTool();
-                return;
-            }
             brushPointer = event.pointerId;
             drawing.vertex(event.offsetX,event.offsetY);
             canvas.setPointerCapture(event.pointerId);
@@ -661,20 +665,29 @@ function initialize(value) {
             const screenPath=drawing.finishPath(2048);
             if (!screenPath) latestEvent={id:++eventNumber,error:drawing.error};
             else {
-                const sourcePath=screenPath.map(p => {
-                    const xyz=sourceXY(p[0],p[1],drawingCamera); return [xyz.x,xyz.y];
+                const profile = linkedView && linkedView.view_type === "VERTICAL_SLICE";
+                const path=screenPath.map(p => {
+                    const xyz=sourceXY(p[0],p[1],drawingCamera);
+                    if (!profile) return [xyz.x,xyz.y];
+                    if (profileProjected()) return [xyz.x,xyz.z];
+                    return [profileLocal(linkedView.geometry,xyz.x,xyz.y).along,xyz.z];
                 });
-                const simplified=simplifySourcePath(sourcePath,brushRadius,512);
+                const simplified=simplifySourcePath(path,brushRadius,512);
                 if (!simplified.path) latestEvent={id:++eventNumber,error:simplified.error};
                 else {
                     const path=simplified.path, xs=path.map(p=>p[0]), ys=path.map(p=>p[1]);
-                    const geometry=[[Math.min(...xs)-brushRadius,Math.min(...ys)-brushRadius],
-                        [Math.max(...xs)+brushRadius,Math.min(...ys)-brushRadius],
-                        [Math.max(...xs)+brushRadius,Math.max(...ys)+brushRadius],
-                        [Math.min(...xs)-brushRadius,Math.max(...ys)+brushRadius],
-                        [Math.min(...xs)-brushRadius,Math.min(...ys)-brushRadius]];
-                    publish(geometry,{brush_path:path,brush_radius:brushRadius,
-                        brush_tolerance:simplified.tolerance});
+                    if (profile) publish(linkedView.corridor,
+                        {profile_brush_path:path,profile_brush_radius:brushRadius,
+                         profile_brush_tolerance:simplified.tolerance});
+                    else {
+                        const geometry=[[Math.min(...xs)-brushRadius,Math.min(...ys)-brushRadius],
+                            [Math.max(...xs)+brushRadius,Math.min(...ys)-brushRadius],
+                            [Math.max(...xs)+brushRadius,Math.max(...ys)+brushRadius],
+                            [Math.min(...xs)-brushRadius,Math.max(...ys)+brushRadius],
+                            [Math.min(...xs)-brushRadius,Math.min(...ys)-brushRadius]];
+                        publish(geometry,{brush_path:path,brush_radius:brushRadius,
+                            brush_tolerance:simplified.tolerance});
+                    }
                     drawing.resolving();
                 }
             }
@@ -1013,7 +1026,8 @@ window.pointCloudEditor = {
                     polygonLine.setAttribute("stroke-width", "2");
                     if (tool === "Brush") {
                         const a=sourceXY(0,0,drawingCamera), b=sourceXY(1,0,drawingCamera);
-                        const unitsPerPixel=Math.hypot(b.x-a.x,b.y-a.y);
+                        const unitsPerPixel=linkedView&&linkedView.view_type==="VERTICAL_SLICE" ?
+                            Math.hypot(b.x-a.x,b.z-a.z) : Math.hypot(b.x-a.x,b.y-a.y);
                         const width=Number.isFinite(unitsPerPixel) && unitsPerPixel > 0
                             ? Math.max(.25,2*brushRadius/unitsPerPixel) : 2;
                         polygonLine.setAttribute("stroke-width", String(width));
@@ -1037,6 +1051,7 @@ window.pointCloudEditor = {
         }
         if (command.action === "selection_test") publish(command.geometry,
             Object.fromEntries(["circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
+                "profile_brush_path", "profile_brush_radius", "profile_brush_tolerance",
                 "sphere_center", "sphere_radius", "sphere_axis", "invert_result", "profile_line",
                 "profile_line_side"].filter(key => key in command)
                 .map(key => [key, command[key]])));

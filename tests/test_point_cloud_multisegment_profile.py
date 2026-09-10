@@ -51,7 +51,7 @@ class MultiSegmentProfileTests(unittest.TestCase):
                                  ("Classification", "u1")])
         profile = self.profile()
         definition = SelectionDefinition(
-            "path", "session", "a"*64, "LAS", profile.corridor(), "EPSG:32605",
+            "path", "session", "a"*64, "COPC", profile.corridor(), "EPSG:32605",
             profile_a=profile.a, profile_b=profile.b, profile_path=profile.points,
             profile_thickness=profile.thickness,
             profile_geometry=((0, 0), (20, 0), (20, 8), (0, 8), (0, 0)),

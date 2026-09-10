@@ -58,6 +58,13 @@ color mode, filters, and quality; the top-level non-destructive edit session als
 retains those appearance choices. This reuses the existing workspace authority
 instead of introducing duplicate profile controls or state.
 
+Brush Select now operates directly in the Profile plane. The renderer transmits
+only a simplified distance-along-profile plus elevation/HAG stroke and radius;
+the managed worker queries the bounded source corridor, projects original source
+records into that plane, and applies exact round-capped membership. Replace,
+Add, and Subtract therefore use the same authoritative selection sequence and
+journal as every other view. Display samples remain only interaction guidance.
+
 Architecture decision: **REUSE** PDAL reader polygon clipping plus the
 established linked-workspace and scene-visibility state; **ADAPT** the raw-source
 range index to per-segment envelopes; **WRAP** flattened display caches with
@@ -68,9 +75,9 @@ or workspace authority was introduced.
 ## Qualification Boundary
 
 QGIS-free contracts cover path validation, cumulative projection, corridor
-membership, per-segment source queries, authoritative selection, measurements,
-annotations, and renderer gesture completion. Existing linked-view tests cover
-the shared workspace and journal boundaries.
+membership, per-segment source queries, authoritative polygon/rectangle/brush
+selection, measurements, annotations, and renderer gesture completion. Existing
+linked-view tests cover the shared workspace and journal boundaries.
 
 Sustained human profile editing acceptance remains unfinished. Two-point
 Vertical Slice remains available alongside the new path profile.

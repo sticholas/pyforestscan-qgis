@@ -28,6 +28,9 @@ class DrawingRGBTests(unittest.TestCase):
         self.assertIn("brush_path", source)
         self.assertIn("brush_radius", source)
         self.assertIn("brush_tolerance", source)
+        self.assertIn("profile_brush_path", source)
+        self.assertIn("profile_brush_radius", source)
+        self.assertNotIn("Brush Select currently works in Overview and Area Detail", source)
         self.assertIn("sphere_center", source)
         self.assertIn("sphere_radius", source)
         self.assertIn("insideSphere", source)
@@ -66,6 +69,7 @@ class DrawingRGBTests(unittest.TestCase):
         for name in ("point_cloud_editor.py", "point_cloud_detached.py"):
             source = (ROOT / "pyforestscan_qgis/ui" / name).read_text()
             for key in ("circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
+                        "profile_brush_path", "profile_brush_radius", "profile_brush_tolerance",
                         "sphere_center", "sphere_radius", "sphere_axis", "profile_line",
                         "profile_line_side"):
                 self.assertIn(f'"{key}"', source)

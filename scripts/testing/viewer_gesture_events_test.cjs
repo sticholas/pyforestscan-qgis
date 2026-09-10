@@ -184,11 +184,21 @@ assert.deepEqual(Array.from(brush.brush_path.at(-1)),[960,2028]);
 assert.equal(brush.geometry.length,5);
 assert.equal(tick().drawing_state,"RESOLVING");
 editor.command({action:"selection_resolution"});
-editor.command({action:"linked_view",view:{view_id:"slice",view_type:"VERTICAL_SLICE"}});
+editor.command({action:"linked_view",view:{view_id:"slice",view_type:"VERTICAL_SLICE",
+    display_projection:"PROFILE_DISTANCE",
+    geometry:{a:[0,0],b:[2000,0],thickness:4},
+    corridor:[[0,-2],[2000,-2],[2000,2],[0,2],[0,-2]]}});
 arm("Brush");
 canvas.emit("pointerdown",{offsetX:100,offsetY:100});
-assert.match(tick().event.error,/Overview and Area Detail/);
-assert.equal(tick().tool,"Pointer");
+canvas.emit("pointermove",{offsetX:150,offsetY:120,buttons:1});
+canvas.emit("pointerup",{offsetX:200,offsetY:140});
+const profileBrush=tick().event;
+assert.equal(profileBrush.profile_brush_radius,1);
+assert.equal(profileBrush.profile_brush_path.length,3);
+assert.equal(profileBrush.profile_geometry,undefined);
+assert.deepEqual(Array.from(profileBrush.geometry[0]),[0,-2]);
+assert.equal(tick().drawing_state,"RESOLVING");
+editor.command({action:"selection_resolution"});
 editor.command({action:"linked_view",view:null});
 editor.command({action:"selection_test",
     geometry:[[8,18],[12,18],[12,22],[8,22],[8,18]],
