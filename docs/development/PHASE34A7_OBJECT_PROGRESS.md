@@ -47,19 +47,27 @@ operations remain experimental and incomplete.
   Focus changes only source-cloud opacity, never source buffers, selection
   definitions or the edit journal. A renderer-exact integer guard prevents
   visually ambiguous focus for object IDs outside JavaScript's exact range.
+- Added guarded split and merge workflows without a second object engine.
+  Split freezes one exact catalog object as its parent, then intersects a newly
+  drawn full-resolution selection with that object's original source predicate.
+  Empty and whole-parent results fail closed; a valid subset receives the next
+  collision-safe ID. Merge requires an exact active catalog selection and an
+  existing, distinct target ID. Both operations stage ordinary `SET_OBJECT_ID`
+  journal entries and therefore retain undo/redo, recovery, export validation,
+  large-edit confirmation and immutable-source behavior.
 
 ## IN PROGRESS
 
 Discovery, navigation, guarded assignment/unassignment, collision-safe object
-creation and presentation-only focus are foundations. Split/merge,
-catalog-aware effective counts, reviewed
+creation, guarded split/merge and presentation-only focus are foundations.
+Catalog-aware effective counts, reviewed
 state and notes are not yet complete. Live object-focus acceptance still needs
 a source with a meaningful segmentation field.
 
 ## NEXT
 
-1. Add safe create/split/merge workflows on top of `SET_OBJECT_ID` and refresh
-   effective catalog counts without changing original selection predicates.
+1. Refresh effective catalog counts without changing original selection
+   predicates or silently rebuilding the exact source catalog.
 2. Add reviewed/unreviewed state and notes without encoding review metadata into
    immutable source dimensions implicitly.
 3. Qualify linked-view focus on a real segmented forestry source and record
@@ -91,3 +99,15 @@ two net `Tree_ID` changes, every output dimension matched journal replay, and
 source SHA-256
 `2e9418479610a698a52edcbbaaf096fae2a991002afd667e2f824e55b457f9bc`
 remained unchanged.
+
+The managed split/merge canary used a real LAS container with an `int32`
+`Tree_ID` Extra Bytes field. It intersected a drawn source-XY region with exact
+original object `1`, resolved two of its four points, and assigned those points
+the collision-safe new ID `4`. It then merged all two original points from
+object `2` into existing object `3`. Validated LAZ readback was exactly
+`[4, 4, 1, 1, 3, 3, 3, 3]`; change accounting reported four `Tree_ID` changes,
+every output dimension matched ordered journal replay, and source SHA-256
+`d6f209aaa54dbf9f959b8371908b441a44cbeeb4e216fcfc85eda041468e6d72`
+remained unchanged. Export duration was 0.031 seconds in this synthetic-scale
+qualification. Evidence is retained under
+`C:/Users/Milo/AppData/Local/Temp/pfs-object-split-merge-6f18c91c`.

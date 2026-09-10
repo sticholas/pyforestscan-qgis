@@ -157,6 +157,7 @@ def main():
               "object_field_discovery": session.visibility.get("object_field_discovery"),
               "object_catalog": session.visibility.get("object_catalog"),
               "active_object": session.visibility.get("active_object"),
+              "object_split_source": session.visibility.get("object_split_source"),
               "object_id_policy": session.visibility.get("object_id_policy"),
               "restored": session_view_state(session) if restored else None, "exported": exported,
               "last_action": action, "last_attribute": command.get("attribute")})
@@ -383,6 +384,7 @@ def main():
                         progress=lambda count: progress(f"Cataloging exact {field} objects", count))
                     session.visibility["object_catalog"] = report
                     session.visibility.pop("active_object", None)
+                    session.visibility.pop("object_split_source", None)
                     session.visibility.pop("object_id_policy", None)
                     session.save(autosave)
                     snapshot(highlight=False)
@@ -401,6 +403,7 @@ def main():
                     session.visibility["object_id_policy"] = {
                         **policy.to_dict(), "next_available_object_id":next_id,
                         "allocation_exhausted":False}
+                    session.visibility.pop("object_split_source", None)
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action in ("select_object", "neighbor_object"):
@@ -436,9 +439,109 @@ def main():
                     if resolved.resolved_point_count != row["point_count"]:
                         raise ValueError("Object catalog and authoritative selection counts differ; rebuild the catalog.")
                     definitions, result = (item,), resolved
-                    session.visibility["active_object"] = {"field":field, **row}
+                    session.visibility["active_object"] = {
+                        "field":field, **row, "selection_id":resolved.selection_id}
+                    session.visibility.pop("object_split_source", None)
                     session.save(autosave)
                     snapshot()
+                elif action == "begin_object_split":
+                    from pyforestscan_qgis.core.point_cloud.object_operations import begin_object_split
+                    split = begin_object_split(session.source.sha256,
+                        session.visibility.get("object_catalog"),
+                        session.visibility.get("active_object"), result)
+                    policy = session.visibility.get("object_id_policy") or {}
+                    if policy.get("field") != split.field:
+                        raise ValueError("Confirm object ID semantics for this field before splitting.")
+                    session.visibility["object_split_source"] = split.to_dict()
+                    definitions, result = (), None
+                    session.visibility.pop("active_object", None)
+                    session.save(autosave)
+                    snapshot(highlight=False)
+                elif action == "cancel_object_split":
+                    session.visibility.pop("object_split_source", None)
+                    session.save(autosave)
+                    snapshot()
+                elif action == "split_object":
+                    from pyforestscan_qgis.core.point_cloud.object_id_policy import (
+                        ObjectIdPolicy, next_available_object_id)
+                    from pyforestscan_qgis.core.point_cloud.object_operations import (
+                        ObjectSplitSource, restrict_selection_to_object, validate_split_count)
+                    resolver._check_source()
+                    if result is None or command.get("selection_id") != result.selection_id:
+                        raise ValueError("Selection changed; resolve the split portion again.")
+                    split_payload = session.visibility.get("object_split_source")
+                    if not split_payload:
+                        raise ValueError("Choose an exact parent object before resolving a split portion.")
+                    split = ObjectSplitSource(**split_payload)
+                    payload = dict(session.visibility.get("object_id_policy") or {})
+                    payload.pop("next_available_object_id", None)
+                    payload.pop("allocation_exhausted", None)
+                    policy = ObjectIdPolicy(**payload)
+                    if policy.field != split.field:
+                        raise ValueError("Split parent and object ID policy use different fields.")
+                    impact = selection_impact(result.resolved_point_count, point_count)
+                    if not command.get("confirmed") and impact.requires_confirmation:
+                        emit({"confirm":True, "selection_id":result.selection_id,
+                              "count":result.resolved_point_count, "fraction":impact.fraction,
+                              "impact":impact.message, "command":command, "edit_kind":"OBJECT_ID"})
+                        continue
+                    pending = restrict_selection_to_object(definitions, split,
+                                                           selection_id=uuid4().hex)
+                    progress(f"Resolving split portion of {split.field} object {split.object_id}")
+                    resolved = resolver.resolve(pending, cancelled=cancelled.is_set,
+                        progress=lambda count: progress(
+                            f"Resolving split portion of {split.field} object {split.object_id}", count))
+                    validate_split_count(split, resolved.resolved_point_count)
+                    catalog = session.visibility.get("object_catalog") or {}
+                    reserved = [op.value for op in session.operations
+                        if isinstance(op, ObjectIdEditOperation) and op.attribute == policy.field]
+                    new_id = next_available_object_id(catalog["catalog_path"], policy,
+                                                      reserved_ids=reserved)
+                    session.stage_object_id(pending, resolved, policy, new_id,
+                        note=f"Split {policy.field} object {split.object_id} into new object {new_id}")
+                    definitions, result = pending, resolved
+                    session.visibility.pop("active_object", None)
+                    session.visibility.pop("object_split_source", None)
+                    session.save(autosave)
+                    snapshot(highlight=False)
+                elif action == "merge_object":
+                    from pyforestscan_qgis.core.point_cloud.object_catalog import catalog_object
+                    from pyforestscan_qgis.core.point_cloud.object_id_policy import ObjectIdPolicy
+                    from pyforestscan_qgis.core.point_cloud.object_operations import validate_merge_target
+                    resolver._check_source()
+                    active = session.visibility.get("active_object") or {}
+                    if (result is None or command.get("selection_id") != result.selection_id
+                            or active.get("selection_id") != result.selection_id
+                            or active.get("point_count") != result.resolved_point_count):
+                        raise ValueError("Select the exact source object again before merging it.")
+                    payload = dict(session.visibility.get("object_id_policy") or {})
+                    payload.pop("next_available_object_id", None)
+                    payload.pop("allocation_exhausted", None)
+                    policy = ObjectIdPolicy(**payload)
+                    catalog = session.visibility.get("object_catalog") or {}
+                    if not catalog.get("catalog_path"):
+                        raise ValueError("Build a current exact object catalog before merging.")
+                    if policy.field != active.get("field"):
+                        raise ValueError("Merge selection and object ID policy use different fields.")
+                    try:
+                        requested = int(str(command.get("target_object_id", "")), 10)
+                    except ValueError:
+                        raise ValueError("Merge target object ID must be an integer.")
+                    target = catalog_object(catalog["catalog_path"], requested,
+                        source_sha256=session.source.sha256, field=policy.field)
+                    target_id = validate_merge_target(catalog, active, target)
+                    impact = selection_impact(result.resolved_point_count, point_count)
+                    if not command.get("confirmed") and impact.requires_confirmation:
+                        emit({"confirm":True, "selection_id":result.selection_id,
+                              "count":result.resolved_point_count, "fraction":impact.fraction,
+                              "impact":impact.message, "command":command, "edit_kind":"OBJECT_ID"})
+                        continue
+                    session.stage_object_id(definitions, result, policy, target_id,
+                        note=f"Merge {policy.field} object {active['object_id']} into {target_id}")
+                    session.visibility.pop("active_object", None)
+                    session.visibility.pop("object_split_source", None)
+                    session.save(autosave)
+                    snapshot(highlight=False)
                 elif action == "save":
                     progress("Verifying and saving session")
                     session.source.verify(cancelled=cancelled.is_set)

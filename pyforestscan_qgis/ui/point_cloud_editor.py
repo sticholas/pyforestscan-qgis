@@ -309,21 +309,40 @@ class EditorPanel(QWidget):
         self.isolate_object_action.setToolTip(
             "Show the exact selected object overlay while hiding other points in every linked view. No edit is staged.")
         self.object_menu.addSeparator()
-        self.create_object_action = self.object_menu.addAction("Create New Object from Selection")
+        self.object_operations_menu = self.object_menu.addMenu("Object Operations")
+        self.create_object_action = self.object_operations_menu.addAction("Create New Object from Selection")
         self.create_object_action.setToolTip(
             "Assign the current authoritative source selection to the next unused object ID. "
             "The operation is journal-backed and does not rewrite the source.")
         self.create_object_action.triggered.connect(self.create_object_from_selection)
-        self.assign_object_action = self.object_menu.addAction("Assign Selection to Object ID...")
+        self.assign_object_action = self.object_operations_menu.addAction("Assign Selection to Object ID...")
         self.assign_object_action.setToolTip(
             "Stage the current authoritative source selection into an existing or new object ID. "
             "The source is unchanged until a new edited cloud is exported.")
         self.assign_object_action.triggered.connect(self.assign_selection_to_object)
-        self.unassign_object_action = self.object_menu.addAction("Unassign Selected Points")
+        self.unassign_object_action = self.object_operations_menu.addAction("Unassign Selected Points")
         self.unassign_object_action.setToolTip(
             "Stage the current authoritative source selection to the confirmed unassigned value. "
             "This is undoable and never rewrites the source.")
         self.unassign_object_action.triggered.connect(self.unassign_selection_from_object)
+        self.object_operations_menu.addSeparator()
+        self.begin_object_split_action = self.object_operations_menu.addAction("Choose Portion to Split")
+        self.begin_object_split_action.setToolTip(
+            "Keep the exact active object as the split parent, then draw the portion to move into a new ID. "
+            "The final portion is resolved from the original full-resolution source.")
+        self.begin_object_split_action.triggered.connect(self.begin_object_split)
+        self.finish_object_split_action = self.object_operations_menu.addAction("Split Selected Portion to New Object")
+        self.finish_object_split_action.setToolTip(
+            "Intersect the current authoritative selection with the saved parent object and stage that subset "
+            "to the next collision-safe ID. At least one point must remain in the parent.")
+        self.finish_object_split_action.triggered.connect(self.finish_object_split)
+        self.cancel_object_split_action = self.object_operations_menu.addAction("Cancel Split")
+        self.cancel_object_split_action.triggered.connect(lambda: self.send("cancel_object_split"))
+        self.merge_object_action = self.object_operations_menu.addAction("Merge Active Object Into...")
+        self.merge_object_action.setToolTip(
+            "Stage every point in the exact active object to an existing catalog object ID. "
+            "The original source remains unchanged and the merge is undoable.")
+        self.merge_object_action.triggered.connect(self.merge_active_object)
         self.object_catalog_results_action = self.object_menu.addAction("Catalog Details")
         self.object_catalog_results_action.triggered.connect(self.show_object_catalog)
         self.recover_action = details_menu.addAction("Recover Autosaved Session")
@@ -408,6 +427,14 @@ class EditorPanel(QWidget):
             self.state["object_id_policy"].get("next_available_object_id") is not None)
         self.assign_object_action.setEnabled(ready and selected and has_policy)
         self.unassign_object_action.setEnabled(ready and selected and has_policy)
+        split_source = self.state.get("object_split_source") or {}
+        exact_active = bool(active_object and active_object.get("selection_id") ==
+                            (self.state.get("selection") or {}).get("selection_id"))
+        self.begin_object_split_action.setEnabled(ready and selected and has_policy and exact_active)
+        self.finish_object_split_action.setEnabled(ready and selected and has_policy and bool(split_source)
+            and self.state["object_id_policy"].get("next_available_object_id") is not None)
+        self.cancel_object_split_action.setEnabled(ready and bool(split_source))
+        self.merge_object_action.setEnabled(ready and selected and has_policy and exact_active)
         focus_mode = (self.page.linked.object_focus_mode if hasattr(self.page, "linked") else "SHOW_ALL")
         focus_available = ready and selected and bool(active_object)
         self.show_all_objects_action.setEnabled(ready)
@@ -717,6 +744,32 @@ class EditorPanel(QWidget):
             self.send("stage_object_id", selection_id=selection["selection_id"],
                       value=str(policy["unassigned_id"]))
 
+    def begin_object_split(self):
+        selection = self.state.get("selection") or {}
+        if selection.get("resolved_point_count"):
+            self.send("begin_object_split", selection_id=selection["selection_id"])
+
+    def finish_object_split(self):
+        selection = self.state.get("selection") or {}
+        if self.state.get("object_split_source") and selection.get("resolved_point_count"):
+            self.send("split_object", selection_id=selection["selection_id"])
+
+    def merge_active_object(self):
+        catalog = self.state.get("object_catalog") or {}
+        active = self.state.get("active_object") or {}
+        selection = self.state.get("selection") or {}
+        if not catalog or not active or not selection.get("resolved_point_count"):
+            return
+        default_id = catalog.get("minimum_object_id", "")
+        if default_id == active.get("object_id"):
+            default_id = catalog.get("maximum_object_id", "")
+        default = str(default_id)
+        value, accepted = QInputDialog.getText(self, "Merge Object",
+            f"Existing target {catalog['field']} object ID", text=default)
+        if accepted:
+            self.send("merge_object", selection_id=selection["selection_id"],
+                      target_object_id=value)
+
     def show_object_catalog(self):
         report = self.state.get("object_catalog")
         if not report:
@@ -810,6 +863,19 @@ class EditorPanel(QWidget):
                 self.summary.setText(
                     f"Selected object: {active['field']} = {active['object_id']} | "
                     f"{active['point_count']:,} authoritative source points")
+            if completed_action == "begin_object_split" and value.get("object_split_source"):
+                split = value["object_split_source"]
+                self.summary.setText(
+                    f"Split parent: {split['field']} = {split['object_id']} | "
+                    "Draw the portion to move, then choose Split Selected Portion to New Object")
+            if completed_action == "cancel_object_split":
+                self.summary.setText("Object split cancelled | Selection and staged edits are unchanged")
+            if completed_action == "split_object":
+                self.summary.setText(
+                    f"Object split staged | {value['edits']} total edits | Original source unchanged")
+            if completed_action == "merge_object":
+                self.summary.setText(
+                    f"Object merge staged | {value['edits']} total edits | Original source unchanged")
             self.page.session_status.setText(f"Session: Autosaved | {value['edits']} staged edits, not a source rewrite")
             self.history.clear()
             self.history.addItems(value.get("history", []))

@@ -186,9 +186,14 @@ class SelectionToolTests(unittest.TestCase):
         self.assertIn("Previous Object", actions)
         self.assertIn("Next Object", actions)
         self.assertIn("Object Focus", actions)
-        self.assertIn("Create New Object from Selection", actions)
-        self.assertIn("Assign Selection to Object ID...", actions)
-        self.assertIn("Unassign Selected Points", actions)
+        self.assertIn("Object Operations", actions)
+        operation_actions = [action.text() for action in editor.object_operations_menu.actions()]
+        self.assertIn("Create New Object from Selection", operation_actions)
+        self.assertIn("Assign Selection to Object ID...", operation_actions)
+        self.assertIn("Unassign Selected Points", operation_actions)
+        self.assertIn("Choose Portion to Split", operation_actions)
+        self.assertIn("Split Selected Portion to New Object", operation_actions)
+        self.assertIn("Merge Active Object Into...", operation_actions)
         self.assertFalse(editor.object_results_action.isEnabled())
         self.assertFalse(editor.build_object_catalog_action.isEnabled())
         self.assertFalse(editor.select_object_action.isEnabled())
@@ -196,6 +201,10 @@ class SelectionToolTests(unittest.TestCase):
         self.assertFalse(editor.create_object_action.isEnabled())
         self.assertFalse(editor.assign_object_action.isEnabled())
         self.assertFalse(editor.unassign_object_action.isEnabled())
+        self.assertFalse(editor.begin_object_split_action.isEnabled())
+        self.assertFalse(editor.finish_object_split_action.isEnabled())
+        self.assertFalse(editor.cancel_object_split_action.isEnabled())
+        self.assertFalse(editor.merge_object_action.isEnabled())
         self.assertTrue(editor.show_all_objects_action.isChecked())
         self.assertFalse(editor.fade_other_objects_action.isEnabled())
         self.assertFalse(editor.isolate_object_action.isEnabled())
@@ -210,7 +219,8 @@ class SelectionToolTests(unittest.TestCase):
         self.assertFalse(editor.select_object_action.isEnabled())
         editor.state["object_catalog"] = {"field":"Tree_ID", "minimum_object_id":1,
             "maximum_object_id":3, "editable_integer_ids":True}
-        editor.state["active_object"] = {"field":"Tree_ID", "object_id":2}
+        editor.state["active_object"] = {"field":"Tree_ID", "object_id":2,
+                                           "selection_id":"selected"}
         editor.state["selection"] = {"selection_id":"selected", "resolved_point_count":12}
         editor.state["object_id_policy"] = {"field":"Tree_ID", "unassigned_id":0,
             "next_available_object_id":4}
@@ -222,6 +232,14 @@ class SelectionToolTests(unittest.TestCase):
         self.assertTrue(editor.create_object_action.isEnabled())
         self.assertTrue(editor.assign_object_action.isEnabled())
         self.assertTrue(editor.unassign_object_action.isEnabled())
+        self.assertTrue(editor.begin_object_split_action.isEnabled())
+        self.assertTrue(editor.merge_object_action.isEnabled())
+        self.assertFalse(editor.finish_object_split_action.isEnabled())
+        editor.state["object_split_source"] = {"field":"Tree_ID", "object_id":2,
+            "original_point_count":12, "source_sha256":"a"*64}
+        editor.refresh_controls()
+        self.assertTrue(editor.finish_object_split_action.isEnabled())
+        self.assertTrue(editor.cancel_object_split_action.isEnabled())
         self.assertTrue(editor.fade_other_objects_action.isEnabled())
         self.assertTrue(editor.isolate_object_action.isEnabled())
 
@@ -273,6 +291,26 @@ class SelectionToolTests(unittest.TestCase):
                            "value":"8", "view":{}}})
         editor.send.assert_called_once_with("stage_object_id", selection_id="selection",
                                             value="8", confirmed=True)
+
+    def test_split_and_merge_actions_preserve_authoritative_selection_identity(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        editor.state = {"selection":{"selection_id":"exact", "resolved_point_count":12},
+            "object_split_source":{"field":"Tree_ID", "object_id":2},
+            "active_object":{"field":"Tree_ID", "object_id":2},
+            "object_catalog":{"field":"Tree_ID", "minimum_object_id":1}}
+        editor.send = Mock()
+        editor.begin_object_split()
+        editor.send.assert_called_once_with("begin_object_split", selection_id="exact")
+        editor.send.reset_mock()
+        editor.finish_object_split()
+        editor.send.assert_called_once_with("split_object", selection_id="exact")
+        editor.send.reset_mock()
+        with patch("pyforestscan_qgis.ui.point_cloud_editor.QInputDialog.getText",
+                   return_value=("1", True)):
+            editor.merge_active_object()
+        editor.send.assert_called_once_with("merge_object", selection_id="exact",
+                                            target_object_id="1")
 
     def test_object_focus_broadcasts_once_to_all_linked_renderers(self):
         workers = [Mock(), Mock(), Mock()]
