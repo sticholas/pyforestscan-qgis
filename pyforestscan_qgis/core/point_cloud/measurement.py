@@ -67,11 +67,13 @@ class PointMeasurement:
     source_point_count: int = 0
     created_at: str = ""
     addressing: str = "FULL_RESOLUTION_ORIGINAL_SOURCE_POINT_RESOLUTION"
+    kind: str = "POINT_DISTANCE"
 
     def __post_init__(self):
         if (not self.measurement_id or not re.fullmatch(r"[0-9a-f]{64}", self.source_sha256)
                 or not self.source_crs or self.addressing !=
-                "FULL_RESOLUTION_ORIGINAL_SOURCE_POINT_RESOLUTION"):
+                "FULL_RESOLUTION_ORIGINAL_SOURCE_POINT_RESOLUTION"
+                or self.kind != "POINT_DISTANCE"):
             raise ValueError("Measurement source identity is invalid.")
         for value in (self.horizontal_distance, self.vertical_distance,
                       self.elevation_difference, self.distance_3d):
@@ -84,6 +86,71 @@ class PointMeasurement:
                 or not math.isfinite(self.resolution_seconds) or self.resolution_seconds < 0
                 or type(self.source_point_count) is not int or self.source_point_count <= 0):
             raise ValueError("Measurement resolution evidence is invalid.")
+
+    def to_dict(self):
+        return asdict(self)
+
+
+def _ring(value):
+    points = tuple(tuple(point) for point in value)
+    if not 4 <= len(points) <= 2049:
+        raise ValueError("Area measurement requires 3 to 2,048 boundary vertices.")
+    result = []
+    for point in points:
+        if (len(point) != 2 or any(type(item) not in (int, float)
+                                  or not math.isfinite(item) for item in point)):
+            raise ValueError("Area boundary requires finite source XY coordinates.")
+        result.append((float(point[0]), float(point[1])))
+    if result[0] != result[-1] or len(set(result[:-1])) < 3:
+        raise ValueError("Area boundary must be a closed polygon with three distinct vertices.")
+    return tuple(result)
+
+
+def _area_metrics(vertices):
+    origin_x, origin_y = vertices[0]
+    area = abs(sum((a[0]-origin_x)*(b[1]-origin_y)
+                   -(b[0]-origin_x)*(a[1]-origin_y)
+                   for a, b in zip(vertices, vertices[1:]))) / 2
+    perimeter = sum(math.hypot(b[0]-a[0], b[1]-a[1])
+                    for a, b in zip(vertices, vertices[1:]))
+    return area, perimeter
+
+
+@dataclass(frozen=True)
+class AreaMeasurement:
+    measurement_id: str
+    source_sha256: str
+    source_crs: str
+    vertices: tuple[tuple[float, float], ...]
+    area: float
+    perimeter: float
+    horizontal_unit: str
+    area_unit: str
+    display_elevation: float
+    unit_warning: str = ""
+    created_at: str = ""
+    addressing: str = "SOURCE_COORDINATE_PLANAR_GEOMETRY"
+    kind: str = "PLANAR_AREA"
+
+    def __post_init__(self):
+        if (not self.measurement_id or not re.fullmatch(r"[0-9a-f]{64}", self.source_sha256)
+                or not self.source_crs or self.addressing != "SOURCE_COORDINATE_PLANAR_GEOMETRY"
+                or self.kind != "PLANAR_AREA"):
+            raise ValueError("Area measurement source identity is invalid.")
+        vertices = _ring(self.vertices)
+        object.__setattr__(self, "vertices", vertices)
+        expected_area, expected_perimeter = _area_metrics(vertices)
+        if (type(self.area) not in (int, float) or not math.isfinite(self.area)
+                or type(self.perimeter) not in (int, float) or not math.isfinite(self.perimeter)
+                or self.area <= 0 or self.perimeter <= 0
+                or not math.isclose(self.area, expected_area, rel_tol=1e-12, abs_tol=1e-9)
+                or not math.isclose(self.perimeter, expected_perimeter,
+                                     rel_tol=1e-12, abs_tol=1e-9)):
+            raise ValueError("Saved area measurement metrics do not match its boundary.")
+        if (not self.horizontal_unit or not self.area_unit
+                or type(self.display_elevation) not in (int, float)
+                or not math.isfinite(self.display_elevation)):
+            raise ValueError("Area measurement units or display elevation are invalid.")
 
     def to_dict(self):
         return asdict(self)
@@ -164,6 +231,24 @@ def create_point_measurement(source_sha256, source_crs, anchors, *,
         created_at or datetime.now(timezone.utc).isoformat())
 
 
+def create_area_measurement(source_sha256, source_crs, vertices, *,
+                            horizontal_unit, display_elevation, unit_warning="",
+                            measurement_id=None, created_at=None, polygon_type=None):
+    """Validate and calculate a horizontal area in source CRS coordinates."""
+    points = _ring(vertices)
+    if polygon_type is None:
+        from shapely.geometry import Polygon
+        polygon_type = Polygon
+    polygon = polygon_type(points)
+    if not polygon.is_valid or polygon.is_empty or polygon.area <= 0:
+        raise ValueError("Area boundary is empty or invalid; redraw a simple polygon.")
+    area, perimeter = _area_metrics(points)
+    return AreaMeasurement(measurement_id or uuid4().hex, source_sha256, source_crs,
+        points, area, perimeter, horizontal_unit, f"square {horizontal_unit}",
+        display_elevation, unit_warning,
+        created_at or datetime.now(timezone.utc).isoformat())
+
+
 def measurement_unit_context(source_crs, crs_type):
     """Return explicit unit labels from a pyproj-like CRS type."""
     if source_crs.startswith("SOURCE_LOCAL:"):
@@ -205,7 +290,10 @@ def resolve_source_measurement(source, expected_points, requested_points, source
 
 
 def measurement_summary(measurement):
-    item = measurement if isinstance(measurement, PointMeasurement) else measurement_from_dict(measurement)
+    item = measurement if isinstance(measurement, (PointMeasurement, AreaMeasurement)) else measurement_from_dict(measurement)
+    if isinstance(item, AreaMeasurement):
+        return (f"Area {item.area:,.3f} {item.area_unit} | "
+                f"Perimeter {item.perimeter:,.3f} {item.horizontal_unit}")
     return (f"3D {item.distance_3d:,.3f} {item.horizontal_unit} | "
             f"Horizontal {item.horizontal_distance:,.3f} {item.horizontal_unit} | "
             f"Elevation change {item.elevation_difference:+,.3f} {item.vertical_unit}")
@@ -216,6 +304,8 @@ def measurement_from_dict(payload):
         raise ValueError("Saved measurement is invalid.")
     values = dict(payload)
     try:
+        if values.get("kind") == "PLANAR_AREA":
+            return AreaMeasurement(**values)
         values["start"] = MeasurementAnchor(**values["start"])
         values["end"] = MeasurementAnchor(**values["end"])
         return PointMeasurement(**values)

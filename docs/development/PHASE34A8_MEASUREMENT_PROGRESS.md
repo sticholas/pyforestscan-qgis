@@ -22,18 +22,24 @@ Editor and do not change the `0.2.0-beta.1` release boundary.
 - Resolved lines and endpoint markers are broadcast to active, parked and
   detached linked renderers. Detailed values stay under Editing Details so the
   viewer retains its compact working area.
+- The measure control now offers Planar Area without adding another toolbar
+  button. It reuses the accepted source-coordinate Polygon gesture, validates
+  the simple closed ring in the managed worker, and reports projected area and
+  perimeter with explicit units. Large projected coordinates are translated
+  before area calculation to avoid cancellation error.
 
 ## IN PROGRESS
 
-Point-to-point measurement has contract, renderer, worker and dual-Qt test
-coverage. Human point picking, label readability, dense-source latency and
-detached-view visual agreement still require live qualification.
+Point-to-point and planar-area measurements have contract, renderer, worker and
+dual-Qt test coverage. Human point picking/drawing, label readability,
+dense-source latency and detached-view visual agreement still require live
+qualification.
 
 ## NEXT
 
 1. Qualify point picking and linked overlays in a fresh human viewer session.
-2. Add area and profile/cross-section measurement records using authoritative
-   source coordinates.
+2. Add profile/cross-section measurement records using authoritative source
+   coordinates.
 3. Add named bookmarks, viewpoints and linked-location markers to the existing
    workspace model.
 
@@ -52,6 +58,11 @@ The result reported EPSG:6635 metre units, 69.305 metres horizontal distance,
 3.130 metres elevation change and 69.375 metres 3D distance. The source SHA256
 remained `0c688c22d42b0240c6cba19973087ee59606721289872a3f8237253548db34bb`
 before and after the scan.
+
+The same managed canary validated a 10 by 10 metre boundary at projected
+coordinates near 215,000 / 2,114,500. It reported exactly 100 square metres and
+a 40 metre perimeter, retained EPSG:6635 unit context, and left the same source
+hash unchanged.
 
 Measurement overlays store segment vertices relative to the first endpoint and
 place the Three.js object at the source-coordinate origin. This retains

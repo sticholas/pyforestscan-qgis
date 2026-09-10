@@ -212,4 +212,20 @@ assert.ok(measurementGroup);
 assert.deepEqual(Array.from(measurementGroup.children[0].geometry.attributes.position.values),
     [0,0,0,20,30,50]);
 assert.deepEqual(measurementGroup.children[0].origin,[10,20,30]);
+editor.command({action:"selection_tool",tool:"Polygon",purpose:"MEASURE_AREA"});
+for(let i=0;i<2;i++){ const callbacks=queue.splice(0);callbacks.forEach(fn=>fn()); }
+click(50,50);click(200,50);click(200,200);document.emit("keydown",{key:"Enter"});
+const area=tick().event;
+assert.equal(area.action,"MEASURE_AREA");
+assert.equal(area.geometry.length,4);
+assert.equal(area.display_elevation,0);
+editor.command({action:"measurements",measurements:[
+    {start:{source_xyz:[10,20,30]},end:{source_xyz:[30,50,80]}},
+    {kind:"PLANAR_AREA",vertices:[[920,2080],[980,2080],[980,2020],[920,2080]],
+        display_elevation:0}
+]});
+assert.equal(tick().measurement_count,2);
+assert.equal(measurementGroup.children.length,3);
+assert.deepEqual(Array.from(measurementGroup.children[2].geometry.attributes.position.values),
+    [0,0,0,60,0,0,60,-60,0,0,0,0]);
 console.log("Production editor gesture handlers passed all completion/cancel paths.");

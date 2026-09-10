@@ -31,7 +31,8 @@ def main():
 
     import pdal
     from pyproj import CRS
-    from pyforestscan_qgis.core.point_cloud.measurement import resolve_source_measurement
+    from pyforestscan_qgis.core.point_cloud.measurement import (
+        create_area_measurement, measurement_unit_context, resolve_source_measurement)
     from pyforestscan_qgis.core.point_cloud.session import SourceIdentity
 
     identity = SourceIdentity.capture(args.source)
@@ -66,11 +67,25 @@ def main():
         raise RuntimeError("Measured horizontal distance differs from source-coordinate truth.")
     if not progress or progress[-1] != point_count:
         raise RuntimeError("Measurement resolver did not report the complete source scan.")
+    xmin, xmax = float(first_chunk["X"].min()), float(first_chunk["X"].max())
+    ymin, ymax = float(first_chunk["Y"].min()), float(first_chunk["Y"].max())
+    width, height = min(10., xmax-xmin), min(10., ymax-ymin)
+    if width <= 0 or height <= 0:
+        raise RuntimeError("Area qualification requires nonzero source XY extent.")
+    vertices = ((xmin,ymin),(xmin+width,ymin),(xmin+width,ymin+height),
+                (xmin,ymin+height),(xmin,ymin))
+    horizontal, _vertical, warning = measurement_unit_context(source_crs, CRS)
+    area = create_area_measurement(identity.sha256, source_crs, vertices,
+        horizontal_unit=horizontal, display_elevation=float(first_chunk["Z"].mean()),
+        unit_warning=warning, measurement_id="real-source-area", created_at="fixed")
+    if not math.isclose(area.area, width*height, rel_tol=0, abs_tol=1e-9):
+        raise RuntimeError("Area differs from projected source-coordinate truth.")
     if sha256(args.source) != before:
         raise RuntimeError("Measurement changed the original source.")
     print(json.dumps({"status":"PASS", "source":identity.path,
         "source_sha256":before, "source_unchanged":True,
         "source_point_count":point_count, "measurement":measurement.to_dict(),
+        "area_measurement":area.to_dict(),
         "progress_final":progress[-1]}, sort_keys=True))
     if handle is not None:
         handle.close()

@@ -16,7 +16,7 @@ let sphereAxis = "Z", sphereHeight = 0;
 let displaySignature = "";
 let selectionColor = new THREE.Color("#5be4eb");
 let objectFocusMode = "SHOW_ALL";
-let measurementDraft = [], measurementGroup = null;
+let measurementDraft = [], measurementGroup = null, measurementCount = 0;
 function sourceAttribute(geometry, name) {
     const extra = geometry._pfsOriginalDimensions && geometry._pfsOriginalDimensions[name];
     return extra ? {array:extra} : geometry.getAttribute(name) || geometry.getAttribute(name.toLowerCase());
@@ -179,7 +179,23 @@ function renderMeasurements(items) {
         if (child.geometry) child.geometry.dispose();
         if (child.material) child.material.dispose();
     }
+    measurementCount = 0;
     for (const item of items || []) {
+        if (item.kind === "PLANAR_AREA") {
+            if (linkedView && linkedView.view_type === "VERTICAL_SLICE") continue;
+            const vertices=item.vertices || [], z=item.display_elevation;
+            if (vertices.length < 4 || !Number.isFinite(z) ||
+                    vertices.some(value=>value.length !== 2 || value.some(x=>!Number.isFinite(x)))) continue;
+            const origin=[vertices[0][0],vertices[0][1],z];
+            const values=vertices.flatMap(value=>[value[0]-origin[0],value[1]-origin[1],0]);
+            const geometry=new THREE.BufferGeometry();
+            geometry.setAttribute("position",new THREE.Float32BufferAttribute(values,3));
+            const line=new THREE.Line(geometry,new THREE.LineBasicMaterial(
+                {color:0xffd166,depthTest:false,transparent:true,opacity:.95}));
+            line.position.set(...origin);line.renderOrder=1100;measurementGroup.add(line);
+            measurementCount++;
+            continue;
+        }
         if (!item.start || !item.end) continue;
         const absolute = [...item.start.source_xyz, ...item.end.source_xyz];
         if (absolute.length !== 6 || absolute.some(value => !Number.isFinite(value))) continue;
@@ -199,6 +215,7 @@ function renderMeasurements(items) {
         markers.position.set(absolute[0], absolute[1], absolute[2]);
         markers.renderOrder = 1101;
         measurementGroup.add(markers);
+        measurementCount++;
     }
 }
 function sourceXY(x, y, camera) {
@@ -214,15 +231,19 @@ function drawPolygon(cursor) {
 function completeDrawing() {
     const ring = drawing.close();
     if (ring) {
-        publish(ring.map(p => {
+        const projected = ring.map(p => {
             const xyz = sourceXY(p[0], p[1], drawingCamera);
             if (drawingPurpose === "EDIT" && linkedView && linkedView.view_type === "VERTICAL_SLICE") {
                 const {a, b} = linkedView.geometry;
                 const length = Math.hypot(b[0]-a[0], b[1]-a[1]);
                 return [((xyz.x-a[0])*(b[0]-a[0])+(xyz.y-a[1])*(b[1]-a[1]))/length, xyz.z];
             }
-            return [xyz.x, xyz.y];
-        }));
+            return xyz;
+        });
+        const geometry = projected.map(xyz => Array.isArray(xyz) ? xyz : [xyz.x, xyz.y]);
+        const primitive = drawingPurpose === "MEASURE_AREA" ?
+            {display_elevation:projected.reduce((total, xyz) => total + xyz.z, 0)/projected.length} : {};
+        publish(geometry, primitive);
         drawing.resolving();
     } else latestEvent = {id: ++eventNumber, error: drawing.error};
     leaveTool();
@@ -535,7 +556,7 @@ window.pointCloudEditor = {
             view_id: linkedView && linkedView.view_id,
             highlighted_points: highlighted, effective_classes: effectiveClasses,
             object_focus_mode: objectFocus.requested, object_focus_effective: objectFocus.effective,
-            measurement_count: measurementGroup ? measurementGroup.children.length/2 : 0,
+            measurement_count: measurementCount,
             source_buffers_unchanged: Array.from(records.values()).every(r => r.sourceUnchanged !== false),
             overlay_diagnostics: Array.from(records.values()).slice(0, 3).map(r => ({
                 node: r.node.name, edits: (r.edits || []).length,

@@ -621,6 +621,26 @@ def main():
                     session.visibility["measurements"] = [*current, measurement.to_dict()]
                     session.save(autosave)
                     snapshot(highlight=False)
+                elif action == "add_area_measurement":
+                    from pyforestscan_qgis.core.point_cloud.measurement import (
+                        MAX_MEASUREMENTS, create_area_measurement,
+                        measurement_unit_context, validate_measurements)
+                    current = validate_measurements(session.visibility.get("measurements"),
+                                                    session.source.sha256)
+                    if len(current) >= MAX_MEASUREMENTS:
+                        raise ValueError(f"One session supports at most {MAX_MEASUREMENTS:,} measurements.")
+                    progress("Verifying source and planar area")
+                    session.source.verify(cancelled=cancelled.is_set)
+                    horizontal, _vertical, warning = measurement_unit_context(
+                        session.source_crs, CRS)
+                    measurement = create_area_measurement(session.source.sha256,
+                        session.source_crs, command.get("geometry") or (),
+                        horizontal_unit=horizontal,
+                        display_elevation=command.get("display_elevation"),
+                        unit_warning=warning)
+                    session.visibility["measurements"] = [*current, measurement.to_dict()]
+                    session.save(autosave)
+                    snapshot(highlight=False)
                 elif action == "clear_measurements":
                     session.visibility["measurements"] = []
                     session.save(autosave)

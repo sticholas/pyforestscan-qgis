@@ -357,6 +357,17 @@ class SelectionToolTests(unittest.TestCase):
         self.assertTrue(editor.measurement_button.isChecked())
         self.assertTrue(editor.summary.text().startswith("Measurement:"))
 
+    def test_area_measurement_reuses_source_polygon_gesture_without_selecting(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        editor.viewer_ready = True
+        editor.state = {"ready":True}
+        editor.page = SimpleNamespace(send=Mock(), linked=SimpleNamespace(depth_error=""))
+        editor.start_area_measurement()
+        editor.page.send.assert_called_once_with(
+            {"action":"selection_tool", "tool":"Polygon", "purpose":"MEASURE_AREA"})
+        self.assertTrue(editor.summary.text().startswith("Area:"))
+
     def test_measurements_broadcast_once_to_all_linked_renderers(self):
         workers = [Mock(), Mock(), Mock()]
         owner = SimpleNamespace(

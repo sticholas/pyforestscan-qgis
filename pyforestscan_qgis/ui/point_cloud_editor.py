@@ -178,6 +178,14 @@ class EditorPanel(QWidget):
             "against the immutable full-resolution source before distance values are saved.", self)
         self.measurement_button.setCheckable(True)
         self.measurement_button.clicked.connect(self.start_measurement)
+        measurement_menu = QMenu(self.measurement_button)
+        self.area_measurement_action = measurement_menu.addAction("Measure Planar Area")
+        self.area_measurement_action.setToolTip(
+            "Draw a horizontal boundary in source coordinates and report its area and perimeter.")
+        self.area_measurement_action.triggered.connect(self.start_area_measurement)
+        self.measurement_button.setMenu(measurement_menu)
+        self.measurement_button.setPopupMode(
+            qt_enum(QToolButton, "MenuButtonPopup", "ToolButtonPopupMode"))
         row.addWidget(self.measurement_button)
         layout.addLayout(row)
         from .point_cloud_widgets import StableViewerStatus
@@ -423,6 +431,7 @@ class EditorPanel(QWidget):
         self.invert.setEnabled(ready and bool(self.state.get("selection")))
         self.resize_selection_button.setEnabled(ready and bool(self.state.get("selection")))
         self.measurement_button.setEnabled(ready)
+        self.area_measurement_action.setEnabled(ready)
         self.measurements_action.setEnabled(bool(self.state.get("measurements")))
         self.clear_measurements_action.setEnabled(ready and bool(self.state.get("measurements")))
         if hasattr(self.page, "linked"):
@@ -606,6 +615,17 @@ class EditorPanel(QWidget):
         self.measurement_button.setChecked(True)
         self.summary.setText("Measurement: Click the first source point")
 
+    def start_area_measurement(self):
+        if not self.viewer_ready or self.busy:
+            return
+        self.tool.blockSignals(True)
+        self.tool.setCurrentText("Pointer")
+        self.tool.blockSignals(False)
+        self.page.send({"action":"selection_tool", "tool":"Polygon",
+                        "purpose":"MEASURE_AREA"})
+        self.summary.setText(
+            "Area: Draw a boundary | Finish with double-click, Enter, right-click, or the first point")
+
     def observe(self, telemetry):
         if self.viewer_worker is not self.page.worker:
             self.viewer_worker = self.page.worker
@@ -620,6 +640,10 @@ class EditorPanel(QWidget):
             self.event_id = event["id"]
             if self.page.linked.event(event):
                 pass
+            elif event.get("action") == "MEASURE_AREA":
+                self.measurement_button.setChecked(False)
+                self.send("add_area_measurement", geometry=event.get("geometry"),
+                          display_elevation=event.get("display_elevation"))
             elif event.get("geometry"):
                 try:
                     constraints = self.page.linked.selection_values(event)

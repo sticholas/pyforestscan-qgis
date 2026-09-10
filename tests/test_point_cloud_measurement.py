@@ -9,7 +9,8 @@ except ImportError:
     np = None
 
 from pyforestscan_qgis.core.point_cloud.measurement import (
-    MeasurementAnchor, create_point_measurement, measurement_summary,
+    AreaMeasurement, MeasurementAnchor, create_area_measurement,
+    create_point_measurement, measurement_summary,
     measurement_unit_context, resolve_anchor_chunks, source_pick_tolerance,
     validate_measurements)
 from pyforestscan_qgis.core.point_cloud.session import PointCloudEditSession, SourceIdentity
@@ -26,6 +27,19 @@ class FakeProjectedCrs:
 
 class FakeGeographicCrs(FakeProjectedCrs):
     is_geographic = True
+
+
+class ValidPolygon:
+    is_valid = True
+    is_empty = False
+    area = 1
+
+    def __init__(self, _vertices):
+        pass
+
+
+class InvalidPolygon(ValidPolygon):
+    is_valid = False
 
 
 class PointMeasurementTests(unittest.TestCase):
@@ -82,6 +96,34 @@ class PointMeasurementTests(unittest.TestCase):
             measurement_unit_context("EPSG:4326", FakeGeographicCrs)
         self.assertLessEqual(source_pick_tolerance((1e9,1e9,1e9)), 1)
 
+    def test_planar_area_uses_stable_source_coordinate_math_and_explicit_units(self):
+        vertices = ((1_000_000.,2_000_000.),(1_000_003.,2_000_000.),
+                    (1_000_003.,2_000_004.),(1_000_000.,2_000_004.),
+                    (1_000_000.,2_000_000.))
+        item = create_area_measurement("a"*64, "EPSG:32605", vertices,
+            horizontal_unit="metre", display_elevation=900,
+            measurement_id="area", created_at="fixed", polygon_type=ValidPolygon)
+        self.assertIsInstance(item, AreaMeasurement)
+        self.assertEqual(item.area, 12)
+        self.assertEqual(item.perimeter, 14)
+        self.assertEqual(item.area_unit, "square metre")
+        self.assertIn("Area 12.000 square metre", measurement_summary(item))
+        restored = validate_measurements([item.to_dict()], "a"*64)
+        self.assertEqual(restored[0]["kind"], "PLANAR_AREA")
+
+    def test_invalid_or_tampered_area_fails_closed(self):
+        vertices = ((0.,0.),(2.,0.),(0.,2.),(0.,0.))
+        with self.assertRaisesRegex(ValueError, "empty or invalid"):
+            create_area_measurement("a"*64, "EPSG:32605", vertices,
+                horizontal_unit="metre", display_elevation=0,
+                polygon_type=InvalidPolygon)
+        item = create_area_measurement("a"*64, "EPSG:32605", vertices,
+            horizontal_unit="metre", display_elevation=0,
+            polygon_type=ValidPolygon).to_dict()
+        item["area"] = 999
+        with self.assertRaisesRegex(ValueError, "do not match"):
+            validate_measurements([item], "a"*64)
+
     def test_saved_measurements_are_source_bound_and_duplicate_guarded(self):
         anchors = (MeasurementAnchor((0,0,0),(0,0,0),0),
                    MeasurementAnchor((1,0,0),(1,0,0),0))
@@ -120,3 +162,5 @@ class PointMeasurementTests(unittest.TestCase):
         self.assertIn("resolve_source_measurement(session.source, point_count", worker)
         self.assertIn('session.visibility["measurements"]', worker)
         self.assertIn('elif action == "clear_measurements":', worker)
+        self.assertIn('elif action == "add_area_measurement":', worker)
+        self.assertIn("create_area_measurement(session.source.sha256", worker)
