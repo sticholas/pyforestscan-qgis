@@ -29,6 +29,29 @@
             if (!["Circular", "Square"].includes(style)) throw new RangeError("Unknown point style.");
             return {style, size, material: this.size(size)};
         },
+        framing(bounds, yaw, pitch, fov = 60) {
+            const values = [...bounds.min, ...bounds.max, yaw, pitch, fov];
+            if (values.some(value => !Number.isFinite(value)) || fov <= 0 || fov >= 180)
+                throw new RangeError("Source framing values must be finite.");
+            const extent = bounds.max.map((value, index) => value - bounds.min[index]);
+            if (extent.some(value => value < 0) || Math.hypot(...extent) <= 0)
+                throw new RangeError("Source bounds must have a positive extent.");
+            const center = bounds.min.map((value, index) => (value + bounds.max[index]) / 2);
+            const sourceRadius = Math.hypot(...extent) / 2;
+            const distance = sourceRadius / Math.sin(fov * Math.PI / 360);
+            const cosPitch = Math.cos(pitch);
+            const backward = [Math.sin(yaw) * cosPitch, -Math.cos(yaw) * cosPitch, -Math.sin(pitch)];
+            return {center, source_radius: sourceRadius, radius: distance,
+                    position: center.map((value, index) => value + backward[index] * distance)};
+        },
+        framed(camera, framing) {
+            const values = [...camera.position, camera.radius, ...framing.center,
+                framing.source_radius, framing.radius];
+            if (values.some(value => !Number.isFinite(value)) || camera.radius <= 0) return false;
+            const distance = Math.hypot(...camera.position.map((value, index) => value - framing.center[index]));
+            return camera.radius >= framing.source_radius * .5 && camera.radius <= framing.radius * 10 &&
+                distance >= framing.source_radius * .5 && distance <= framing.radius * 10;
+        },
         objectFocus(mode, hasSelection) {
             if (!["SHOW_ALL", "FADE_OTHERS", "ISOLATE"].includes(mode))
                 throw new RangeError("Unknown object focus mode.");

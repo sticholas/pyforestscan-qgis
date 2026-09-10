@@ -1,9 +1,54 @@
 /* Local renderer commands contain values only, never executable user scripts. */
 "use strict";
 const message = document.getElementById("message");
-const state = {ready: false, js_ready: false, source_requested: false, errors: [], mode: "Classification", classes: null, height_filter: null, quality: "Automatic"};
+const state = {ready: false, js_ready: false, source_requested: false, errors: [], mode: "Classification", classes: null, height_filter: null, quality: "Automatic", script_revision: "framing-guard-1"};
 let viewer, cloud, heightVolume, previousCamera = "", lastFrame = performance.now(), frameMs = 16;
 let linkedContext = null, profileDragInstalled = false;
+let cameraSyncFallbacks = 0;
+function syncRenderCameras() {
+    const view = viewer.scene.view;
+    const active = viewer.scene.getActiveCamera();
+    if (active.position.distanceToSquared(view.position) < 1e-12) return;
+    for (const camera of [viewer.scene.cameraP, viewer.scene.cameraO]) {
+        camera.position.copy(view.position);
+        camera.rotation.order = "ZXY";
+        camera.rotation.x = Math.PI / 2 + view.pitch;
+        camera.rotation.z = view.yaw;
+        camera.updateMatrix();
+        camera.updateMatrixWorld();
+        camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+    }
+    cameraSyncFallbacks++;
+}
+function cameraSnapshot() {
+    const view = viewer.scene.view;
+    return {position: view.position.toArray(), yaw: view.yaw, pitch: view.pitch, radius: view.radius};
+}
+function fitSource(reason) {
+    cloud.updateMatrixWorld(true);
+    const bounds = cloud.boundingBox.clone().applyMatrix4(cloud.matrixWorld);
+    const sourceBounds = {min: bounds.min.toArray(), max: bounds.max.toArray()};
+    const view = viewer.scene.view;
+    const framing = viewerRenderPolicy.framing(sourceBounds, view.yaw, view.pitch, viewer.scene.cameraP.fov);
+    const before = cameraSnapshot();
+    state.framing = {reason, bounds: sourceBounds, before, checks: [], fallback_used: false};
+    viewer.fitToScreen(0);
+    const ensureFramed = checkpoint => {
+        const fitted = cameraSnapshot();
+        let fallback = false;
+        if (!viewerRenderPolicy.framed(fitted, framing)) {
+            view.position.set(...framing.position);
+            view.lookAt(...framing.center);
+            fallback = true;
+        }
+        state.framing.checks.push({checkpoint, fitted, fallback_used: fallback});
+        state.framing.fallback_used = state.framing.fallback_used || fallback;
+        state.framing.final = cameraSnapshot();
+    };
+    setTimeout(() => ensureFramed("event_loop"), 0);
+    requestAnimationFrame(() => ensureFramed("animation_frame"));
+    setTimeout(() => ensureFramed("settled"), 250);
+}
 function fitProfile() {
     const geometry = linkedContext.geometry;
     viewer.setCameraMode(Potree.CameraMode.ORTHOGRAPHIC);
@@ -84,10 +129,16 @@ function fail(error) {
 }
 window.addEventListener("error", event => fail(event.error || event.message));
 window.addEventListener("unhandledrejection", event => fail(event.reason));
-function frame(now) {
+function frame() {
+    const now = performance.now();
     const elapsed = now - lastFrame;
     if (elapsed > 0 && elapsed < 1000) frameMs = frameMs * .9 + elapsed * .1;
     lastFrame = now;
+    if (viewer) {
+        viewer.update(Math.min(viewer.clock.getDelta(), .1), now);
+        syncRenderCameras();
+        viewer.render();
+    }
     if (viewer && cloud) {
         const v = viewer.scene.view;
         const current = [...v.position.toArray(), v.yaw, v.pitch, v.radius];
@@ -99,9 +150,14 @@ function frame(now) {
         priorView = current;
         for (const n of cloud.visibleNodes || []) recentNodes.set(n.geometryNode, now);
     }
-    requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+const renderTimer = setInterval(() => {
+    try { frame(); }
+    catch (error) {
+        clearInterval(renderTimer);
+        fail(error);
+    }
+}, 16);
 function clearHeight() {
     if (heightVolume) viewer.scene.removeVolume(heightVolume);
     heightVolume = null;
@@ -154,14 +210,17 @@ window.command = function(command) {
             viewer.orbitControls : command.mode === "Pan" ? viewer.earthControls : viewer.orbitControls);
         if (action === "fit") {
             if (linkedContext && linkedContext.view_type === "VERTICAL_SLICE") fitProfile();
-            else viewer.fitToScreen(0);
+            else fitSource("command_fit");
         }
-        if (action === "top") { viewer.setTopView(); viewer.fitToScreen(0); }
-        if (action === "front") { viewer.setFrontView(); viewer.fitToScreen(0); }
+        if (action === "top") { viewer.setTopView(); fitSource("command_top"); }
+        if (action === "front") { viewer.setFrontView(); fitSource("command_front"); }
         if (action === "budget") {
             viewer.setPointBudget(Math.max(1000, Math.min(2000000, command.points)));
-            // Viewer.update owns this property; assigning it on the cloud is overwritten.
-            viewer.minNodeSize = viewerRenderPolicy.threshold(viewer.minNodeSize, command.screen_error);
+            const threshold = viewerRenderPolicy.threshold(viewer.minNodeSize, command.screen_error);
+            viewer.minNodeSize = threshold;
+            // Keep the cloud usable even when an embedded/occluded render loop has
+            // not yet propagated the Viewer setting during source startup.
+            cloud.minimumNodePixelSize = threshold;
             residentLimit = Math.max(command.ceiling, command.points) * (command.pressure >= .85 ? 1.25 : 2);
             Potree.maxNodesLoading = command.pressure >= .85 ? 2 : 4;
             state.quality_floor = command.floor;
@@ -225,6 +284,7 @@ window.snapshot = function() {
     const nodes = cloud.visibleNodes || [];
     const levels = nodes.map(n => n.geometryNode.level);
     const root = cloud.pcoGeometry.root;
+    const activeCamera = viewer.scene.getActiveCamera();
     state.render_diagnostics = {
         visible_nodes: nodes.length, loaded_nodes: Potree.lru ? Potree.lru.elements : null,
         resident_points: Potree.lru ? Potree.lru.numPoints : null,
@@ -234,7 +294,13 @@ window.snapshot = function() {
         root_points: root ? root.numPoints : null,
         lod_min: levels.length ? Math.min(...levels) : null, lod_max: levels.length ? Math.max(...levels) : null,
         fps: 1000 / frameMs, viewport_pixels: viewer.renderer.domElement.width * viewer.renderer.domElement.height,
-        near: viewer.scene.getActiveCamera().near, far: viewer.scene.getActiveCamera().far,
+        near: activeCamera.near, far: activeCamera.far,
+        active_camera_position: activeCamera.position.toArray(),
+        active_camera_rotation: activeCamera.rotation.toArray().slice(0, 3),
+        camera_sync_fallbacks: cameraSyncFallbacks,
+        cloud_visible: cloud.visible, cloud_position: cloud.position.toArray(),
+        root_bounds: root ? {min: root.boundingBox.min.toArray(), max: root.boundingBox.max.toArray(),
+            loaded: root.loaded, loading: root.loading} : null,
         scale: cloud.scale.toArray(), cache_limit_points: Potree.pointLoadLimit,
         js_heap_bytes: performance.memory ? performance.memory.usedJSHeapSize : null
     };
@@ -262,6 +328,11 @@ window.captureFrame = function() {
 };
 try {
     viewer = new Potree.Viewer(document.getElementById("view"), {noDragAndDrop: true});
+    // QWebEngine can suspend animation callbacks after its native child is
+    // embedded while timers and the command bridge remain active. This non-VR
+    // viewer therefore owns one explicit Potree update/render timer above.
+    viewer.renderer.setAnimationLoop(null);
+    state.render_loop = "INTERVAL_16_MS";
     viewer.setBackground("black");
     viewer.setEDLEnabled(false);
     viewer.setPointBudget(100000);
@@ -301,12 +372,13 @@ try {
     Potree.loadPointCloud(source, "Point cloud", event => {
         cloud = event.pointcloud;
         viewer.scene.addPointCloud(cloud);
+        cloud.minimumNodePixelSize = viewer.minNodeSize;
         cloud.material.activeAttributeName = "classification";
         pointDisplay(state.point_style, state.point_size);
         cloud.updateMatrixWorld(true);
         const bounds = cloud.boundingBox.clone().applyMatrix4(cloud.matrixWorld);
         state.z_range = [bounds.min.z, bounds.max.z];
-        viewer.fitToScreen(0);
+        fitSource("source_open");
         state.ready = true;
         message.textContent = "";
     });

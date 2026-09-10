@@ -91,7 +91,7 @@ def main():
         "qt_initialization": round(asset_started - host_started, 6),
         "asset_verification": round(assets_verified - asset_started, 6),
         "source_server": round(time.monotonic() - assets_verified, 6),
-    }})
+    }, "viewer_script_sha256": hashlib.sha256(packaged_assets["viewer.js"]).hexdigest()})
     viewer_url = server.base_url + "viewer.html?source=" + server.source_route
     observed = set()
     memory_sample = {"at": 0, "value": None}

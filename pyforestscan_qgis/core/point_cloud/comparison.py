@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import Path
 import re
 from uuid import uuid4
 
@@ -45,6 +46,12 @@ class ComparisonSourceRecord:
     @classmethod
     def from_viewer_info(cls, path, info, *, comparison_id=None):
         identity = info.get("source_identity") if isinstance(info, dict) else None
+        if not isinstance(identity, dict) and isinstance(info, dict) and info.get("sha256"):
+            source_path = str(info.get("source") or path)
+            lower = Path(source_path).name.lower()
+            source_type = "COPC" if lower.endswith(".copc.laz") else Path(source_path).suffix[1:].upper()
+            identity = {"path": source_path, "sha256": info["sha256"],
+                        "source_type": source_type}
         if not isinstance(identity, dict):
             raise ValueError("Comparison source requires verified viewer identity.")
         metadata = info.get("metadata") or {}

@@ -38,3 +38,14 @@ class ComparisonContractTests(unittest.TestCase):
             ComparisonSourceRecord("c"*32, "x.laz", "not-a-hash", "LAZ")
         with self.assertRaisesRegex(ValueError, "Primary source fingerprint"):
             ComparisonSourceRecord("c"*32, "x.laz", "b"*64, "LAZ").relationship("bad")
+
+    def test_prepared_laz_identity_contract_is_accepted(self):
+        record = ComparisonSourceRecord.from_viewer_info("fallback.laz", {
+            "source":"D:/clouds/tree.laz", "sha256":"d"*64,
+            "point_count":2287408, "metadata":{"srs":{"wkt":"EPSG WKT"}},
+            "render_source":"D:/cache/view.copc.laz",
+        }, comparison_id="e"*32)
+        self.assertEqual(record.path, "D:/clouds/tree.laz")
+        self.assertEqual(record.source_type, "LAZ")
+        self.assertEqual(record.source_fingerprint, "d"*64)
+        self.assertEqual(record.point_count, 2287408)

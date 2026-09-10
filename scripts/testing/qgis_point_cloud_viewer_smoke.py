@@ -64,7 +64,7 @@ def main():
         ("front", {"action": "front"}),
         ("classification", {"action": "mode", "mode": "Classification"}),
         ("elevation", {"action": "mode", "mode": "Elevation"}),
-        ("filtered", {"action": "height", "minimum": 2, "maximum": 6}),
+        ("filtered", {"action": "height"}),
         ("clear_filter", {"action": "clear_filters"}),
     ]
     if args.point_sizes:
@@ -134,7 +134,13 @@ def main():
             save()
         if pending is None and action_index < len(commands):
             previous = telemetry
-            pending = commands[action_index]
+            name, command = commands[action_index]
+            if name == "filtered":
+                minimum, maximum = telemetry["z_range"]
+                span = maximum - minimum
+                command = {"action": "height", "minimum": minimum + span * .25,
+                           "maximum": minimum + span * .75}
+            pending = (name, command)
             sample = 0
             page.send(pending[1])
         if action_index == len(commands) and (args.no_captures or all(name in captures for name, _ in commands)):

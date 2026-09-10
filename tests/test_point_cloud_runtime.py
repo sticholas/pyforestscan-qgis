@@ -130,6 +130,16 @@ class ViewerRuntimeTests(unittest.TestCase):
                 self.assertEqual(len(data), item["bytes"])
         self.assertLess(sum(item["bytes"] for item in manifest["files"].values()), 5_000_000)
 
+    def test_embedded_renderer_owns_one_timer_loop_and_recovers_stale_camera(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "pyforestscan_qgis/viewer/viewer.js").read_text()
+        self.assertIn("viewer.renderer.setAnimationLoop(null)", source)
+        self.assertIn('state.render_loop = "INTERVAL_16_MS"', source)
+        self.assertIn("setInterval(() =>", source)
+        self.assertIn("syncRenderCameras();", source)
+        self.assertIn("cloud.minimumNodePixelSize = threshold", source)
+        self.assertIn('fitSource("source_open")', source)
+
 
 if __name__ == "__main__":
     unittest.main()

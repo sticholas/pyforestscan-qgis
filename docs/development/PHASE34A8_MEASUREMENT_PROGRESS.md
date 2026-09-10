@@ -77,15 +77,22 @@ Editor and do not change the `0.2.0-beta.1` release boundary.
   selection, measurement, annotation, journal and export commands fail closed
   at the comparison boundary. Camera linking and persisted comparison layouts
   remain future work.
+- Hardened the embedded renderer against a QtWebEngine lifecycle in which
+  Three.js animation callbacks stop after native-window embedding. The viewer
+  now owns one deterministic non-VR update/render timer, validates source
+  framing, synchronizes a stale render camera from the authoritative Potree
+  view, and explicitly keeps per-cloud node thresholds aligned with the
+  adaptive viewer policy. Diagnostics identify the loaded viewer script,
+  framing decisions, render-loop owner and camera synchronization fallbacks.
 
 ## IN PROGRESS
 
-Point-to-point, planar-area, cross-section, tree-height and linked-marker tools have contract,
-renderer, worker and dual-Qt test coverage. Human point picking/drawing, marker
-readability, dense-source latency and detached-view visual agreement still
-require live qualification. Source-isolated comparison has core/UI coverage,
-but its live first-frame gate remains open after the same zero-rendered-point
-condition reproduced in the established main-viewer control canary.
+Point-to-point, planar-area, cross-section, tree-height and linked-marker tools
+have contract, renderer, worker and dual-Qt test coverage. Human point
+picking/drawing, marker readability, dense-source latency and detached-view
+visual agreement still require live qualification. Source-isolated comparison
+now has core/UI coverage and a passing real-LAZ first-frame canary; human
+navigation and visual comparison acceptance remain open.
 
 ## NEXT
 
@@ -98,16 +105,9 @@ condition reproduced in the established main-viewer control canary.
 ## BLOCKED
 
 Human interaction acceptance requires an available embedded-viewer session.
-Automated gesture and camera assertions do not replace mouse acceptance.
-
-Three pre-existing managed viewer hosts were active during the comparison
-qualification attempt and were treated as user-owned. Neither they nor their
-WebEngine children were stopped. On the normal Windows Qt platform, both the
-new comparison canary and the established main-viewer canary reached verified
-source open, healthy WebGL and `INTERACTION_READY`, but remained at zero visible
-nodes until their bounded timeout. Comparison acceptance is therefore blocked
-on a clean viewer-session rerun; the control result shows this is not evidence
-of a comparison-only failure.
+Automated gesture and camera assertions do not replace mouse acceptance. Three
+pre-existing managed viewer hosts encountered during qualification remain
+user-owned and were not stopped.
 
 ## MEASURED EVIDENCE
 
@@ -142,14 +142,28 @@ Measurement overlays store segment vertices relative to the first endpoint and
 place the Three.js object at the source-coordinate origin. This retains
 sub-metre Float32 geometry precision for large projected coordinates.
 
-The comparison/control experiment reused the valid 22,806,851-byte managed
+The comparison/control investigation reused the valid 22,806,851-byte managed
 COPC view cache for the 2,287,408-point source. PDAL 2.8.1 independently opened
 that cache with `readers.copc` and reported the expected EPSG:6635 bounds and
-point count. Both runs initialized Qt 6.11.2 WebEngine and NVIDIA RTX 4090
-WebGL, opened the source, and preserved the original SHA256, but requested no
-point nodes because framing remained at the default radius-one camera. The
-permanent `qgis_point_cloud_comparison_smoke.py` canary retains this gate for a
-clean-session rerun.
+point count. Failed controls isolated three successive stale states: logical
+camera radius 1 at the origin, cloud node threshold 150 instead of the adaptive
+12-pixel target, and an active render camera fixed at Potree's default
+`[1000, 1000, 1000]`. Ordinary timers remained live while embedded animation
+callbacks had stopped. This evidence drove the bounded framing, threshold,
+camera and timer-loop recovery rather than a comparison-specific workaround.
+
+After recovery, the deterministic main-viewer canary passed all 10 fit, orbit,
+pan, zoom, top, front, display-mode and source-relative filter checks in 16.414
+seconds. First frame arrived in 6.703 seconds in the preceding full control;
+that run displayed 366,785 points at a measured 62.4 FPS with zero renderer
+errors. The final source-isolated comparison canary passed in 9.540 seconds,
+displayed 1,178,721 points, switched to Elevation, rejected an editor command,
+retained independent read-only authority, exited with code 0 and preserved the
+source SHA256. The Windows viewer runtime also passed a direct
+`QApplication`/`qwindows` startup probe. A user-supplied Qt platform dialog was
+timestamped six minutes before a successful render and has not reproduced
+under the runtime's sanitized Qt environment; it remains evidence of an older
+mixed-runtime launch, not a current supported-path failure.
 
 The linked-marker canary resolved source coordinate
 `215000.000, 2114534.320, 908.650` through all 2,287,408 original records in
