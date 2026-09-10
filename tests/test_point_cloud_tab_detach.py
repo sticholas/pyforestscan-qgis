@@ -185,10 +185,14 @@ class SelectionToolTests(unittest.TestCase):
         self.assertIn("Select Object ID...", actions)
         self.assertIn("Previous Object", actions)
         self.assertIn("Next Object", actions)
+        self.assertIn("Assign Selection to Object ID...", actions)
+        self.assertIn("Unassign Selected Points", actions)
         self.assertFalse(editor.object_results_action.isEnabled())
         self.assertFalse(editor.build_object_catalog_action.isEnabled())
         self.assertFalse(editor.select_object_action.isEnabled())
         self.assertFalse(editor.configure_object_ids_action.isEnabled())
+        self.assertFalse(editor.assign_object_action.isEnabled())
+        self.assertFalse(editor.unassign_object_action.isEnabled())
 
     def test_object_catalog_actions_follow_context_prerequisites(self):
         editor = EditorPanel(None)
@@ -201,11 +205,16 @@ class SelectionToolTests(unittest.TestCase):
         editor.state["object_catalog"] = {"field":"Tree_ID", "minimum_object_id":1,
             "maximum_object_id":3, "editable_integer_ids":True}
         editor.state["active_object"] = {"field":"Tree_ID", "object_id":2}
+        editor.state["selection"] = {"selection_id":"selected", "resolved_point_count":12}
+        editor.state["object_id_policy"] = {"field":"Tree_ID", "unassigned_id":0,
+            "next_available_object_id":4}
         editor.refresh_controls()
         self.assertTrue(editor.select_object_action.isEnabled())
         self.assertTrue(editor.configure_object_ids_action.isEnabled())
         self.assertTrue(editor.previous_object_action.isEnabled())
         self.assertTrue(editor.next_object_action.isEnabled())
+        self.assertTrue(editor.assign_object_action.isEnabled())
+        self.assertTrue(editor.unassign_object_action.isEnabled())
 
     def test_unassigned_object_policy_requires_explicit_confirmation(self):
         editor = EditorPanel(None)
@@ -224,6 +233,21 @@ class SelectionToolTests(unittest.TestCase):
                    return_value=qt_enum(QMessageBox, "Yes", "StandardButton")):
             editor.configure_object_ids()
         editor.send.assert_called_once_with("configure_object_id_policy", unassigned_id="0")
+
+    def test_large_object_edit_confirmation_preserves_worker_action(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        editor.busy = True
+        editor.pending_action = "stage_object_id"
+        editor.send = Mock()
+        with patch("pyforestscan_qgis.ui.point_cloud_editor.QMessageBox.question",
+                   return_value=qt_enum(QMessageBox, "Yes", "StandardButton")):
+            editor.update_state({"confirm":True, "count":500000, "fraction":.5,
+                "impact":"Large selection", "edit_kind":"OBJECT_ID",
+                "command":{"action":"stage_object_id", "selection_id":"selection",
+                           "value":"8", "view":{}}})
+        editor.send.assert_called_once_with("stage_object_id", selection_id="selection",
+                                            value="8", confirmed=True)
 
     def test_classify_while_selecting_stages_once_only_after_select_snapshot(self):
         value = {"ready":True, "source":"source.laz", "edits":0, "point_count":100,

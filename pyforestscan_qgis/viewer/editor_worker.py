@@ -37,7 +37,8 @@ def main():
     import pdal
     from pyproj import CRS
     from pyforestscan_qgis.core.atomic_state import atomic_write_json
-    from pyforestscan_qgis.core.point_cloud.session import SourceIdentity, PointCloudEditSession, AttributeEditOperation
+    from pyforestscan_qgis.core.point_cloud.session import (
+        SourceIdentity, PointCloudEditSession, AttributeEditOperation, ObjectIdEditOperation)
     from pyforestscan_qgis.core.point_cloud.selection import (
         SelectionDefinition, SelectionResolver, resized_selection, validate_sequence)
     from pyforestscan_qgis.core.point_cloud.selection_impact import selection_impact
@@ -108,9 +109,10 @@ def main():
         edits = []
         history = []
         for op in session.operations:
-            if isinstance(op, AttributeEditOperation):
+            if isinstance(op, (AttributeEditOperation, ObjectIdEditOperation)):
                 edits.append({"definitions": [visual_definition(d) for d in op.definitions], "attribute": op.attribute, "value": op.value})
-                history.append(f"{op.point_count:,} points: {op.attribute} = {op.value}" +
+                target = f"Object ID {op.attribute}" if isinstance(op, ObjectIdEditOperation) else op.attribute
+                history.append(f"{op.point_count:,} points: {target} = {op.value}" +
                                (f" | {op.note}" if op.note else ""))
             else:
                 x, y, z, xx, yy, zz = op.selection.bounds
@@ -297,6 +299,29 @@ def main():
                     session.stage_resolved(definitions, result, command["attribute"], command["value"],
                                            note=("View: " + origin) if origin else "")
                     session.visibility.pop("classification_audit", None)
+                    session.save(autosave)
+                    snapshot(highlight=False)
+                elif action == "stage_object_id":
+                    from pyforestscan_qgis.core.point_cloud.object_id_policy import ObjectIdPolicy
+                    resolver._check_source()
+                    if result is None or command.get("selection_id") != result.selection_id:
+                        raise ValueError("Selection changed; resolve and review it before applying an object edit.")
+                    impact = selection_impact(result.resolved_point_count, point_count)
+                    if not command.get("confirmed") and impact.requires_confirmation:
+                        emit({"confirm": True, "selection_id":result.selection_id,
+                              "count":result.resolved_point_count, "fraction":impact.fraction,
+                              "impact":impact.message, "command":command, "edit_kind":"OBJECT_ID"})
+                        continue
+                    payload = dict(session.visibility.get("object_id_policy") or {})
+                    payload.pop("next_available_object_id", None)
+                    policy = ObjectIdPolicy(**payload)
+                    try:
+                        value = int(str(command.get("value", "")), 10)
+                    except ValueError:
+                        raise ValueError("Target object ID must be an integer.")
+                    session.stage_object_id(definitions, result, policy, value,
+                        note=f"Object field {policy.field}")
+                    session.visibility.pop("active_object", None)
                     session.save(autosave)
                     snapshot(highlight=False)
                 elif action in ("undo", "redo"):

@@ -1,7 +1,7 @@
 """Bounded journal replay. Never evaluates a predicate on edited attributes."""
 from __future__ import annotations
 
-from .session import AttributeEditOperation
+from .session import AttributeEditOperation, ObjectIdEditOperation
 from .selection import selection_mask
 
 
@@ -12,7 +12,7 @@ class EditExecutionPlan:
         self.shapes = []
         regions, owners = [], []
         for index, operation in enumerate(self.operations):
-            if isinstance(operation, AttributeEditOperation):
+            if isinstance(operation, (AttributeEditOperation, ObjectIdEditOperation)):
                 shapes = [shapely.Polygon(item.geometry) for item in operation.definitions]
                 if any(not shape.is_valid or shape.is_empty or shape.area <= 0 for shape in shapes):
                     raise ValueError("Journal has an invalid selection polygon.")
@@ -43,7 +43,7 @@ class EditExecutionPlan:
         relevant = sorted({self.owners[int(i)] for i in self.tree.query(box)})
         for index in relevant:
             operation = self.operations[index]
-            if isinstance(operation, AttributeEditOperation):
+            if isinstance(operation, (AttributeEditOperation, ObjectIdEditOperation)):
                 mask = selection_mask(original, operation.definitions, self.shapes[index])
                 if operation.attribute == "DELETE_ON_EXPORT":
                     removed[mask] = bool(operation.value)
@@ -59,5 +59,8 @@ class EditExecutionPlan:
                 attribute, value = "Classification", operation.classification
             if attribute not in (original.dtype.names or ()):
                 raise ValueError(f"Source does not contain writable {attribute}.")
+            if (isinstance(operation, ObjectIdEditOperation)
+                    and str(original.dtype.fields[attribute][0]) != operation.field_dtype):
+                raise ValueError("Object journal storage type differs from the verified source dimension.")
             edited[attribute][mask] = value
         return edited, removed

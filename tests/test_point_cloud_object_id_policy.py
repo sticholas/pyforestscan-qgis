@@ -37,6 +37,12 @@ class ObjectIdPolicyTests(unittest.TestCase):
             self.assertIn("Unassigned = 0", object_id_policy_summary(policy, 3))
             self.assertTrue(report["editable_integer_ids"])
 
+    def test_uint64_policy_stays_within_exact_sqlite_catalog_ceiling(self):
+        with TemporaryDirectory() as folder:
+            report = self.catalog(folder, [1,2], "u8")
+            policy = create_object_id_policy(report, 0)
+            self.assertEqual(policy.storage_maximum, 2**63-1)
+
     def test_next_id_finds_first_gap_without_loading_catalog(self):
         with TemporaryDirectory() as folder:
             report = self.catalog(folder, [1,1,2,4,4], "u2")

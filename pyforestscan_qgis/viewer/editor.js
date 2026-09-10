@@ -389,12 +389,13 @@ function paint() {
             const displayZ = point.z;
             const originalZ = sourceAttribute(geometry, "PFSOriginalZ");
             if (originalZ) point.z = originalZ.array[i];
-            let classification = original[i], classified = false, withheld = false, removed = false;
+            let classification = original[i], classified = false, withheld = false, removed = false, objectEdited = false;
             for (const edit of record.edits) {
                 if (!matches(edit.definitions, point, original[i], geometry, i)) continue;
                 if (edit.attribute === "Classification") { classification = edit.value; classified = true; }
                 else if (edit.attribute === "Withheld") withheld = Boolean(edit.value);
                 else if (edit.attribute === "DELETE_ON_EXPORT") removed = Boolean(edit.value);
+                else objectEdited = true;
             }
             record.effectiveClasses[classification] = (record.effectiveClasses[classification] || 0) + 1;
             const filters = window.editorSelectionFilters();
@@ -405,6 +406,7 @@ function paint() {
             if (selected) color = selectionColor.toArray();
             else if (removed) color = [1, .25, .65];
             else if (withheld) color = [1, .8, .2];
+            else if (objectEdited) color = [.25, .85, .55];
             else if (classified && context.cloud.material.activeAttributeName === "classification")
                 color = window.editorClassificationColor(classification);
             if (visible && color) {

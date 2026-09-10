@@ -76,6 +76,9 @@ def export_edited(session, destination, *, cancelled=lambda: False, progress=lam
     staging = destination.parent / ("." + uuid4().hex + ".edited-points.partial")
     mapped = writer = readback = output_iterator = None
     changes = {"classification_changed": 0, "noise_assigned": 0, "withheld_set": 0, "withheld_cleared": 0}
+    object_fields = sorted({op.attribute for op in session.operations
+                            if getattr(op, "kind", "") == "SET_OBJECT_ID"})
+    changes["object_id_changed"] = {field: 0 for field in object_fields}
 
     def chunks(*, track_changes=False):
         pipeline = pdal.Pipeline(json.dumps([{"type": "readers.las", "filename": str(source)}]))
@@ -91,6 +94,9 @@ def export_edited(session, destination, *, cancelled=lambda: False, progress=lam
                 if "Withheld" in original.dtype.names:
                     changes["withheld_set"] += int(((original["Withheld"] == 0) & (edited["Withheld"] != 0) & kept).sum())
                     changes["withheld_cleared"] += int(((original["Withheld"] != 0) & (edited["Withheld"] == 0) & kept).sum())
+                for field in object_fields:
+                    changes["object_id_changed"][field] += int(
+                        ((edited[field] != original[field]) & kept).sum())
             yield edited[~removed], len(original), int(removed.sum())
 
     total = removed_count = written = 0

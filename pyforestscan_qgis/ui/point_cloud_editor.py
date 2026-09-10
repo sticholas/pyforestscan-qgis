@@ -290,6 +290,17 @@ class EditorPanel(QWidget):
         self.previous_object_action.triggered.connect(lambda: self.navigate_object(-1))
         self.next_object_action = self.object_menu.addAction("Next Object")
         self.next_object_action.triggered.connect(lambda: self.navigate_object(1))
+        self.object_menu.addSeparator()
+        self.assign_object_action = self.object_menu.addAction("Assign Selection to Object ID...")
+        self.assign_object_action.setToolTip(
+            "Stage the current authoritative source selection into an existing or new object ID. "
+            "The source is unchanged until a new edited cloud is exported.")
+        self.assign_object_action.triggered.connect(self.assign_selection_to_object)
+        self.unassign_object_action = self.object_menu.addAction("Unassign Selected Points")
+        self.unassign_object_action.setToolTip(
+            "Stage the current authoritative source selection to the confirmed unassigned value. "
+            "This is undoable and never rewrites the source.")
+        self.unassign_object_action.triggered.connect(self.unassign_selection_from_object)
         self.object_catalog_results_action = self.object_menu.addAction("Catalog Details")
         self.object_catalog_results_action.triggered.connect(self.show_object_catalog)
         self.recover_action = details_menu.addAction("Recover Autosaved Session")
@@ -368,6 +379,10 @@ class EditorPanel(QWidget):
             and current != catalog.get("minimum_object_id"))
         self.next_object_action.setEnabled(ready and current is not None
             and current != catalog.get("maximum_object_id"))
+        selected = (self.state.get("selection") or {}).get("resolved_point_count", 0) > 0
+        has_policy = bool(self.state.get("object_id_policy"))
+        self.assign_object_action.setEnabled(ready and selected and has_policy)
+        self.unassign_object_action.setEnabled(ready and selected and has_policy)
         self.refresh_classification_guidance()
 
     def refresh_classification_guidance(self):
@@ -629,6 +644,25 @@ class EditorPanel(QWidget):
         if direction in (-1, 1):
             self.send("neighbor_object", direction=direction)
 
+    def assign_selection_to_object(self):
+        policy = self.state.get("object_id_policy") or {}
+        selection = self.state.get("selection") or {}
+        if not policy or not selection.get("resolved_point_count"):
+            return
+        active = self.state.get("active_object") or {}
+        default = str(active.get("object_id", policy.get("next_available_object_id", "")))
+        value, accepted = QInputDialog.getText(self, "Assign Selection to Object",
+            f"Target {policy['field']} object ID", text=default)
+        if accepted:
+            self.send("stage_object_id", selection_id=selection["selection_id"], value=value)
+
+    def unassign_selection_from_object(self):
+        policy = self.state.get("object_id_policy") or {}
+        selection = self.state.get("selection") or {}
+        if policy and selection.get("resolved_point_count"):
+            self.send("stage_object_id", selection_id=selection["selection_id"],
+                      value=str(policy["unassigned_id"]))
+
     def show_object_catalog(self):
         report = self.state.get("object_catalog")
         if not report:
@@ -747,15 +781,18 @@ class EditorPanel(QWidget):
             self.source_changed(value)
         if value.get("confirm"):
             self.busy = False
+            object_edit = value.get("edit_kind") == "OBJECT_ID"
             answer = QMessageBox.question(self, "Large edit",
                 f"{value.get('impact', 'Very large selection')}. This stages an edit for "
                 f"{value['count']:,} source points ({value['fraction']:.1%}). "
-                "Large classification changes may affect terrain and canopy products. Continue?")
+                + ("Object membership changes will appear only in a new explicit export. Continue?"
+                   if object_edit else
+                   "Large classification changes may affect terrain and canopy products. Continue?"))
             if answer == qt_enum(QMessageBox, "Yes", "StandardButton"):
                 command = dict(value["command"])
-                command.pop("action", None)
+                next_action = command.pop("action", "stage")
                 command.pop("view", None)
-                self.send("stage", **command, confirmed=True)
+                self.send(next_action, **command, confirmed=True)
         self.refresh_controls()
         if auto_classify and auto_classify.apply and not self.busy:
             self.stage("Classification", self.code.value())

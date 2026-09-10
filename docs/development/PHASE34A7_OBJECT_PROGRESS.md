@@ -1,6 +1,7 @@
 # Phase 34A7 Objects / Trees / Segments Progress
 
-State: IN PROGRESS. Object editing is not yet enabled.
+State: IN PROGRESS. Guarded assignment/unassignment is enabled; broader object
+operations remain experimental and incomplete.
 
 ## DONE
 
@@ -27,20 +28,27 @@ State: IN PROGRESS. Object editing is not yet enabled.
 - Added an explicit object-ID policy for integer-backed fields. The user must
   confirm which exact value means unassigned before later object mutations can
   exist. Next-ID allocation scans the disk catalog in constant memory, stays
-  within the source field's real signed/unsigned storage range, skips the
-  unassigned value, and fails on exhaustion. Float-backed IDs remain read-only.
+  within the catalog-supported range of the source integer storage, skips the
+  unassigned value, and fails on exhaustion. Float-backed IDs and unsigned
+  64-bit values above SQLite's signed-key ceiling remain read-only.
+- Added `SET_OBJECT_ID` to the existing ordered edit journal. Assign and
+  Unassign use the current authoritative full-resolution selection, preserve
+  Replace/Add/Subtract and original-attribute predicate semantics, participate
+  in the same undo/redo/autosave/recovery/export path, and never mutate source
+  buffers. Large edits use the existing confirmation gate. Export validation
+  now reports net changed point counts per object field.
 
 ## IN PROGRESS
 
-Discovery and read-only object navigation are foundations only. A candidate
-report does not yet make a field editable, define unassigned-value semantics,
-or create object IDs.
+Discovery, navigation, and guarded assignment/unassignment are foundations.
+Split/merge, catalog-aware effective counts, isolate/fade, reviewed state and
+notes are not yet complete.
 
 ## NEXT
 
 1. Add linked-view isolate/fade behavior without changing edit authority.
-2. Extend the existing attribute journal with validated arbitrary categorical
-   edits, then implement add/remove/split/merge as journal-backed operations.
+2. Add safe create/split/merge workflows on top of `SET_OBJECT_ID` and refresh
+   effective catalog counts without changing original selection predicates.
 3. Add reviewed/unreviewed state and notes without encoding review metadata into
    immutable source dimensions implicitly.
 
@@ -61,3 +69,11 @@ candidates, and verified source SHA-256
 unchanged. Synthetic structured-array tests independently prove that repeated
 integer identifiers with an unfamiliar name are discoverable without a
 hardcoded schema.
+
+The managed object-export canary created a five-point LAS with an `int32`
+`Tree_ID` Extra Bytes field, staged one `SET_OBJECT_ID` operation and validated
+a new LAZ in 0.031 seconds. Readback was exactly `[8, 8, 2, 2, 2]`, the export
+reported two net `Tree_ID` changes, every output dimension matched journal
+replay, and source SHA-256
+`2e9418479610a698a52edcbbaaf096fae2a991002afd667e2f824e55b457f9bc`
+remained unchanged.

@@ -10,6 +10,16 @@ import sqlite3
 from .object_catalog import object_catalog_report
 
 
+INTEGER_DTYPE_LIMITS = {
+    "int8": (-(2**7), 2**7-1), "uint8": (0, 2**8-1),
+    "int16": (-(2**15), 2**15-1), "uint16": (0, 2**16-1),
+    "int32": (-(2**31), 2**31-1), "uint32": (0, 2**32-1),
+    "int64": (-(2**63), 2**63-1),
+    # Exact catalog keys use SQLite INTEGER; uint64 values above this remain read-only.
+    "uint64": (0, 2**63-1),
+}
+
+
 @dataclass(frozen=True)
 class ObjectIdPolicy:
     source_sha256: str
@@ -41,16 +51,14 @@ def create_object_id_policy(catalog_report, unassigned_id):
     """Create policy only for integer storage; floating IDs remain safely read-only."""
     if not isinstance(catalog_report, dict) or catalog_report.get("status") != "READY":
         raise ValueError("Build an exact object catalog before defining ID semantics.")
-    import numpy as np
-
-    dtype = np.dtype(catalog_report["field_dtype"])
-    if dtype.kind not in "iu":
+    dtype = catalog_report["field_dtype"]
+    if dtype not in INTEGER_DTYPE_LIMITS:
         raise ValueError("Object editing requires an integer source dimension; this field remains read-only.")
-    limits = np.iinfo(dtype)
+    low, high = INTEGER_DTYPE_LIMITS[dtype]
     if type(unassigned_id) is not int:
         raise ValueError("Unassigned object ID must be an integer.")
     return ObjectIdPolicy(catalog_report["source_sha256"], catalog_report["field"],
-        str(dtype), int(limits.min), int(limits.max), unassigned_id)
+        dtype, low, high, unassigned_id)
 
 
 def next_available_object_id(catalog_path, policy, *, preferred_start=1):
@@ -63,9 +71,8 @@ def next_available_object_id(catalog_path, policy, *, preferred_start=1):
     if ((report["source_sha256"], report["field"], report["field_dtype"])
             != (policy.source_sha256, policy.field, policy.field_dtype)):
         raise ValueError("Object ID policy does not belong to this exact catalog field.")
-    import numpy as np
-    limits = np.iinfo(np.dtype(report["field_dtype"]))
-    if (policy.storage_minimum, policy.storage_maximum) != (int(limits.min), int(limits.max)):
+    expected_limits = INTEGER_DTYPE_LIMITS.get(report["field_dtype"])
+    if expected_limits is None or (policy.storage_minimum, policy.storage_maximum) != expected_limits:
         raise ValueError("Object ID policy storage range does not match the catalog field.")
     candidate = max(preferred_start, policy.storage_minimum)
     if candidate == policy.unassigned_id:
