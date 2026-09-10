@@ -6,6 +6,8 @@
   source-linked Vertical Slice workflow.
 - Added exact corridor point and classification summaries from original source
   records before display sampling; rendered points remain non-authoritative.
+- Added source-coordinate profile corridor footprints to 3D scene context with
+  per-view visibility and explicit display-only authority.
 - Multi-segment paths, linked cursor readouts and live human qualification remain
   unfinished. The editor stays experimental at `0.2.0-beta.1`.
 

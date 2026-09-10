@@ -53,7 +53,7 @@ const viewer={renderer:{domElement:canvas},inputHandler:{enabled:true},
         getActiveCamera(){return {clone(){return {};}};}},
     setCameraMode(mode){this.scene.cameraMode=mode;},
     setTopView(){this.scene.view.yaw=0;this.scene.view.pitch=-Math.PI/2;}};
-const cloud={visibleNodes:[],material:{activeAttributeName:"classification"}};
+const cloud={visibleNodes:[],material:{activeAttributeName:"classification"},updateMatrixWorld(){}};
 const context={THREE,DrawingTool,simplifySourcePath,document,Potree:{CameraMode:{PERSPECTIVE:1,ORTHOGRAPHIC:2},
     Utils:{getMousePointCloudIntersection(mouse){return {location:new Vector3(mouse.x,mouse.y,mouse.x+mouse.y)};}}},
     requestAnimationFrame:fn=>queue.push(fn),performance:{now:()=>0}};
@@ -280,12 +280,28 @@ assert.deepEqual(annotationGroup.children[0].origin,[10,1,5]);
 editor.command({action:"scene_visibility",visibility:{selection:false,measurements:false,annotations:false}});
 const hiddenScene=tick();
 assert.deepEqual(JSON.parse(JSON.stringify(hiddenScene.scene_visibility)),
-    {selection:false,measurements:false,annotations:false});
+    {selection:false,measurements:false,annotations:false,profiles:true});
 assert.equal(measurementGroup.visible,false);
 assert.equal(annotationGroup.visible,false);
 editor.command({action:"scene_visibility",visibility:{selection:true,measurements:true,annotations:true}});
 assert.equal(measurementGroup.visible,true);
 assert.equal(annotationGroup.visible,true);
+cloud.boundingBox={clone(){return {min:{z:10},max:{z:110},applyMatrix4(){return this;}};}};
+cloud.matrixWorld={};
+editor.command({action:"linked_view",view:{view_id:"overview",view_type:"OVERVIEW_3D"}});
+editor.command({action:"workspace_views",profiles:[{view_id:"profile",title:"Forest Profile",
+    active:false,corridor:[[0,2],[10,2],[10,-2],[0,-2],[0,2]]}]});
+const workspaceScene=tick();
+assert.equal(workspaceScene.workspace_profile_count,1);
+const workspaceGroup=viewer.scene.scene.items.find(item=>item.name==="PyForestScan profile corridors");
+assert.ok(workspaceGroup);
+assert.equal(workspaceGroup.children[0].name,"Forest Profile");
+assert.equal(workspaceGroup.children[0].userData.authority,"DISPLAY_CONTEXT_ONLY");
+assert.deepEqual(workspaceGroup.children[0].origin,[0,2,11]);
+editor.command({action:"scene_visibility",visibility:{profiles:false}});
+assert.equal(workspaceGroup.visible,false);
+editor.command({action:"scene_visibility",visibility:{profiles:true}});
+assert.equal(workspaceGroup.visible,true);
 // Current-selection visibility changes only renderer presentation. The source
 // class buffer remains immutable and the authoritative selection stays loaded.
 THREE.ShapeUtils.triangulateShape=()=>[[0,1,2]];

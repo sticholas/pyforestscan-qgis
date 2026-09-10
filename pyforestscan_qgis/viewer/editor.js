@@ -19,7 +19,8 @@ let objectFocusMode = "SHOW_ALL";
 let measurementDraft = [], measurementGroup = null, measurementCount = 0;
 let measurementKind = "POINT_DISTANCE", measurementPurpose = "CROSS_SECTION", measurementItems = [];
 let annotationGroup = null, annotationCount = 0, annotationItems = [];
-let sceneVisibility = {selection:true, measurements:true, annotations:true};
+let workspaceGroup = null, workspaceViewCount = 0, workspaceItems = [];
+let sceneVisibility = {selection:true, measurements:true, annotations:true, profiles:true};
 function sourceAttribute(geometry, name) {
     const extra = geometry._pfsOriginalDimensions && geometry._pfsOriginalDimensions[name];
     return extra ? {array:extra} : geometry.getAttribute(name) || geometry.getAttribute(name.toLowerCase());
@@ -142,13 +143,51 @@ function removeHighlight(record) {
 }
 function setSceneVisibility(value) {
     if (!value || typeof value !== "object") return false;
-    for (const key of ["selection", "measurements", "annotations"])
+    for (const key of ["selection", "measurements", "annotations", "profiles"])
         if (key in value && typeof value[key] !== "boolean") return false;
     sceneVisibility = {...sceneVisibility, ...value};
     if (measurementGroup) measurementGroup.visible = sceneVisibility.measurements;
     if (annotationGroup) annotationGroup.visible = sceneVisibility.annotations;
+    if (workspaceGroup) workspaceGroup.visible = sceneVisibility.profiles &&
+        (!linkedView || linkedView.view_type !== "VERTICAL_SLICE");
     for (const record of records.values()) record.revision = -1;
     return true;
+}
+function renderWorkspaceViews(items) {
+    workspaceItems=Array.isArray(items)?items:[];
+    if (!workspaceGroup) {
+        workspaceGroup=new THREE.Group();
+        workspaceGroup.name="PyForestScan profile corridors";
+        context.viewer.scene.scene.add(workspaceGroup);
+    }
+    while (workspaceGroup.children.length) {
+        const child=workspaceGroup.children.pop();
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+    }
+    workspaceViewCount=0;
+    context.cloud.updateMatrixWorld(true);
+    const bounds=context.cloud.boundingBox.clone().applyMatrix4(context.cloud.matrixWorld);
+    const z=bounds.min.z + Math.max(.01,(bounds.max.z-bounds.min.z)*.01);
+    for (const item of workspaceItems.slice(0,100)) {
+        const ring=item&&item.corridor;
+        if (!Array.isArray(ring) || ring.length<4 || ring.length>16 ||
+                ring.some(value=>!Array.isArray(value)||value.length!==2||!value.every(Number.isFinite))) continue;
+        const origin=ring[0];
+        const values=ring.flatMap(value=>[value[0]-origin[0],value[1]-origin[1],0]);
+        const geometry=new THREE.BufferGeometry();
+        geometry.setAttribute("position",new THREE.Float32BufferAttribute(values,3));
+        const line=new THREE.Line(geometry,new THREE.LineBasicMaterial({
+            color:item.active?0xffd166:0x5be4eb,depthTest:false,transparent:true,opacity:.9}));
+        line.position.set(origin[0],origin[1],z);
+        line.renderOrder=1090;
+        line.name=typeof item.title==="string"?item.title:"Profile corridor";
+        line.userData={view_id:item.view_id||"",authority:"DISPLAY_CONTEXT_ONLY"};
+        workspaceGroup.add(line);
+        workspaceViewCount++;
+    }
+    workspaceGroup.visible=sceneVisibility.profiles &&
+        (!linkedView || linkedView.view_type !== "VERTICAL_SLICE");
 }
 function applyObjectFocus() {
     const focus = window.viewerRenderPolicy.objectFocus(objectFocusMode, selection.length > 0);
@@ -667,6 +706,7 @@ window.pointCloudEditor = {
             object_focus_mode: objectFocus.requested, object_focus_effective: objectFocus.effective,
             measurement_count: measurementCount,
             annotation_count: annotationCount,
+            workspace_profile_count: workspaceViewCount,
             scene_visibility: {...sceneVisibility},
             source_buffers_unchanged: Array.from(records.values()).every(r => r.sourceUnchanged !== false),
             overlay_diagnostics: Array.from(records.values()).slice(0, 3).map(r => ({
@@ -680,6 +720,7 @@ window.pointCloudEditor = {
             linkedView = command.view || null;
             if (context && measurementGroup) renderMeasurements(measurementItems);
             if (context && annotationGroup) renderAnnotations(annotationItems);
+            if (context && workspaceGroup) renderWorkspaceViews(workspaceItems);
         }
         if (!context) return;
         if (command.action === "scene_visibility") {
@@ -717,6 +758,10 @@ window.pointCloudEditor = {
         }
         if (command.action === "annotations") {
             renderAnnotations(command.annotations || []);
+            return;
+        }
+        if (command.action === "workspace_views") {
+            renderWorkspaceViews(command.profiles || []);
             return;
         }
         if (command.action === "selection_tool") {

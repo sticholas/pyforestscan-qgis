@@ -53,10 +53,11 @@ class WorkspaceTests(unittest.TestCase):
         model, overview = self.model()
         detail = self.detail(model)
         model.update_view(detail, scene_visibility={"selection": False,
-            "measurements": True, "annotations": False})
+            "measurements": True, "annotations": False, "profiles": True})
         self.assertEqual(model.views[overview].scene_visibility, scene_visibility())
         self.assertFalse(model.views[detail].scene_visibility["selection"])
         self.assertFalse(model.views[detail].scene_visibility["annotations"])
+        self.assertTrue(model.views[detail].scene_visibility["profiles"])
         self.assertEqual(model.editor_snapshot["source_fingerprint"], "a" * 64)
         restored = PointCloudWorkspaceModel.restore(
             json.loads(json.dumps(model.to_dict())), "a" * 64)

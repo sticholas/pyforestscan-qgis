@@ -17,6 +17,19 @@ authority. Reverse and Width update the existing linked-view definition, retain
 the single shared selection/edit journal, and rerun the bounded query. Original
 LiDAR remains unchanged.
 
+Profile corridor footprints are now broadcast from the same linked-workspace
+registry to Overview and Area Detail renderers. They are display-only source
+coordinate outlines, can be hidden per view under Scene overlays, and never
+carry point identities, selections or edit authority. The active profile uses
+a distinct line tone without relying on color as its only identity; renderer
+telemetry records the number of accepted profile overlays.
+
+Architecture decision: **REUSE** the established linked-workspace registry and
+per-view scene-visibility state; **ADAPT** the existing Three.js measurement and
+annotation overlay pattern for source-relative line precision; **WRAP** view
+records as bounded value-only footprint commands; **IMPLEMENT** no second scene,
+selection, journal or source authority.
+
 ## Qualification Boundary
 
 QGIS-free contracts cover axis wording, authoritative counts, class summaries,
@@ -41,5 +54,7 @@ all 28,916 corridor points under its 250,000-point budget.
 The original SHA256 remained
 `0c688c22d42b0240c6cba19973087ee59606721289872a3f8237253548db34bb`.
 Focused QGIS-free tests pass, and the linked-view/controller suite passes all
-60 tests under both QGIS 3.44.13/Qt5 and QGIS 4.0.0/Qt6. This is one real-source
+85 tests under both QGIS 3.44.13/Qt5 and QGIS 4.0.0/Qt6. The production Node
+renderer harness also verifies one footprint object, its source-space placement,
+display-only authority marker, telemetry count and visibility toggle. This is one real-source
 query measurement, not sustained profile interaction or human acceptance.

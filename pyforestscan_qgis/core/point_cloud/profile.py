@@ -35,3 +35,28 @@ def profile_workbench_summary(geometry, query_result=None):
                        classification_counts_summary(counts, limit=6) + ".")
     return {"text": text, "details": "\n".join(details), "axis": axis,
             "source_points": count, "display_points": displayed}
+
+
+def profile_footprint_command(views, *, active_view_id="", limit=100):
+    """Serialize bounded profile footprints without exposing workspace authority."""
+    if type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError("Profile footprint limit must be between 1 and 100.")
+    values = views.values() if isinstance(views, dict) else views
+    footprints = []
+    for raw in values:
+        view_type = getattr(raw, "view_type", None)
+        view_type = getattr(view_type, "value", view_type)
+        if view_type != "VERTICAL_SLICE":
+            continue
+        geometry = getattr(raw, "geometry", None)
+        profile = SliceGeometry(**geometry)
+        view_id = getattr(raw, "view_id", "")
+        title = getattr(raw, "title", "")
+        if not isinstance(view_id, str) or not view_id or not isinstance(title, str):
+            raise ValueError("Profile footprint requires a linked-view identity and title.")
+        footprints.append({"view_id": view_id, "title": title,
+                           "active": view_id == active_view_id,
+                           "corridor": profile.corridor()})
+        if len(footprints) == limit:
+            break
+    return {"action": "workspace_views", "profiles": footprints}

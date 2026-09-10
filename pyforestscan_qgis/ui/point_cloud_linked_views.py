@@ -88,7 +88,9 @@ class LinkedViews(QObject):
                 ("measurements", "Measurements",
                  "Show or hide source-resolved measurement lines in this view."),
                 ("annotations", "Linked markers",
-                 "Show or hide source-resolved linked markers in this view.")):
+                 "Show or hide source-resolved linked markers in this view."),
+                ("profiles", "Profile corridors",
+                 "Show or hide source-coordinate profile footprints in this 3D view. This changes scene context only, never source points or edits.")):
             action = self.scene_menu.addAction(label)
             action.setCheckable(True)
             action.setToolTip(help_text)
@@ -289,6 +291,17 @@ class LinkedViews(QObject):
         for worker in self.viewer_workers():
             worker.send(command)
 
+    def profile_footprints(self):
+        from ..core.point_cloud.profile import profile_footprint_command
+        return profile_footprint_command(
+            self.page.workspace.views,
+            active_view_id=self.page.workspace.active_view_id)
+
+    def set_profile_footprints(self):
+        command = self.profile_footprints()
+        for worker in self.viewer_workers():
+            worker.send(command)
+
     def view_worker(self, view_id):
         if view_id == self.rendered_id and self.page.worker:
             return self.page.worker
@@ -396,6 +409,7 @@ class LinkedViews(QObject):
         order = [page.view_tabs.tabData(i) for i in range(page.view_tabs.count())]
         payload["views"].sort(key=lambda v: order.index(v["view_id"]) if v["view_id"] in order else len(order))
         page.editor.worker.send({"action":"workspace", "workspace":payload})
+        self.set_profile_footprints()
 
     def draw(self, tool, purpose):
         if self.active().view_type != ViewType.OVERVIEW_3D:
@@ -785,6 +799,7 @@ class LinkedViews(QObject):
         if view.view_type != ViewType.OVERVIEW_3D:
             context["corridor"] = view_ring(context)
         self.page.send({"action":"linked_view","view":context})
+        self.page.send(self.profile_footprints())
         self.page.send({"action":"scene_visibility", "visibility":view.scene_visibility})
         self.page.send(self.object_focus_command())
         self.page.send({"action":"measurements",

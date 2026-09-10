@@ -21,7 +21,7 @@ class ViewType(str, Enum):
 
 MAX_VIEW_BOOKMARKS = 100
 MAX_VIEW_TITLE = 80
-SCENE_OVERLAY_KEYS = ("selection", "measurements", "annotations")
+SCENE_OVERLAY_KEYS = ("selection", "measurements", "annotations", "profiles")
 
 
 def scene_visibility(values=None):

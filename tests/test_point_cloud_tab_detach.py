@@ -82,7 +82,8 @@ class TabDetachTests(unittest.TestCase):
         self.assertTrue(model.views["overview"].scene_visibility["selection"])
         self.assertFalse(model.views[detail].scene_visibility["selection"])
         worker.send.assert_called_once_with({"action":"scene_visibility",
-            "visibility":{"selection":False,"measurements":True,"annotations":True}})
+            "visibility":{"selection":False,"measurements":True,"annotations":True,
+                          "profiles":True}})
         owner.persist.assert_called_once()
 
     def test_dynamic_linked_view_menu_lists_named_views_and_window_state(self):
@@ -98,7 +99,7 @@ class TabDetachTests(unittest.TestCase):
         scene_menu = QMenu()
         self.addCleanup(scene_menu.deleteLater)
         scene_actions = {key:scene_menu.addAction(key) for key in (
-            "selection", "measurements", "annotations")}
+            "selection", "measurements", "annotations", "profiles")}
         for action in scene_actions.values():
             action.setCheckable(True)
         detached = Mock()
@@ -180,6 +181,15 @@ class TabDetachTests(unittest.TestCase):
         self.assertEqual(model.views[key].geometry["thickness"], 7.5)
         self.assertNotIn(key, owner.query_results)
         owner.open_active.assert_called_once()
+
+    def test_profile_footprints_broadcast_to_each_primary_linked_renderer(self):
+        workers = [Mock(), Mock()]
+        command = {"action":"workspace_views", "profiles":[{"view_id":"profile"}]}
+        owner = SimpleNamespace(viewer_workers=lambda:iter(workers),
+                                profile_footprints=lambda:command)
+        LinkedViews.set_profile_footprints(owner)
+        for worker in workers:
+            worker.send.assert_called_once_with(command)
 
     def test_rename_active_view_updates_existing_workspace_authority(self):
         from pyforestscan_qgis.core.point_cloud.workspace import (
