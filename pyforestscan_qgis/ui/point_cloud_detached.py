@@ -210,7 +210,7 @@ class DetachedView(QDialog):
                 try:
                     constraints = self.controller.selection_values_for(view, event, telemetry)
                     values = {key: event[key] for key in (
-                        "circle_center", "circle_radius", "brush_path", "brush_radius",
+                        "circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
                         "sphere_center", "sphere_radius", "sphere_axis") if key in event}
                     editor.send("select", geometry=event["geometry"], mode=event["mode"],
                                 constraints=constraints, **values)

@@ -52,6 +52,7 @@ class SelectionDefinition:
     circle_radius: float | None = None
     brush_path: tuple[tuple[float, float], ...] | None = None
     brush_radius: float | None = None
+    brush_tolerance: float = 0.0
     sphere_center: tuple[float, float, float] | None = None
     sphere_radius: float | None = None
     sphere_axis: str = "Z"
@@ -76,7 +77,7 @@ class SelectionDefinition:
         if self.sphere_axis not in ("Z", "HeightAboveGround"):
             raise ValueError("Sphere height axis must be Z or HeightAboveGround.")
         primitives = sum((self.circle_center is not None or self.circle_radius is not None,
-                          self.brush_path is not None or self.brush_radius is not None,
+                          self.brush_path is not None or self.brush_radius is not None or self.brush_tolerance != 0,
                           self.sphere_center is not None or self.sphere_radius is not None))
         if primitives > 1:
             raise ValueError("Selection cannot contain competing spatial primitives.")
@@ -91,16 +92,18 @@ class SelectionDefinition:
             if ring != envelope:
                 raise ValueError("Circle query envelope must match its exact source-space bounds.")
             object.__setattr__(self, "circle_center", center)
-        if self.brush_path is not None or self.brush_radius is not None:
-            path, radius = self.brush_path, self.brush_radius
+        if self.brush_path is not None or self.brush_radius is not None or self.brush_tolerance != 0:
+            path, radius, tolerance = self.brush_path, self.brush_radius, self.brush_tolerance
             if path is None or not 1 <= len(path) <= 512:
                 raise ValueError("Brush requires 1-512 source XY path points.")
             path = tuple(tuple(point) for point in path)
             if (any(len(point) != 2 or any(type(v) not in (int, float) or not math.isfinite(v)
                                           for v in point) for point in path)
                     or any(a == b for a, b in zip(path, path[1:]))
-                    or type(radius) not in (int, float) or not math.isfinite(radius) or radius <= 0):
-                raise ValueError("Brush requires distinct finite source XY path points and positive radius.")
+                    or type(radius) not in (int, float) or not math.isfinite(radius) or radius <= 0
+                    or type(tolerance) not in (int, float) or not math.isfinite(tolerance)
+                    or tolerance < 0 or tolerance > radius/4):
+                raise ValueError("Brush requires distinct finite source XY points, positive radius, and tolerance no greater than one quarter radius.")
             if ring != brush_envelope(path, radius):
                 raise ValueError("Brush query envelope must match its exact source-space bounds.")
             object.__setattr__(self, "brush_path", path)
@@ -341,11 +344,11 @@ def brush_envelope(path, radius):
             (low_x, high_y), (low_x, low_y))
 
 
-def brush_selection(definition, *, path, radius):
+def brush_selection(definition, *, path, radius, tolerance=0):
     """Return one exact round-capped source-space stroke definition."""
     points = tuple(tuple(point) for point in path)
     return replace(definition, geometry=brush_envelope(points, radius),
-                   brush_path=points, brush_radius=radius)
+                   brush_path=points, brush_radius=radius, brush_tolerance=tolerance)
 
 
 def spherical_selection(definition, *, center, radius, axis="Z"):

@@ -1,6 +1,50 @@
 /* Shared screen-gesture state. Source-space authority stays in the resolver. */
 (function(root) {
     "use strict";
+    function distanceSquared(point, a, b) {
+        const vx=b[0]-a[0], vy=b[1]-a[1], length=vx*vx+vy*vy;
+        const t=length ? Math.max(0,Math.min(1,((point[0]-a[0])*vx+(point[1]-a[1])*vy)/length)) : 0;
+        const dx=point[0]-(a[0]+t*vx), dy=point[1]-(a[1]+t*vy);
+        return dx*dx+dy*dy;
+    }
+    function rdp(points, tolerance) {
+        if (points.length <= 2) return points.map(point => point.slice());
+        const keep=new Uint8Array(points.length); keep[0]=keep[points.length-1]=1;
+        const stack=[[0,points.length-1]], threshold=tolerance*tolerance;
+        while (stack.length) {
+            const [start,end]=stack.pop();
+            let farthest=-1, distance=-1;
+            for (let i=start+1;i<end;i++) {
+                const candidate=distanceSquared(points[i],points[start],points[end]);
+                if (candidate > distance) { distance=candidate; farthest=i; }
+            }
+            if (distance > threshold) {
+                keep[farthest]=1; stack.push([start,farthest],[farthest,end]);
+            }
+        }
+        return points.filter((_point,index)=>keep[index]).map(point=>point.slice());
+    }
+    function simplifySourcePath(points, radius, maxVertices=512) {
+        if (!Array.isArray(points) || points.length < 2 || !Number.isInteger(maxVertices) || maxVertices < 2 ||
+                !Number.isFinite(radius) || radius <= 0 || points.some(point =>
+                    !Array.isArray(point) || point.length !== 2 || !point.every(Number.isFinite)))
+            throw Error("Brush simplification requires finite source XY points, radius and limit.");
+        const unique=points.filter((point,index)=>!index || point[0]!==points[index-1][0] || point[1]!==points[index-1][1]);
+        if (unique.length < 2) throw Error("Drag a longer brush stroke.");
+        if (unique.length <= maxVertices)
+            return {path:unique.map(point=>point.slice()),tolerance:0,original_count:unique.length};
+        let low=radius/32, high=radius/4;
+        let result=rdp(unique,high);
+        if (result.length > maxVertices)
+            return {path:null,tolerance:high,original_count:unique.length,
+                error:"Brush stroke has too much detail for its radius. Increase Radius or draw a shorter stroke."};
+        for (let iteration=0;iteration<20;iteration++) {
+            const middle=(low+high)/2, candidate=rdp(unique,middle);
+            if (candidate.length <= maxVertices) { high=middle; result=candidate; }
+            else low=middle;
+        }
+        return {path:result,tolerance:high,original_count:unique.length};
+    }
     class DrawingTool {
         constructor() { this.state = "IDLE"; this.vertices = []; this.error = ""; this.generation = 0; }
         arm(tool, mode = "REPLACE") {
@@ -43,6 +87,7 @@
             ring.push(ring[0].slice()); this.state = "PREVIEW"; return ring;
         }
         finishPath(maxVertices = 512) {
+            if (this.state === "FAILED") return null;
             if (this.state !== "DRAWING" || this.vertices.length < 2) {
                 this.fail("Drag a longer brush stroke."); return null;
             }
@@ -58,5 +103,6 @@
         cancel() { this.vertices = []; this.state = "CANCELLED"; this.generation++; }
     }
     root.DrawingTool = DrawingTool;
-    if (typeof module !== "undefined") module.exports = {DrawingTool};
+    root.simplifySourcePath = simplifySourcePath;
+    if (typeof module !== "undefined") module.exports = {DrawingTool,simplifySourcePath};
 })(globalThis);

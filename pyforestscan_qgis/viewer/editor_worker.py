@@ -21,7 +21,7 @@ def visual_definition(item):
     return {key: raw[key] for key in ("geometry", "selection_mode", "z_filter", "hag_filter",
         "classification_filter", "attribute_filters", "view_id", "view_name", "clip_geometry",
         "profile_a", "profile_b", "profile_thickness", "profile_geometry", "profile_axis",
-        "depth_mode", "circle_center", "circle_radius", "brush_path", "brush_radius",
+        "depth_mode", "circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
         "sphere_center", "sphere_radius", "sphere_axis")}
 
 
@@ -225,11 +225,12 @@ def main():
                     if "circle_center" in command or "circle_radius" in command:
                         primitive = {"circle_center": command.get("circle_center"),
                                      "circle_radius": command.get("circle_radius")}
-                    if "brush_path" in command or "brush_radius" in command:
+                    if "brush_path" in command or "brush_radius" in command or "brush_tolerance" in command:
                         if primitive:
                             raise ValueError("Selection has competing spatial primitives.")
                         primitive = {"brush_path": command.get("brush_path"),
-                                     "brush_radius": command.get("brush_radius")}
+                                     "brush_radius": command.get("brush_radius"),
+                                     "brush_tolerance": command.get("brush_tolerance", 0)}
                     if "sphere_center" in command or "sphere_radius" in command:
                         if primitive:
                             raise ValueError("Selection has competing spatial primitives.")

@@ -1,7 +1,7 @@
 /* Exercise editor.js event handlers, not the selection_test shortcut. */
 const fs=require("node:fs"), vm=require("node:vm"), assert=require("node:assert/strict");
 const path=require("node:path");
-const {DrawingTool}=require("../../pyforestscan_qgis/viewer/drawing.js");
+const {DrawingTool,simplifySourcePath}=require("../../pyforestscan_qgis/viewer/drawing.js");
 function surface() {
     const listeners={};
     return {listeners,style:{},clientWidth:500,clientHeight:500,
@@ -31,7 +31,7 @@ const viewer={renderer:{domElement:canvas},inputHandler:{enabled:true},
     setCameraMode(mode){this.scene.cameraMode=mode;},
     setTopView(){this.scene.view.yaw=0;this.scene.view.pitch=-Math.PI/2;}};
 const cloud={visibleNodes:[],material:{activeAttributeName:"classification"}};
-const context={THREE,DrawingTool,document,Potree:{CameraMode:{PERSPECTIVE:1,ORTHOGRAPHIC:2}},
+const context={THREE,DrawingTool,simplifySourcePath,document,Potree:{CameraMode:{PERSPECTIVE:1,ORTHOGRAPHIC:2}},
     requestAnimationFrame:fn=>queue.push(fn),performance:{now:()=>0}};
 context.window=context; context.editorSelectionFilters=()=>({classes:null,height_filter:null});
 vm.createContext(context);
@@ -115,6 +115,7 @@ canvas.emit("pointermove",{offsetX:150,offsetY:150});
 canvas.emit("pointerup",{offsetX:150,offsetY:180});
 const brush=tick().event;
 assert.equal(brush.brush_radius,1);
+assert.equal(brush.brush_tolerance,0);
 assert.equal(brush.brush_path.length,4);
 assert.deepEqual(Array.from(brush.brush_path[0]),[940,2060]);
 assert.deepEqual(Array.from(brush.brush_path.at(-1)),[960,2028]);

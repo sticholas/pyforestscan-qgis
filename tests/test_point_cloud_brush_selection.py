@@ -24,12 +24,17 @@ class BrushContractTests(unittest.TestCase):
         visual = visual_definition(restored)
         self.assertEqual(visual["brush_path"], ((0, 0), (4, 0), (4, 4)))
         self.assertEqual(visual["brush_radius"], 1)
+        self.assertEqual(visual["brush_tolerance"], 0)
 
     def test_invalid_and_competing_primitives_fail(self):
         for path, radius in (((), 1), (((0, 0), (0, 0)), 1),
                              (((0, float("nan")),), 1), (((0, 0),), 0)):
             with self.assertRaises(ValueError):
                 brush_selection(self.base, path=path, radius=radius)
+        for tolerance in (-1, .251, float("nan")):
+            with self.assertRaises(ValueError):
+                brush_selection(self.base, path=((0,0),(1,0)), radius=1,
+                                tolerance=tolerance)
         circle = replace(self.base, geometry=((-1,-1),(1,-1),(1,1),(-1,1),(-1,-1)),
                          circle_center=(0,0), circle_radius=1)
         with self.assertRaisesRegex(ValueError, "competing"):

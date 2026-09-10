@@ -228,20 +228,25 @@ function initialize(value) {
         if (tool === "Brush" && brushPointer === event.pointerId) {
             if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
             drawing.vertex(event.offsetX,event.offsetY);
-            const screenPath=drawing.finishPath(512);
+            const screenPath=drawing.finishPath(2048);
             if (!screenPath) latestEvent={id:++eventNumber,error:drawing.error};
             else {
-                const path=screenPath.map(p => {
+                const sourcePath=screenPath.map(p => {
                     const xyz=sourceXY(p[0],p[1],drawingCamera); return [xyz.x,xyz.y];
                 });
-                const xs=path.map(p=>p[0]), ys=path.map(p=>p[1]);
-                const geometry=[[Math.min(...xs)-brushRadius,Math.min(...ys)-brushRadius],
-                    [Math.max(...xs)+brushRadius,Math.min(...ys)-brushRadius],
-                    [Math.max(...xs)+brushRadius,Math.max(...ys)+brushRadius],
-                    [Math.min(...xs)-brushRadius,Math.max(...ys)+brushRadius],
-                    [Math.min(...xs)-brushRadius,Math.min(...ys)-brushRadius]];
-                publish(geometry,{brush_path:path,brush_radius:brushRadius});
-                drawing.resolving();
+                const simplified=simplifySourcePath(sourcePath,brushRadius,512);
+                if (!simplified.path) latestEvent={id:++eventNumber,error:simplified.error};
+                else {
+                    const path=simplified.path, xs=path.map(p=>p[0]), ys=path.map(p=>p[1]);
+                    const geometry=[[Math.min(...xs)-brushRadius,Math.min(...ys)-brushRadius],
+                        [Math.max(...xs)+brushRadius,Math.min(...ys)-brushRadius],
+                        [Math.max(...xs)+brushRadius,Math.max(...ys)+brushRadius],
+                        [Math.min(...xs)-brushRadius,Math.max(...ys)+brushRadius],
+                        [Math.min(...xs)-brushRadius,Math.min(...ys)-brushRadius]];
+                    publish(geometry,{brush_path:path,brush_radius:brushRadius,
+                        brush_tolerance:simplified.tolerance});
+                    drawing.resolving();
+                }
             }
             leaveTool();
             event.preventDefault(); event.stopImmediatePropagation();
@@ -492,7 +497,7 @@ window.pointCloudEditor = {
             else drawing.resolved();
         }
         if (command.action === "selection_test") publish(command.geometry,
-            Object.fromEntries(["circle_center", "circle_radius", "brush_path", "brush_radius",
+            Object.fromEntries(["circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
                 "sphere_center", "sphere_radius", "sphere_axis"].filter(key => key in command)
                 .map(key => [key, command[key]])));
         if (command.action === "editor_overlay") {

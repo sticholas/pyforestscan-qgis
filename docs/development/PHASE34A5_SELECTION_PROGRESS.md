@@ -61,6 +61,12 @@ human interaction, long-run/resource, and source-format gates remain open.
   of the source receive a compact review cue. The existing stronger threshold
   (over ten million points or 25 percent) still requires explicit confirmation
   before staging an edit. Routine selections add no warning or permanent panel.
+- Brush strokes longer than 512 captured samples now simplify only after every
+  sample is converted to source XY. Short paths remain exact. Long paths use an
+  iterative Ramer-Douglas-Peucker pass with maximum permitted deviation capped
+  at one quarter of Brush radius; paths that still exceed 512 vertices fail
+  clearly rather than being silently distorted. The exact simplified path and
+  tolerance are preserved in selection/session/journal/overlay/export metadata.
 
 ## MEASURED EVIDENCE
 
@@ -146,6 +152,13 @@ Thirty-two managed geometry tests now pass across Circle, Brush and Sphere;
 Sphere coverage includes source-Z boundaries, HAG membership, envelope-corner
 exclusion, filters, modes, missing dimensions, serialization and journal replay.
 
+The deterministic 2,048-sample Brush benchmark reduced a smooth source-space
+path to 71 vertices. With radius 4, recorded tolerance was 0.1250008 source
+units and independently observed maximum deviation was 0.1246027. Median
+simplification time was 1.698 ms over 50 iterations on the test machine. An
+adversarial 700-point zigzag exceeding the radius/4 deviation bound is rejected.
+These are algorithm measurements, not dense-source selection-resolution times.
+
 ## IN PROGRESS
 
 Circle/cylinder selection is exposed but remains experimental pending human
@@ -153,8 +166,8 @@ interaction acceptance. Radius remains explicitly in source XY units; no
 screen-pixel or implicit metre conversion is allowed.
 Circle plus HAG range is a height-relative column, not a Euclidean 3D cylinder.
 Brush is exposed and end-to-end automated evidence passes, but human freehand
-acceptance, measured long-stroke simplification, cancellation responsiveness,
-and progress behavior remain required before user release. Resolution already
+acceptance, cancellation responsiveness, and progress behavior remain required
+before user release. Resolution already
 runs in the managed background and large-selection impact feedback is now
 shared with the edit-confirmation policy.
 Sphere membership and transport are implemented but deliberately have no user
@@ -165,8 +178,8 @@ become sphere authority.
 
 1. Human circle/cylinder interaction acceptance in Overview and Area Detail,
    including Add/Subtract and the active height limits.
-2. Human Brush acceptance plus measured path simplification, background
-   progress, cancellation responsiveness, and selection-impact feedback.
+2. Human Brush acceptance plus background progress and cancellation
+   responsiveness on long and dense-source strokes.
 3. Design and qualify an explicit 3D sphere/volume placement gesture, then add
    a compact direct action without camera-depth or rendered-point authority.
 

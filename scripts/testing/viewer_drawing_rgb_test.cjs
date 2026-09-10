@@ -1,5 +1,5 @@
 const assert=require("node:assert/strict");
-const {DrawingTool}=require("../../pyforestscan_qgis/viewer/drawing.js");
+const {DrawingTool,simplifySourcePath}=require("../../pyforestscan_qgis/viewer/drawing.js");
 const {RGBStats}=require("../../pyforestscan_qgis/viewer/rgb.js");
 for (const mode of ["REPLACE","ADD","SUBTRACT"]) {
     const d=new DrawingTool();
@@ -21,6 +21,20 @@ for(let i=0;i<1000;i++) {
     [[0,0],[20,0],[20,20],[0,20]].forEach(p=>d.vertex(...p));
     assert.ok(d.close()); d.cancel();
 }
+const short=simplifySourcePath([[0,0],[1,2],[3,4]],2);
+assert.deepEqual(short.path,[[0,0],[1,2],[3,4]]); assert.equal(short.tolerance,0);
+const straight=Array.from({length:1200},(_,index)=>[index/10,0]);
+const reduced=simplifySourcePath(straight,4);
+assert.deepEqual(reduced.path,[[0,0],[119.9,0]]);
+assert.ok(reduced.tolerance>0 && reduced.tolerance<=1);
+assert.equal(reduced.original_count,1200);
+const corner=Array.from({length:600},(_,index)=>index<300?[index/10,0]:[29.9,(index-299)/10]);
+const cornerResult=simplifySourcePath(corner,4);
+assert.deepEqual(cornerResult.path,[[0,0],[29.9,0],[29.9,30]]);
+const detailed=Array.from({length:700},(_,index)=>[index,index%2?10:0]);
+const rejected=simplifySourcePath(detailed,1);
+assert.equal(rejected.path,null); assert.match(rejected.error,/Increase Radius/);
+assert.ok(rejected.tolerance<=.25);
 const rgb=(points,present=true,error="")=>{
     const s=new RGBStats(present); points.forEach(p=>s.add(...p)); return s.report(error);
 };
@@ -40,4 +54,4 @@ const failed=rgb([[0,255,0],[255,0,255]],true,"Injected shader failure");
 assert.equal(failed.status,"RGB_RENDER_FAILED");
 assert.equal(failed.data_status,"RGB_AVAILABLE_VALID");
 assert.match(failed.message,/data appears valid/);
-console.log("Drawing transitions and RGB capability matrix passed.");
+console.log("Drawing, source-space Brush simplification, and RGB contracts passed.");
