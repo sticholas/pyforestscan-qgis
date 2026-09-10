@@ -177,10 +177,32 @@ class SelectionToolTests(unittest.TestCase):
     def test_object_field_discovery_is_explicit_and_results_start_disabled(self):
         editor = EditorPanel(None)
         self.addCleanup(editor.deleteLater)
-        actions = [action.text() for action in editor.details_button.menu().actions()]
+        actions = [action.text() for action in editor.object_menu.actions()]
         self.assertIn("Discover Object Fields", actions)
-        self.assertIn("Object Field Results", actions)
+        self.assertIn("Discovery Results", actions)
+        self.assertIn("Build Exact Object Catalog...", actions)
+        self.assertIn("Select Object ID...", actions)
+        self.assertIn("Previous Object", actions)
+        self.assertIn("Next Object", actions)
         self.assertFalse(editor.object_results_action.isEnabled())
+        self.assertFalse(editor.build_object_catalog_action.isEnabled())
+        self.assertFalse(editor.select_object_action.isEnabled())
+
+    def test_object_catalog_actions_follow_context_prerequisites(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        editor.viewer_ready = True
+        editor.state = {"ready":True, "object_field_discovery":{"candidate_fields":[{"name":"Tree_ID"}]}}
+        editor.refresh_controls()
+        self.assertTrue(editor.build_object_catalog_action.isEnabled())
+        self.assertFalse(editor.select_object_action.isEnabled())
+        editor.state["object_catalog"] = {"field":"Tree_ID", "minimum_object_id":1,
+            "maximum_object_id":3}
+        editor.state["active_object"] = {"field":"Tree_ID", "object_id":2}
+        editor.refresh_controls()
+        self.assertTrue(editor.select_object_action.isEnabled())
+        self.assertTrue(editor.previous_object_action.isEnabled())
+        self.assertTrue(editor.next_object_action.isEnabled())
 
     def test_classify_while_selecting_stages_once_only_after_select_snapshot(self):
         value = {"ready":True, "source":"source.laz", "edits":0, "point_count":100,

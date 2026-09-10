@@ -268,13 +268,25 @@ class EditorPanel(QWidget):
         self.audit_action.triggered.connect(lambda: self.send("classification_audit"))
         self.audit_result_action = details_menu.addAction("Classification Audit Results")
         self.audit_result_action.triggered.connect(self.show_classification_audit)
-        self.object_discovery_action = details_menu.addAction("Discover Object Fields")
+        self.object_menu = details_menu.addMenu("Objects / Segments")
+        self.object_discovery_action = self.object_menu.addAction("Discover Object Fields")
         self.object_discovery_action.setToolTip(
             "Explicitly scan nonstandard source dimensions for repeated categorical identifiers. "
             "Names improve ranking but no tree or segment schema is required; this does not edit points.")
         self.object_discovery_action.triggered.connect(lambda: self.send("discover_object_fields"))
-        self.object_results_action = details_menu.addAction("Object Field Results")
+        self.object_results_action = self.object_menu.addAction("Discovery Results")
         self.object_results_action.triggered.connect(self.show_object_field_discovery)
+        self.build_object_catalog_action = self.object_menu.addAction("Build Exact Object Catalog...")
+        self.build_object_catalog_action.triggered.connect(self.build_object_catalog)
+        self.object_menu.addSeparator()
+        self.select_object_action = self.object_menu.addAction("Select Object ID...")
+        self.select_object_action.triggered.connect(self.select_object_id)
+        self.previous_object_action = self.object_menu.addAction("Previous Object")
+        self.previous_object_action.triggered.connect(lambda: self.navigate_object(-1))
+        self.next_object_action = self.object_menu.addAction("Next Object")
+        self.next_object_action.triggered.connect(lambda: self.navigate_object(1))
+        self.object_catalog_results_action = self.object_menu.addAction("Catalog Details")
+        self.object_catalog_results_action.triggered.connect(self.show_object_catalog)
         self.recover_action = details_menu.addAction("Recover Autosaved Session")
         self.recover_action.triggered.connect(self.recover_session)
         self.logs_action = details_menu.addAction("Open Editor Diagnostics")
@@ -338,6 +350,17 @@ class EditorPanel(QWidget):
         self.audit_result_action.setEnabled(bool(self.state.get("classification_audit")))
         self.object_discovery_action.setEnabled(ready)
         self.object_results_action.setEnabled(bool(self.state.get("object_field_discovery")))
+        candidates = (self.state.get("object_field_discovery") or {}).get("candidate_fields", [])
+        catalog = self.state.get("object_catalog") or {}
+        active_object = self.state.get("active_object") or {}
+        self.build_object_catalog_action.setEnabled(ready and bool(candidates))
+        self.select_object_action.setEnabled(ready and bool(catalog))
+        self.object_catalog_results_action.setEnabled(bool(catalog))
+        current = active_object.get("object_id")
+        self.previous_object_action.setEnabled(ready and current is not None
+            and current != catalog.get("minimum_object_id"))
+        self.next_object_action.setEnabled(ready and current is not None
+            and current != catalog.get("maximum_object_id"))
         self.refresh_classification_guidance()
 
     def refresh_classification_guidance(self):
@@ -545,16 +568,61 @@ class EditorPanel(QWidget):
             lines.append("No categorical object or segment candidates were found.")
         else:
             lines.append("Candidates:")
-            for item in candidates:
+            for item in candidates[:12]:
                 lines.append(
                     f"{item['name']} | {item['role'].title()} | {item['confidence'].title()} confidence | "
                     f"{item['sample_unique_count']:,} sampled values")
                 lines.append("  " + item["reason"])
+            if len(candidates) > 12:
+                lines.append(f"{len(candidates) - 12} additional candidates are available when building a catalog.")
         rejected = len(report.get("nonstandard_numeric_fields", [])) - len(candidates)
         if rejected:
             lines.extend(("", f"Other nonstandard numeric fields reviewed: {rejected}"))
         lines.extend(("", "Discovery is read-only. Object editing is not enabled by this report."))
         QMessageBox.information(self, "Object Field Results", "\n".join(lines))
+
+    def build_object_catalog(self):
+        candidates = (self.state.get("object_field_discovery") or {}).get("candidate_fields", [])
+        names = [item["name"] for item in candidates]
+        if not names:
+            return
+        field, accepted = QInputDialog.getItem(self, "Build Exact Object Catalog",
+            "Categorical source field", names, 0, False)
+        if accepted:
+            self.send("build_object_catalog", field=field)
+
+    def select_object_id(self):
+        catalog = self.state.get("object_catalog") or {}
+        if not catalog:
+            return
+        active = self.state.get("active_object") or {}
+        default = str(active.get("object_id", catalog.get("minimum_object_id", "")))
+        value, accepted = QInputDialog.getText(self, "Select Object",
+            f"{catalog['field']} object ID", text=default)
+        if accepted:
+            self.send("select_object", object_id=value)
+
+    def navigate_object(self, direction):
+        if direction in (-1, 1):
+            self.send("neighbor_object", direction=direction)
+
+    def show_object_catalog(self):
+        report = self.state.get("object_catalog")
+        if not report:
+            return
+        lines = [
+            f"Field: {report['field']}",
+            f"Exact objects: {report['object_count']:,}",
+            f"Cataloged points: {report['cataloged_point_count']:,}",
+            f"Missing values: {report['missing_value_count']:,}",
+            f"ID range: {report['minimum_object_id']} to {report['maximum_object_id']}",
+            "",
+            "Largest objects:",
+        ]
+        lines.extend(f"ID {identifier}: {count:,} points"
+                     for identifier, count in report.get("largest_objects", []))
+        lines.extend(("", "Counts and bounds are exact original-source values. The catalog does not edit points."))
+        QMessageBox.information(self, "Exact Object Catalog", "\n".join(lines))
 
     def update_state(self, value):
         completed_action = self.pending_action
@@ -602,6 +670,14 @@ class EditorPanel(QWidget):
             if completed_action == "discover_object_fields" and value.get("object_field_discovery"):
                 from ..core.point_cloud.object_fields import object_field_discovery_summary
                 self.summary.setText(object_field_discovery_summary(value["object_field_discovery"]))
+            if completed_action == "build_object_catalog" and value.get("object_catalog"):
+                from ..core.point_cloud.object_catalog import object_catalog_summary
+                self.summary.setText(object_catalog_summary(value["object_catalog"]))
+            if completed_action in ("select_object", "neighbor_object") and value.get("active_object"):
+                active = value["active_object"]
+                self.summary.setText(
+                    f"Selected object: {active['field']} = {active['object_id']} | "
+                    f"{active['point_count']:,} authoritative source points")
             self.page.session_status.setText(f"Session: Autosaved | {value['edits']} staged edits, not a source rewrite")
             self.history.clear()
             self.history.addItems(value.get("history", []))

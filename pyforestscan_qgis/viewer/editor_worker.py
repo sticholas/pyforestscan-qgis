@@ -2,6 +2,7 @@
 from __future__ import annotations
 import argparse
 from dataclasses import asdict, replace
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -133,6 +134,8 @@ def main():
               "history": list(reversed(history[-20:])),
               "classification_audit": session.visibility.get("classification_audit"),
               "object_field_discovery": session.visibility.get("object_field_discovery"),
+              "object_catalog": session.visibility.get("object_catalog"),
+              "active_object": session.visibility.get("active_object"),
               "restored": session_view_state(session) if restored else None, "exported": exported,
               "last_action": action, "last_attribute": command.get("attribute")})
     emit({"started": True})
@@ -254,9 +257,11 @@ def main():
                     resolved = resolver.resolve(pending, cancelled=cancelled.is_set,
                                                 progress=lambda count: progress("Resolving original source points", count))
                     definitions, result = pending, resolved
+                    session.visibility.pop("active_object", None)
                     snapshot()
                 elif action == "clear":
                     definitions, result = (), None
+                    session.visibility.pop("active_object", None)
                     snapshot()
                 elif action == "invert":
                     if not definitions:
@@ -267,6 +272,7 @@ def main():
                     resolved = resolver.resolve(pending, cancelled=cancelled.is_set,
                         progress=lambda count: progress("Resolving inverted original-source selection", count))
                     definitions, result = pending, resolved
+                    session.visibility.pop("active_object", None)
                     snapshot()
                 elif action == "resize_selection":
                     pending = resized_selection(definitions, command.get("distance"),
@@ -275,6 +281,7 @@ def main():
                     resolved = resolver.resolve(pending, cancelled=cancelled.is_set,
                         progress=lambda count: progress("Resolving resized original-source selection", count))
                     definitions, result = pending, resolved
+                    session.visibility.pop("active_object", None)
                     snapshot()
                 elif action == "stage":
                     resolver._check_source()
@@ -315,6 +322,59 @@ def main():
                     session.visibility["object_field_discovery"] = report
                     session.save(autosave)
                     snapshot(highlight=False)
+                elif action == "build_object_catalog":
+                    from pyforestscan_qgis.core.point_cloud.object_catalog import build_source_object_catalog
+                    discovery = session.visibility.get("object_field_discovery") or {}
+                    candidates = {item["name"] for item in discovery.get("candidate_fields", [])}
+                    field = command.get("field")
+                    if field not in candidates:
+                        raise ValueError("Discover and choose a current categorical object-field candidate first.")
+                    token = hashlib.sha256(field.encode("utf-8")).hexdigest()[:12]
+                    destination = args.folder / f"objects-{token}.sqlite"
+                    progress(f"Cataloging exact {field} objects")
+                    report = build_source_object_catalog(session.source, point_count, field, destination,
+                        cancelled=cancelled.is_set,
+                        progress=lambda count: progress(f"Cataloging exact {field} objects", count))
+                    session.visibility["object_catalog"] = report
+                    session.visibility.pop("active_object", None)
+                    session.save(autosave)
+                    snapshot(highlight=False)
+                elif action in ("select_object", "neighbor_object"):
+                    from pyforestscan_qgis.core.point_cloud.object_catalog import (
+                        catalog_neighbor, catalog_object, object_selection_definition)
+                    catalog = session.visibility.get("object_catalog")
+                    if not catalog:
+                        raise ValueError("Build an exact object catalog before selecting an object.")
+                    field = catalog["field"]
+                    path = catalog["catalog_path"]
+                    if action == "neighbor_object":
+                        active = session.visibility.get("active_object")
+                        if not active or active.get("field") != field:
+                            raise ValueError("Select an object before moving to its neighbor.")
+                        row = catalog_neighbor(path, int(active["object_id"]), int(command.get("direction", 0)),
+                            source_sha256=session.source.sha256, field=field)
+                        if row is None:
+                            raise ValueError("There is no object in that direction.")
+                    else:
+                        try:
+                            object_id = int(str(command.get("object_id", "")), 10)
+                        except ValueError:
+                            raise ValueError("Object ID must be an integer.")
+                        row = catalog_object(path, object_id,
+                            source_sha256=session.source.sha256, field=field)
+                        if row is None:
+                            raise ValueError(f"Object ID {object_id} is not present in {field}.")
+                    item = object_selection_definition(session, field, row)
+                    resolver._check_source()
+                    progress(f"Resolving {field} object {row['object_id']}")
+                    resolved = resolver.resolve((item,), cancelled=cancelled.is_set,
+                        progress=lambda count: progress(f"Resolving {field} object {row['object_id']}", count))
+                    if resolved.resolved_point_count != row["point_count"]:
+                        raise ValueError("Object catalog and authoritative selection counts differ; rebuild the catalog.")
+                    definitions, result = (item,), resolved
+                    session.visibility["active_object"] = {"field":field, **row}
+                    session.save(autosave)
+                    snapshot()
                 elif action == "save":
                     progress("Verifying and saving session")
                     session.source.verify(cancelled=cancelled.is_set)

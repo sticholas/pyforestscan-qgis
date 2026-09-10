@@ -16,17 +16,26 @@ State: IN PROGRESS. Object editing is not yet enabled.
   segment, object, instance or cluster improve role ranking only.
 - Reports are session-backed and available under Editing Details. Discovery is
   explicit, cancellable, source-immutable and does not create journal edits.
+- Added a disk-backed exact catalog for one user-selected candidate field. It
+  aggregates exact object counts and XYZ bounds per bounded reader chunk into
+  SQLite, verifies the source before and after, and atomically replaces an old
+  catalog only after success.
+- Object ID and next/previous navigation create ordinary full-resolution
+  `SelectionDefinition` queries using the cataloged bounds plus exact original
+  source attribute value. The authoritative resolver must reproduce the exact
+  catalog count before the selection is published to linked views.
 
 ## IN PROGRESS
 
-Discovery is the first foundation only. A candidate report does not yet make a
-field editable, define unassigned-value semantics, or create object IDs.
+Discovery and read-only object navigation are foundations only. A candidate
+report does not yet make a field editable, define unassigned-value semantics,
+or create object IDs.
 
 ## NEXT
 
-1. Build an authoritative catalog for one user-selected candidate field with
-   exact object counts and safe next/previous navigation.
-2. Add linked-view isolate/fade behavior without changing edit authority.
+1. Add linked-view isolate/fade behavior without changing edit authority.
+2. Add explicit user confirmation for unassigned-value semantics and safe new
+   ID allocation within the selected field's real storage range.
 3. Extend the existing attribute journal with validated arbitrary categorical
    edits, then implement add/remove/split/merge as journal-backed operations.
 
