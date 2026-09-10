@@ -56,6 +56,11 @@ human interaction, long-run/resource, and source-format gates remain open.
   mutually exclusive primitives. Missing stored HAG, invalid axis, incomplete
   center/radius, mismatched envelope, or implicit depth semantics fail closed.
   No Sphere button is exposed before a professional 3D placement gesture exists.
+- Added one QGIS-free selection-impact policy shared by managed enforcement and
+  docked/detached status text. Selections over one million points or 10 percent
+  of the source receive a compact review cue. The existing stronger threshold
+  (over ten million points or 25 percent) still requires explicit confirmation
+  before staging an edit. Routine selections add no warning or permanent panel.
 
 ## MEASURED EVIDENCE
 
@@ -149,8 +154,9 @@ screen-pixel or implicit metre conversion is allowed.
 Circle plus HAG range is a height-relative column, not a Euclidean 3D cylinder.
 Brush is exposed and end-to-end automated evidence passes, but human freehand
 acceptance, measured long-stroke simplification, cancellation responsiveness,
-background progress, and large-selection impact feedback remain required before
-user release.
+and progress behavior remain required before user release. Resolution already
+runs in the managed background and large-selection impact feedback is now
+shared with the edit-confirmation policy.
 Sphere membership and transport are implemented but deliberately have no user
 gesture yet. A renderer sample, camera depth, or guessed vertical center cannot
 become sphere authority.

@@ -37,6 +37,7 @@ def main():
     from pyforestscan_qgis.core.atomic_state import atomic_write_json
     from pyforestscan_qgis.core.point_cloud.session import SourceIdentity, PointCloudEditSession, AttributeEditOperation
     from pyforestscan_qgis.core.point_cloud.selection import SelectionDefinition, SelectionResolver, validate_sequence
+    from pyforestscan_qgis.core.point_cloud.selection_impact import selection_impact
     from pyforestscan_qgis.core.point_cloud.view_session import validate_view_state, session_view_state
     from pyforestscan_qgis.core.point_cloud.export import export_edited
 
@@ -251,10 +252,10 @@ def main():
                     resolver._check_source()
                     if result is None or command.get("selection_id") != result.selection_id:
                         raise ValueError("Selection changed; resolve and review it before applying an edit.")
-                    if not command.get("confirmed") and (result.resolved_point_count > 10_000_000 or
-                                                         result.resolved_point_count > point_count * .25):
+                    impact = selection_impact(result.resolved_point_count, point_count)
+                    if not command.get("confirmed") and impact.requires_confirmation:
                         emit({"confirm": True, "selection_id": result.selection_id, "count": result.resolved_point_count,
-                              "fraction": result.resolved_point_count / max(point_count, 1), "command": command})
+                              "fraction": impact.fraction, "impact": impact.message, "command": command})
                         continue
                     origin = definitions[-1].view_name
                     session.stage_resolved(definitions, result, command["attribute"], command["value"],

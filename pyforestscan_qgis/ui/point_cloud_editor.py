@@ -15,6 +15,7 @@ from qgis.PyQt.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox, Q
 from ..compat.qt import qt_enum
 from ..core.backend.process_env import hidden_subprocess_kwargs
 from ..core.point_cloud.runtime import ViewerRuntimeService
+from ..core.point_cloud.selection_impact import selection_impact, selection_impact_suffix
 
 _WORKERS = set()
 
@@ -367,6 +368,9 @@ class EditorPanel(QWidget):
             QMessageBox.information(self, "Selection", "Draw a region to resolve source-point statistics.")
             return
         lines = [f"Source: {self.source}", f"Selected: {selection['resolved_point_count']:,} original points"]
+        impact = selection_impact(selection["resolved_point_count"], self.state.get("point_count", 0))
+        if impact.message:
+            lines.append(impact.message + ".")
         lines.extend(f"Class {code}: {count:,}" for code, count in selection.get("classification_counts", []))
         for key in ("z_min", "z_max", "hag_min", "hag_max", "bounds", "source_partitions"):
             if selection.get(key) is not None:
@@ -392,7 +396,8 @@ class EditorPanel(QWidget):
             count = selection.get("resolved_point_count", 0)
             codes = ", ".join(str(code) for code, _count in selection.get("classification_counts", [])[:8])
             suffix = f" | Classes: {codes}" if codes else ""
-            self.summary.setText(f"Selected: {count:,} source points | {value['edits']} staged edits" + suffix)
+            impact = selection_impact_suffix(count, value.get("point_count", 0))
+            self.summary.setText(f"Selected: {count:,} source points | {value['edits']} staged edits" + suffix + impact)
             self.page.session_status.setText(f"Session: Autosaved | {value['edits']} staged edits, not a source rewrite")
             self.history.clear()
             self.history.addItems(value.get("history", []))
@@ -425,7 +430,8 @@ class EditorPanel(QWidget):
         if value.get("confirm"):
             self.busy = False
             answer = QMessageBox.question(self, "Large edit",
-                f"This stages an edit for {value['count']:,} source points ({value['fraction']:.1%}). "
+                f"{value.get('impact', 'Very large selection')}. This stages an edit for "
+                f"{value['count']:,} source points ({value['fraction']:.1%}). "
                 "Large classification changes may affect terrain and canopy products. Continue?")
             if answer == qt_enum(QMessageBox, "Yes", "StandardButton"):
                 command = dict(value["command"])

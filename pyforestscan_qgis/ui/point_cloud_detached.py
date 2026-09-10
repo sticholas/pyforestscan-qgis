@@ -6,6 +6,7 @@ from qgis.PyQt.QtWidgets import (QTabBar, QDialog, QVBoxLayout, QHBoxLayout,
                                 QToolButton, QComboBox, QInputDialog)
 from ..compat.qt import qt_enum
 from ..core.point_cloud.linked_query import view_ring
+from ..core.point_cloud.selection_impact import selection_impact_suffix
 from .point_cloud_widgets import StableViewerStatus, StableViewerHelp
 
 
@@ -231,9 +232,10 @@ class DetachedView(QDialog):
             self.send({"action":"editor_overlay","path":signature[0]})
             self.overlay = signature
         selected = (editor.state.get("selection") or {}).get("resolved_point_count",0)
+        impact = selection_impact_suffix(selected, editor.state.get("point_count", 0))
         read_only = str(editor.source).lower().endswith("ept.json")
         self.status.setText("EPT view-only | Editing requires an immutable local derivative." if read_only else
-            self.selection_error or f"Selected: {selected:,} source points | {editor.state.get('edits',0)} staged edits")
+            self.selection_error or f"Selected: {selected:,} source points | {editor.state.get('edits',0)} staged edits{impact}")
         self.controller.coordinate_resources()
 
     def finished(self):
