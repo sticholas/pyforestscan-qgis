@@ -62,6 +62,7 @@ def prepare_batch_execution(
         "mode": request.settings.execution_mode,
         "workers": request.settings.max_workers,
         "resolution": request.settings.grid_resolution,
+        "clip_bounds": request.clip_bounds,
         "profile": profile,
         "processing_spatial_contexts": report.processing_spatial_contexts,
     }
@@ -89,6 +90,7 @@ def prepare_batch_execution(
         batch_folder=report.batch_folder,
         processing_spatial_contexts=report.processing_spatial_contexts,
         runtime_token=report.runtime_token,
+        clip_bounds=request.clip_bounds,
     )
     return BatchExecutionRequest(approved, readiness, len(selected), len(selected), len(skipped))
 

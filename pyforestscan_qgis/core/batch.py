@@ -68,6 +68,7 @@ class BatchRequest:
     batch_folder: Path | None = None
     processing_spatial_contexts: tuple[tuple[str, dict[str, object]], ...] = ()
     runtime_token: object | None = None
+    clip_bounds: tuple[tuple[float, float], tuple[float, float]] | None = None
 
 
 @dataclass(frozen=True)
@@ -142,6 +143,12 @@ class BatchResult:
             if cancelled and not failed:
                 return "CANCELLED"
             return "FAILED"
+        cancelled_items = sum(item.status == "cancelled" for item in self.items)
+        if cancelled_items:
+            if self.success_count:
+                return "PARTIAL_SUCCESS"
+            if not self.failure_count:
+                return "CANCELLED"
         if self.failure_count:
             return "FAILED"
         return "SUCCEEDED"

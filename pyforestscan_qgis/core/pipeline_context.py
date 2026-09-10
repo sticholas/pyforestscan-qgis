@@ -48,6 +48,19 @@ class PipelineContext:
             value = 1.0
         return float(value)
 
+    @property
+    def bounds(self) -> tuple[tuple[float, float], tuple[float, float]] | None:
+        """Return an optional validated XY processing window."""
+        value = self._parameter("bounds", None)
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            return None
+        try:
+            x = (float(value[0][0]), float(value[0][1]))
+            y = (float(value[1][0]), float(value[1][1]))
+        except (TypeError, ValueError, IndexError):
+            return None
+        return (x, y) if x[0] < x[1] and y[0] < y[1] else None
+
 
     @property
     def chm_interpolation(self) -> str:

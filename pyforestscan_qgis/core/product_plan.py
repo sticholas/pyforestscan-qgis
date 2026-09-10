@@ -97,6 +97,7 @@ class ProductPlannerRequest:
     canopy_cover_output_filename: str = "canopy_cover.tif"
     title: str = "PyForestScan Product Planner"
     notes: str = ""
+    bounds: tuple[tuple[float, float], tuple[float, float]] | None = None
 
 
 @dataclass(frozen=True)
@@ -137,6 +138,7 @@ class ProductPlannerReport:
     products: tuple[ProductPlanItem, ...]
     warnings: tuple[PlannerWarning, ...]
     next_actions: tuple[str, ...]
+    bounds: tuple[tuple[float, float], tuple[float, float]] | None = None
 
 
 class ProductPlanError(ValueError):
@@ -176,7 +178,9 @@ def build_product_plan(
 
     feasibility = _feasibility_by_product(explorer_report)
     dataset_warnings = _dataset_warnings(explorer_report)
-    columns, rows, cells = _estimate_grid(explorer_report, request.grid_resolution)
+    columns, rows, cells = _estimate_grid(
+        explorer_report, request.grid_resolution, request.bounds
+    )
     height_bins = _estimate_height_bins(explorer_report, request.height_bin_size)
 
     global_warnings = list(dataset_warnings)
@@ -223,6 +227,7 @@ def build_product_plan(
         fhd_min_height=request.fhd_min_height,
         fhd_max_height=request.fhd_max_height,
         rumple_min_height=request.rumple_min_height,
+        bounds=request.bounds,
         canopy_cover_output_filename=request.canopy_cover_output_filename,
         notes=request.notes,
         estimated_columns=columns,
@@ -265,6 +270,7 @@ def plan_to_dict(report: ProductPlannerReport) -> dict[str, Any]:
             "fhd_max_height": report.fhd_max_height,
             "rumple_min_height": report.rumple_min_height,
             "canopy_cover_output_filename": report.canopy_cover_output_filename,
+            "bounds": [list(axis) for axis in report.bounds] if report.bounds else None,
         },
         "estimates": {
             "columns": report.estimated_columns,
@@ -580,7 +586,23 @@ def _source_dataset(report: Mapping[str, Any]) -> str | None:
     return None
 
 
-def _estimate_grid(report: Mapping[str, Any], resolution: float) -> tuple[int | None, int | None, int | None]:
+def _estimate_grid(
+    report: Mapping[str, Any],
+    resolution: float,
+    clip_bounds: tuple[tuple[float, float], tuple[float, float]] | None = None,
+) -> tuple[int | None, int | None, int | None]:
+    if clip_bounds is not None:
+        try:
+            (min_x, max_x), (min_y, max_y) = clip_bounds
+            width = float(max_x) - float(min_x)
+            height = float(max_y) - float(min_y)
+        except (TypeError, ValueError):
+            return (None, None, None)
+        if width <= 0 or height <= 0:
+            return (None, None, None)
+        columns = max(1, math.ceil(width / resolution))
+        rows = max(1, math.ceil(height / resolution))
+        return (columns, rows, columns * rows)
     geometry = report.get("geometry", {})
     bounds = geometry.get("bounds") if isinstance(geometry, Mapping) else None
     if not isinstance(bounds, Mapping):

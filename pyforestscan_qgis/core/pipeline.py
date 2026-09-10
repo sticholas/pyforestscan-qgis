@@ -152,6 +152,7 @@ def _execute_chm_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 spatial_assignment_scope=context.spatial_assignment_scope,
                 source_crs_status=context.source_crs_status,
                 source_point_count=context.source_point_count,
+                bounds=context.bounds,
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
@@ -165,7 +166,7 @@ def _execute_dtm_step(context: PipelineContext, step: PipelineStep, adapter: Any
     if adapter is None or not context.source_dataset:
         return _step_result(step, PipelineStepStatus.FAILED, "DTM execution requires an adapter and source dataset.")
     try:
-        result = adapter.generate_dtm(DtmRequest(context.source_dataset, context.output_folder / "dtm.tif", context.crs, resolution=context.grid_resolution))
+        result = adapter.generate_dtm(DtmRequest(context.source_dataset, context.output_folder / "dtm.tif", context.crs, resolution=context.grid_resolution, bounds=context.bounds))
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
         return _step_result(step, PipelineStepStatus.FAILED, f"DTM generation failed: {exc}")
     if not result.output_path.exists():
@@ -177,7 +178,7 @@ def _execute_point_density_step(context: PipelineContext, step: PipelineStep, ad
     if adapter is None or not context.source_dataset:
         return _step_result(step, PipelineStepStatus.FAILED, "Point Density execution requires an adapter and source dataset.")
     try:
-        result = adapter.create_point_density(PointDensityRequest(context.source_dataset, context.output_folder / "point_density.tif", context.grid_resolution, 1.0, context.crs, per_area=True, cell_area=context.grid_resolution ** 2))
+        result = adapter.create_point_density(PointDensityRequest(context.source_dataset, context.output_folder / "point_density.tif", context.grid_resolution, 1.0, context.crs, per_area=True, cell_area=context.grid_resolution ** 2, bounds=context.bounds))
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
         return _step_result(step, PipelineStepStatus.FAILED, f"Point Density generation failed: {exc}")
     if not result.output_path.exists():
@@ -203,6 +204,7 @@ def _execute_pad_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 beer_lambert_constant=context.pad_beer_lambert_constant,
                 drop_ground=context.pad_drop_ground,
                 crs=context.crs,
+                bounds=context.bounds,
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
@@ -232,6 +234,7 @@ def _execute_pai_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 beer_lambert_constant=context.pad_beer_lambert_constant,
                 drop_ground=context.pad_drop_ground,
                 crs=context.crs,
+                bounds=context.bounds,
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
@@ -261,6 +264,7 @@ def _execute_fhd_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 min_height=context.fhd_min_height,
                 max_height=context.fhd_max_height,
                 crs=context.crs,
+                bounds=context.bounds,
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
@@ -297,6 +301,7 @@ def _execute_rumple_step(context: PipelineContext, step: PipelineStep, adapter: 
                 spatial_assignment_scope=context.spatial_assignment_scope,
                 source_crs_status=context.source_crs_status,
                 source_point_count=context.source_point_count,
+                bounds=context.bounds,
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
@@ -350,6 +355,7 @@ def _execute_canopy_cover_step(context: PipelineContext, step: PipelineStep, ada
                 beer_lambert_constant=context.pad_beer_lambert_constant,
                 drop_ground=context.pad_drop_ground,
                 crs=context.crs,
+                bounds=context.bounds,
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.

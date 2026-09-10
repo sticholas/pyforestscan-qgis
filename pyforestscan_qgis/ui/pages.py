@@ -8,6 +8,7 @@ the adapter boundary.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import replace
 import threading
 import time
@@ -20,6 +21,7 @@ from qgis.PyQt.QtCore import QEvent, QObject, QSize, Qt, QThread, QTimer, QUrl, 
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
     QAbstractButton,
+    QAbstractSpinBox,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -126,7 +128,7 @@ install_enum_aliases(QLayout, "SizeConstraint", ("SetNoConstraint",))
 install_enum_aliases(QComboBox, "SizeAdjustPolicy", ("AdjustToMinimumContentsLengthWithIcon",))
 install_enum_aliases(QMessageBox, "StandardButton", ("No", "Yes"))
 install_enum_aliases(QStyle, "StandardPixmap", ("SP_ArrowForward", "SP_BrowserReload", "SP_DialogApplyButton", "SP_DialogCancelButton", "SP_DialogDiscardButton", "SP_DialogHelpButton", "SP_DialogOpenButton", "SP_DialogSaveButton", "SP_DirOpenIcon", "SP_DriveHDIcon", "SP_FileDialogContentsView", "SP_FileDialogDetailedView", "SP_FileDialogNewFolder", "SP_FileIcon", "SP_MediaPlay", "SP_MessageBoxInformation", "SP_MessageBoxWarning"))
-install_enum_aliases(QEvent, "Type", ("Enter", "FocusIn", "FocusOut", "Leave"))
+install_enum_aliases(QEvent, "Type", ("Enter", "FocusIn", "FocusOut", "Leave", "Wheel"))
 install_enum_aliases(Qt, "AlignmentFlag", ("AlignLeft", "AlignTop"))
 install_enum_aliases(Qt, "ArrowType", ("DownArrow", "RightArrow"))
 install_enum_aliases(Qt, "CheckState", ("Checked", "Unchecked"))
@@ -277,6 +279,9 @@ class MissionPage(QWidget):
         for widget in self.findChildren(QWidget):
             if widget is self.help_banner:
                 continue
+            if isinstance(widget, (QComboBox, QAbstractSpinBox)):
+                widget.setProperty("ignoreWheelValueChange", True)
+                widget.installEventFilter(self)
             text = str(widget.property("contextHelp") or widget.toolTip() or widget.accessibleName() or "").strip()
             if not text:
                 text = _default_context_help(widget)
@@ -285,6 +290,13 @@ class MissionPage(QWidget):
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt API
         """Project mouse and keyboard context into one stable help banner."""
+        if event.type() == QEvent.Wheel and bool(watched.property("ignoreWheelValueChange")):
+            delta = getattr(event, "angleDelta", lambda: None)()
+            vertical = int(delta.y()) if delta is not None else 0
+            scrollbar = self.scroll_area.verticalScrollBar()
+            scrollbar.setValue(scrollbar.value() - vertical)
+            event.accept()
+            return True
         if event.type() in {QEvent.Enter, QEvent.FocusIn}:
             text = str(watched.property("resolvedContextHelp") or "").strip()
             if text:
@@ -2263,6 +2275,24 @@ class BatchPage(MissionPage):
         self.recursive_check = QCheckBox("Search subfolders")
         self.recursive_check.setProperty("contextHelp", semantic_help("process.folder.search_subfolders"))
         repository_layout.addWidget(self.recursive_check)
+        self.folder_clip_bounds_check = QCheckBox("Clip processing to rectangular bounds")
+        self.folder_clip_bounds_check.setToolTip(
+            "Apply one XY window to every selected source. Values use the source/project coordinate system."
+        )
+        repository_layout.addWidget(self.folder_clip_bounds_check)
+        folder_bounds_row = QHBoxLayout()
+        self.folder_clip_bounds_edit = QLineEdit()
+        self.folder_clip_bounds_edit.setPlaceholderText("xmin,xmax,ymin,ymax")
+        self.folder_clip_bounds_edit.setEnabled(False)
+        self.folder_clip_bounds_check.toggled.connect(self.folder_clip_bounds_edit.setEnabled)
+        self.use_canvas_bounds_button = QPushButton("Use Current Map Extent")
+        self.use_canvas_bounds_button.setEnabled(False)
+        self.folder_clip_bounds_check.toggled.connect(self.use_canvas_bounds_button.setEnabled)
+        self.use_canvas_bounds_button.clicked.connect(self.use_current_map_extent_for_folder_bounds)
+        _apply_button_role(self.use_canvas_bounds_button, "secondary")
+        folder_bounds_row.addWidget(self.folder_clip_bounds_edit, 1)
+        folder_bounds_row.addWidget(self.use_canvas_bounds_button)
+        repository_layout.addLayout(folder_bounds_row)
         self.spatial_assignment_frame = QFrame()
         assignment_layout = QVBoxLayout(self.spatial_assignment_frame)
         assignment_layout.setContentsMargins(0, SECTION_SPACING, 0, SECTION_SPACING)
@@ -2807,7 +2837,7 @@ class BatchPage(MissionPage):
         self.execution_mode_combo.addItem("Automatic", "automatic")
         self.max_workers_spin = QSpinBox()
         self.max_workers_spin.setMinimum(1)
-        self.max_workers_spin.setMaximum(6)
+        self.max_workers_spin.setMaximum(5)
         self.max_workers_spin.setValue(5)
         self.max_workers_spin.valueChanged.connect(lambda _value: self._refresh_footprint_label())
         self.execution_mode_container = QWidget()
@@ -3383,13 +3413,14 @@ class BatchPage(MissionPage):
         for combo in (self.batch_mode_combo, self.polygon_source_combo, self.polygon_layer_combo,
                       self.polygon_layer_mode_combo, self.polygon_vector_layer_combo):
             combo.currentIndexChanged.connect(self._on_session_input_changed)
-        for edit in (self.input_folder_edit, self.polygon_lidar_folder_edit,
+        for edit in (self.input_folder_edit, self.folder_clip_bounds_edit, self.polygon_lidar_folder_edit,
                      self.polygon_vector_file_edit, self.polygon_wkt_edit,
                      self.polygon_crs_edit, self.polygon_processing_crs_edit,
                      self.output_folder_edit):
             edit.textChanged.connect(self._on_session_input_changed)
         self.polygon_dissolve_check.toggled.connect(self._on_session_input_changed)
         self.recursive_check.toggled.connect(self._on_session_input_changed)
+        self.folder_clip_bounds_check.toggled.connect(self._on_session_input_changed)
         self.polygon_direct_fallback_check.toggled.connect(self._on_product_selection_changed)
         scientific_values = (
             self.resolution_spin, self.height_bin_spin, self.canopy_threshold_spin, self.max_workers_spin,
@@ -3471,6 +3502,8 @@ class BatchPage(MissionPage):
             "canopy_threshold": self.canopy_threshold_spin.value(),
             "chm_interpolation": self.chm_interpolation_combo.currentData() or self.chm_interpolation_combo.currentText(),
             "recursive": self.recursive_check.isChecked(), "profile": self.processing_profile_combo.currentData(),
+            "folder_clip_enabled": self.folder_clip_bounds_check.isChecked(),
+            "folder_clip_bounds": self.folder_clip_bounds_edit.text().strip(),
             "execution_mode": self.execution_mode_combo.currentData(), "max_workers": self.max_workers_spin.value(),
             "stop_on_error": self.stop_on_error_check.isChecked(), "load_outputs": True,
             "parallel_confirmed": True,
@@ -4323,6 +4356,32 @@ class BatchPage(MissionPage):
         if path:
             self.input_folder_edit.setText(path)
 
+    def use_current_map_extent_for_folder_bounds(self) -> None:
+        """Populate folder clipping bounds from the current QGIS map canvas."""
+        try:
+            extent = self.iface.mapCanvas().extent()
+            values = (extent.xMinimum(), extent.xMaximum(), extent.yMinimum(), extent.yMaximum())
+            if not all(math.isfinite(float(value)) for value in values):
+                raise ValueError("The current map extent is not finite.")
+            self.folder_clip_bounds_edit.setText(",".join(f"{float(value):.12g}" for value in values))
+        except Exception as exc:  # noqa: BLE001 - map canvas availability is runtime-specific.
+            self.preflight_text.setPlainText(f"Could not use the current map extent: {exc}")
+
+    def _folder_clip_bounds(self) -> tuple[tuple[float, float], tuple[float, float]] | None:
+        if not self.folder_clip_bounds_check.isChecked():
+            return None
+        text = self.folder_clip_bounds_edit.text().strip()
+        try:
+            values = tuple(float(part.strip()) for part in text.split(","))
+        except ValueError as exc:
+            raise BatchExecutionError("Folder clipping bounds must contain four numbers: xmin,xmax,ymin,ymax.") from exc
+        if len(values) != 4 or not all(math.isfinite(value) for value in values):
+            raise BatchExecutionError("Folder clipping bounds must contain four finite numbers: xmin,xmax,ymin,ymax.")
+        xmin, xmax, ymin, ymax = values
+        if xmin >= xmax or ymin >= ymax:
+            raise BatchExecutionError("Folder clipping bounds require xmin < xmax and ymin < ymax.")
+        return ((xmin, xmax), (ymin, ymax))
+
     def show_spatial_assignment_prompt(self, visible: bool = True) -> None:
         """Expose the compact resolver only when missing spatial meaning blocks preparation."""
         self.spatial_assignment_frame.setVisible(bool(visible))
@@ -4824,6 +4883,7 @@ class BatchPage(MissionPage):
             settings=settings,
             title="PyForestScan Batch",
             batch_folder=batch_folder,
+            clip_bounds=self._folder_clip_bounds(),
         )
 
     def build_current_processing_request(self, batch_folder: Path | None = None):

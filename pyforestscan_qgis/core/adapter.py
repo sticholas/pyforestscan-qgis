@@ -1362,7 +1362,13 @@ class PyForestScanAdapter:
     def cancel(self) -> None:
         """Request cancellation for future long-running adapter work."""
         self._progress.cancel()
-        self._log(LogLevel.WARNING, "Adapter cancellation requested")
+        from .backend.execution import cancel_active_processing_jobs
+
+        cancelled_processes = cancel_active_processing_jobs()
+        self._log(
+            LogLevel.WARNING, "Adapter cancellation requested",
+            active_processes=cancelled_processes,
+        )
 
     def close(self) -> None:
         """Clear adapter-held dataset references."""

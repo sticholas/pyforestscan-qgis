@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-beta.4 - 2026-09-10
+
+- Enabled automatic processing with one shared budget of up to five workers: multiple sources run across files, while a single source can run independent products concurrently.
+- Added optional rectangular Folder-mode clipping, including a one-click current-map-extent input, overlap preflight, clipped grid estimates, and bounds propagation to every release product.
+- Made Pause cooperative at product/file boundaries and Cancel responsive during active processing, including termination of only the PBM child processes owned by the plugin.
+- Prevented mouse-wheel scrolling from accidentally changing combo-box and numeric values while retaining page scrolling and deliberate keyboard/click entry.
+- Preserved every earlier versioned package; this release is a distinct beta.4 artifact.
+
 ## 0.2.0-beta.3 - 2026-09-10
 
 - Added truthful live processing status with elapsed time, percent complete, current step, current file, and current product.

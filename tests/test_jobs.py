@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -136,6 +138,83 @@ class JobManagerTests(unittest.TestCase):
             messages = [event.progress.message for event in events]
             self.assertIn("Processing Canopy Height Model (CHM) (1 of 1).", messages)
             self.assertIn("Finished Canopy Height Model (CHM) (1 of 1).", messages)
+
+    def test_single_dataset_can_process_products_concurrently(self) -> None:
+        """One source uses the worker budget across independent product outputs."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "dataset_report.json").write_text(
+                json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8"
+            )
+            plan_path = _write_plan(root / "product_plan.json")
+            payload = json.loads(plan_path.read_text(encoding="utf-8"))
+            payload["parameters"]["pai_output_filename"] = "job_pai.tif"
+            plan_path.write_text(json.dumps(payload), encoding="utf-8")
+            adapter = _ConcurrentAdapter()
+            events = []
+
+            job = JobManager(event_sink=events.append, adapter=adapter).run_pipeline(
+                plan_path, root / "logs", max_product_workers=5
+            )
+
+            self.assertEqual(JobStatus.COMPLETED, job.status)
+            self.assertGreaterEqual(adapter.maximum_active, 2)
+            self.assertTrue(any("products concurrently" in event.progress.message for event in events))
+
+    def test_pause_waits_at_safe_product_boundary_until_resumed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "dataset_report.json").write_text(
+                json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8"
+            )
+            state = {"control": "pause"}
+            adapter = _ConcurrentAdapter()
+            manager = JobManager(adapter=adapter, control_callback=lambda: state["control"])
+            results = []
+            worker = threading.Thread(
+                target=lambda: results.append(manager.run_pipeline(
+                    _write_plan(root / "product_plan.json"), root / "logs",
+                    max_product_workers=1,
+                ))
+            )
+
+            worker.start()
+            time.sleep(0.2)
+            self.assertTrue(worker.is_alive())
+            self.assertEqual(0, adapter.maximum_active)
+            state["control"] = None
+            worker.join(timeout=5)
+
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(JobStatus.COMPLETED, results[0].status)
+
+    def test_cancel_is_polled_while_product_is_active(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "dataset_report.json").write_text(
+                json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8"
+            )
+            state = {"control": None}
+            adapter = _ConcurrentAdapter()
+            manager = JobManager(adapter=adapter, control_callback=lambda: state["control"])
+            results = []
+            worker = threading.Thread(
+                target=lambda: results.append(manager.run_pipeline(
+                    _write_plan(root / "product_plan.json"), root / "logs",
+                    max_product_workers=1,
+                ))
+            )
+
+            worker.start()
+            deadline = time.monotonic() + 2
+            while adapter.maximum_active == 0 and time.monotonic() < deadline:
+                time.sleep(0.01)
+            state["control"] = "cancel"
+            worker.join(timeout=5)
+
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(JobStatus.CANCELLED, results[0].status)
+            self.assertGreaterEqual(adapter.cancel_calls, 1)
 
 
     def test_processing_job_creates_canopy_cover_result_record(self) -> None:
@@ -371,6 +450,41 @@ class _FakeAdapter:
             grid_resolution=request.grid_resolution,
             crs=request.crs,
         )
+
+
+class _ConcurrentAdapter(_FakeAdapter):
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._active = 0
+        self.maximum_active = 0
+        self.cancel_calls = 0
+
+    def cancel(self) -> None:
+        self.cancel_calls += 1
+
+    def _enter(self) -> None:
+        with self._lock:
+            self._active += 1
+            self.maximum_active = max(self.maximum_active, self._active)
+        time.sleep(0.1)
+
+    def _leave(self) -> None:
+        with self._lock:
+            self._active -= 1
+
+    def create_chm(self, request):  # type: ignore[no-untyped-def]
+        self._enter()
+        try:
+            return super().create_chm(request)
+        finally:
+            self._leave()
+
+    def create_pai(self, request):  # type: ignore[no-untyped-def]
+        self._enter()
+        try:
+            return super().create_pai(request)
+        finally:
+            self._leave()
 
 
 if __name__ == "__main__":

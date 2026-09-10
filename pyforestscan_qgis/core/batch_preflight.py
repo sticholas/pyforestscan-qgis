@@ -95,6 +95,19 @@ def run_batch_preflight(
     if request.settings.retry_failed_only:
         files_to_retry = tuple(path for path in files_to_process if path in failed)
         files_to_process = files_to_retry
+    if request.clip_bounds:
+        files_to_process, outside = _filter_sources_for_clip_bounds(
+            files_to_process, request.clip_bounds, adapter, warnings
+        )
+        if request.settings.retry_failed_only:
+            files_to_retry = files_to_process
+        if outside:
+            files_to_skip = tuple(dict.fromkeys((*files_to_skip, *outside)))
+            warnings.append(
+                f"Rectangular bounds exclude {len(outside)} selected source(s); those sources will be skipped."
+            )
+        if not files_to_process:
+            blockers.append("Rectangular clipping bounds do not intersect any selected LiDAR source.")
     conflicts = _output_conflicts(files_to_process, batch_folder, request.settings.overwrite_existing)
     if conflicts:
         blockers.append("Output conflicts detected: " + "; ".join(str(path) for path in conflicts[:5]))
@@ -242,6 +255,30 @@ def _check_preparation_spatial_readiness(request, sources, adapter, blockers, wa
     if len(sources) > len(inspected):
         warnings.append(f"Preparation metadata was checked for the first {len(inspected)} selected sources; repository assignments will be revalidated during execution.")
     return tuple(resolved_contexts)
+
+
+def _filter_sources_for_clip_bounds(sources, clip_bounds, adapter, warnings):
+    """Skip sources known to be outside an explicit folder-mode XY window."""
+    (xmin, xmax), (ymin, ymax) = clip_bounds
+    included = []
+    outside = []
+    for source in sources:
+        try:
+            inspection = adapter.inspect_dataset(source)
+            bounds = inspection.bounds
+            if bounds is None:
+                included.append(source)
+                warnings.append(f"Could not pre-check clipping overlap for {Path(source).name}; execution will validate it.")
+                continue
+            intersects = not (
+                float(bounds.max_x) <= xmin or float(bounds.min_x) >= xmax
+                or float(bounds.max_y) <= ymin or float(bounds.min_y) >= ymax
+            )
+            (included if intersects else outside).append(source)
+        except Exception as exc:  # noqa: BLE001 - unknown overlap remains executable.
+            included.append(source)
+            warnings.append(f"Could not pre-check clipping overlap for {Path(source).name}: {exc}")
+    return tuple(included), tuple(outside)
 
 
 def _recommended_workers(file_count: int, workload_score: int, execution_mode: str) -> int:

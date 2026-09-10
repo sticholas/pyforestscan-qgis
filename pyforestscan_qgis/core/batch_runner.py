@@ -149,19 +149,29 @@ class BatchRunner:
                 fhd_max_height=request.settings.fhd_max_height,
                 rumple_min_height=request.settings.rumple_min_height,
                 title=f"Product Plan - {dataset.name}",
+                bounds=request.clip_bounds,
             )
             plan = build_product_plan(report_to_dict(report), product_request)
             write_plan_json(plan, context.product_plan_json)
             write_plan_csv(plan, context.product_plan_csv)
             write_plan_html(plan, context.product_plan_html)
             manager = self.job_manager_factory(self.job_callback)
+            manager.set_control_callback(self.control_callback)
             job = manager.run_pipeline(
                 context.product_plan_json,
                 context.logs_dir,
                 title=f"PyForestScan Batch - {dataset.name}",
                 summary_path=context.job_summary_json,
+                max_product_workers=(
+                    min(5, request.settings.max_workers, len(request.settings.products))
+                    if len(request.datasets) == 1 else 1
+                ),
             )
-            status = "completed" if job.status.value == "completed" else "failed"
+            status = (
+                "completed" if job.status.value == "completed"
+                else "cancelled" if job.status.value == "cancelled"
+                else "failed"
+            )
             message = job.error_message or job.status.value
             return BatchItemResult(
                 dataset_path=dataset,

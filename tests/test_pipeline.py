@@ -112,6 +112,25 @@ class PipelineFrameworkTests(unittest.TestCase):
             self.assertTrue(adapter.request.interp_valid_region)
             self.assertTrue(adapter.request.interp_clean_edges)
 
+    def test_pipeline_passes_folder_clip_bounds_to_product_request(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            dataset_report = root / "dataset_report.json"
+            dataset_report.write_text(json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8")
+            product_plan = _write_product_plan(root / "product_plan.json", dataset_report)
+            payload = json.loads(product_plan.read_text(encoding="utf-8"))
+            payload["parameters"]["bounds"] = [[10.0, 20.0], [30.0, 40.0]]
+            product_plan.write_text(json.dumps(payload), encoding="utf-8")
+            adapter = _FakeChmAdapter()
+
+            context = load_pipeline_contexts(product_plan, root / "logs")[0]
+            result = build_default_pipeline_registry().get("chm").run(
+                context, adapter=adapter, execute_products=True
+            )
+
+            self.assertTrue(result.passed)
+            self.assertEqual(((10.0, 20.0), (30.0, 40.0)), adapter.request.bounds)
+
 
     def test_canopy_cover_pipeline_executes_with_adapter(self) -> None:
         """The canopy cover pipeline can execute its implemented adapter-backed stage."""

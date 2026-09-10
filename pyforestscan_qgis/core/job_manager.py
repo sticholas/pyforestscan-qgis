@@ -8,7 +8,9 @@ implemented behind the adapter boundary.
 from __future__ import annotations
 
 import json
+import time
 import uuid
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -19,6 +21,7 @@ from .pipeline import PipelineRegistry, build_default_pipeline_registry
 from .pipeline_context import PipelineContextError, load_pipeline_contexts
 
 JobEventSink = Callable[[JobRecord], None]
+JobControlCallback = Callable[[], str | None]
 
 
 class JobExecutionError(ValueError):
@@ -33,6 +36,7 @@ class JobManager:
         event_sink: JobEventSink | None = None,
         pipeline_registry: PipelineRegistry | None = None,
         adapter: PyForestScanAdapter | None = None,
+        control_callback: JobControlCallback | None = None,
     ) -> None:
         """Create a manager with optional event, registry, and adapter hooks."""
         self._event_sink = event_sink
@@ -40,6 +44,11 @@ class JobManager:
         self._adapter = adapter or PyForestScanAdapter()
         self._jobs: dict[str, JobRecord] = {}
         self._cancel_requested: set[str] = set()
+        self._control_callback = control_callback
+
+    def set_control_callback(self, callback: JobControlCallback | None) -> None:
+        """Attach the live UI control source used during processing."""
+        self._control_callback = callback
 
     def execution_backend(self) -> str:
         """Return the adapter-selected execution backend for processing."""
@@ -103,9 +112,13 @@ class JobManager:
         output_folder: Path | str,
         title: str = "PyForestScan Processing Job",
         summary_path: Path | str | None = None,
+        max_product_workers: int = 1,
     ) -> JobRecord:
         """Run implemented product pipelines and write a JSON summary."""
-        return self._run_pipeline_job(product_plan_path, output_folder, title, summary_path, execute_products=True)
+        return self._run_pipeline_job(
+            product_plan_path, output_folder, title, summary_path,
+            execute_products=True, max_product_workers=max_product_workers,
+        )
 
     def _run_pipeline_job(
         self,
@@ -114,6 +127,7 @@ class JobManager:
         title: str,
         summary_path: Path | str | None,
         execute_products: bool,
+        max_product_workers: int = 1,
     ) -> JobRecord:
         request = JobRequest(
             product_plan_path=Path(product_plan_path),
@@ -137,24 +151,97 @@ class JobManager:
             job = self._transition(job, JobStatus.RUNNING, start_message)
             pipeline_results = []
             total = max(1, len(contexts))
-            for index, pipeline_context in enumerate(contexts, start=1):
-                pipeline = self._pipeline_registry.get(pipeline_context.product)
-                job = self._progress(
-                    job,
-                    10 + ((index - 1) / total) * 80,
-                    f"Processing {pipeline.label} ({index} of {total}).",
-                )
-                pipeline_result = pipeline.run(pipeline_context, adapter=self._adapter, execute_products=execute_products)
-                pipeline_results.append(pipeline_result)
+            workers = min(5, total, max(1, int(max_product_workers))) if execute_products else 1
+            if execute_products:
+                labels = ", ".join(context.product_label for context in contexts[:workers])
+                mode = f"{workers} products concurrently" if workers > 1 else "1 product at a time"
+                job = self._progress(job, 10, f"Processing {mode}: {labels}.")
+                completed: dict[int, object] = {}
+                queued = list(enumerate(contexts))
+                running: dict[Future[object], tuple[int, object]] = {}
+                pause_announced = False
+                cancel_signalled = False
+                with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="pfs-product") as pool:
+                    while queued or running:
+                        control = self._control_state(job)
+                        if control == "cancel":
+                            queued.clear()
+                            if not cancel_signalled:
+                                cancel_signalled = True
+                                cancel = getattr(self._adapter, "cancel", None)
+                                if callable(cancel):
+                                    cancel()
+                            for future in running:
+                                future.cancel()
+                        if control == "pause" and not pause_announced:
+                            pause_announced = True
+                            job = self._progress(job, job.progress.percent, "Pause requested; active products will finish, then processing will wait.")
+                        elif control != "pause" and pause_announced:
+                            pause_announced = False
+                            job = self._progress(job, job.progress.percent, "Processing resumed.")
+                        while queued and control not in {"pause", "cancel"} and len(running) < workers:
+                            index, context = queued.pop(0)
+                            job = self._progress(
+                                job, 10 + (index / total) * 80,
+                                f"Processing {context.product_label} ({index + 1} of {total}).",
+                            )
+                            future = pool.submit(
+                                self._pipeline_registry.get(context.product).run,
+                                context,
+                                self._adapter,
+                                execute_products,
+                            )
+                            running[future] = (index, context)
+                        if not running:
+                            if control == "pause":
+                                time.sleep(0.05)
+                                continue
+                            break
+                        finished, _pending = wait(tuple(running), timeout=0.1, return_when=FIRST_COMPLETED)
+                        for future in finished:
+                            index, context = running.pop(future)
+                            try:
+                                completed[index] = future.result()
+                            except Exception:
+                                if self._control_state(job) == "cancel":
+                                    continue
+                                raise
+                            done = len(completed)
+                            finish_message = f"Finished {context.product_label} ({done} of {total})."
+                            if total - done:
+                                finish_message = finish_message[:-1] + f"; {total - done} products remaining."
+                            job = self._progress(
+                                job, 10 + (done / total) * 80,
+                                finish_message,
+                            )
+                pipeline_results = [completed[index] for index in sorted(completed)]
                 job = self._store(job.with_pipeline_results(tuple(pipeline_results)))
-                for output_path in pipeline_result.output_paths:
-                    if output_path not in tuple(result.path for result in job.results):
-                        result_type, description = _job_result_metadata(pipeline_result.product, pipeline_result.label, output_path)
-                        job = self._store(job.with_result(JobResultRecord(output_path, result_type, description)))
-                percent = 10 + (index / total) * 80
-                job = self._progress(job, percent, f"Finished {pipeline.label} ({index} of {total}).")
-                if self._is_cancelled(job):
+                for pipeline_result in pipeline_results:
+                    for output_path in pipeline_result.output_paths:
+                        if output_path not in tuple(result.path for result in job.results):
+                            result_type, description = _job_result_metadata(pipeline_result.product, pipeline_result.label, output_path)
+                            job = self._store(job.with_result(JobResultRecord(output_path, result_type, description)))
+                if self._control_state(job) == "cancel":
                     return self._finalize_cancelled(job)
+            else:
+                for index, pipeline_context in enumerate(contexts, start=1):
+                    pipeline = self._pipeline_registry.get(pipeline_context.product)
+                    job = self._progress(
+                        job,
+                        10 + ((index - 1) / total) * 80,
+                        f"Processing {pipeline.label} ({index} of {total}).",
+                    )
+                    pipeline_result = pipeline.run(pipeline_context, adapter=self._adapter, execute_products=execute_products)
+                    pipeline_results.append(pipeline_result)
+                    job = self._store(job.with_pipeline_results(tuple(pipeline_results)))
+                    for output_path in pipeline_result.output_paths:
+                        if output_path not in tuple(result.path for result in job.results):
+                            result_type, description = _job_result_metadata(pipeline_result.product, pipeline_result.label, output_path)
+                            job = self._store(job.with_result(JobResultRecord(output_path, result_type, description)))
+                    percent = 10 + (index / total) * 80
+                    job = self._progress(job, percent, f"Finished {pipeline.label} ({index} of {total}).")
+                    if self._is_cancelled(job):
+                        return self._finalize_cancelled(job)
             blocked = [(result, result.validation) for result in pipeline_results if not result.validation.ready]
             if blocked:
                 details = []
@@ -226,7 +313,15 @@ class JobManager:
         return self._store(job.with_progress(percent, message).with_log("INFO", message))
 
     def _is_cancelled(self, job: JobRecord) -> bool:
-        return job.job_id in self._cancel_requested
+        return self._control_state(job) == "cancel"
+
+    def _control_state(self, job: JobRecord) -> str | None:
+        if job.job_id in self._cancel_requested:
+            return "cancel"
+        if self._control_callback is None:
+            return None
+        state = self._control_callback()
+        return state if state in {"pause", "cancel"} else None
 
     def _finalize_cancelled(self, job: JobRecord) -> JobRecord:
         self._cancel_requested.discard(job.job_id)

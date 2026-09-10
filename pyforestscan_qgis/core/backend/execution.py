@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+import threading
 import time
 import json
 import os
@@ -26,6 +27,28 @@ from ..atomic_state import atomic_write_json
 from ..coordinator_lifecycle import CoordinatorLaunchResult, build_coordinator_handle
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
+
+_ACTIVE_PROCESS_LOCK = threading.Lock()
+_ACTIVE_PROCESSING_PROCESSES: set[subprocess.Popen[str]] = set()
+
+
+def cancel_active_processing_jobs() -> int:
+    """Terminate PBM child processes owned by this plugin process."""
+    with _ACTIVE_PROCESS_LOCK:
+        processes = tuple(_ACTIVE_PROCESSING_PROCESSES)
+    cancelled = 0
+    for process in processes:
+        if process.poll() is not None:
+            continue
+        cancelled += 1
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                check=False, capture_output=True, **hidden_subprocess_kwargs(),
+            )
+        else:
+            process.terminate()
+    return cancelled
 
 class ProcessingMonitorError(RuntimeError):
     def __init__(self, status: str, reason: str):
@@ -273,14 +296,20 @@ class BackendExecutionService:
         heartbeat = heartbeat_path(spec.run_folder)
         with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stdout_file, tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr_file:
             process = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file, text=True, **kwargs)
-            while process.poll() is None:
-                time.sleep(1)
-                elapsed = time.monotonic() - started
-                age = max(0.0, time.time() - heartbeat.stat().st_mtime) if heartbeat.exists() else None
-                decision = evaluate_liveness(self.timeout_policy, elapsed=elapsed, heartbeat_age=age, progress_age=None, started=True, product=spec.product)
-                if decision.status in {"stalled", "timed_out"}:
-                    self._terminate_process_tree(process)
-                    raise ProcessingMonitorError(decision.status, decision.reason)
+            with _ACTIVE_PROCESS_LOCK:
+                _ACTIVE_PROCESSING_PROCESSES.add(process)
+            try:
+                while process.poll() is None:
+                    time.sleep(0.1)
+                    elapsed = time.monotonic() - started
+                    age = max(0.0, time.time() - heartbeat.stat().st_mtime) if heartbeat.exists() else None
+                    decision = evaluate_liveness(self.timeout_policy, elapsed=elapsed, heartbeat_age=age, progress_age=None, started=True, product=spec.product)
+                    if decision.status in {"stalled", "timed_out"}:
+                        self._terminate_process_tree(process)
+                        raise ProcessingMonitorError(decision.status, decision.reason)
+            finally:
+                with _ACTIVE_PROCESS_LOCK:
+                    _ACTIVE_PROCESSING_PROCESSES.discard(process)
             stdout_file.seek(0); stderr_file.seek(0)
             completed=subprocess.CompletedProcess(command,process.returncode,stdout_file.read(),stderr_file.read());completed.pid=process.pid
             return completed
