@@ -21,6 +21,20 @@ class ViewType(str, Enum):
 
 MAX_VIEW_BOOKMARKS = 100
 MAX_VIEW_TITLE = 80
+SCENE_OVERLAY_KEYS = ("selection", "measurements", "annotations")
+
+
+def scene_visibility(values=None):
+    """Validated per-view overlay visibility; never selection/edit authority."""
+    result = {key: True for key in SCENE_OVERLAY_KEYS}
+    if values is None:
+        return result
+    if not isinstance(values, dict) or set(values) - set(SCENE_OVERLAY_KEYS):
+        raise ValueError("Scene visibility contains an unsupported overlay.")
+    if any(type(value) is not bool for value in values.values()):
+        raise ValueError("Scene overlay visibility values must be true or false.")
+    result.update(values)
+    return result
 
 
 def _view_title(value):
@@ -152,6 +166,7 @@ class ViewState:
     display_filters: dict = field(default_factory=dict)
     render_mode: str = "Classification"
     lod: dict = field(default_factory=dict)
+    scene_visibility: dict = field(default_factory=scene_visibility)
 
 
 class ViewerResourceCoordinator:
@@ -187,7 +202,7 @@ class ViewerResourceCoordinator:
 
 
 class PointCloudWorkspaceModel:
-    SCHEMA = 1
+    SCHEMA = 2
 
     def __init__(self, command_sink=None):
         self._sink = command_sink
@@ -313,10 +328,13 @@ class PointCloudWorkspaceModel:
 
     def update_view(self, view_id, **values):
         view = self._views[view_id]
-        if set(values) - {"geometry", "camera", "display_filters", "render_mode", "lod"}:
+        if set(values) - {"geometry", "camera", "display_filters", "render_mode", "lod",
+                          "scene_visibility"}:
             raise ValueError("Views cannot replace selection, history, source or journal.")
         candidate = deepcopy(view)
         for key, value in values.items():
+            if key == "scene_visibility":
+                value = scene_visibility(value)
             setattr(candidate, key, deepcopy(value))
         if candidate.view_type == ViewType.VERTICAL_SLICE:
             SliceGeometry(**candidate.geometry)
@@ -376,7 +394,7 @@ class PointCloudWorkspaceModel:
 
     @classmethod
     def restore(cls, payload, source_fingerprint, command_sink=None):
-        if payload.get("schema") != cls.SCHEMA or payload.get("source_fingerprint") != source_fingerprint:
+        if payload.get("schema") not in (1, cls.SCHEMA) or payload.get("source_fingerprint") != source_fingerprint:
             raise ValueError("Workspace schema or original source fingerprint does not match.")
         result = cls(command_sink)
         result.source_fingerprint = source_fingerprint

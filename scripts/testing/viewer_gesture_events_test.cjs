@@ -20,6 +20,7 @@ const queue=[];
 class BufferGeometry {
     constructor(){this.attributes={};}
     setAttribute(name,value){this.attributes[name]=value;return this;}
+    getAttribute(name){return this.attributes[name];}
     clone(){const value=new BufferGeometry();value.attributes={...this.attributes};return value;}
     dispose(){}
 }
@@ -28,22 +29,27 @@ class SceneObject {
     constructor(geometry,material){
         this.geometry=geometry;this.material=material;
         this.position={set:(x,y,z)=>{this.origin=[x,y,z];}};
+        this.matrix={copy(value){this.value=value;}};
     }
 }
 class Vector3 {
     constructor(x=0,y=0,z=0){Object.assign(this,{x,y,z});}
+    set(x,y,z){Object.assign(this,{x,y,z});return this;}
     unproject(){ this.x=1000+this.x*100;this.y=2000+this.y*100;return this; }
     clone(){return new Vector3(this.x,this.y,this.z);}
     copy(value){Object.assign(this,value);return this;}
+    fromBufferAttribute(value,index){this.x=value.getX(index);this.y=value.getY(index);this.z=value.getZ(index);return this;}
+    applyMatrix4(){return this;}
 }
 const THREE={Vector3,Vector2:class {constructor(x,y){Object.assign(this,{x,y});}},
-    Color:class{},Group,BufferGeometry,
-    Float32BufferAttribute:class {constructor(values,size){this.values=values;this.itemSize=size;}},
+    Color:class {toArray(){return [.35,.9,.92];}},Group,BufferGeometry,
+    Float32BufferAttribute:class {constructor(values,size){this.values=values;this.array=values;this.itemSize=size;this.count=values.length/size;}getX(i){return this.values[i*this.itemSize];}getY(i){return this.values[i*this.itemSize+1];}getZ(i){return this.values[i*this.itemSize+2];}},
+    Triangle:class {containsPoint(){return true;}},
     Line:SceneObject,Points:SceneObject,LineBasicMaterial:class {dispose(){}},
     PointsMaterial:class {dispose(){}},ShapeUtils:{triangulateShape(){return [];}}};
 const viewer={renderer:{domElement:canvas},inputHandler:{enabled:true},
     scene:{view:{position:new Vector3(20,30,40),yaw:.4,pitch:-.3,radius:12},cameraMode:1,
-        scene:{items:[],add(value){this.items.push(value);}},
+        scene:{items:[],add(value){this.items.push(value);},remove(value){this.items=this.items.filter(item=>item!==value);}},
         getActiveCamera(){return {clone(){return {};}};}},
     setCameraMode(mode){this.scene.cameraMode=mode;},
     setTopView(){this.scene.view.yaw=0;this.scene.view.pitch=-Math.PI/2;}};
@@ -271,6 +277,43 @@ editor.command({action:"linked_view",view:{view_id:"slice",view_type:"VERTICAL_S
         vertical_limits:[0,10]}}});
 assert.equal(tick().annotation_count,1);
 assert.deepEqual(annotationGroup.children[0].origin,[10,1,5]);
+editor.command({action:"scene_visibility",visibility:{selection:false,measurements:false,annotations:false}});
+const hiddenScene=tick();
+assert.deepEqual(JSON.parse(JSON.stringify(hiddenScene.scene_visibility)),
+    {selection:false,measurements:false,annotations:false});
+assert.equal(measurementGroup.visible,false);
+assert.equal(annotationGroup.visible,false);
+editor.command({action:"scene_visibility",visibility:{selection:true,measurements:true,annotations:true}});
+assert.equal(measurementGroup.visible,true);
+assert.equal(annotationGroup.visible,true);
+// Current-selection visibility changes only renderer presentation. The source
+// class buffer remains immutable and the authoritative selection stays loaded.
+THREE.ShapeUtils.triangulateShape=()=>[[0,1,2]];
+const sourceClasses=new Uint8Array([2]);
+const sourcePositions=new Float32Array([10,20,30]);
+const nodeGeometry=new BufferGeometry();
+nodeGeometry.setAttribute("classification",new THREE.Float32BufferAttribute(sourceClasses,1));
+nodeGeometry.setAttribute("position",new THREE.Float32BufferAttribute(sourcePositions,3));
+const node={name:"root",geometryNode:{geometry:nodeGeometry,boundingBox:{clone(){return {min:{x:0,y:0},max:{x:100,y:100},applyMatrix4(){return this;}};}}},
+    sceneNode:{matrixWorld:{elements:Array(16).fill(0)}}};
+cloud.visibleNodes=[node];
+editor.command({action:"linked_view",view:{view_id:"overview",view_type:"OVERVIEW_3D"}});
+editor.command({action:"selection_tool",tool:"Pointer",mode:"REPLACE",purpose:"EDIT"});
+editor.command({action:"selection_test",geometry:[[0,0],[20,0],[20,40],[0,0]]});
+tick();
+for(const fn of queue.splice(0))fn();
+assert.equal(tick().highlighted_points,1);
+editor.command({action:"scene_visibility",visibility:{selection:false}});
+tick();
+for(const fn of queue.splice(0))fn();
+const hiddenSelection=tick();
+assert.equal(hiddenSelection.highlighted_points,0);
+assert.equal(hiddenSelection.source_buffers_unchanged,true);
+assert.deepEqual(Array.from(sourceClasses),[2]);
+editor.command({action:"scene_visibility",visibility:{selection:true}});
+editor.command({action:"linked_view",view:{view_id:"slice",view_type:"VERTICAL_SLICE",
+    geometry:{a:[0,0],b:[100,0],thickness:4,vertical_axis:"HeightAboveGround",
+        vertical_limits:[0,10]}}});
 editor.command({action:"measurement_tool",kind:"PROFILE_DISTANCE",purpose:"TREE_HEIGHT"});
 click(5,0);click(9,20);
 const treeHeight=tick().event;

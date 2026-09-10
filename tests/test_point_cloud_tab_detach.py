@@ -28,8 +28,31 @@ class TabDetachTests(unittest.TestCase):
                   "point_cloud_linked_views.py").read_text(encoding="utf-8")
         for label in ("Save Current Viewpoint...", "Open Saved Viewpoint...",
                       "Remove Saved Viewpoint...", "Rename Active View...",
-                      "Linked Views"):
+                      "Linked Views", "Scene overlays", "Current selection",
+                      "Measurements", "Linked markers"):
             self.assertIn(label, source)
+
+    def test_scene_visibility_updates_only_active_view_and_its_renderer(self):
+        from pyforestscan_qgis.core.point_cloud.workspace import (
+            AreaGeometry, PointCloudWorkspaceModel, ViewType)
+        from dataclasses import asdict
+        model = PointCloudWorkspaceModel()
+        model.register(view_id="overview")
+        detail = model.register(ViewType.AREA_DETAIL, "Crown Detail",
+            geometry=asdict(AreaGeometry("SQUARE", "EPSG:32605", (1,2), 30, 30)))
+        model.activate(detail)
+        worker = Mock()
+        page = SimpleNamespace(workspace=model, status=Mock())
+        owner = SimpleNamespace(page=page, scene_actions={
+            "selection":SimpleNamespace(text=lambda:"Current selection")},
+            view_worker=lambda key:worker if key == detail else None, persist=Mock(),
+            active=lambda:model.views[model.active_view_id])
+        LinkedViews.set_scene_visibility(owner, "selection", False)
+        self.assertTrue(model.views["overview"].scene_visibility["selection"])
+        self.assertFalse(model.views[detail].scene_visibility["selection"])
+        worker.send.assert_called_once_with({"action":"scene_visibility",
+            "visibility":{"selection":False,"measurements":True,"annotations":True}})
+        owner.persist.assert_called_once()
 
     def test_dynamic_linked_view_menu_lists_named_views_and_window_state(self):
         from pyforestscan_qgis.core.point_cloud.workspace import (
@@ -41,10 +64,17 @@ class TabDetachTests(unittest.TestCase):
             geometry=asdict(AreaGeometry("SQUARE", "EPSG:32605", (1,2), 30, 30)))
         menu = QMenu()
         self.addCleanup(menu.deleteLater)
+        scene_menu = QMenu()
+        self.addCleanup(scene_menu.deleteLater)
+        scene_actions = {key:scene_menu.addAction(key) for key in (
+            "selection", "measurements", "annotations")}
+        for action in scene_actions.values():
+            action.setCheckable(True)
         detached = Mock()
         detached.isActiveWindow.return_value = False
         owner = SimpleNamespace(page=SimpleNamespace(workspace=model),
             linked_views_menu=menu, detached={detail:detached},
+            scene_actions=scene_actions, active=lambda:model.views[model.active_view_id],
             refresh_viewpoint_actions=Mock(), open_linked_view=Mock())
         LinkedViews.refresh_view_actions(owner)
         self.assertEqual([action.text() for action in menu.actions()],

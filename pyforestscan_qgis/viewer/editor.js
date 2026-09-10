@@ -19,6 +19,7 @@ let objectFocusMode = "SHOW_ALL";
 let measurementDraft = [], measurementGroup = null, measurementCount = 0;
 let measurementKind = "POINT_DISTANCE", measurementPurpose = "CROSS_SECTION", measurementItems = [];
 let annotationGroup = null, annotationCount = 0, annotationItems = [];
+let sceneVisibility = {selection:true, measurements:true, annotations:true};
 function sourceAttribute(geometry, name) {
     const extra = geometry._pfsOriginalDimensions && geometry._pfsOriginalDimensions[name];
     return extra ? {array:extra} : geometry.getAttribute(name) || geometry.getAttribute(name.toLowerCase());
@@ -139,6 +140,16 @@ function removeHighlight(record) {
         record.highlight = null;
     }
 }
+function setSceneVisibility(value) {
+    if (!value || typeof value !== "object") return false;
+    for (const key of ["selection", "measurements", "annotations"])
+        if (key in value && typeof value[key] !== "boolean") return false;
+    sceneVisibility = {...sceneVisibility, ...value};
+    if (measurementGroup) measurementGroup.visible = sceneVisibility.measurements;
+    if (annotationGroup) annotationGroup.visible = sceneVisibility.annotations;
+    for (const record of records.values()) record.revision = -1;
+    return true;
+}
 function applyObjectFocus() {
     const focus = window.viewerRenderPolicy.objectFocus(objectFocusMode, selection.length > 0);
     if (context && context.cloud.material.opacity !== focus.opacity)
@@ -177,6 +188,7 @@ function renderMeasurements(items) {
         measurementGroup.name = "PyForestScan measurements";
         context.viewer.scene.scene.add(measurementGroup);
     }
+    measurementGroup.visible = sceneVisibility.measurements;
     while (measurementGroup.children.length) {
         const child = measurementGroup.children.pop();
         if (child.geometry) child.geometry.dispose();
@@ -283,6 +295,7 @@ function renderAnnotations(items) {
         annotationGroup.name="PyForestScan annotations";
         context.viewer.scene.scene.add(annotationGroup);
     }
+    annotationGroup.visible=sceneVisibility.annotations;
     while (annotationGroup.children.length) {
         const child=annotationGroup.children.pop();
         if (child.geometry) child.geometry.dispose();
@@ -585,7 +598,7 @@ function paint() {
                 (!filters.height_filter || displayZ >= filters.height_filter[0] && displayZ <= filters.height_filter[1]);
             const selected = matches(selection, point, original[i], geometry, i);
             let color = null;
-            if (selected) color = selectionColor.toArray();
+            if (selected && sceneVisibility.selection) color = selectionColor.toArray();
             else if (removed) color = [1, .25, .65];
             else if (withheld) color = [1, .8, .2];
             else if (objectEdited) color = [.25, .85, .55];
@@ -654,6 +667,7 @@ window.pointCloudEditor = {
             object_focus_mode: objectFocus.requested, object_focus_effective: objectFocus.effective,
             measurement_count: measurementCount,
             annotation_count: annotationCount,
+            scene_visibility: {...sceneVisibility},
             source_buffers_unchanged: Array.from(records.values()).every(r => r.sourceUnchanged !== false),
             overlay_diagnostics: Array.from(records.values()).slice(0, 3).map(r => ({
                 node: r.node.name, edits: (r.edits || []).length,
@@ -668,6 +682,10 @@ window.pointCloudEditor = {
             if (context && annotationGroup) renderAnnotations(annotationItems);
         }
         if (!context) return;
+        if (command.action === "scene_visibility") {
+            setSceneVisibility(command.visibility);
+            return;
+        }
         if (command.action === "measurement_tool") {
             if (command.kind && !["POINT_DISTANCE","PROFILE_DISTANCE"].includes(command.kind)) return;
             if (command.kind === "PROFILE_DISTANCE" &&

@@ -4,7 +4,7 @@ import json
 import unittest
 from pyforestscan_qgis.core.point_cloud.workspace import (
     PointCloudWorkspaceModel, ViewType, AreaGeometry, SliceGeometry,
-    ViewerResourceCoordinator)
+    ViewerResourceCoordinator, scene_visibility)
 
 
 class WorkspaceTests(unittest.TestCase):
@@ -48,6 +48,35 @@ class WorkspaceTests(unittest.TestCase):
         model.update_view(detail, display_filters={"classes": [2]})
         self.assertEqual(model.views[overview].display_filters, {})
         self.assertEqual(model.global_filters, {})
+
+    def test_scene_overlays_are_per_view_persistent_and_not_editor_authority(self):
+        model, overview = self.model()
+        detail = self.detail(model)
+        model.update_view(detail, scene_visibility={"selection": False,
+            "measurements": True, "annotations": False})
+        self.assertEqual(model.views[overview].scene_visibility, scene_visibility())
+        self.assertFalse(model.views[detail].scene_visibility["selection"])
+        self.assertFalse(model.views[detail].scene_visibility["annotations"])
+        self.assertEqual(model.editor_snapshot["source_fingerprint"], "a" * 64)
+        restored = PointCloudWorkspaceModel.restore(
+            json.loads(json.dumps(model.to_dict())), "a" * 64)
+        self.assertEqual(restored.views[detail].scene_visibility,
+                         model.views[detail].scene_visibility)
+
+    def test_scene_visibility_rejects_unknown_or_non_boolean_values(self):
+        model, overview = self.model()
+        with self.assertRaisesRegex(ValueError, "unsupported overlay"):
+            model.update_view(overview, scene_visibility={"source": False})
+        with self.assertRaisesRegex(ValueError, "true or false"):
+            model.update_view(overview, scene_visibility={"selection": 0})
+
+    def test_schema_one_workspace_restores_with_visible_scene_defaults(self):
+        model, overview = self.model()
+        raw = json.loads(json.dumps(model.to_dict()))
+        raw["schema"] = 1
+        raw["views"][0].pop("scene_visibility")
+        restored = PointCloudWorkspaceModel.restore(raw, "a" * 64)
+        self.assertEqual(restored.views[overview].scene_visibility, scene_visibility())
 
     def test_views_cannot_replace_journal_or_selection(self):
         model, overview = self.model()

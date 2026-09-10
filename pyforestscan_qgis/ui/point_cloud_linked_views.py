@@ -51,6 +51,21 @@ class LinkedViews(QObject):
         self.create.setToolTip("View options: adjust the current region, open the selected area or manage linked windows. Selection and edit history remain shared.")
         menu = QMenu(self.create)
         self.linked_views_menu = menu.addMenu("Linked Views")
+        self.scene_menu = menu.addMenu("Scene overlays")
+        self.scene_actions = {}
+        for key, label, help_text in (
+                ("selection", "Current selection",
+                 "Show or hide the current selection highlight in this view. The authoritative selection and staged edits are unchanged."),
+                ("measurements", "Measurements",
+                 "Show or hide source-resolved measurement lines in this view."),
+                ("annotations", "Linked markers",
+                 "Show or hide source-resolved linked markers in this view.")):
+            action = self.scene_menu.addAction(label)
+            action.setCheckable(True)
+            action.setToolTip(help_text)
+            action.triggered.connect(
+                lambda checked=False, overlay=key: self.set_scene_visibility(overlay, checked))
+            self.scene_actions[key] = action
         for label, tool, purpose in (("Area Detail: Polygon", "Polygon", "CREATE_AREA"),):
             action = menu.addAction(label)
             action.triggered.connect(lambda _=False, t=tool, p=purpose: self.draw(t,p))
@@ -192,6 +207,32 @@ class LinkedViews(QObject):
         command = {"action":"annotations", "annotations":list(annotations or [])}
         for worker in self.viewer_workers():
             worker.send(command)
+
+    def view_worker(self, view_id):
+        if view_id == self.rendered_id and self.page.worker:
+            return self.page.worker
+        entry = self.residents.parked.get(view_id)
+        if entry:
+            return entry["worker"]
+        window = self.detached.get(view_id)
+        return window.worker if window else None
+
+    def set_scene_visibility(self, overlay, visible, *, persist=True):
+        from ..core.point_cloud.workspace import scene_visibility
+        view = self.active()
+        values = scene_visibility(view.scene_visibility)
+        if overlay not in values:
+            self.page.status.setText("That scene overlay is not supported.")
+            return
+        values[overlay] = bool(visible)
+        self.page.workspace.update_view(view.view_id, scene_visibility=values)
+        worker = self.view_worker(view.view_id)
+        if worker:
+            worker.send({"action":"scene_visibility", "visibility":values})
+        if persist:
+            self.persist()
+        state = "shown" if visible else "hidden"
+        self.page.status.setText(f"{self.scene_actions[overlay].text()} {state} in {view.title}.")
 
     @property
     def depth_error(self):
@@ -342,6 +383,9 @@ class LinkedViews(QObject):
 
     def refresh_view_actions(self):
         self.refresh_viewpoint_actions()
+        visibility = self.active().scene_visibility
+        for key, action in self.scene_actions.items():
+            action.setChecked(visibility.get(key, True))
         self.linked_views_menu.clear()
         labels = {
             ViewType.OVERVIEW_3D: "Overview",
@@ -634,6 +678,7 @@ class LinkedViews(QObject):
         if view.view_type != ViewType.OVERVIEW_3D:
             context["corridor"] = view_ring(context)
         self.page.send({"action":"linked_view","view":context})
+        self.page.send({"action":"scene_visibility", "visibility":view.scene_visibility})
         self.page.send(self.object_focus_command())
         self.page.send({"action":"measurements",
                         "measurements":list(self.page.editor.state.get("measurements") or [])})

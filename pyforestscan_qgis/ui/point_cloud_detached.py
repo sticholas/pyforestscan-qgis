@@ -242,6 +242,7 @@ class DetachedView(QDialog):
             if view.view_type != "OVERVIEW_3D":
                 context["corridor"] = view_ring(context)
             self.send({"action":"linked_view","view":context})
+            self.send({"action":"scene_visibility", "visibility":view.scene_visibility})
             if view.camera:
                 self.send({"action":"camera","camera":view.camera})
             self.mode.setCurrentText(view.render_mode)

@@ -64,6 +64,12 @@ Editor and do not change the `0.2.0-beta.1` release boundary.
   horizontal offset and whether the vertical basis is elevation or stored HAG.
   HAG bases outside a one-unit ground tolerance and all elevation-based heights
   receive explicit interpretation guidance; zero-height picks fail closed.
+- View options now provides compact per-view Scene overlays controls for the
+  current selection, measurements and linked markers. Visibility is persisted
+  in the existing source-bound linked-view record and sent only to that view's
+  renderer. Hiding an overlay never clears a selection, changes a staged edit,
+  modifies the journal or rebuilds the cloud; legacy saved workspaces restore
+  with all overlays visible.
 
 ## IN PROGRESS
 
