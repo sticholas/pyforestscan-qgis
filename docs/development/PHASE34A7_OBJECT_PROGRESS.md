@@ -62,21 +62,24 @@ operations remain experimental and incomplete.
   invalidates the prior result, so stale effective totals are not presented as
   current. The audit is user-invoked, cancellable and bounded by SQLite rather
   than the number of object IDs fitting in QGIS memory.
+- Added explicit Reviewed/Not Reviewed state and notes for exact catalog
+  objects. The managed editor worker owns one source-fingerprinted, bounded
+  session ledger, and updates require the current exact object selection.
+  Review metadata survives session autosave/recovery but is deliberately not a
+  point edit, journal operation, LAS dimension or exported cloud attribute.
 
 ## IN PROGRESS
 
 Discovery, navigation, guarded assignment/unassignment, collision-safe object
 creation, guarded split/merge, exact effective counts and presentation-only
-focus are foundations. Reviewed
-state and notes are not yet complete. Live object-focus acceptance still needs
-a source with a meaningful segmentation field.
+focus, review state and notes are foundations. Live object-focus acceptance
+still needs a source with a meaningful segmentation field.
 
 ## NEXT
 
-1. Add reviewed/unreviewed state and notes without encoding review metadata into
-   immutable source dimensions implicitly.
-3. Qualify linked-view focus on a real segmented forestry source and record
-   frame-time, displayed-point and source-immutability evidence.
+1. Qualify linked-view focus and object operations on a real segmented forestry
+   source and record frame-time, displayed-point and source-immutability
+   evidence.
 
 ## BLOCKED
 

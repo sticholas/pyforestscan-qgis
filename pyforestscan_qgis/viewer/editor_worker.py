@@ -125,6 +125,13 @@ def main():
                 base["allocation_exhausted"] = True
             session.visibility["object_id_policy"] = base
         session.save(autosave)
+        reviews = session.visibility.get("object_reviews")
+        active = session.visibility.get("active_object")
+        current_review = None
+        if active:
+            from pyforestscan_qgis.core.point_cloud.object_review import object_review_record
+            current_review = object_review_record(reviews, session.source.sha256,
+                                                  active["field"], active["object_id"])
         edits = []
         history = []
         for op in session.operations:
@@ -157,6 +164,8 @@ def main():
               "object_field_discovery": session.visibility.get("object_field_discovery"),
               "object_catalog": session.visibility.get("object_catalog"),
               "effective_object_audit": session.visibility.get("effective_object_audit"),
+              "object_reviews": reviews,
+              "current_object_review": current_review,
               "active_object": session.visibility.get("active_object"),
               "object_split_source": session.visibility.get("object_split_source"),
               "object_id_policy": session.visibility.get("object_id_policy"),
@@ -572,6 +581,25 @@ def main():
                     session.visibility["effective_object_audit"] = report
                     session.save(autosave)
                     snapshot(highlight=False)
+                elif action == "set_object_review":
+                    from pyforestscan_qgis.core.point_cloud.object_review import update_object_review
+                    active = session.visibility.get("active_object") or {}
+                    catalog = session.visibility.get("object_catalog") or {}
+                    if (result is None or command.get("selection_id") != result.selection_id
+                            or active.get("selection_id") != result.selection_id
+                            or active.get("field") != catalog.get("field")
+                            or catalog.get("source_sha256") != session.source.sha256):
+                        raise ValueError("Select the exact catalog object before updating its review.")
+                    keyword = {}
+                    if "reviewed" in command:
+                        keyword["reviewed"] = command["reviewed"]
+                    if "note" in command:
+                        keyword["note"] = command["note"]
+                    session.visibility["object_reviews"] = update_object_review(
+                        session.visibility.get("object_reviews"), session.source.sha256,
+                        active["field"], active["object_id"], **keyword)
+                    session.save(autosave)
+                    snapshot()
                 elif action == "save":
                     progress("Verifying and saving session")
                     session.source.verify(cancelled=cancelled.is_set)

@@ -207,6 +207,9 @@ class SelectionToolTests(unittest.TestCase):
         self.assertFalse(editor.merge_object_action.isEnabled())
         self.assertFalse(editor.effective_object_audit_action.isEnabled())
         self.assertFalse(editor.effective_object_results_action.isEnabled())
+        self.assertFalse(editor.mark_object_reviewed_action.isEnabled())
+        self.assertFalse(editor.mark_object_unreviewed_action.isEnabled())
+        self.assertFalse(editor.edit_object_note_action.isEnabled())
         self.assertTrue(editor.show_all_objects_action.isChecked())
         self.assertFalse(editor.fade_other_objects_action.isEnabled())
         self.assertFalse(editor.isolate_object_action.isEnabled())
@@ -238,6 +241,9 @@ class SelectionToolTests(unittest.TestCase):
         self.assertTrue(editor.merge_object_action.isEnabled())
         self.assertTrue(editor.effective_object_audit_action.isEnabled())
         self.assertFalse(editor.effective_object_results_action.isEnabled())
+        self.assertTrue(editor.mark_object_reviewed_action.isEnabled())
+        self.assertTrue(editor.mark_object_unreviewed_action.isEnabled())
+        self.assertTrue(editor.edit_object_note_action.isEnabled())
         self.assertFalse(editor.finish_object_split_action.isEnabled())
         editor.state["object_split_source"] = {"field":"Tree_ID", "object_id":2,
             "original_point_count":12, "source_sha256":"a"*64}
@@ -315,6 +321,23 @@ class SelectionToolTests(unittest.TestCase):
             editor.merge_active_object()
         editor.send.assert_called_once_with("merge_object", selection_id="exact",
                                             target_object_id="1")
+
+    def test_object_review_actions_are_session_metadata_commands(self):
+        editor = EditorPanel(None)
+        self.addCleanup(editor.deleteLater)
+        editor.state = {"selection":{"selection_id":"exact", "resolved_point_count":12},
+            "active_object":{"field":"Tree_ID", "object_id":2},
+            "current_object_review":{"reviewed":False, "note":"old"}}
+        editor.send = Mock()
+        editor.set_object_reviewed(True)
+        editor.send.assert_called_once_with("set_object_review", selection_id="exact",
+                                            reviewed=True)
+        editor.send.reset_mock()
+        with patch("pyforestscan_qgis.ui.point_cloud_editor.QInputDialog.getMultiLineText",
+                   return_value=("new note", True)):
+            editor.edit_object_note()
+        editor.send.assert_called_once_with("set_object_review", selection_id="exact",
+                                            note="new note")
 
     def test_object_focus_broadcasts_once_to_all_linked_renderers(self):
         workers = [Mock(), Mock(), Mock()]

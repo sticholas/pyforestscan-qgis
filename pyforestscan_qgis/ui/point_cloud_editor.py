@@ -353,6 +353,19 @@ class EditorPanel(QWidget):
             lambda: self.send("effective_object_audit"))
         self.effective_object_results_action = self.object_menu.addAction("Effective Count Results")
         self.effective_object_results_action.triggered.connect(self.show_effective_object_audit)
+        self.object_review_menu = self.object_menu.addMenu("Review / Notes")
+        self.mark_object_reviewed_action = self.object_review_menu.addAction("Mark Reviewed")
+        self.mark_object_reviewed_action.triggered.connect(
+            lambda: self.set_object_reviewed(True))
+        self.mark_object_unreviewed_action = self.object_review_menu.addAction("Mark Not Reviewed")
+        self.mark_object_unreviewed_action.triggered.connect(
+            lambda: self.set_object_reviewed(False))
+        self.edit_object_note_action = self.object_review_menu.addAction("Add or Edit Note...")
+        self.edit_object_note_action.setToolTip(
+            "Save a session note for the exact source object. Notes are not written into LAS dimensions or exports.")
+        self.edit_object_note_action.triggered.connect(self.edit_object_note)
+        self.show_object_review_action = self.object_review_menu.addAction("Review Details")
+        self.show_object_review_action.triggered.connect(self.show_object_review)
         self.recover_action = details_menu.addAction("Recover Autosaved Session")
         self.recover_action.triggered.connect(self.recover_session)
         self.logs_action = details_menu.addAction("Open Editor Diagnostics")
@@ -446,6 +459,11 @@ class EditorPanel(QWidget):
             and self.state["object_id_policy"].get("next_available_object_id") is not None)
         self.cancel_object_split_action.setEnabled(ready and bool(split_source))
         self.merge_object_action.setEnabled(ready and selected and has_policy and exact_active)
+        for action in (self.mark_object_reviewed_action,
+                       self.mark_object_unreviewed_action,
+                       self.edit_object_note_action,
+                       self.show_object_review_action):
+            action.setEnabled(ready and exact_active)
         focus_mode = (self.page.linked.object_focus_mode if hasattr(self.page, "linked") else "SHOW_ALL")
         focus_available = ready and selected and bool(active_object)
         self.show_all_objects_action.setEnabled(ready)
@@ -828,6 +846,35 @@ class EditorPanel(QWidget):
                       "The original catalog and source are unchanged."))
         QMessageBox.information(self, "Effective Object Counts", "\n".join(lines))
 
+    def set_object_reviewed(self, reviewed):
+        selection = self.state.get("selection") or {}
+        if type(reviewed) is bool and selection.get("resolved_point_count"):
+            self.send("set_object_review", selection_id=selection["selection_id"],
+                      reviewed=reviewed)
+
+    def edit_object_note(self):
+        selection = self.state.get("selection") or {}
+        active = self.state.get("active_object") or {}
+        if not active or not selection.get("resolved_point_count"):
+            return
+        current = self.state.get("current_object_review") or {}
+        note, accepted = QInputDialog.getMultiLineText(self, "Object Note",
+            f"Note for {active['field']} object {active['object_id']}",
+            current.get("note", ""))
+        if accepted:
+            self.send("set_object_review", selection_id=selection["selection_id"], note=note)
+
+    def show_object_review(self):
+        active = self.state.get("active_object") or {}
+        record = self.state.get("current_object_review") or {}
+        if not active or not record:
+            return
+        state = "Reviewed" if record.get("reviewed") else "Not reviewed"
+        note = record.get("note") or "No note"
+        QMessageBox.information(self, "Object Review",
+            f"{active['field']} object {active['object_id']}\n{state}\n\n{note}\n\n"
+            "Review metadata is stored in the editing session, not in source points or exports.")
+
     def update_state(self, value):
         completed_action = self.pending_action
         if value.get("ready") or value.get("error"):
@@ -911,6 +958,12 @@ class EditorPanel(QWidget):
                 from ..core.point_cloud.object_audit import effective_object_audit_summary
                 self.summary.setText(effective_object_audit_summary(
                     value["effective_object_audit"]))
+            if completed_action == "set_object_review" and value.get("current_object_review"):
+                from ..core.point_cloud.object_review import object_review_summary
+                active = value.get("active_object") or {}
+                self.summary.setText(
+                    f"{active.get('field')} object {active.get('object_id')} | "
+                    + object_review_summary(value["current_object_review"]))
             self.page.session_status.setText(f"Session: Autosaved | {value['edits']} staged edits, not a source rewrite")
             self.history.clear()
             self.history.addItems(value.get("history", []))
