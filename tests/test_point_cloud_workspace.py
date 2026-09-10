@@ -100,6 +100,22 @@ class WorkspaceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             PointCloudWorkspaceModel.restore(raw, "b"*64)
 
+    def test_profile_camera_color_and_point_appearance_roundtrip(self):
+        model, _ = self.model()
+        profile = model.register(ViewType.VERTICAL_SLICE, "Canopy Profile",
+            geometry=asdict(SliceGeometry((0,0),(20,0),4,"EPSG:32605",
+                display_projection="PROFILE_DISTANCE")))
+        camera = {"position":[10.,0.,25.], "yaw":0., "pitch":0., "radius":18.}
+        model.update_view(profile, camera=camera, render_mode="Intensity",
+            lod={"quality":"High Detail", "point_style":"Circular", "point_size":5})
+        restored = PointCloudWorkspaceModel.restore(
+            json.loads(json.dumps(model.to_dict())), "a"*64)
+        view = restored.views[profile]
+        self.assertEqual(view.camera["position"], [10.,0.,25.])
+        self.assertEqual(view.render_mode, "Intensity")
+        self.assertEqual(view.lod, {"quality":"High Detail",
+                                   "point_style":"Circular", "point_size":5})
+
     def test_linked_view_names_are_validated_unique_and_persisted(self):
         model, _ = self.model()
         detail = self.detail(model)

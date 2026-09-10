@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 try:
     from qgis.PyQt.QtCore import QEvent, QPoint, QPointF, Qt, QObject, pyqtSignal
     from qgis.PyQt.QtGui import QMouseEvent
-    from qgis.PyQt.QtWidgets import QApplication, QListWidget, QMessageBox, QMenu
+    from qgis.PyQt.QtWidgets import QApplication, QListWidget, QMessageBox, QMenu, QLabel
     from pyforestscan_qgis.compat.qt import qt_enum
     from pyforestscan_qgis.ui.point_cloud_detached import LinkedTabBar, DetachedView
     from pyforestscan_qgis.ui.point_cloud_tools import SelectionTools
@@ -24,6 +24,15 @@ except ImportError:
 
 @unittest.skipIf(QApplication is None, "Requires QGIS Qt")
 class TabDetachTests(unittest.TestCase):
+    def test_point_cloud_page_exposes_explicit_profile_display_controls(self):
+        page = PointCloudPage()
+        self.addCleanup(page.deleteLater)
+        self.addCleanup(page.prepare_for_unload)
+        self.assertEqual(page.mode.accessibleName(), "Color By")
+        self.assertIn("Color By", [label.text() for label in page.findChildren(QLabel)])
+        self.assertEqual(page.appearance.style_combo.currentText(), "Circular")
+        self.assertEqual(page.appearance.size_spin.value(), 0)
+
     def test_linked_view_menu_exposes_compact_saved_viewpoint_actions(self):
         source = (Path(__file__).parents[1]/"pyforestscan_qgis"/"ui"/
                   "point_cloud_linked_views.py").read_text(encoding="utf-8")

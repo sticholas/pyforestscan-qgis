@@ -34,8 +34,12 @@ def validate_view_state(state):
     quality = state.get("quality", "Automatic")
     if quality not in ("Automatic", "Performance", "Balanced", "High Detail"):
         raise ValueError("Unsupported viewer quality preset.")
+    from .point_appearance import point_appearance
+    appearance = point_appearance(state.get("point_style", "Circular"),
+                                  state.get("point_size", 0))
     return {"camera": camera, "mode": mode, "quality": quality, "classes": list(classes) if classes is not None else None,
-            "height_filter": list(height) if height is not None else None}
+            "height_filter": list(height) if height is not None else None,
+            **appearance}
 
 
 def view_state_matches(actual, expected):
@@ -44,7 +48,8 @@ def view_state_matches(actual, expected):
         actual, expected = validate_view_state(actual), validate_view_state(expected)
     except (ValueError, TypeError, AttributeError):
         return False
-    if any(actual[key] != expected[key] for key in ("mode", "classes", "height_filter", "quality")):
+    if any(actual[key] != expected[key] for key in (
+            "mode", "classes", "height_filter", "quality", "point_style", "point_size")):
         return False
     a, b = actual["camera"], expected["camera"]
     return (all(math.isclose(x, y, rel_tol=0, abs_tol=1e-5) for x, y in zip(a["position"], b["position"])) and
@@ -61,6 +66,7 @@ def save_view_session(path, source, state, *, existing=None, source_crs="", dime
         identity, source_crs, tuple(dimensions))
     session.camera = values["camera"]
     session.visibility.update(render_mode=values["mode"], quality=values["quality"],
+                              point_style=values["point_style"], point_size=values["point_size"],
                               viewer_backend="ISOLATED_WEBENGINE_POTREE",
                               cache_identity=copy.deepcopy(cache_identity or {}))
     session.filters.update(classes=values["classes"], z=values["height_filter"])
@@ -84,5 +90,7 @@ def session_view_state(session):
     return {"camera": copy.deepcopy(session.camera),
             "quality": "Automatic" if session.visibility.get("quality", "Automatic") == "AUTOMATIC" else session.visibility.get("quality", "Automatic"),
             "mode": session.visibility.get("render_mode", "Classification"),
+            "point_style": session.visibility.get("point_style", "Circular"),
+            "point_size": session.visibility.get("point_size", 0),
             "classes": copy.deepcopy(session.filters.get("classes")),
             "height_filter": copy.deepcopy(session.filters.get("z"))}

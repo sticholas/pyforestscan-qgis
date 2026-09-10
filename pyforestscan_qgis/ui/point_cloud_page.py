@@ -336,6 +336,7 @@ class PointCloudPage(QWidget):
             self.view_buttons.append(button)
         self.mode = QComboBox()
         self.mode.addItems(("Classification", "Elevation", "RGB", "Intensity"))
+        self.mode.setAccessibleName("Color By")
         self.mode.setToolTip("RGB uses stored Red, Green and Blue attributes. Missing, zero or constant colors are diagnosed separately from rendering failures. Display modes never alter source attributes.")
         self.mode.currentTextChanged.connect(lambda value: self.send({"action": "mode", "mode": value}))
         layout.addLayout(toolbar)
@@ -345,6 +346,9 @@ class PointCloudPage(QWidget):
         self.navigation_mode.currentTextChanged.connect(lambda value: self.send({"action": "navigation", "mode": value}))
         toolbar.addWidget(self.navigation_mode, 1)
         display_row = QHBoxLayout()
+        color_label = QLabel("Color By")
+        color_label.setBuddy(self.mode)
+        display_row.addWidget(color_label)
         display_row.addWidget(self.mode, 1)
         from .point_cloud_appearance import PointAppearance
         self.appearance = PointAppearance(self.send, self)
@@ -804,6 +808,10 @@ class PointCloudPage(QWidget):
                 self.send({"action": "quality", "quality": restored.get("quality", "Automatic")})
                 self.mode.setCurrentText(restored["mode"])
                 self.send({"action": "mode", "mode": restored["mode"]})
+                self.appearance.sync(restored)
+                self.send({"action": "point_display",
+                           "style": restored.get("point_style", "Circular"),
+                           "size": restored.get("point_size", 0)})
                 self.send({"action": "clear_filters"})
                 self._sync_classes(restored["classes"])
                 if restored["classes"] is not None:

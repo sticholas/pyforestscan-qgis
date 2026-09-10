@@ -16,7 +16,8 @@ class ViewerSessionTests(unittest.TestCase):
         self.source = self.root / "cloud.laz"
         self.source.write_bytes(b"immutable source fixture")
         self.state = {"camera": {"position": [1., 2., 3.], "yaw": .5, "pitch": -.25, "radius": 12.},
-                      "mode": "Elevation", "classes": [2, 5, 231], "height_filter": [2., 9.]}
+                      "mode": "Elevation", "classes": [2, 5, 231], "height_filter": [2., 9.],
+                      "point_style": "Square", "point_size": 6}
 
     def test_round_trip_uses_existing_session_and_preserves_source(self):
         before = hashlib.sha256(self.source.read_bytes()).hexdigest()
@@ -51,7 +52,8 @@ class ViewerSessionTests(unittest.TestCase):
 
     def test_invalid_view_state_rejected(self):
         for state in ({**self.state, "classes": [256]}, {**self.state, "height_filter": [9, 2]},
-                      {**self.state, "camera": {**self.state["camera"], "radius": float("nan")}}):
+                      {**self.state, "camera": {**self.state["camera"], "radius": float("nan")}},
+                      {**self.state, "point_style": "Voxel"}, {**self.state, "point_size": 17}):
             with self.assertRaises(ValueError):
                 validate_view_state(state)
 
@@ -65,6 +67,8 @@ class ViewerSessionTests(unittest.TestCase):
         self.assertTrue(view_state_matches(self.state, self.state))
         self.assertFalse(view_state_matches({**self.state, "mode": "Classification"}, self.state))
         self.assertFalse(view_state_matches({**self.state, "classes": None}, self.state))
+        self.assertFalse(view_state_matches({**self.state, "point_size": 5}, self.state))
+        self.assertFalse(view_state_matches({**self.state, "point_style": "Circular"}, self.state))
         self.assertFalse(view_state_matches({}, self.state))
         moved = {**self.state, "camera": {**self.state["camera"], "position": [2, 2, 3]}}
         self.assertFalse(view_state_matches(moved, self.state))

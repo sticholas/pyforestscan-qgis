@@ -6,6 +6,9 @@
   elevation/HAG, classification, and distance-along-profile readouts. Profile
   hover uses original XYZ cache provenance without creating another selection
   or edit authority.
+- Made the existing Color By and Point Size controls explicit profile quick
+  controls and extended exact session restoration to acknowledge camera, color,
+  filters, quality, point style, and point size together.
 
 - Added compact Fit, Reverse and corridor Width controls to the existing
   source-linked Vertical Slice workflow.

@@ -878,7 +878,9 @@ class LinkedViews(QObject):
         self.page._restore_after_open = {"camera":view.camera or telemetry["camera"],
             "mode":view.render_mode,"classes":view.display_filters.get("classes"),
             "height_filter":view.display_filters.get("height_filter"),
-            "quality":view.lod.get("quality","Automatic")}
+            "quality":view.lod.get("quality","Automatic"),
+            "point_style":view.lod.get("point_style","Circular"),
+            "point_size":view.lod.get("point_size",0)}
         if not view.camera:
             self.page._restore_after_open = None
             self.page.send({"action":"mode","mode":view.render_mode})

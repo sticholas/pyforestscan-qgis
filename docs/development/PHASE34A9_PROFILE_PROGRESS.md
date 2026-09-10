@@ -50,6 +50,14 @@ Cursor state is intentionally neither persisted nor admitted to selection or
 edit authority. Picking temporarily exposes CPU provenance to Potree and removes
 the temporary GPU attributes immediately afterward.
 
+The shared display row now names its rendering selector **Color By** and remains
+directly available in Profile. Color mode, circular/square point style, point
+size, quality, filters, and camera remain per-view workspace state. Restoration
+now waits for renderer acknowledgement of point style and size as well as camera,
+color mode, filters, and quality; the top-level non-destructive edit session also
+retains those appearance choices. This reuses the existing workspace authority
+instead of introducing duplicate profile controls or state.
+
 Architecture decision: **REUSE** PDAL reader polygon clipping plus the
 established linked-workspace and scene-visibility state; **ADAPT** the raw-source
 range index to per-segment envelopes; **WRAP** flattened display caches with
@@ -64,10 +72,8 @@ membership, per-segment source queries, authoritative selection, measurements,
 annotations, and renderer gesture completion. Existing linked-view tests cover
 the shared workspace and journal boundaries.
 
-Remembered profile camera, profile-specific point-size
-and color quick actions, and sustained human editing acceptance remain
-unfinished. Two-point Vertical Slice remains available alongside the new path
-profile.
+Sustained human profile editing acceptance remains unfinished. Two-point
+Vertical Slice remains available alongside the new path profile.
 
 ## Measured Evidence
 
