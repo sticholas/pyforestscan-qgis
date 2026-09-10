@@ -50,6 +50,8 @@ class SelectionDefinition:
     depth_mode: str = "FULL_COLUMN"
     circle_center: tuple[float, float] | None = None
     circle_radius: float | None = None
+    brush_path: tuple[tuple[float, float], ...] | None = None
+    brush_radius: float | None = None
 
     def __post_init__(self):
         if not self.selection_id or not self.session_id or not self.geometry_crs.strip():
@@ -68,6 +70,9 @@ class SelectionDefinition:
         if any(len(p) != 2 or any(type(v) not in (int, float) or not math.isfinite(v) for v in p) for p in ring):
             raise ValueError("Selection requires finite source XY coordinates.")
         object.__setattr__(self, "geometry", ring)
+        if ((self.circle_center is not None or self.circle_radius is not None)
+                and (self.brush_path is not None or self.brush_radius is not None)):
+            raise ValueError("Selection cannot be both a circle and a brush stroke.")
         if self.circle_center is not None or self.circle_radius is not None:
             center, radius = self.circle_center, self.circle_radius
             if (center is None or len(center) != 2
@@ -79,6 +84,19 @@ class SelectionDefinition:
             if ring != envelope:
                 raise ValueError("Circle query envelope must match its exact source-space bounds.")
             object.__setattr__(self, "circle_center", center)
+        if self.brush_path is not None or self.brush_radius is not None:
+            path, radius = self.brush_path, self.brush_radius
+            if path is None or not 1 <= len(path) <= 512:
+                raise ValueError("Brush requires 1-512 source XY path points.")
+            path = tuple(tuple(point) for point in path)
+            if (any(len(point) != 2 or any(type(v) not in (int, float) or not math.isfinite(v)
+                                          for v in point) for point in path)
+                    or any(a == b for a, b in zip(path, path[1:]))
+                    or type(radius) not in (int, float) or not math.isfinite(radius) or radius <= 0):
+                raise ValueError("Brush requires distinct finite source XY path points and positive radius.")
+            if ring != brush_envelope(path, radius):
+                raise ValueError("Brush query envelope must match its exact source-space bounds.")
+            object.__setattr__(self, "brush_path", path)
         object.__setattr__(self, "z_filter", _range(self.z_filter, "Z"))
         object.__setattr__(self, "hag_filter", _range(self.hag_filter, "HAG"))
         if self.classification_filter is not None:
@@ -217,6 +235,8 @@ def selection_mask(chunk, definitions, shapes=None):
             # conservative query envelope shared with indexing/journal replay.
             mask &= np.hypot((chunk["X"] - cx) / item.circle_radius,
                              (chunk["Y"] - cy) / item.circle_radius) <= 1.0
+        if item.brush_path is not None:
+            mask &= _brush_mask(chunk, item.brush_path, item.brush_radius, np)
         if item.clip_geometry is not None:
             clip = shapely.Polygon(item.clip_geometry)
             if not clip.is_valid or clip.is_empty or clip.area <= 0:
@@ -277,6 +297,42 @@ def circular_selection(definition, *, center, radius):
         raise ValueError("Circle requires finite source XY center and positive radius.")
     return replace(definition, geometry=circle_envelope(center, radius),
                    circle_center=tuple(center), circle_radius=radius)
+
+
+def brush_envelope(path, radius):
+    points = tuple(tuple(point) for point in path)
+    if (not 1 <= len(points) <= 512
+            or any(len(point) != 2 or any(type(v) not in (int, float) or not math.isfinite(v)
+                                         for v in point) for point in points)
+            or any(a == b for a, b in zip(points, points[1:]))
+            or type(radius) not in (int, float) or not math.isfinite(radius) or radius <= 0):
+        raise ValueError("Brush requires distinct finite source XY path points and positive radius.")
+    low_x, high_x = min(p[0] for p in points)-radius, max(p[0] for p in points)+radius
+    low_y, high_y = min(p[1] for p in points)-radius, max(p[1] for p in points)+radius
+    if not all(math.isfinite(v) for v in (low_x, high_x, low_y, high_y)):
+        raise ValueError("Brush extent is outside representable source coordinates.")
+    return ((low_x, low_y), (high_x, low_y), (high_x, high_y),
+            (low_x, high_y), (low_x, low_y))
+
+
+def brush_selection(definition, *, path, radius):
+    """Return one exact round-capped source-space stroke definition."""
+    points = tuple(tuple(point) for point in path)
+    return replace(definition, geometry=brush_envelope(points, radius),
+                   brush_path=points, brush_radius=radius)
+
+
+def _brush_mask(chunk, path, radius, np):
+    x, y = chunk["X"], chunk["Y"]
+    selected = np.zeros(len(chunk), dtype=bool)
+    radius_squared = radius * radius
+    if len(path) == 1:
+        return (x-path[0][0])**2 + (y-path[0][1])**2 <= radius_squared
+    for a, b in zip(path, path[1:]):
+        vx, vy = b[0]-a[0], b[1]-a[1]
+        along = np.clip(((x-a[0])*vx + (y-a[1])*vy)/(vx*vx+vy*vy), 0, 1)
+        selected |= (x-(a[0]+along*vx))**2 + (y-(a[1]+along*vy))**2 <= radius_squared
+    return selected
 
 
 class SelectionResolver:

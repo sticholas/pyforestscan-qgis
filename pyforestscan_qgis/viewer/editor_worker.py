@@ -21,7 +21,7 @@ def visual_definition(item):
     return {key: raw[key] for key in ("geometry", "selection_mode", "z_filter", "hag_filter",
         "classification_filter", "attribute_filters", "view_id", "view_name", "clip_geometry",
         "profile_a", "profile_b", "profile_thickness", "profile_geometry", "profile_axis",
-        "depth_mode", "circle_center", "circle_radius")}
+        "depth_mode", "circle_center", "circle_radius", "brush_path", "brush_radius")}
 
 
 def main():
@@ -219,13 +219,18 @@ def main():
                                "z_filter", "hag_filter", "classification_filter", "attribute_filters"}
                     if not isinstance(constraints, dict) or set(constraints) - allowed:
                         raise ValueError("Unsupported linked selection constraints.")
-                    circle = {}
+                    primitive = {}
                     if "circle_center" in command or "circle_radius" in command:
-                        circle = {"circle_center": command.get("circle_center"),
-                                  "circle_radius": command.get("circle_radius")}
+                        primitive = {"circle_center": command.get("circle_center"),
+                                     "circle_radius": command.get("circle_radius")}
+                    if "brush_path" in command or "brush_radius" in command:
+                        if primitive:
+                            raise ValueError("Selection has competing spatial primitives.")
+                        primitive = {"brush_path": command.get("brush_path"),
+                                     "brush_radius": command.get("brush_radius")}
                     item = SelectionDefinition(uuid4().hex, session.session_id, session.source.sha256,
                         session.source.source_type, command["geometry"], session.source_crs,
-                        selection_mode=mode, **constraints, **circle)
+                        selection_mode=mode, **constraints, **primitive)
                     pending = validate_sequence((item,) if mode == "REPLACE" or not definitions else (*definitions, item))
                     progress("Resolving original source points")
                     resolved = resolver.resolve(pending, cancelled=cancelled.is_set,

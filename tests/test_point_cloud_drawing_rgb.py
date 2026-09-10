@@ -24,6 +24,9 @@ class DrawingRGBTests(unittest.TestCase):
         self.assertIn('"Circle"', source)
         self.assertIn("circle_center", source)
         self.assertIn("circle_radius", source)
+        self.assertIn("insideBrush", source)
+        self.assertIn("brush_path", source)
+        self.assertIn("brush_radius", source)
 
     def test_help_has_fixed_scrollable_footprint(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_widgets.py").read_text()

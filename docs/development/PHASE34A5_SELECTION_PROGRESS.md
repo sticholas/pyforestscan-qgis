@@ -26,6 +26,15 @@ human interaction, long-run/resource, and source-format gates remain open.
   rectangular query envelope.
 - Circle use in Vertical Slice currently fails clearly and returns to Navigate;
   profile-circle semantics are not silently approximated.
+- Added one authoritative round-capped Brush corridor primitive. A brush is a
+  path of 1-512 distinct source-XY points plus a positive radius in dataset
+  units. It is one SelectionDefinition, not hundreds of tool-owned selection
+  records. Existing Replace/Add/Subtract, Z/HAG/class filters, source identity,
+  journal replay, and conservative COPC query bounds remain authoritative.
+- Brush membership uses exact point-to-segment distance with round endpoints.
+  The renderer receives the same path/radius fields used by source resolution,
+  so future brush overlays need not treat screen pixels or an envelope as edit
+  authority. Circle and brush primitives are mutually exclusive.
 
 ## MEASURED EVIDENCE
 
@@ -65,19 +74,34 @@ These canaries inject the production renderer event protocol but do not
 substitute for human center-to-edge drawing acceptance. They do not establish
 massive-source selection latency or support Circle inside Vertical Slice.
 
+A three-point Brush path from (215240, 2114740) to (215260, 2114740) to
+(215260, 2114760), radius 2 and HAG 8-18, resolved 456 class-5 points from the
+same 2,287,408-point LAZ in an observed 0.547 seconds. Source SHA256 remained
+unchanged. Eight managed geometry tests cover rounded segment/end membership,
+turns, envelope exclusion, height constraints, invalid paths, serialization,
+worker overlay projection, and inherited filter/mode preservation. The combined
+brush/circle/drawing set runs 26 tests without skips in managed Python.
+This short-path observation is not evidence for 512-point strokes or massive
+sources. Raw LAS/LAZ currently uses the existing bounded-chunk scan; interactive
+stroke sampling/simplification and cancellation latency still need measurement.
+
 ## IN PROGRESS
 
 Circle/cylinder selection is exposed but remains experimental pending human
 interaction acceptance. Radius remains explicitly in source XY units; no
 screen-pixel or implicit metre conversion is allowed.
 Circle plus HAG range is a height-relative column, not a Euclidean 3D cylinder.
+Brush membership/overlay protocol exists, but no Brush button or gesture is
+enabled yet. It must gain source-space path sampling, compact contextual radius
+controls, background progress, and large-selection warnings before user release.
 
 ## NEXT
 
 1. Human circle/cylinder interaction acceptance in Overview and Area Detail,
    including Add/Subtract and the active height limits.
-2. Sphere/volume and brush contracts with authoritative depth semantics.
-3. Large-source circle resolution evidence and selection-impact feedback.
+2. Direct Brush gesture with bounded path simplification, contextual radius,
+   background progress, and selection-impact feedback.
+3. Sphere/volume contracts and large-source selector evidence.
 
 ## BLOCKED
 

@@ -48,6 +48,17 @@ function compile(definition) {
     return {...definition, ...extra, triangles, bounds: [Math.min(...ring.map(p => p.x)),
         Math.min(...ring.map(p => p.y)), Math.max(...ring.map(p => p.x)), Math.max(...ring.map(p => p.y))]};
 }
+function insideBrush(item, xyz) {
+    const path = item.brush_path, radius = item.brush_radius;
+    if (!path || !radius) return true;
+    if (path.length === 1) return Math.hypot(xyz.x-path[0][0], xyz.y-path[0][1]) <= radius;
+    for (let i=0; i<path.length-1; i++) {
+        const a=path[i], b=path[i+1], vx=b[0]-a[0], vy=b[1]-a[1];
+        const t=Math.max(0,Math.min(1,((xyz.x-a[0])*vx+(xyz.y-a[1])*vy)/(vx*vx+vy*vy)));
+        if (Math.hypot(xyz.x-(a[0]+t*vx),xyz.y-(a[1]+t*vy)) <= radius) return true;
+    }
+    return false;
+}
 function matches(definitions, xyz, classification, geometry, index) {
     let selected = false;
     for (const item of definitions) {
@@ -55,6 +66,7 @@ function matches(definitions, xyz, classification, geometry, index) {
         let hit = item.triangles.some(triangle => triangle.containsPoint(flat));
         if (hit && item.circle_center && item.circle_radius)
             hit = Math.hypot(xyz.x-item.circle_center[0], xyz.y-item.circle_center[1]) <= item.circle_radius;
+        if (hit && item.brush_path && item.brush_radius) hit = insideBrush(item, xyz);
         if (hit && item.clip_geometry_triangles)
             hit = item.clip_geometry_triangles.some(triangle => triangle.containsPoint(flat));
         if (hit && item.profile_a) {
@@ -411,7 +423,7 @@ window.pointCloudEditor = {
             else drawing.resolved();
         }
         if (command.action === "selection_test") publish(command.geometry,
-            Object.fromEntries(["circle_center", "circle_radius"].filter(key => key in command)
+            Object.fromEntries(["circle_center", "circle_radius", "brush_path", "brush_radius"].filter(key => key in command)
                 .map(key => [key, command[key]])));
         if (command.action === "editor_overlay") {
             if (/^#[0-9a-f]{6}$/i.test(command.selection_color || "")) selectionColor.set(command.selection_color);
