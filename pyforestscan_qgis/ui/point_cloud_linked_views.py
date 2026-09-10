@@ -58,6 +58,11 @@ class LinkedViews(QObject):
         menu.addAction("Selection Depth", self.adjust_depth)
         menu.addAction("Move Active View to Window", lambda:self.detach(self.page.workspace.active_view_id))
         menu.addAction("Dock All Views", self.dock_all)
+        menu.addSeparator()
+        self.save_viewpoint_action = menu.addAction("Save Current Viewpoint...", self.save_viewpoint)
+        self.open_viewpoint_action = menu.addAction("Open Saved Viewpoint...", self.open_viewpoint)
+        self.remove_viewpoint_action = menu.addAction("Remove Saved Viewpoint...", self.remove_viewpoint)
+        menu.aboutToShow.connect(self.refresh_viewpoint_actions)
         self.create.setMenu(menu)
         self.create.setPopupMode(qt_enum(QToolButton, "InstantPopup", "ToolButtonPopupMode"))
         toolbar.addWidget(self.create)
@@ -309,6 +314,63 @@ class LinkedViews(QObject):
             x,y,_,xx,yy,_ = bounds
             self.add(ViewType.AREA_DETAIL, {"shape":"RECTANGLE","crs":self.page.editor.state["source_crs"],
                 "center":[(x+xx)/2,(y+yy)/2],"width":max(xx-x+2*padding,.001),"height":max(yy-y+2*padding,.001)})
+
+    def refresh_viewpoint_actions(self):
+        ready = bool(self.page._view_state and self.source_descriptor())
+        self.save_viewpoint_action.setEnabled(ready)
+        available = bool(self.page.workspace.bookmarks)
+        self.open_viewpoint_action.setEnabled(available)
+        self.remove_viewpoint_action.setEnabled(available)
+
+    def save_viewpoint(self):
+        if not self.page._view_state or not self.source_descriptor():
+            self.page.status.setText("Wait for a verified source and visible view before saving a viewpoint.")
+            return
+        self.capture()
+        view = self.active()
+        default = f"{view.title} viewpoint {len(self.page.workspace.bookmarks)+1}"
+        name, ok = QInputDialog.getText(self.page, "Save Viewpoint", "Name", text=default)
+        if not ok:
+            return
+        try:
+            self.page.workspace.add_bookmark(name, view.view_id, view.camera)
+            self.persist()
+            self.page.status.setText(f"Saved viewpoint: {name.strip()}")
+        except ValueError as error:
+            self.page.status.setText(str(error))
+
+    def choose_viewpoint(self, title):
+        bookmarks = list(self.page.workspace.bookmarks.values())
+        if not bookmarks:
+            self.page.status.setText("No saved viewpoints are available in this session.")
+            return None
+        views = self.page.workspace.views
+        labels = [f"{item.name} | {views[item.view_id].title}" for item in bookmarks]
+        label, ok = QInputDialog.getItem(self.page, title, "Viewpoint", labels, 0, False)
+        return bookmarks[labels.index(label)] if ok else None
+
+    def open_viewpoint(self):
+        item = self.choose_viewpoint("Open Saved Viewpoint")
+        if item is None:
+            return
+        self.capture()
+        self.page.workspace.activate_bookmark(item.bookmark_id)
+        index = next((i for i in range(self.page.view_tabs.count())
+                      if self.page.view_tabs.tabData(i) == item.view_id), -1)
+        if index >= 0:
+            self.page.view_tabs.blockSignals(True)
+            self.page.view_tabs.setCurrentIndex(index)
+            self.page.view_tabs.blockSignals(False)
+        self.open_active()
+        self.page.status.setText(f"Opening viewpoint: {item.name}")
+
+    def remove_viewpoint(self):
+        item = self.choose_viewpoint("Remove Saved Viewpoint")
+        if item is None:
+            return
+        self.page.workspace.remove_bookmark(item.bookmark_id)
+        self.persist()
+        self.page.status.setText(f"Removed viewpoint: {item.name}")
 
     def adjust(self):
         view = self.active()

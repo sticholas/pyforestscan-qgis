@@ -19,6 +19,42 @@ class ViewType(str, Enum):
     VERTICAL_SLICE = "VERTICAL_SLICE"
 
 
+MAX_VIEW_BOOKMARKS = 100
+
+
+def _camera(value):
+    if not isinstance(value, dict):
+        raise ValueError("A saved viewpoint requires camera values.")
+    position = tuple(value.get("position", ()))
+    result = {"position": position, "yaw": value.get("yaw"),
+              "pitch": value.get("pitch"), "radius": value.get("radius")}
+    scalars = (*position, result["yaw"], result["pitch"], result["radius"])
+    if (len(position) != 3 or any(type(item) not in (int, float)
+                                  or not math.isfinite(item) for item in scalars)
+            or result["radius"] <= 0):
+        raise ValueError("A saved viewpoint requires a finite camera and positive radius.")
+    return result
+
+
+@dataclass(frozen=True)
+class ViewBookmark:
+    bookmark_id: str
+    name: str
+    view_id: str
+    view_type: ViewType
+    camera: dict
+
+    def __post_init__(self):
+        name = self.name.strip()
+        if (not re.fullmatch(r"[0-9a-f]{32}", self.bookmark_id)
+                or not name or len(name) > 80 or any(ord(char) < 32 for char in name)
+                or not self.view_id):
+            raise ValueError("Saved viewpoint identity or name is invalid.")
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "view_type", ViewType(self.view_type))
+        object.__setattr__(self, "camera", _camera(deepcopy(self.camera)))
+
+
 @dataclass(frozen=True)
 class AreaGeometry:
     shape: str
@@ -153,6 +189,7 @@ class PointCloudWorkspaceModel:
         self.session_id = ""
         self.active_view_id = ""
         self.global_filters = {}
+        self._bookmarks = {}
         self._editor = {}
         self.resources = ViewerResourceCoordinator()
 
@@ -163,6 +200,7 @@ class PointCloudWorkspaceModel:
         self._editor = {}
         self.source_fingerprint = self.session_id = ""
         self.global_filters = {}
+        self._bookmarks = {}
         for key in list(self._views):
             if self._views[key].view_type != ViewType.OVERVIEW_3D:
                 self.close_view(key)
@@ -175,6 +213,38 @@ class PointCloudWorkspaceModel:
     @property
     def views(self):
         return deepcopy(self._views)
+
+    @property
+    def bookmarks(self):
+        return deepcopy(self._bookmarks)
+
+    def add_bookmark(self, name, view_id, camera, *, bookmark_id=None):
+        if view_id not in self._views:
+            raise ValueError("A saved viewpoint must belong to an existing linked view.")
+        if len(self._bookmarks) >= MAX_VIEW_BOOKMARKS:
+            raise ValueError(f"One workspace supports at most {MAX_VIEW_BOOKMARKS} saved viewpoints.")
+        key = bookmark_id or uuid4().hex
+        if key in self._bookmarks:
+            raise ValueError("Saved viewpoint identity must be unique.")
+        item = ViewBookmark(key, name, view_id, self._views[view_id].view_type, camera)
+        self._bookmarks[key] = item
+        return key
+
+    def remove_bookmark(self, bookmark_id):
+        if bookmark_id not in self._bookmarks:
+            raise ValueError("Unknown saved viewpoint.")
+        del self._bookmarks[bookmark_id]
+
+    def activate_bookmark(self, bookmark_id):
+        if bookmark_id not in self._bookmarks:
+            raise ValueError("Unknown saved viewpoint.")
+        item = self._bookmarks[bookmark_id]
+        view = self._views.get(item.view_id)
+        if view is None or view.view_type != item.view_type:
+            raise ValueError("The linked view for this saved viewpoint is no longer available.")
+        self.update_view(item.view_id, camera=item.camera)
+        self.activate(item.view_id)
+        return deepcopy(item)
 
     @property
     def editor_snapshot(self):
@@ -209,6 +279,8 @@ class PointCloudWorkspaceModel:
         self._views.pop(view_id)
         self._subscribers.pop(view_id, None)
         self.observer_errors.pop(view_id, None)
+        self._bookmarks = {key:value for key,value in self._bookmarks.items()
+                           if value.view_id != view_id}
         if self.active_view_id == view_id:
             self.active_view_id = next(iter(self._views), "")
 
@@ -246,6 +318,7 @@ class PointCloudWorkspaceModel:
             return False
         if (fingerprint, session_id) != (self.source_fingerprint, self.session_id):
             self.global_filters = {}
+            self._bookmarks = {}
             for key in list(self._views):
                 if self._views[key].view_type != ViewType.OVERVIEW_3D:
                     self.close_view(key)
@@ -276,7 +349,8 @@ class PointCloudWorkspaceModel:
         return {"schema": self.SCHEMA, "source_fingerprint": self.source_fingerprint,
                 "session_id": self.session_id,
                 "active_view_id": self.active_view_id, "global_filters": deepcopy(self.global_filters),
-                "views": [asdict(view) for view in self._views.values()]}
+                "views": [asdict(view) for view in self._views.values()],
+                "bookmarks": [asdict(item) for item in self._bookmarks.values()]}
 
     @classmethod
     def restore(cls, payload, source_fingerprint, command_sink=None):
@@ -290,6 +364,13 @@ class PointCloudWorkspaceModel:
             key = result.register(raw.pop("view_type"), raw.pop("title"),
                                   view_id=raw.pop("view_id"), geometry=raw.pop("geometry"))
             result.update_view(key, **raw)
+        for value in payload.get("bookmarks", []):
+            raw = deepcopy(value)
+            bookmark_id = result.add_bookmark(raw.pop("name"), raw.pop("view_id"),
+                raw.pop("camera"), bookmark_id=raw.pop("bookmark_id"))
+            expected = ViewType(raw.pop("view_type"))
+            if result._bookmarks[bookmark_id].view_type != expected or raw:
+                raise ValueError("Saved viewpoint metadata does not match its linked view.")
         result.activate(payload["active_view_id"])
         result.global_filters = deepcopy(payload.get("global_filters", {}))
         if not isinstance(result.global_filters, dict):

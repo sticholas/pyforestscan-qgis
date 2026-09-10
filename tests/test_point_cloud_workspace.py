@@ -3,7 +3,8 @@ from dataclasses import asdict
 import json
 import unittest
 from pyforestscan_qgis.core.point_cloud.workspace import (
-    PointCloudWorkspaceModel, ViewType, AreaGeometry, SliceGeometry, ViewerResourceCoordinator)
+    PointCloudWorkspaceModel, ViewType, AreaGeometry, SliceGeometry,
+    ViewerResourceCoordinator)
 
 
 class WorkspaceTests(unittest.TestCase):
@@ -68,6 +69,55 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(restored.editor_snapshot, {})
         with self.assertRaises(ValueError):
             PointCloudWorkspaceModel.restore(raw, "b"*64)
+
+    def test_named_viewpoint_roundtrip_and_activation_restore_exact_camera(self):
+        model, _ = self.model()
+        detail = self.detail(model)
+        camera = {"position":[10.,20.,30.], "yaw":.5, "pitch":-.25, "radius":40.}
+        key = model.add_bookmark("Canopy review", detail, camera,
+                                 bookmark_id="b"*32)
+        model.update_view(detail, camera={"position":[1.,2.,3.], "yaw":0.,
+                                          "pitch":0., "radius":5.})
+        bookmark = model.activate_bookmark(key)
+        self.assertEqual(model.active_view_id, detail)
+        self.assertEqual(model.views[detail].camera, bookmark.camera)
+        raw = json.loads(json.dumps(model.to_dict()))
+        restored = PointCloudWorkspaceModel.restore(raw, "a"*64)
+        self.assertEqual(restored.bookmarks[key].name, "Canopy review")
+        self.assertEqual(restored.bookmarks[key].camera["position"], (10.,20.,30.))
+        self.assertEqual(json.loads(json.dumps(restored.to_dict())),
+                         json.loads(json.dumps(model.to_dict())))
+
+    def test_viewpoints_are_bounded_validated_and_removed_with_their_view(self):
+        model, overview = self.model()
+        camera = {"position":[0.,0.,1.], "yaw":0., "pitch":0., "radius":2.}
+        with self.assertRaisesRegex(ValueError, "name"):
+            model.add_bookmark("   ", overview, camera)
+        with self.assertRaisesRegex(ValueError, "positive radius"):
+            model.add_bookmark("Bad camera", overview, {**camera,"radius":0})
+        detail = self.detail(model)
+        key = model.add_bookmark("Temporary detail", detail, camera)
+        model.close_view(detail)
+        self.assertNotIn(key, model.bookmarks)
+        with self.assertRaisesRegex(ValueError, "Unknown"):
+            model.activate_bookmark(key)
+
+    def test_new_source_session_discards_source_bound_viewpoints(self):
+        model, overview = self.model()
+        model.add_bookmark("Original source", overview,
+            {"position":[0.,0.,1.], "yaw":0., "pitch":0., "radius":2.})
+        model.accept_editor_snapshot({"ready":True,"source_fingerprint":"b"*64,
+                                      "session_id":"session-b","revision":0})
+        self.assertEqual(model.bookmarks, {})
+
+    def test_restore_rejects_viewpoint_type_tampering(self):
+        model, overview = self.model()
+        model.add_bookmark("Overview", overview,
+            {"position":[0.,0.,1.],"yaw":0.,"pitch":0.,"radius":2.})
+        raw = json.loads(json.dumps(model.to_dict()))
+        raw["bookmarks"][0]["view_type"] = "VERTICAL_SLICE"
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            PointCloudWorkspaceModel.restore(raw,"a"*64)
 
     def test_object_focus_roundtrips_as_validated_display_state(self):
         model, _ = self.model()

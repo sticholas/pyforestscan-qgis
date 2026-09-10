@@ -1,5 +1,6 @@
 """Actual Qt event tests; headless tiers skip when QGIS Qt is unavailable."""
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -22,6 +23,41 @@ except ImportError:
 
 @unittest.skipIf(QApplication is None, "Requires QGIS Qt")
 class TabDetachTests(unittest.TestCase):
+    def test_linked_view_menu_exposes_compact_saved_viewpoint_actions(self):
+        source = (Path(__file__).parents[1]/"pyforestscan_qgis"/"ui"/
+                  "point_cloud_linked_views.py").read_text(encoding="utf-8")
+        for label in ("Save Current Viewpoint...", "Open Saved Viewpoint...",
+                      "Remove Saved Viewpoint..."):
+            self.assertIn(label, source)
+
+    def test_save_and_open_viewpoint_use_existing_workspace_authority(self):
+        from pyforestscan_qgis.core.point_cloud.workspace import PointCloudWorkspaceModel
+        model = PointCloudWorkspaceModel()
+        model.register(view_id="overview")
+        model.accept_editor_snapshot({"ready":True,"source_fingerprint":"a"*64,
+                                      "session_id":"session","revision":1})
+        camera = {"position":[10.,20.,30.],"yaw":.5,"pitch":-.2,"radius":40.}
+        page = SimpleNamespace(_view_state={"camera":camera}, workspace=model,
+            editor=SimpleNamespace(state={"source_identity":{"sha256":"a"*64}}),
+            status=Mock(), view_tabs=Mock())
+        owner = SimpleNamespace(page=page, source_descriptor=lambda:{"sha256":"a"*64},
+            active=lambda:model.views[model.active_view_id], persist=Mock(),
+            open_active=Mock())
+        owner.capture = lambda:model.update_view("overview", camera=camera)
+        with patch("pyforestscan_qgis.ui.point_cloud_linked_views.QInputDialog.getText",
+                   return_value=("Crown view",True)):
+            LinkedViews.save_viewpoint(owner)
+        item = next(iter(model.bookmarks.values()))
+        self.assertEqual(item.name,"Crown view")
+        owner.persist.assert_called_once()
+        model.update_view("overview",camera={"position":[1.,2.,3.],"yaw":0.,
+            "pitch":0.,"radius":2.})
+        owner.choose_viewpoint=lambda _title:item
+        page.view_tabs.count.return_value=0
+        LinkedViews.open_viewpoint(owner)
+        self.assertEqual(model.views["overview"].camera,item.camera)
+        owner.open_active.assert_called_once()
+
     def test_detached_controls_require_authoritative_editor(self):
         editor = SimpleNamespace(worker=None, busy=False, state={"ready": True,
             "can_undo": True, "can_redo": True, "selection": {"resolved_point_count": 8}})

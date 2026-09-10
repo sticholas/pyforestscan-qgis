@@ -27,6 +27,11 @@ Editor and do not change the `0.2.0-beta.1` release boundary.
   the simple closed ring in the managed worker, and reports projected area and
   perimeter with explicit units. Large projected coordinates are translated
   before area calculation to avoid cancellation error.
+- View options now supports named saved viewpoints. Each bookmark retains an
+  exact validated camera and its Overview, Area Detail or Vertical Slice
+  identity inside the existing source-bound linked workspace. Opening a
+  bookmark activates that view and camera; closing a linked view removes its
+  dependent bookmarks, and changing source/session clears them.
 
 ## IN PROGRESS
 
@@ -40,7 +45,7 @@ qualification.
 1. Qualify point picking and linked overlays in a fresh human viewer session.
 2. Add profile/cross-section measurement records using authoritative source
    coordinates.
-3. Add named bookmarks, viewpoints and linked-location markers to the existing
+3. Add linked-location markers and lightweight annotations to the existing
    workspace model.
 
 ## BLOCKED
