@@ -298,4 +298,8 @@ class PointCloudWorkspaceModel:
             from .linked_selection import selection_limit_values
             result.global_filters["selection_limits"] = selection_limit_values(
                 result.global_filters["selection_limits"])
+        if "object_focus_mode" in result.global_filters:
+            from .object_focus import normalize_object_focus_mode
+            result.global_filters["object_focus_mode"] = normalize_object_focus_mode(
+                result.global_filters["object_focus_mode"])
         return result

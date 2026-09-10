@@ -290,6 +290,24 @@ class EditorPanel(QWidget):
         self.previous_object_action.triggered.connect(lambda: self.navigate_object(-1))
         self.next_object_action = self.object_menu.addAction("Next Object")
         self.next_object_action.triggered.connect(lambda: self.navigate_object(1))
+        self.object_focus_menu = self.object_menu.addMenu("Object Focus")
+        self.show_all_objects_action = self.object_focus_menu.addAction("Show All Points")
+        self.fade_other_objects_action = self.object_focus_menu.addAction("Fade Other Points")
+        self.isolate_object_action = self.object_focus_menu.addAction("Isolate Selected Object")
+        self.object_focus_actions = {
+            "SHOW_ALL": self.show_all_objects_action,
+            "FADE_OTHERS": self.fade_other_objects_action,
+            "ISOLATE": self.isolate_object_action,
+        }
+        for mode, action in self.object_focus_actions.items():
+            action.setCheckable(True)
+            action.triggered.connect(lambda _checked=False, value=mode: self.set_object_focus(value))
+        self.show_all_objects_action.setToolTip(
+            "Restore normal visibility in every linked view. This changes display only.")
+        self.fade_other_objects_action.setToolTip(
+            "Keep the exact selected object bright and fade other points in every linked view. No edit is staged.")
+        self.isolate_object_action.setToolTip(
+            "Show the exact selected object overlay while hiding other points in every linked view. No edit is staged.")
         self.object_menu.addSeparator()
         self.assign_object_action = self.object_menu.addAction("Assign Selection to Object ID...")
         self.assign_object_action.setToolTip(
@@ -383,6 +401,13 @@ class EditorPanel(QWidget):
         has_policy = bool(self.state.get("object_id_policy"))
         self.assign_object_action.setEnabled(ready and selected and has_policy)
         self.unassign_object_action.setEnabled(ready and selected and has_policy)
+        focus_mode = (self.page.linked.object_focus_mode if hasattr(self.page, "linked") else "SHOW_ALL")
+        focus_available = ready and selected and bool(active_object)
+        self.show_all_objects_action.setEnabled(ready)
+        self.fade_other_objects_action.setEnabled(focus_available)
+        self.isolate_object_action.setEnabled(focus_available)
+        for mode, action in self.object_focus_actions.items():
+            action.setChecked(mode == focus_mode)
         self.refresh_classification_guidance()
 
     def refresh_classification_guidance(self):
@@ -644,6 +669,14 @@ class EditorPanel(QWidget):
         if direction in (-1, 1):
             self.send("neighbor_object", direction=direction)
 
+    def set_object_focus(self, mode):
+        if not hasattr(self.page, "linked"):
+            return
+        try:
+            self.page.linked.set_object_focus(mode)
+        except ValueError as error:
+            self.summary.setText(str(error))
+
     def assign_selection_to_object(self):
         policy = self.state.get("object_id_policy") or {}
         selection = self.state.get("selection") or {}
@@ -711,6 +744,11 @@ class EditorPanel(QWidget):
             self.state = value
             self.state["exported"] = value.get("exported") or old_export
             self.page.workspace.accept_editor_snapshot(self.state)
+            linked = getattr(self.page, "linked", None)
+            if (not self.state.get("active_object") and
+                    getattr(linked, "object_focus_mode", "SHOW_ALL") != "SHOW_ALL" and
+                    hasattr(linked, "set_object_focus")):
+                linked.set_object_focus("SHOW_ALL")
             self.page.linked.sync_tabs()
             self.busy = False
             self.cancel_requested = False

@@ -37,20 +37,28 @@ operations remain experimental and incomplete.
   in the same undo/redo/autosave/recovery/export path, and never mutate source
   buffers. Large edits use the existing confirmation gate. Export validation
   now reports net changed point counts per object field.
+- Added linked-view object focus as presentation-only state. Show All, Fade
+  Others and Isolate Selected Object reuse the current authoritative object
+  selection overlay across Overview, Area Detail and Vertical Slice renderers.
+  Focus changes only source-cloud opacity, never source buffers, selection
+  definitions or the edit journal. A renderer-exact integer guard prevents
+  visually ambiguous focus for object IDs outside JavaScript's exact range.
 
 ## IN PROGRESS
 
-Discovery, navigation, and guarded assignment/unassignment are foundations.
-Split/merge, catalog-aware effective counts, isolate/fade, reviewed state and
-notes are not yet complete.
+Discovery, navigation, guarded assignment/unassignment and presentation-only
+focus are foundations. Split/merge, catalog-aware effective counts, reviewed
+state and notes are not yet complete. Live object-focus acceptance still needs
+a source with a meaningful segmentation field.
 
 ## NEXT
 
-1. Add linked-view isolate/fade behavior without changing edit authority.
-2. Add safe create/split/merge workflows on top of `SET_OBJECT_ID` and refresh
+1. Add safe create/split/merge workflows on top of `SET_OBJECT_ID` and refresh
    effective catalog counts without changing original selection predicates.
-3. Add reviewed/unreviewed state and notes without encoding review metadata into
+2. Add reviewed/unreviewed state and notes without encoding review metadata into
    immutable source dimensions implicitly.
+3. Qualify linked-view focus on a real segmented forestry source and record
+   frame-time, displayed-point and source-immutability evidence.
 
 ## BLOCKED
 

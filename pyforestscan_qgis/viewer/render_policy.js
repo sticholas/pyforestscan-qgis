@@ -28,6 +28,14 @@
         appearance(style, size) {
             if (!["Circular", "Square"].includes(style)) throw new RangeError("Unknown point style.");
             return {style, size, material: this.size(size)};
+        },
+        objectFocus(mode, hasSelection) {
+            if (!["SHOW_ALL", "FADE_OTHERS", "ISOLATE"].includes(mode))
+                throw new RangeError("Unknown object focus mode.");
+            if (typeof hasSelection !== "boolean") throw new TypeError("Object focus selection state must be boolean.");
+            const effective = hasSelection ? mode : "SHOW_ALL";
+            return {requested: mode, effective,
+                    opacity: effective === "FADE_OTHERS" ? 0.12 : effective === "ISOLATE" ? 0 : 1};
         }
     };
     root.viewerRenderPolicy = policy;

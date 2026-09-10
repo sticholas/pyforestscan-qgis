@@ -185,6 +185,7 @@ class SelectionToolTests(unittest.TestCase):
         self.assertIn("Select Object ID...", actions)
         self.assertIn("Previous Object", actions)
         self.assertIn("Next Object", actions)
+        self.assertIn("Object Focus", actions)
         self.assertIn("Assign Selection to Object ID...", actions)
         self.assertIn("Unassign Selected Points", actions)
         self.assertFalse(editor.object_results_action.isEnabled())
@@ -193,6 +194,9 @@ class SelectionToolTests(unittest.TestCase):
         self.assertFalse(editor.configure_object_ids_action.isEnabled())
         self.assertFalse(editor.assign_object_action.isEnabled())
         self.assertFalse(editor.unassign_object_action.isEnabled())
+        self.assertTrue(editor.show_all_objects_action.isChecked())
+        self.assertFalse(editor.fade_other_objects_action.isEnabled())
+        self.assertFalse(editor.isolate_object_action.isEnabled())
 
     def test_object_catalog_actions_follow_context_prerequisites(self):
         editor = EditorPanel(None)
@@ -215,6 +219,8 @@ class SelectionToolTests(unittest.TestCase):
         self.assertTrue(editor.next_object_action.isEnabled())
         self.assertTrue(editor.assign_object_action.isEnabled())
         self.assertTrue(editor.unassign_object_action.isEnabled())
+        self.assertTrue(editor.fade_other_objects_action.isEnabled())
+        self.assertTrue(editor.isolate_object_action.isEnabled())
 
     def test_unassigned_object_policy_requires_explicit_confirmation(self):
         editor = EditorPanel(None)
@@ -248,6 +254,28 @@ class SelectionToolTests(unittest.TestCase):
                            "value":"8", "view":{}}})
         editor.send.assert_called_once_with("stage_object_id", selection_id="selection",
                                             value="8", confirmed=True)
+
+    def test_object_focus_broadcasts_once_to_all_linked_renderers(self):
+        workers = [Mock(), Mock(), Mock()]
+        page = SimpleNamespace(
+            worker=workers[0],
+            workspace=SimpleNamespace(global_filters={}),
+            editor=SimpleNamespace(
+                state={"active_object":{"field":"Tree_ID", "object_id":7},
+                       "selection":{"selection_id":"exact", "resolved_point_count":25}},
+                summary=Mock(), refresh_controls=Mock()))
+        owner = SimpleNamespace(page=page,
+            residents=SimpleNamespace(parked={"detail":{"worker":workers[1]}}),
+            detached={"slice":SimpleNamespace(worker=workers[2])}, persist=Mock())
+        owner.viewer_workers = lambda: LinkedViews.viewer_workers(owner)
+        LinkedViews.set_object_focus(owner, "ISOLATE")
+        expected = {"action":"object_focus", "mode":"ISOLATE",
+                    "scope":"AUTHORITATIVE_ACTIVE_OBJECT_SELECTION",
+                    "field":"Tree_ID", "object_id":"7"}
+        for worker in workers:
+            worker.send.assert_called_once_with(expected)
+        self.assertEqual(page.workspace.global_filters["object_focus_mode"], "ISOLATE")
+        owner.persist.assert_called_once_with()
 
     def test_classify_while_selecting_stages_once_only_after_select_snapshot(self):
         value = {"ready":True, "source":"source.laz", "edits":0, "point_count":100,

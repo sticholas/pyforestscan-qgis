@@ -138,6 +138,45 @@ class LinkedViews(QObject):
             self.persist()
 
     @property
+    def object_focus_mode(self):
+        from ..core.point_cloud.object_focus import ObjectFocusMode, normalize_object_focus_mode
+        try:
+            return normalize_object_focus_mode(
+                self.page.workspace.global_filters.get("object_focus_mode", ObjectFocusMode.SHOW_ALL.value))
+        except ValueError:
+            return ObjectFocusMode.SHOW_ALL.value
+
+    def object_focus_command(self):
+        from ..core.point_cloud.object_focus import object_focus_command
+        return object_focus_command(self.object_focus_mode,
+            self.page.editor.state.get("active_object"), self.page.editor.state.get("selection"))
+
+    def viewer_workers(self):
+        workers = []
+        if self.page.worker:
+            workers.append(self.page.worker)
+        workers.extend(entry["worker"] for entry in self.residents.parked.values())
+        workers.extend(window.worker for window in self.detached.values() if window.worker)
+        seen = set()
+        for worker in workers:
+            if id(worker) not in seen:
+                seen.add(id(worker))
+                yield worker
+
+    def set_object_focus(self, mode, *, persist=True):
+        from ..core.point_cloud.object_focus import object_focus_command, object_focus_summary
+        command = object_focus_command(mode, self.page.editor.state.get("active_object"),
+                                       self.page.editor.state.get("selection"))
+        self.page.workspace.global_filters["object_focus_mode"] = command["mode"]
+        for worker in self.viewer_workers():
+            worker.send(command)
+        self.page.editor.summary.setText(object_focus_summary(
+            command["mode"], self.page.editor.state.get("active_object")))
+        self.page.editor.refresh_controls()
+        if persist:
+            self.persist()
+
+    @property
     def depth_error(self):
         for key, limits in self.depth.items():
             if limits[0] > limits[1]:
@@ -444,6 +483,7 @@ class LinkedViews(QObject):
         if view.view_type != ViewType.OVERVIEW_3D:
             context["corridor"] = view_ring(context)
         self.page.send({"action":"linked_view","view":context})
+        self.page.send(self.object_focus_command())
         self.page.send({"action":"point_display","style":view.lod.get("point_style","Circular"),
                         "size":view.lod.get("point_size",0)})
         self.page._restore_after_open = {"camera":view.camera or telemetry["camera"],

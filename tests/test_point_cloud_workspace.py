@@ -69,6 +69,16 @@ class WorkspaceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             PointCloudWorkspaceModel.restore(raw, "b"*64)
 
+    def test_object_focus_roundtrips_as_validated_display_state(self):
+        model, _ = self.model()
+        model.global_filters["object_focus_mode"] = "FADE_OTHERS"
+        raw = json.loads(json.dumps(model.to_dict()))
+        restored = PointCloudWorkspaceModel.restore(raw, "a"*64)
+        self.assertEqual(restored.global_filters["object_focus_mode"], "FADE_OTHERS")
+        raw["global_filters"]["object_focus_mode"] = "HIDE_SOURCE"
+        with self.assertRaisesRegex(ValueError, "Unknown object focus mode"):
+            PointCloudWorkspaceModel.restore(raw, "a"*64)
+
     def test_new_session_same_source_discards_old_selection(self):
         model, overview = self.model()
         self.detail(model)

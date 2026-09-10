@@ -15,6 +15,7 @@ let brushPointer = null, brushRadius = 1;
 let sphereAxis = "Z", sphereHeight = 0;
 let displaySignature = "";
 let selectionColor = new THREE.Color("#5be4eb");
+let objectFocusMode = "SHOW_ALL";
 function sourceAttribute(geometry, name) {
     const extra = geometry._pfsOriginalDimensions && geometry._pfsOriginalDimensions[name];
     return extra ? {array:extra} : geometry.getAttribute(name) || geometry.getAttribute(name.toLowerCase());
@@ -134,6 +135,12 @@ function removeHighlight(record) {
         record.highlight.material.dispose();
         record.highlight = null;
     }
+}
+function applyObjectFocus() {
+    const focus = window.viewerRenderPolicy.objectFocus(objectFocusMode, selection.length > 0);
+    if (context && context.cloud.material.opacity !== focus.opacity)
+        context.cloud.material.opacity = focus.opacity;
+    return focus;
 }
 function leaveTool() {
     toolEpoch++;
@@ -465,9 +472,11 @@ window.pointCloudEditor = {
             for (const [code, count] of Object.entries(record.effectiveClasses || {}))
                 effectiveClasses[code] = (effectiveClasses[code] || 0) + count;
         }
+        const objectFocus = applyObjectFocus();
         return {event: latestEvent, tool, drawing_state: drawing.state, revision, pending_nodes: pending.length, ready: true,
             view_id: linkedView && linkedView.view_id,
             highlighted_points: highlighted, effective_classes: effectiveClasses,
+            object_focus_mode: objectFocus.requested, object_focus_effective: objectFocus.effective,
             source_buffers_unchanged: Array.from(records.values()).every(r => r.sourceUnchanged !== false),
             overlay_diagnostics: Array.from(records.values()).slice(0, 3).map(r => ({
                 node: r.node.name, edits: (r.edits || []).length,
@@ -536,6 +545,11 @@ window.pointCloudEditor = {
             if (command.error) drawing.fail(command.error);
             else drawing.resolved();
         }
+        if (command.action === "object_focus") {
+            window.viewerRenderPolicy.objectFocus(command.mode, selection.length > 0);
+            objectFocusMode = command.mode;
+            applyObjectFocus();
+        }
         if (command.action === "selection_test") publish(command.geometry,
             Object.fromEntries(["circle_center", "circle_radius", "brush_path", "brush_radius", "brush_tolerance",
                 "sphere_center", "sphere_radius", "sphere_axis", "invert_result", "profile_line",
@@ -552,6 +566,7 @@ window.pointCloudEditor = {
                 edits = data.edits.map(edit => ({...edit, definitions: edit.definitions.map(compile)}));
                 selection = data.selection.map(compile);
                 revision = data.revision;
+                applyObjectFocus();
                 for (const record of records.values()) record.revision = -1;
             }).catch(error => { latestEvent = {id: ++eventNumber, error: String(error)}; });
         }
