@@ -150,6 +150,9 @@ class SelectionToolTests(unittest.TestCase):
                             for index in range(editor.classes.count())))
         self.assertEqual(editor.classes.itemData(17), 17)
         self.assertEqual(editor.classes.itemText(18), "High noise (18)")
+        self.assertIn("canopy", editor.target_guidance.toolTip())
+        editor.code.setValue(2)
+        self.assertIn("DTM", editor.target_guidance.toolTip())
 
     def test_classify_while_selecting_stages_once_only_after_select_snapshot(self):
         value = {"ready":True, "source":"source.laz", "edits":0, "point_count":100,

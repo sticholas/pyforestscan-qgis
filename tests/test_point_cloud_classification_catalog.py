@@ -4,6 +4,7 @@ import unittest
 
 from pyforestscan_qgis.core.point_cloud.las_classification import (
     STANDARD_CLASSES, classification_entry, classification_warning,
+    classification_counts_summary, classification_target_guidance,
     classify_while_selecting_decision)
 
 
@@ -47,6 +48,22 @@ class ClassificationCatalogTests(unittest.TestCase):
         for enabled,count in ((1,20),(True,-1)):
             with self.assertRaises(ValueError):
                 classify_while_selecting_decision(enabled,"select",replace,count)
+
+    def test_authoritative_count_summary_is_named_compact_and_bounded(self):
+        counts = ((2, 1234567), (5, 20), (18, 3), (64, 2))
+        self.assertEqual(classification_counts_summary(counts),
+            "Ground: 1,234,567 | High vegetation: 20 | High noise: 3 | +1 classes")
+        self.assertEqual(classification_counts_summary(()), "")
+        for counts, limit in ((((256, 1),), 3), (((2, -1),), 3), (((2, 1),), 0)):
+            with self.assertRaises(ValueError):
+                classification_counts_summary(counts, limit=limit)
+
+    def test_target_guidance_calls_out_scientific_and_las_risks(self):
+        self.assertIn("DTM", classification_target_guidance(2))
+        self.assertIn("canopy", classification_target_guidance(5))
+        self.assertIn("excluded", classification_target_guidance(18))
+        self.assertIn("reserved", classification_target_guidance(8))
+        self.assertIn("user-defined", classification_target_guidance(64))
 
 
 if __name__ == "__main__":

@@ -24,19 +24,24 @@ State: IN PROGRESS. The Point Cloud Editor remains EDITOR_EXPERIMENTAL.
   edit command. Rows use class names and swatches and may show explicitly
   approximate resident-view counts after staged edits; they are not presented
   as authoritative full-source totals. Each linked view retains its own filter.
+- Replaced numeric-only selection summaries with compact catalog names and
+  authoritative full-resolution counts from the selection resolver. The
+  expanded Selection Details view uses the same catalog. Classification targets
+  now show a stable one-line LAS/scientific impact message for ground,
+  vegetation, noise, building, water, unclassified, reserved and user-defined
+  targets without expanding the viewer layout.
 
 ## IN PROGRESS
 
 The catalog, guarded classify-while-selecting policy and view-local class
-visibility are foundations. Authoritative/effective source-wide counts,
-presets, data-health summaries, target warnings, and human interaction
-acceptance are not yet complete.
+visibility, authoritative selected-class counts and target guidance are
+foundations. Effective source-wide counts, presets, data-health summaries, and
+human interaction acceptance are not yet complete.
 
 ## NEXT
 
-1. Surface authoritative selection and effective-class counts without permanent
-   large panels.
-2. Add target warnings and presets without bypassing journal confirmation.
+1. Add compact classification presets without bypassing journal confirmation.
+2. Design bounded source-wide effective counts and first data-health summaries.
 3. Qualify the classification workflow in a fresh human viewer session.
 
 ## BLOCKED

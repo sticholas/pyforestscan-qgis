@@ -178,8 +178,12 @@ class EditorPanel(QWidget):
         self.summary = StableViewerStatus("Editor: Open a local source")
         layout.addWidget(self.summary)
         self.edit_controls = QWidget()
-        actions = QHBoxLayout(self.edit_controls)
+        edit_layout = QVBoxLayout(self.edit_controls)
+        edit_layout.setContentsMargins(0, 0, 0, 0)
+        edit_layout.setSpacing(2)
+        actions = QHBoxLayout()
         actions.setContentsMargins(0, 0, 0, 0)
+        edit_layout.addLayout(actions)
         self.classes = QComboBox()
         from ..core.point_cloud.las_classification import STANDARD_CLASSES
         for item in STANDARD_CLASSES:
@@ -218,6 +222,10 @@ class EditorPanel(QWidget):
         flags.setMenu(menu)
         flags.setPopupMode(qt_enum(QToolButton, "InstantPopup", "ToolButtonPopupMode"))
         actions.addWidget(flags)
+        self.target_guidance = StableViewerStatus()
+        self.target_guidance.setAccessibleName("Classification target guidance")
+        edit_layout.addWidget(self.target_guidance)
+        self.code.valueChanged.connect(lambda _value: self.refresh_classification_guidance())
         layout.addWidget(self.edit_controls)
         self.edit_controls.hide()
         history_row = QHBoxLayout()
@@ -296,6 +304,11 @@ class EditorPanel(QWidget):
         self.cancel.setEnabled(self.busy and not self.cancel_requested)
         self.recover_action.setEnabled(not self.busy)
         self.logs_action.setEnabled(bool(self.folder))
+        self.refresh_classification_guidance()
+
+    def refresh_classification_guidance(self):
+        from ..core.point_cloud.las_classification import classification_target_guidance
+        self.target_guidance.setText("Target guidance | " + classification_target_guidance(self.code.value()))
 
     def attach(self, source):
         if str(source).lower().endswith("ept.json"):
@@ -445,7 +458,9 @@ class EditorPanel(QWidget):
         impact = selection_impact(selection["resolved_point_count"], self.state.get("point_count", 0))
         if impact.message:
             lines.append(impact.message + ".")
-        lines.extend(f"Class {code}: {count:,}" for code, count in selection.get("classification_counts", []))
+        from ..core.point_cloud.las_classification import classification_entry
+        lines.extend(f"{classification_entry(code).label}: {count:,}"
+                     for code, count in selection.get("classification_counts", []))
         for key in ("z_min", "z_max", "hag_min", "hag_max", "bounds", "source_partitions"):
             if selection.get(key) is not None:
                 lines.append(f"{key.replace('_', ' ').title()}: {selection[key]}")
@@ -485,8 +500,9 @@ class EditorPanel(QWidget):
             auto_classify = classify_while_selecting_decision(
                 self.classify_while.isChecked(), completed_action,
                 value.get("selection_definitions", []), count)
-            codes = ", ".join(str(code) for code, _count in selection.get("classification_counts", [])[:8])
-            suffix = f" | Classes: {codes}" if codes else ""
+            from ..core.point_cloud.las_classification import classification_counts_summary
+            classes = classification_counts_summary(selection.get("classification_counts", []))
+            suffix = f" | {classes}" if classes else ""
             impact = selection_impact_suffix(count, value.get("point_count", 0))
             self.summary.setText(f"Selected: {count:,} source points | {value['edits']} staged edits" + suffix + impact)
             if auto_classify.message:
