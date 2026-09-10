@@ -9,9 +9,18 @@ from pyforestscan_qgis.core.point_cloud.selection import (
 from pyforestscan_qgis.core.point_cloud.session import SourceIdentity
 from pyforestscan_qgis.core.point_cloud.workspace import SliceGeometry
 from pyforestscan_qgis.viewer.editor_worker import visual_definition
+from scripts.testing.pbm_point_cloud_profile_brush_smoke import (
+    coordinate_pairs, round_brush_mask)
 
 
 class ProfileBrushContractTests(unittest.TestCase):
+    def test_real_source_canary_helpers_reject_ambiguous_coordinates(self):
+        self.assertEqual(coordinate_pairs((1, 2, 3, 4), "Path"),
+                         ((1, 2), (3, 4)))
+        for values in ((), (1, 2), (1, 2, 3)):
+            with self.assertRaisesRegex(ValueError, "at least two"):
+                coordinate_pairs(values, "Path")
+
     def profile(self, **values):
         options = dict(a=(0, 0), b=(10, 10), thickness=2, crs="EPSG:32605",
                        path=((0, 0), (10, 0), (10, 10)),
@@ -59,6 +68,14 @@ class ProfileBrushContractTests(unittest.TestCase):
 @unittest.skipUnless(importlib.util.find_spec("numpy") and importlib.util.find_spec("shapely"),
                      "Managed geometry runtime required")
 class ProfileBrushMembershipTests(ProfileBrushContractTests):
+    def test_independent_canary_round_brush_has_round_caps(self):
+        import numpy as np
+        x = np.array((-1, 0, 5, 10, 11, 5))
+        y = np.array((0, 1, 1, -1, 0, 1.01))
+        self.assertEqual(
+            round_brush_mask(x, y, ((0, 0), (10, 0)), 1, np).tolist(),
+            [True, True, True, True, True, False])
+
     def test_copc_reader_is_bounded_to_the_source_profile_corridor(self):
         source = SourceIdentity("/source.copc.laz", "a"*64, 1, "COPC")
         spec = reader_spec(source, (self.definition(),))

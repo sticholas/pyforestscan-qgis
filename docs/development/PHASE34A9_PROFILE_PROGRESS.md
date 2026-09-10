@@ -82,6 +82,13 @@ linked-view tests cover the shared workspace and journal boundaries.
 Sustained human profile editing acceptance remains unfinished. Two-point
 Vertical Slice remains available alongside the new path profile.
 
+The repeatable real-source qualification entry point is
+<code>scripts/testing/pbm_point_cloud_profile_brush_smoke.py</code>. It compares
+the production resolver with an independent full-source round-stroke
+calculation and verifies that the source fingerprint is unchanged. The
+independent comparison is deliberately limited to sources with at most three
+million points; massive-source production queries remain corridor-bounded.
+
 ## Measured Evidence
 
 A bounded HAG profile query ran against the 2,287,408-point Windows LAZ fixture
@@ -107,3 +114,14 @@ units, cross-track distance stayed within the approximately 20-unit corridor,
 and the maximum independent projection difference was below 0.00000005 source
 units. The source SHA256 was unchanged. This is measured extraction and
 coordinate evidence, not a sustained-interaction qualification.
+
+The managed Profile Brush canary used a 291.421-source-unit, two-segment HAG
+profile with a 20-unit corridor and a horizontal round stroke covering HAG
+0-10. The production resolver and an independent original-record calculation
+both selected exactly 49,084 points with identical class totals: 231
+Unclassified, 19,321 Ground, 4,225 Low vegetation, 49 Medium vegetation, and
+25,258 High vegetation. Resolution and comparison completed in 0.640 seconds.
+The canary intentionally scanned all 2,287,408 fixture points to provide an
+independent reference; indexed production display/selection remains bounded by
+the source corridor. The source SHA256 remained
+<code>0c688c22d42b0240c6cba19973087ee59606721289872a3f8237253548db34bb</code>.

@@ -12,6 +12,9 @@
 - Enabled Profile Brush selection through a dedicated distance/elevation or HAG
   stroke primitive resolved against original source records inside the bounded
   corridor; Replace/Add/Subtract and journal replay remain shared across views.
+- Added a repeatable managed-runtime Profile Brush canary that compares the
+  bounded production resolver with independent original-record membership and
+  verifies source immutability.
 
 - Added compact Fit, Reverse and corridor Width controls to the existing
   source-linked Vertical Slice workflow.
