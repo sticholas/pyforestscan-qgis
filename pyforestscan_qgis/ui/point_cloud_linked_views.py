@@ -16,6 +16,7 @@ from .point_cloud_editor import EditorWorker, _WORKERS
 
 class LinkedViews(QObject):
     limitsChanged = pyqtSignal()
+    brushRadiusChanged = pyqtSignal(float)
 
     def __init__(self, page, toolbar):
         super().__init__(page)
@@ -77,6 +78,9 @@ class LinkedViews(QObject):
         from .point_cloud_selection_limits import SelectionLimits
         self.limits = SelectionLimits(self, parent=page.editor)
         page.editor.layout().insertWidget(1, self.limits)
+        page.editor.tool.setBrushRadius(self.brush_radius)
+        page.editor.tool.brushRadiusChanged.connect(self.set_brush_radius)
+        self.brushRadiusChanged.connect(page.editor.tool.setBrushRadius)
         self.sync_tabs()
 
     @property
@@ -91,6 +95,19 @@ class LinkedViews(QObject):
         self.depth = values
         self.limitsChanged.emit()
         self.page.editor.refresh_controls()
+        if persist:
+            self.persist()
+
+    @property
+    def brush_radius(self):
+        value = self.page.workspace.global_filters.get("brush_radius", 1.0)
+        return value if type(value) in (int, float) and .001 <= value <= 1000000 else 1.0
+
+    def set_brush_radius(self, value, *, persist=True):
+        if type(value) not in (int, float) or not .001 <= value <= 1000000:
+            return
+        self.page.workspace.global_filters["brush_radius"] = float(value)
+        self.brushRadiusChanged.emit(float(value))
         if persist:
             self.persist()
 
@@ -120,6 +137,7 @@ class LinkedViews(QObject):
         restored = PointCloudWorkspaceModel.restore(payload,
             self.page.editor.state["source_fingerprint"], self.page.editor.send)
         self.page.workspace = restored
+        self.brushRadiusChanged.emit(self.brush_radius)
         self.sync_tabs()
         self.open_active()
 

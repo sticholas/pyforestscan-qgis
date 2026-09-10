@@ -34,8 +34,9 @@ class DrawingRGBTests(unittest.TestCase):
         self.assertIn("WidgetWidth", source)
         self.assertIn("setReadOnly(True)", source)
 
-    def test_circle_metadata_reaches_docked_and_detached_editor(self):
+    def test_exact_geometry_metadata_reaches_docked_and_detached_editor(self):
         for name in ("point_cloud_editor.py", "point_cloud_detached.py"):
             source = (ROOT / "pyforestscan_qgis/ui" / name).read_text()
-            self.assertIn('("circle_center", "circle_radius")', source)
+            for key in ("circle_center", "circle_radius", "brush_path", "brush_radius"):
+                self.assertIn(f'"{key}"', source)
             self.assertIn("constraints=constraints, **values", source)

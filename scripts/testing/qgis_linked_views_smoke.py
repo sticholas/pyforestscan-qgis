@@ -22,7 +22,10 @@ def main():
     parser.add_argument("--selection-hag", nargs=2, type=float)
     parser.add_argument("--appearance-check", action="store_true")
     parser.add_argument("--circle-check", action="store_true")
+    parser.add_argument("--brush-check", action="store_true")
     args = parser.parse_args()
+    if args.circle_check and args.brush_check:
+        parser.error("Choose only one exact selection primitive check.")
     args.output_dir.mkdir(parents=True, exist_ok=False)
     from qgis.core import QgsApplication, Qgis
     from qgis.PyQt.QtCore import QTimer
@@ -155,7 +158,17 @@ def main():
                 page.grab().save(str(args.output_dir/"area.png"))
                 report["area_telemetry"] = page._view_state
                 previous = (editor.state.get("selection") or {}).get("selection_id")
-                if args.circle_check:
+                if args.brush_check:
+                    radius = max(d / 4, .001)
+                    path = [[x-d,y-d],[x+d,y-d],[x+d,y+d]]
+                    editor.tool.setBrushRadius(radius)
+                    editor.tool.buttons["Brush"].click()
+                    page.send({"action":"selection_test",
+                        "geometry":[[x-d-radius,y-d-radius],[x+d+radius,y-d-radius],
+                                    [x+d+radius,y+d+radius],[x-d-radius,y+d+radius],
+                                    [x-d-radius,y-d-radius]],
+                        "brush_path":path,"brush_radius":radius})
+                elif args.circle_check:
                     editor.tool.buttons["Circle"].click()
                     page.send({"action":"selection_test",
                         "geometry":[[x-d,y-d],[x+d,y-d],[x+d,y+d],[x-d,y+d],[x-d,y-d]],
@@ -169,7 +182,8 @@ def main():
                     return
                 assert result["resolved_point_count"] > 0
                 report["area_selection"] = result
-                report["area_selection_shape"] = "CIRCLE" if args.circle_check else "RECTANGLE"
+                report["area_selection_shape"] = (
+                    "BRUSH" if args.brush_check else "CIRCLE" if args.circle_check else "RECTANGLE")
                 if args.selection_hag:
                     assert result["hag_min"] >= args.selection_hag[0]
                     assert result["hag_max"] <= args.selection_hag[1]

@@ -42,6 +42,16 @@
             if (area < 4) { this.fail("Selection is too small. Zoom in and draw a larger boundary."); return null; }
             ring.push(ring[0].slice()); this.state = "PREVIEW"; return ring;
         }
+        finishPath(maxVertices = 512) {
+            if (this.state !== "DRAWING" || this.vertices.length < 2) {
+                this.fail("Drag a longer brush stroke."); return null;
+            }
+            if (this.vertices.length > maxVertices) {
+                this.fail("Brush stroke is too detailed. Draw a shorter stroke."); return null;
+            }
+            this.state = "PREVIEW";
+            return this.vertices.map(point => point.slice());
+        }
         resolving() { if (this.state === "PREVIEW") this.state = "RESOLVING"; }
         resolved() { if (this.state === "RESOLVING") this.state = "RESOLVED"; }
         fail(message) { this.error = message; this.state = "FAILED"; }

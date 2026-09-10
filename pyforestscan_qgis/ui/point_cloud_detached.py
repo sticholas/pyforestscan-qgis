@@ -21,8 +21,8 @@ class LinkedTabBar(QTabBar):
         left = qt_enum(Qt, "LeftButton", "MouseButton")
         # Finish Qt's tab-reorder grab before a foreign renderer can receive
         # the release. Deferring the window change avoids reparenting mid-event.
-        if (self.drag_id and event.buttons() & left and
-                not self.rect().adjusted(-12, -12, 12, 12).contains(point)):
+        outside = point.y() < -12 or point.y() > self.height() + 12
+        if self.drag_id and event.buttons() & left and outside:
             key, self.drag_id = self.drag_id, None
             position = event.globalPosition().toPoint() if hasattr(event,"globalPosition") else event.globalPos()
             release = QMouseEvent(qt_enum(QEvent, "MouseButtonRelease", "Type"),
@@ -44,7 +44,7 @@ class LinkedTabBar(QTabBar):
     def mouseReleaseEvent(self, event):
         point = event.position().toPoint() if hasattr(event,"position") else event.pos()
         key, self.drag_id = self.drag_id, None
-        outside = not self.rect().adjusted(-24,-36,24,36).contains(point)
+        outside = point.y() < -36 or point.y() > self.height() + 36
         super().mouseReleaseEvent(event)
         if key and outside:
             position = event.globalPosition().toPoint() if hasattr(event,"globalPosition") else event.globalPos()
@@ -88,12 +88,14 @@ class DetachedView(QDialog):
         row.addWidget(self.appearance)
         from .point_cloud_tools import SelectionTools
         self.tool = SelectionTools(self)
-        self.tool.currentTextChanged.connect(lambda value:self.send({
-            "action":"selection_tool","tool":value,"mode":self.selection_mode.currentText().upper()}))
         row.addWidget(self.tool)
         self.selection_mode = QComboBox()
         self.selection_mode.addItems(("Replace","Add","Subtract"))
         row.addWidget(self.selection_mode)
+        self.tool.setBrushRadius(controller.brush_radius)
+        self.tool.currentTextChanged.connect(self.change_tool)
+        self.tool.brushRadiusChanged.connect(controller.set_brush_radius)
+        controller.brushRadiusChanged.connect(self.tool.setBrushRadius)
         classify = QToolButton()
         classify.setText("Classify")
         classify.clicked.connect(self.classify)
@@ -138,6 +140,11 @@ class DetachedView(QDialog):
 
     def clear_selection_error(self):
         self.selection_error = ""
+
+    def change_tool(self, value):
+        options = {"brush_radius": self.tool.brushRadius()} if value == "Brush" else {}
+        self.send({"action":"selection_tool", "tool":value,
+                   "mode":self.selection_mode.currentText().upper(), **options})
 
     def refresh_edit_controls(self):
         editor = self.controller.page.editor
@@ -201,7 +208,8 @@ class DetachedView(QDialog):
             if event.get("geometry") and not editor.busy:
                 try:
                     constraints = self.controller.selection_values_for(view, event, telemetry)
-                    values = {key: event[key] for key in ("circle_center", "circle_radius") if key in event}
+                    values = {key: event[key] for key in (
+                        "circle_center", "circle_radius", "brush_path", "brush_radius") if key in event}
                     editor.send("select", geometry=event["geometry"], mode=event["mode"],
                                 constraints=constraints, **values)
                 except ValueError as error:

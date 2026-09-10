@@ -152,6 +152,19 @@ class SelectionToolTests(unittest.TestCase):
         self.tools.setEnabled(False)
         self.assertTrue(all(not button.isEnabled() for button in self.tools.buttons.values()))
 
+    def test_brush_radius_is_contextual_and_emits_source_unit_value(self):
+        radii = []
+        self.tools.brushRadiusChanged.connect(radii.append)
+        self.assertTrue(self.tools.brush_radius.isHidden())
+        self.tools.buttons["Brush"].click()
+        self.assertFalse(self.tools.brush_radius.isHidden())
+        self.tools.brush_radius.setValue(2.5)
+        self.assertEqual(radii, [2.5])
+        self.assertEqual(self.tools.brushRadius(), 2.5)
+        self.assertIn("dataset XY", self.tools.brush_radius.accessibleName())
+        self.tools.buttons["Pointer"].click()
+        self.assertTrue(self.tools.brush_radius.isHidden())
+
     def test_selection_detail_margin_is_zero_by_default_and_only_expands_region(self):
         owner = SimpleNamespace(page=SimpleNamespace(editor=SimpleNamespace(state={
             "selection": {"bounds": [0, 0, 5, 10, 20, 15]}, "source_crs": "EPSG:6635"})),
@@ -180,14 +193,18 @@ class SelectionLimitsTests(unittest.TestCase):
     def setUp(self):
         class Controller(QObject):
             limitsChanged = pyqtSignal()
+            brushRadiusChanged = pyqtSignal(float)
             depth_error = LinkedViews.depth_error
             set_depth = LinkedViews.set_depth
+            brush_radius = LinkedViews.brush_radius
+            set_brush_radius = LinkedViews.set_brush_radius
         self.controller = Controller()
         self.controller.depth = {}
         self.controller.persist = Mock()
         self.view = SimpleNamespace(view_type="OVERVIEW_3D", geometry={})
         self.controller.page = SimpleNamespace(
-            workspace=SimpleNamespace(views={"overview": self.view}, active_view_id="overview"),
+            workspace=SimpleNamespace(views={"overview": self.view}, active_view_id="overview",
+                                      global_filters={}),
             editor=SimpleNamespace(state={"ready": True, "dimensions": ["Z", "HeightAboveGround"]},
                                    busy=False, refresh_controls=Mock()))
         self.limits = SelectionLimits(self.controller)
@@ -239,6 +256,17 @@ class SelectionLimitsTests(unittest.TestCase):
         with patch.object(self.limits.minimum, "hasFocus", return_value=True):
             self.limits.refresh()
         self.assertEqual(self.limits.minimum.lineEdit().text(), "Min 12.")
+
+    def test_brush_radius_is_one_persisted_linked_view_setting(self):
+        values = []
+        self.controller.brushRadiusChanged.connect(values.append)
+        self.controller.set_brush_radius(3.25)
+        self.assertEqual(self.controller.page.workspace.global_filters["brush_radius"], 3.25)
+        self.assertEqual(self.controller.brush_radius, 3.25)
+        self.assertEqual(values, [3.25])
+        self.controller.persist.assert_called_once_with()
+        self.controller.set_brush_radius(float("nan"))
+        self.assertEqual(self.controller.brush_radius, 3.25)
 
 
 @unittest.skipIf(QApplication is None, "Requires QGIS Qt")

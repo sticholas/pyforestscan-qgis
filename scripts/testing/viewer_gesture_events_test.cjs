@@ -41,7 +41,7 @@ const editor=context.pointCloudEditor;
 const tick=()=>editor.tick({viewer,cloud});
 tick();
 function arm(tool="Polygon",mode="REPLACE") {
-    editor.command({action:"selection_tool",tool,mode});
+    editor.command({action:"selection_tool",tool,mode,...(tool==="Brush"?{brush_radius:1}:{})});
     for(let i=0;i<2;i++){ const callbacks=queue.splice(0);callbacks.forEach(fn=>fn()); }
 }
 function click(x,y,extra={}) {
@@ -102,6 +102,28 @@ editor.command({action:"selection_resolution"});
 editor.command({action:"linked_view",view:{view_id:"slice",view_type:"VERTICAL_SLICE"}});
 arm("Circle");
 canvas.emit("pointerdown",{offsetX:250,offsetY:250});
+assert.match(tick().event.error,/Overview and Area Detail/);
+assert.equal(tick().tool,"Pointer");
+editor.command({action:"linked_view",view:null});
+arm("Brush");
+// Invalid brush commands are ignored and retain the currently armed tool.
+editor.command({action:"selection_tool",tool:"Brush",mode:"REPLACE",brush_radius:0});
+assert.equal(tick().tool,"Brush");
+canvas.emit("pointerdown",{offsetX:100,offsetY:100});
+canvas.emit("pointermove",{offsetX:150,offsetY:100});
+canvas.emit("pointermove",{offsetX:150,offsetY:150});
+canvas.emit("pointerup",{offsetX:150,offsetY:180});
+const brush=tick().event;
+assert.equal(brush.brush_radius,1);
+assert.equal(brush.brush_path.length,4);
+assert.deepEqual(Array.from(brush.brush_path[0]),[940,2060]);
+assert.deepEqual(Array.from(brush.brush_path.at(-1)),[960,2028]);
+assert.equal(brush.geometry.length,5);
+assert.equal(tick().drawing_state,"RESOLVING");
+editor.command({action:"selection_resolution"});
+editor.command({action:"linked_view",view:{view_id:"slice",view_type:"VERTICAL_SLICE"}});
+arm("Brush");
+canvas.emit("pointerdown",{offsetX:100,offsetY:100});
 assert.match(tick().event.error,/Overview and Area Detail/);
 assert.equal(tick().tool,"Pointer");
 editor.command({action:"linked_view",view:null});

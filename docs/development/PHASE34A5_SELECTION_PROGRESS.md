@@ -35,6 +35,17 @@ human interaction, long-run/resource, and source-format gates remain open.
   The renderer receives the same path/radius fields used by source resolution,
   so future brush overlays need not treat screen pixels or an envelope as edit
   authority. Circle and brush primitives are mutually exclusive.
+- Brush Select is now a direct compact action in docked and detached tool
+  strips. A contextual radius control appears only while Brush is active and
+  stores one shared dataset-XY value in the linked workspace. Dragging samples
+  a bounded source-space path and submits one authoritative corridor selection;
+  the existing depth control supplies Full column, Elevation, or HAG limits.
+- Brush previews use round caps/joins and source-scale width. Invalid radius,
+  degenerate paths, paths over 512 samples, and Vertical Slice use fail closed.
+  The renderer event, managed worker, selection resolver, journal, overlays,
+  session restoration, export, and Process handoff retain the same path/radius.
+- Linked-tab drag-out now requires vertical movement outside the tab strip, so
+  reordering wide tabs cannot accidentally detach a view.
 
 ## MEASURED EVIDENCE
 
@@ -85,22 +96,48 @@ This short-path observation is not evidence for 512-point strokes or massive
 sources. Raw LAS/LAZ currently uses the existing bounded-chunk scan; interactive
 stroke sampling/simplification and cancellation latency still need measurement.
 
+Production JavaScript gesture tests now cover sampled freehand completion,
+source-coordinate conversion, one exact path/radius event, invalid radius,
+resolution state, and explicit Vertical Slice rejection. The direct controls
+passed 25 focused tests in both QGIS 3.44.13/Qt5 and QGIS 4.0.0/Qt6 (one expected
+Node-unavailable skip in each QGIS Python runtime).
+
+The QGIS 3.44 real-LAZ linked canary passed all 15 stages in 54.937 seconds.
+A three-segment Brush corridor in Area Detail with HAG 8-18 resolved 284
+original class-5 points in 0.375 seconds, combined with a 246-point slice edit,
+survived session reopen, and produced a validated 2,287,408-point LAZ. Every
+non-edited dimension, CRS and custom VLR matched; the original SHA remained
+0c688c22d42b0240c6cba19973087ee59606721289872a3f8237253548db34bb.
+Output SHA256:
+f78a8a2f59eb214dd40b974fdd492430545250baa3b59de37fb5e280554da32d.
+
+The matching QGIS 4.0/Qt6 canary passed all 15 stages in 37.047 seconds on the
+immutable 20,000-point fixture. Brush resolved 466 original points in 0.031
+seconds; the two-edit export validated every dimension, CRS and VLR. Source
+SHA256 remained
+4672454a0036298308d7f1e5fbfad3548340061dbb96ff924b2fc7632c234866;
+output SHA256 is
+e133d44d4a4c37234988a470be5c92e4de89442b86adf89ab563cf10520a4b0e.
+These canaries exercise the production event protocol but do not replace human
+freehand drawing acceptance or establish massive-cloud Brush latency.
+
 ## IN PROGRESS
 
 Circle/cylinder selection is exposed but remains experimental pending human
 interaction acceptance. Radius remains explicitly in source XY units; no
 screen-pixel or implicit metre conversion is allowed.
 Circle plus HAG range is a height-relative column, not a Euclidean 3D cylinder.
-Brush membership/overlay protocol exists, but no Brush button or gesture is
-enabled yet. It must gain source-space path sampling, compact contextual radius
-controls, background progress, and large-selection warnings before user release.
+Brush is exposed and end-to-end automated evidence passes, but human freehand
+acceptance, measured long-stroke simplification, cancellation responsiveness,
+background progress, and large-selection impact feedback remain required before
+user release.
 
 ## NEXT
 
 1. Human circle/cylinder interaction acceptance in Overview and Area Detail,
    including Add/Subtract and the active height limits.
-2. Direct Brush gesture with bounded path simplification, contextual radius,
-   background progress, and selection-impact feedback.
+2. Human Brush acceptance plus measured path simplification, background
+   progress, cancellation responsiveness, and selection-impact feedback.
 3. Sphere/volume contracts and large-source selector evidence.
 
 ## BLOCKED

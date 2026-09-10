@@ -142,6 +142,8 @@ class EditorPanel(QWidget):
         self.mode.addItems(("Replace", "Add", "Subtract"))
         self.mode.setToolTip("Replace, add or subtract a filtered source region. Hold Shift for Add or Alt for Subtract when starting a shape in the viewer. Esc returns to navigation. Rendered point count is not edit membership.")
         self.tool.currentTextChanged.connect(self.change_tool)
+        self.tool.brushRadiusChanged.connect(
+            lambda _value: self.change_tool("Brush") if self.tool.currentText() == "Brush" else None)
         self.mode.currentTextChanged.connect(lambda _: self.change_tool(self.tool.currentText()))
         row.addWidget(self.tool)
         row.addWidget(self.mode, 1)
@@ -313,7 +315,9 @@ class EditorPanel(QWidget):
 
     def change_tool(self, tool):
         if self.viewer_ready and not self.page.linked.depth_error:
-            self.page.send({"action": "selection_tool", "tool": tool, "mode": self.mode.currentText().upper()})
+            values = {"brush_radius": self.tool.brushRadius()} if tool == "Brush" else {}
+            self.page.send({"action": "selection_tool", "tool": tool,
+                            "mode": self.mode.currentText().upper(), **values})
 
     def observe(self, telemetry):
         if self.viewer_worker is not self.page.worker:
@@ -332,7 +336,8 @@ class EditorPanel(QWidget):
             elif event.get("geometry"):
                 try:
                     constraints = self.page.linked.selection_values(event)
-                    values = {key: event[key] for key in ("circle_center", "circle_radius") if key in event}
+                    values = {key: event[key] for key in (
+                        "circle_center", "circle_radius", "brush_path", "brush_radius") if key in event}
                     self.send("select", geometry=event["geometry"], mode=event["mode"],
                               constraints=constraints, **values)
                 except ValueError as error:

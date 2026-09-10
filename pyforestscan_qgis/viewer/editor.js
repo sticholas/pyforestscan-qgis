@@ -11,6 +11,7 @@ const point = new THREE.Vector3(), flat = new THREE.Vector3();
 let pending = [], requestedRevision = 0;
 let gestureMode = null;
 let toolEpoch = 0, insertionPending = false;
+let brushPointer = null, brushRadius = 1;
 let displaySignature = "";
 let selectionColor = new THREE.Color("#5be4eb");
 function sourceAttribute(geometry, name) {
@@ -119,6 +120,7 @@ function leaveTool() {
     if (rectangleBox) rectangleBox.remove();
     rectangleBox = null;
     rectangleStart = null;
+    brushPointer = null;
     viewer.inputHandler.enabled = true;
     if (savedNavigation) {
         const view = viewer.scene.view;
@@ -163,6 +165,18 @@ function initialize(value) {
     canvas.addEventListener("pointerdown", event => {
         if (tool !== "Pointer" && gestureMode === null)
             gestureMode = event.altKey ? "SUBTRACT" : event.shiftKey ? "ADD" : mode;
+        if (tool === "Brush" && event.button === 0) {
+            if (linkedView && linkedView.view_type === "VERTICAL_SLICE") {
+                latestEvent = {id: ++eventNumber, error: "Brush Select currently works in Overview and Area Detail. Use Polygon Select in Vertical Slice."};
+                leaveTool();
+                return;
+            }
+            brushPointer = event.pointerId;
+            drawing.vertex(event.offsetX,event.offsetY);
+            canvas.setPointerCapture(event.pointerId);
+            event.preventDefault(); event.stopPropagation();
+            return;
+        }
         if (!["Rectangle", "Circle"].includes(tool) || event.button !== 0) return;
         if (tool === "Circle" && linkedView && linkedView.view_type === "VERTICAL_SLICE") {
             latestEvent = {id: ++eventNumber, error: "Circle Select currently works in Overview and Area Detail. Use Polygon Select in Vertical Slice."};
@@ -179,6 +193,14 @@ function initialize(value) {
         event.stopPropagation();
     }, true);
     canvas.addEventListener("pointermove", event => {
+        if (tool === "Brush" && brushPointer === event.pointerId) {
+            const previous=drawing.vertices.at(-1);
+            if (!previous || Math.hypot(previous[0]-event.offsetX,previous[1]-event.offsetY)>=3)
+                drawing.vertex(event.offsetX,event.offsetY);
+            drawPolygon([event.offsetX,event.offsetY]);
+            event.preventDefault(); event.stopPropagation();
+            return;
+        }
         if (tool === "Polygon" || tool === "Line") drawPolygon([event.offsetX, event.offsetY]);
         if (!rectangleStart || !rectangleBox) return;
         const [x, y] = rectangleStart;
@@ -191,6 +213,28 @@ function initialize(value) {
             height: Math.abs(event.offsetY - y) + "px"});
     }, true);
     canvas.addEventListener("pointerup", event => {
+        if (tool === "Brush" && brushPointer === event.pointerId) {
+            if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+            drawing.vertex(event.offsetX,event.offsetY);
+            const screenPath=drawing.finishPath(512);
+            if (!screenPath) latestEvent={id:++eventNumber,error:drawing.error};
+            else {
+                const path=screenPath.map(p => {
+                    const xyz=sourceXY(p[0],p[1],drawingCamera); return [xyz.x,xyz.y];
+                });
+                const xs=path.map(p=>p[0]), ys=path.map(p=>p[1]);
+                const geometry=[[Math.min(...xs)-brushRadius,Math.min(...ys)-brushRadius],
+                    [Math.max(...xs)+brushRadius,Math.min(...ys)-brushRadius],
+                    [Math.max(...xs)+brushRadius,Math.max(...ys)+brushRadius],
+                    [Math.min(...xs)-brushRadius,Math.max(...ys)+brushRadius],
+                    [Math.min(...xs)-brushRadius,Math.min(...ys)-brushRadius]];
+                publish(geometry,{brush_path:path,brush_radius:brushRadius});
+                drawing.resolving();
+            }
+            leaveTool();
+            event.preventDefault(); event.stopImmediatePropagation();
+            return;
+        }
         if (tool === "Line") {
             event.preventDefault(); event.stopImmediatePropagation();
             if (event.button === 0) {
@@ -382,12 +426,15 @@ window.pointCloudEditor = {
         if (command.action === "linked_view") linkedView = command.view || null;
         if (!context) return;
         if (command.action === "selection_tool") {
-            if (!["Pointer", "Polygon", "Rectangle", "Circle", "Line"].includes(command.tool)) return;
+            if (!["Pointer", "Polygon", "Rectangle", "Circle", "Brush", "Line"].includes(command.tool)) return;
             if (command.mode && !["REPLACE", "ADD", "SUBTRACT"].includes(command.mode)) return;
+            if (command.tool === "Brush" &&
+                    (!Number.isFinite(command.brush_radius) || command.brush_radius <= 0)) return;
             leaveTool();
             drawing.cancel();
             mode = command.mode || "REPLACE";
             drawingPurpose = command.purpose || "EDIT";
+            if (command.tool === "Brush") brushRadius=command.brush_radius;
             if (command.tool === "Pointer") {
                 return;
             }
@@ -403,16 +450,26 @@ window.pointCloudEditor = {
                 if (epoch !== toolEpoch) return;
                 insertionPending = false;
                 tool = command.tool;
-                drawing.arm(tool === "Line" ? "Polygon" : tool === "Circle" ? "Rectangle" : tool, mode);
+                drawing.arm(tool === "Line" || tool === "Brush" ? "Polygon" : tool === "Circle" ? "Rectangle" : tool, mode);
                 drawingCamera = context.viewer.scene.getActiveCamera().clone();
                 context.viewer.inputHandler.enabled = false;
-                if (tool === "Polygon" || tool === "Line") {
+                if (tool === "Polygon" || tool === "Line" || tool === "Brush") {
                     polygonOverlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
                     polygonOverlay.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
                     polygonLine = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
                     polygonLine.setAttribute("fill", "none");
                     polygonLine.setAttribute("stroke", "#5be4eb");
                     polygonLine.setAttribute("stroke-width", "2");
+                    if (tool === "Brush") {
+                        const a=sourceXY(0,0,drawingCamera), b=sourceXY(1,0,drawingCamera);
+                        const unitsPerPixel=Math.hypot(b.x-a.x,b.y-a.y);
+                        const width=Number.isFinite(unitsPerPixel) && unitsPerPixel > 0
+                            ? Math.max(.25,2*brushRadius/unitsPerPixel) : 2;
+                        polygonLine.setAttribute("stroke-width", String(width));
+                        polygonLine.setAttribute("stroke-linecap","round");
+                        polygonLine.setAttribute("stroke-linejoin","round");
+                        polygonLine.setAttribute("stroke-opacity",".6");
+                    }
                     polygonOverlay.appendChild(polygonLine);
                     context.viewer.renderer.domElement.parentElement.appendChild(polygonOverlay);
                 }
