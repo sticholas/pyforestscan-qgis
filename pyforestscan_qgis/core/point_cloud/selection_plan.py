@@ -43,6 +43,20 @@ def build_scoped_product_plan(
     return scoped
 
 
+def promote_scoped_product_plan(base_plan: Mapping[str, Any], request: SelectionProductRequest, preflight: Any) -> dict[str, Any]:
+    """Promote a scoped plan only when its explicit preflight report is ready."""
+    if not bool(getattr(preflight, "ready", False)):
+        blockers = getattr(preflight, "blockers", ()) or ("Preflight did not pass.",)
+        raise ValueError("Cannot promote scoped Product Plan: " + "; ".join(str(item) for item in blockers))
+    scoped = build_scoped_product_plan(base_plan, request)
+    scoped["selection_execution"] = {
+        "mode": "VIEWER_SCOPE",
+        "status": str(getattr(preflight, "execution_status", "READY_FOR_EXECUTION")),
+        "source_format": str(getattr(preflight, "source_format", "")),
+        "warnings": list(getattr(preflight, "warnings", ()) or ()),
+    }
+    return scoped
+
 def write_scoped_product_plan(
     base_plan_path: Path | str,
     request: SelectionProductRequest,
