@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .point_dimensions import PointDimensionCapabilities
+from .point_cloud.selection_product_request import selection_scope_from_context, selection_scope_to_polygon_input
 
 
 class PipelineContextError(ValueError):
@@ -25,6 +26,33 @@ class PipelineContext:
     product_plan: Mapping[str, Any]
     product_entry: Mapping[str, Any]
     dataset_report: Mapping[str, Any] | None = None
+
+    @property
+    def selection_scope_data(self) -> Mapping[str, Any] | None:
+        """Return the serialized authoritative viewer scope, if present."""
+        value = self.product_plan.get("selection_scope")
+        return value if isinstance(value, Mapping) else None
+
+    @property
+    def selection_scope(self):
+        """Rehydrate and validate the authoritative viewer scope."""
+        value = self.selection_scope_data
+        return selection_scope_from_context(value) if value is not None else None
+
+    @property
+    def selection_bounds(self) -> tuple[tuple[float, float], tuple[float, float]] | None:
+        """Return the rectangular envelope used for bounded source reads."""
+        scope = self.selection_scope
+        if scope is None:
+            return None
+        min_x, min_y, max_x, max_y = scope.bounds
+        return ((min_x, min_y), (max_x, max_y))
+
+    @property
+    def selection_polygon_execution_input(self):
+        """Return the existing polygon transport value for bounded execution."""
+        scope = self.selection_scope
+        return selection_scope_to_polygon_input(scope) if scope is not None else None
 
     @property
     def source_dataset(self) -> str | None:

@@ -8,6 +8,7 @@ from typing import Any, Mapping
 
 from .selection_processing import SelectionProcessingScope, selection_product_options
 from ..product_registry import product_definition
+from ..polygon_transport import PolygonExecutionInput
 from ..types import ProductType
 
 
@@ -68,6 +69,27 @@ def selection_scope_from_context(context: Mapping[str, Any]) -> SelectionProcess
         vertical_axis=str(context.get("vertical_axis", "Z")),
     )
 
+
+def selection_scope_to_polygon_input(scope: SelectionProcessingScope) -> PolygonExecutionInput:
+    """Translate a closed source-space scope into the existing polygon transport model."""
+    coordinates = [list(point) for point in scope.geometry]
+    wkt_coordinates = ", ".join(f"{point[0]:.15g} {point[1]:.15g}" for point in scope.geometry)
+    area = abs(sum(
+        scope.geometry[index][0] * scope.geometry[index + 1][1]
+        - scope.geometry[index + 1][0] * scope.geometry[index][1]
+        for index in range(len(scope.geometry) - 1)
+    )) / 2.0
+    return PolygonExecutionInput(
+        source_kind="viewer_selection",
+        geometry_wkt=f"POLYGON (({wkt_coordinates}))",
+        geometry_geojson={"type": "Polygon", "coordinates": [coordinates]},
+        source_crs_authid=scope.geometry_crs,
+        processing_crs_authid=scope.geometry_crs,
+        envelope=scope.bounds,
+        area=area,
+        feature_count=1,
+        layer_name="viewer_selection",
+    )
 
 def build_selection_product_request(
     scope: SelectionProcessingScope,

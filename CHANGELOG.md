@@ -1,5 +1,7 @@
 # Changelog
 
+- Added scoped-plan translation into PipelineContext, including the authoritative source envelope and existing polygon transport contract. Execution remains gated until bounded reads and PBM preflight consume these values safely.
+
 - Added review-only scoped Product Plan artifacts for viewer selections. The base plan remains unchanged, and Processing blocks accidental whole-dataset execution while a selected scope awaits bounded PBM translation.
 
 - Added a QGIS-free `SelectionProductRequest` contract and a Processing-page

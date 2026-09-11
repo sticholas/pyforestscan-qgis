@@ -42,3 +42,4 @@ status. It is a review artifact only: no PBM job is launched and no source
 points are changed. Profile raster requests are visibly marked for scientific
 review rather than being presented as automatically safe.
 The selected product can also be materialized as a separate review JSON artifact containing one product and the authoritative scope. The base Product Plan is never overwritten. Processing blocks the normal Start action while a selected scope is active until bounded PBM execution is validated; **Use Whole Dataset** returns to the established route.
+The pipeline context can now rehydrate a scoped review plan and expose its source-space envelope plus the existing PolygonExecutionInput transport model. This is translation evidence only; product pipeline steps do not consume the scope until bounded reads, CRS handling, and PBM preflight are validated.
