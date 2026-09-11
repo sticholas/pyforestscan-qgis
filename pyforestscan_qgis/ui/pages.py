@@ -155,7 +155,7 @@ from ..core.workspace import (
 from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
 from .help import info_badge, info_help_button
 from ..core.point_cloud.selection_product_request import build_selection_product_request, selection_scope_from_context, selection_product_options
-from ..core.point_cloud.selection_chm_preflight import preflight_selection_chm
+from ..core.point_cloud.selection_product_preflight import preflight_selection_product
 from ..core.point_cloud.selection_plan import promote_scoped_product_plan, write_scoped_product_plan
 from .help_topics import scientific_group_help, semantic_action_help, semantic_help
 from .output_loading import LoadableOutput, collect_loadable_outputs, compact_dataset_summary_lines, output_loading_summary
@@ -1741,13 +1741,13 @@ class ProcessingPage(MissionPage):
         self.validate_selection_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
         self.validate_selection_button.setEnabled(False)
         self.validate_selection_button.setVisible(False)
-        self.validate_selection_button.clicked.connect(self.validate_selected_chm)
+        self.validate_selection_button.clicked.connect(self.validate_selected_product)
         _apply_button_role(self.validate_selection_button, "secondary")
         self.promote_selection_button = QPushButton("Promote for Execution")
         self.promote_selection_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
         self.promote_selection_button.setEnabled(False)
         self.promote_selection_button.setVisible(False)
-        self.promote_selection_button.clicked.connect(self.promote_selected_chm)
+        self.promote_selection_button.clicked.connect(self.promote_selected_product)
         _apply_button_role(self.promote_selection_button, "primary")
         self.clear_selection_scope_button = QPushButton("Use Whole Dataset")
         self.clear_selection_scope_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
@@ -1933,9 +1933,9 @@ class ProcessingPage(MissionPage):
             payload["review_plan_path"] = str(review_plan_path)
         self.selection_product_request = payload
         self.selection_request_model = request
-        is_chm = request.product.value == "chm"
-        self.validate_selection_button.setVisible(is_chm)
-        self.validate_selection_button.setEnabled(is_chm)
+        self.validate_selection_button.setText("Validate Selected CHM" if request.product.value == "chm" else "Validate Selected Product")
+        self.validate_selection_button.setVisible(True)
+        self.validate_selection_button.setEnabled(True)
         self.promote_selection_button.setVisible(False)
         self.promote_selection_button.setEnabled(False)
         review = " Scientific review is required before execution." if request.review_required else ""
@@ -1955,16 +1955,16 @@ class ProcessingPage(MissionPage):
     def set_backend_readiness(self, ready: bool) -> None:
         """Project the authoritative Processing Engine readiness into selection gates."""
         self.selection_backend_ready = bool(ready)
-        if self.selection_request_model is not None and self.selection_request_model.product.value == "chm":
+        if self.selection_request_model is not None:
             self.validate_selection_button.setEnabled(True)
 
-    def validate_selected_chm(self) -> None:
-        """Run the pure bounded-CHM gate and show exact blockers before promotion."""
+    def validate_selected_product(self) -> None:
+        """Run the bounded product gate and show exact blockers before promotion."""
         request = self.selection_request_model
-        if request is None or request.product.value != "chm":
-            self.selection_scope_label.setText("Prepare a CHM request before validating a selected product.")
+        if request is None:
+            self.selection_scope_label.setText("Prepare a product request before validating the selected scope.")
             return
-        report = preflight_selection_chm(
+        report = preflight_selection_product(
             request,
             backend_ready=self.selection_backend_ready,
             source_exists=request.source_path.exists(),
@@ -1973,25 +1973,25 @@ class ProcessingPage(MissionPage):
         details = [report.summary]
         details.extend(f"Blocker: {item}" for item in report.blockers)
         details.extend(f"Warning: {item}" for item in report.warnings)
-        self.log_text.setPlainText("Selected CHM preflight\n" + "\n".join(details))
+        self.log_text.setPlainText(f"Selected {request.product.value} preflight\n" + "\n".join(details))
         if report.ready:
             self.promote_selection_button.setVisible(True)
             self.promote_selection_button.setEnabled(True)
-            self.selection_scope_label.setText("Selected CHM passed preflight. Promote it explicitly before execution.")
-            _set_status_badge(self.status_label, "READY", "Status: Selected CHM passed preflight; promotion is required.")
+            self.selection_scope_label.setText("Selected product passed preflight. Promote it explicitly before execution.")
+            _set_status_badge(self.status_label, "READY", "Status: Selected product passed preflight; promotion is required.")
         else:
             self.promote_selection_button.setVisible(False)
             self.promote_selection_button.setEnabled(False)
-            self.selection_scope_label.setText("Selected CHM is not ready for execution. Review the blockers below.")
-            _set_status_badge(self.status_label, "WARNING", "Status: Selected CHM needs review before execution.")
+            self.selection_scope_label.setText("Selected product is not ready for execution. Review the blockers below.")
+            _set_status_badge(self.status_label, "WARNING", "Status: Selected product needs review before execution.")
 
-    def promote_selected_chm(self) -> None:
+    def promote_selected_product(self) -> None:
         """Write an executable derived plan without changing the base Product Plan."""
         request = self.selection_request_model
         report = self.selection_preflight_report
         base_path = Path(self.product_plan_edit.text().strip()) if self.product_plan_edit.text().strip() else None
         if request is None or report is None or not report.ready or base_path is None or not base_path.exists():
-            self.selection_scope_label.setText("Run successful CHM preflight with an active Product Plan before promotion.")
+            self.selection_scope_label.setText("Run successful product preflight with an active Product Plan before promotion.")
             return
         try:
             base_plan = json.loads(base_path.read_text(encoding="utf-8"))
@@ -2001,15 +2001,15 @@ class ProcessingPage(MissionPage):
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text(json.dumps(promoted, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         except (OSError, ValueError, json.JSONDecodeError) as error:
-            self.selection_scope_label.setText(f"Selected CHM could not be promoted: {error}")
+            self.selection_scope_label.setText(f"Selected product could not be promoted: {error}")
             return
         self.selection_promoted_plan_path = destination
         self.product_plan_edit.setText(str(destination))
         self.selection_product_request = dict(request.to_dict())
         self.selection_product_request["selection_execution"] = promoted["selection_execution"]
-        self.selection_scope_label.setText(f"Selected CHM is ready for execution. Derived plan: {destination}")
+        self.selection_scope_label.setText(f"Selected product is ready for execution. Derived plan: {destination}")
         self.log_text.setPlainText(self.log_text.toPlainText().strip() + f"\nPromoted scoped plan: {destination}\nThe base Product Plan was not modified.")
-        _set_status_badge(self.status_label, "READY", "Status: Selected CHM promoted and ready for PBM execution.")
+        _set_status_badge(self.status_label, "READY", "Status: Selected product promoted and ready for PBM execution.")
 
     def set_run_context(self, context: RunContext | None) -> None:
         """Use the active Mission Control run context."""

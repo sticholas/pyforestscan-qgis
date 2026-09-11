@@ -184,6 +184,7 @@ def _execute_pad_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 beer_lambert_constant=context.pad_beer_lambert_constant,
                 drop_ground=context.pad_drop_ground,
                 crs=context.crs,
+                **_selection_request_kwargs(context),
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
@@ -213,6 +214,7 @@ def _execute_pai_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 beer_lambert_constant=context.pad_beer_lambert_constant,
                 drop_ground=context.pad_drop_ground,
                 crs=context.crs,
+                **_selection_request_kwargs(context),
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
@@ -242,6 +244,7 @@ def _execute_fhd_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 min_height=context.fhd_min_height,
                 max_height=context.fhd_max_height,
                 crs=context.crs,
+                **_selection_request_kwargs(context),
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
@@ -278,6 +281,7 @@ def _execute_rumple_step(context: PipelineContext, step: PipelineStep, adapter: 
                 spatial_assignment_scope=context.spatial_assignment_scope,
                 source_crs_status=context.source_crs_status,
                 source_point_count=context.source_point_count,
+                **_selection_request_kwargs(context),
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
@@ -331,6 +335,7 @@ def _execute_canopy_cover_step(context: PipelineContext, step: PipelineStep, ada
                 beer_lambert_constant=context.pad_beer_lambert_constant,
                 drop_ground=context.pad_drop_ground,
                 crs=context.crs,
+                **_selection_request_kwargs(context),
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.

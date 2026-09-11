@@ -29,6 +29,6 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
         self.assertIn('QPushButton("Validate Selected CHM")', source)
         self.assertIn('QPushButton("Promote for Execution")', source)
-        self.assertIn("preflight_selection_chm", source)
+        self.assertIn("preflight_selection_product", source)
         self.assertIn("set_backend_readiness", source)
         self.assertIn("validate and promote it first", source)

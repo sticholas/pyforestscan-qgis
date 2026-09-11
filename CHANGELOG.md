@@ -760,3 +760,6 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
   The gate uses the authoritative Processing Engine readiness state, reports
   blockers before execution, and writes a derived executable plan without
   modifying the base plan or source dataset.
+- Extended bounded selection transport across the currently executable
+  product pipelines and added a product-generic preflight. Products without
+  a scoped pipeline now fail closed with an explicit readiness blocker.

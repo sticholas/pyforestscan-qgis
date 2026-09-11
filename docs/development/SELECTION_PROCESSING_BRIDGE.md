@@ -57,3 +57,14 @@ beside the active run reports; the base Product Plan and original source
 remain unchanged. Starting a selected-scope job is blocked until this
 promotion has completed. Non-CHM selections remain review-only until their
 own product gate is implemented.
+
+## Product-generic scoped transport
+
+The bounded selection fields are now passed through every currently executable
+Mission Control product pipeline: CHM, Canopy Cover, PAD, PAI, FHD, and Rumple.
+The product-generic preflight keeps this list explicit. Density, voxel, DTM,
+and other product choices remain visible for planning but fail closed with an
+explicit "scoped execution is not wired yet" blocker until their pipeline
+handlers are implemented. A successful gate still requires PBM readiness,
+source existence, a supported source format, valid closed geometry, and any
+scientific review to be cleared.
