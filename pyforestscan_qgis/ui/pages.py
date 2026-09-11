@@ -154,6 +154,7 @@ from ..core.workspace import (
 )
 from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
 from .help import info_badge, info_help_button
+from ..core.point_cloud.selection_product_request import build_selection_product_request, selection_scope_from_context, selection_product_options
 from .help_topics import scientific_group_help, semantic_action_help, semantic_help
 from .output_loading import LoadableOutput, collect_loadable_outputs, compact_dataset_summary_lines, output_loading_summary
 from .state import ProjectSummary
@@ -1720,6 +1721,20 @@ class ProcessingPage(MissionPage):
         self.selection_scope_label.setProperty("workflowGuidance", True)
         overview.addWidget(self.selection_scope_label)
         self.selection_scope: dict[str, object] | None = None
+        selection_product_row = QHBoxLayout()
+        self.selection_product_combo = QComboBox()
+        self.selection_product_combo.setPlaceholderText("Choose a product for this selection")
+        self.selection_product_combo.setEnabled(False)
+        self.selection_product_combo.setProperty("contextHelp", "Choose one registered product to prepare from the authoritative viewer selection. This only creates a reviewable request; it does not start processing.")
+        self.prepare_selection_product_button = QPushButton("Prepare Selected Product")
+        self.prepare_selection_product_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
+        self.prepare_selection_product_button.setEnabled(False)
+        self.prepare_selection_product_button.clicked.connect(self.prepare_selected_product)
+        _apply_button_role(self.prepare_selection_product_button, "secondary")
+        selection_product_row.addWidget(self.selection_product_combo, 1)
+        selection_product_row.addWidget(self.prepare_selection_product_button, 0)
+        overview.addLayout(selection_product_row)
+        self.selection_product_request: dict[str, object] | None = None
 
         self.job_title_edit = QLineEdit("Mission Control Product Job")
         self.job_title_edit.setPlaceholderText("Optional run label")
@@ -1814,10 +1829,26 @@ class ProcessingPage(MissionPage):
     def set_selection_scope(self, scope: dict[str, object] | None) -> None:
         """Show a prepared authoritative viewer scope without starting a job."""
         self.selection_scope = dict(scope) if scope else None
+        self.selection_product_request = None
+        self.selection_product_combo.clear()
         if not self.selection_scope:
             self.selection_scope_label.setText(
                 "Selection scope: Whole dataset. Use Prepare Product from the Point Cloud viewer to add a bounded scope.")
+            self.selection_product_combo.setEnabled(False)
+            self.prepare_selection_product_button.setEnabled(False)
             return
+        try:
+            scope_model = selection_scope_from_context(self.selection_scope)
+            for option in selection_product_options(scope_model):
+                label = PRODUCT_LABELS.get(option.product, option.product.value)
+                self.selection_product_combo.addItem(f"{label} ({option.status})", option.product.value)
+        except (TypeError, ValueError, KeyError) as error:
+            self.selection_scope_label.setText(f"Selection scope could not be prepared: {error}")
+            self.selection_product_combo.setEnabled(False)
+            self.prepare_selection_product_button.setEnabled(False)
+            return
+        self.selection_product_combo.setEnabled(True)
+        self.prepare_selection_product_button.setEnabled(True)
         kind = str(self.selection_scope.get("scope_kind", "AREA")).title()
         count = self.selection_scope.get("point_count")
         count_text = f"{int(count):,} source points" if isinstance(count, int) else "source points to verify"
@@ -1828,10 +1859,42 @@ class ProcessingPage(MissionPage):
             f"Selection scope: {kind} | {count_text} | {height_text} | "
             "authoritative source geometry prepared; processing has not started.")
 
+    def prepare_selected_product(self) -> None:
+        """Create a review-only product request from the current viewer scope."""
+        if not self.selection_scope:
+            self.selection_scope_label.setText("Choose a non-empty viewer selection before preparing a product.")
+            return
+        product = self.selection_product_combo.currentData()
+        if not product:
+            self.selection_scope_label.setText("Choose a product before preparing the request.")
+            return
+        try:
+            scope = selection_scope_from_context(self.selection_scope)
+            output_folder = self.run_context.outputs_dir if self.run_context is not None else scope.source_path.parent / "outputs"
+            request = build_selection_product_request(scope, str(product), output_folder=output_folder)
+        except (TypeError, ValueError, KeyError, OSError) as error:
+            self.selection_scope_label.setText(f"Product request could not be prepared: {error}")
+            return
+        self.selection_product_request = request.to_dict()
+        review = " Scientific review is required before execution." if request.review_required else ""
+        self.selection_scope_label.setText(
+            f"Product request: {request.summary}. Review-only; processing has not started.{review}")
+        self.log_text.setPlainText(
+            f"Prepared product request: {request.summary}\n"
+            f"Source: {request.source_path}\n"
+            f"Bounds: {request.bounds}\n"
+            f"Vertical filter: {request.vertical_axis}\n"
+            f"Authority: {request.authority}\n"
+            "No source data was modified and no processing job was started.")
+        _set_status_badge(self.status_label, "WARNING", "Status: Product request prepared for review; processing has not started.")
+
     def set_run_context(self, context: RunContext | None) -> None:
         """Use the active Mission Control run context."""
 
+        previous_context = self.run_context
         self.run_context = context
+        if context is None or (previous_context is not None and previous_context.lidar_path != context.lidar_path):
+            self.set_selection_scope(None)
         if context is None:
             self.current_plan_label.setText("Product plan file: none")
             self.selected_products_label.setText("Selected products: build a Product Plan first.")

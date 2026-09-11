@@ -31,3 +31,13 @@ Processing displays a prepared scope as a review-only label containing its
 scope kind, source-point count, vertical limits, and the statement that
 processing has not started. Clearing or replacing the processing context must
 not create a second selection authority.
+
+The request contract intentionally stops before execution.
+
+The Processing page now exposes the registered product choices for a prepared
+scope. **Prepare Selected Product** creates a serializable
+`SelectionProductRequest` containing the product, source identity, source-space
+geometry, bounds, vertical filter, point count, output folder, and review
+status. It is a review artifact only: no PBM job is launched and no source
+points are changed. Profile raster requests are visibly marked for scientific
+review rather than being presented as automatically safe.

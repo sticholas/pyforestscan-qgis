@@ -1,5 +1,11 @@
 # Changelog
 
+- Added a QGIS-free `SelectionProductRequest` contract and a Processing-page
+  product chooser for authoritative viewer selections. Prepared requests carry
+  source identity, geometry, bounds, vertical filters, point counts, and
+  profile review status. They remain review-only until product-specific PBM
+  request translation is validated.
+
 - Added a review-only **Prepare Product** handoff from the Point Cloud editor
   to guided Processing. It carries the authoritative source selection, scope
   kind, point count, and elevation/HAG limits without starting processing or
