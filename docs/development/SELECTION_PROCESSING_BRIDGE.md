@@ -18,6 +18,8 @@ The intended flow is:
 select area/column/profile -> review source-point count and height range ->
 choose product -> review product-specific requirements -> run
 
-Product-specific eligibility and the Mission Control launcher remain the next
-implementation slice. Until then, the existing explicit export-to-Process
-handoff remains the qualified route for edited derivatives.
+Product-specific eligibility is now represented as AVAILABLE or REVIEW guidance
+for each registered product. The Mission Control launcher and request translation
+remain the next implementation slice. Until that wiring is validated, the
+existing explicit export-to-Process handoff remains the qualified route for
+edited derivatives.

@@ -1,5 +1,11 @@
 # Changelog
 
+- Added scope-aware product guidance: Area and Column selections expose
+  bounded-source candidates, while Profile selections keep products visible
+  with REVIEW guidance for raster extent and sampling; density and voxel
+  products are the natural first choices.
+
+
 - Added a QGIS-free Selection Processing Bridge contract carrying source
   identity, authoritative geometry, scope kind, resolved source-point count,
   and optional elevation/HAG limits. This prepares direct product handoff
