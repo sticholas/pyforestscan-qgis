@@ -494,6 +494,7 @@ class EditorPanel(QWidget):
         if hasattr(self.page, "linked"):
             self.page.linked.limits.refresh()
             self.tool.setEnabled(ready and not self.page.linked.depth_error)
+            self.page.linked.refresh_detached_controls()
         self.edit_controls.setVisible(bool((self.state.get("selection") or {}).get("resolved_point_count"))
                                       or self.classify_while.isChecked())
         self.edit_controls.setEnabled(ready)

@@ -351,7 +351,7 @@ class PointCloudPage(QWidget):
         display_row.addWidget(color_label)
         display_row.addWidget(self.mode, 1)
         from .point_cloud_appearance import PointAppearance
-        self.appearance = PointAppearance(self.send, self)
+        self.appearance = PointAppearance(self._send_point_display, self)
         display_row.addWidget(self.appearance)
         layout.addLayout(display_row)
         self.filter_toggle = QToolButton()
@@ -677,6 +677,16 @@ class PointCloudPage(QWidget):
         if self.worker:
             self.worker.send(command)
 
+    def _send_point_display(self, command):
+        self.send(command)
+        linked = getattr(self, "linked", None)
+        if linked is not None:
+            linked.set_point_display(
+                self.workspace.active_view_id,
+                command.get("style", "Circular"),
+                command.get("size", 0),
+            )
+
     def _start(self, worker):
         if self.worker is not None:
             self.status.setText("Close the current viewer before starting another operation.")
@@ -779,7 +789,12 @@ class PointCloudPage(QWidget):
         telemetry = value.get("telemetry", {})
         if telemetry.get("ready"):
             self._view_state = telemetry
-            self.appearance.sync(telemetry)
+            display_state = dict(telemetry)
+            active_view = self.workspace.views.get(self.workspace.active_view_id)
+            if active_view:
+                display_state.update(point_style=active_view.lod.get("point_style", "Circular"),
+                                     point_size=active_view.lod.get("point_size", 0))
+            self.appearance.sync(display_state)
             self.linked.observe(telemetry)
             self.editor.observe(telemetry)
             self.linked.coordinate_resources()
@@ -791,7 +806,13 @@ class PointCloudPage(QWidget):
                 if telemetry.get("mode") == "RGB" and telemetry.get("rgb_diagnostic", {}).get("message"):
                     self.status.setText(telemetry["rgb_diagnostic"]["message"])
             displayed = telemetry.get('render_diagnostics', {}).get('rendered_points', telemetry.get('displayed', 0))
-            self.details.setText(f"View points (before filters): {displayed:,} | {telemetry.get('quality', 'Automatic')} | {telemetry.get('detail', 'Refining')}")
+            budget = telemetry.get('budget')
+            active_view = self.workspace.views.get(self.workspace.active_view_id)
+            view_label = active_view.title if active_view else "Active view"
+            budget_text = f" | Display budget: {budget:,}" if isinstance(budget, int) else ""
+            self.details.setText(
+                f"{view_label} | Display sample: {displayed:,}{budget_text} | "
+                f"{telemetry.get('quality', 'Automatic')} | {telemetry.get('detail', 'Refining')}")
             if telemetry.get('context_lost'):
                 self.status.setText("Viewer graphics context was reset. Restoring view...")
             if not self._filter_bounds_initialized and telemetry.get("z_range"):

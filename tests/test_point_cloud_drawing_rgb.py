@@ -75,6 +75,12 @@ class DrawingRGBTests(unittest.TestCase):
         self.assertIn("state.profile_axes", script)
         self.assertIn("updateProfileAxes();\n        fitSource", script)
 
+    def test_view_status_distinguishes_active_display_sample_from_budget(self):
+        source = (ROOT / "pyforestscan_qgis/ui/point_cloud_page.py").read_text()
+        self.assertIn("Display sample:", source)
+        self.assertIn("Display budget:", source)
+        self.assertIn("active_view.title", source)
+
     def test_editor_acknowledges_one_cooperative_cancel_request(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_editor.py").read_text()
         self.assertIn("self.cancel_requested = False", source)
@@ -94,3 +100,19 @@ class DrawingRGBTests(unittest.TestCase):
             self.assertIn("constraints=constraints, **values", source)
         self.assertIn('lambda: self.send("invert")',
                       (ROOT / "pyforestscan_qgis/ui/point_cloud_editor.py").read_text())
+
+
+class ViewerStabilityContractTests(unittest.TestCase):
+    def test_selection_activation_preserves_current_camera(self):
+        source = (ROOT / "pyforestscan_qgis/viewer/editor.js").read_text()
+        self.assertIn("Keep the user's current camera", source)
+        self.assertNotIn("context.viewer.setTopView()", source)
+
+    def test_display_appearance_is_workspace_authoritative(self):
+        linked = (ROOT / "pyforestscan_qgis/ui/point_cloud_linked_views.py").read_text()
+        page = (ROOT / "pyforestscan_qgis/ui/point_cloud_page.py").read_text()
+        detached = (ROOT / "pyforestscan_qgis/ui/point_cloud_detached.py").read_text()
+        self.assertIn("Renderer telemetry is observational", linked)
+        self.assertIn('lod = dict(view.lod)', linked)
+        self.assertIn('active_view.lod.get("point_size", 0)', page)
+        self.assertIn('lod = dict(view.lod)', detached)

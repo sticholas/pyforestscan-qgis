@@ -95,6 +95,28 @@ class TabDetachTests(unittest.TestCase):
                           "profiles":True}})
         owner.persist.assert_called_once()
 
+    def test_point_display_is_persisted_on_the_active_linked_view(self):
+        from pyforestscan_qgis.core.point_cloud.workspace import PointCloudWorkspaceModel
+        model = PointCloudWorkspaceModel()
+        model.register(view_id="overview")
+        owner = SimpleNamespace(
+            page=SimpleNamespace(workspace=model),
+            persist=Mock(),
+        )
+        LinkedViews.set_point_display(owner, "overview", "Circular", 2)
+        self.assertEqual(model.views["overview"].lod["point_style"], "Circular")
+        self.assertEqual(model.views["overview"].lod["point_size"], 2)
+        owner.persist.assert_called_once_with()
+
+    def test_detached_edit_controls_can_be_refreshed_from_shared_state(self):
+        first, second = Mock(), Mock()
+        first.closing = False
+        second.closing = True
+        owner = SimpleNamespace(detached={"first": first, "second": second})
+        LinkedViews.refresh_detached_controls(owner)
+        first.refresh_edit_controls.assert_called_once_with()
+        second.refresh_edit_controls.assert_not_called()
+
     def test_dynamic_linked_view_menu_lists_named_views_and_window_state(self):
         from pyforestscan_qgis.core.point_cloud.workspace import (
             AreaGeometry, PointCloudWorkspaceModel, ViewType)

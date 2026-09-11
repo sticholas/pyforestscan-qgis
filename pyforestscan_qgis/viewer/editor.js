@@ -1006,7 +1006,8 @@ window.pointCloudEditor = {
                 pitch: view.pitch, radius: view.radius,
                 cameraMode: context.viewer.scene.cameraMode || Potree.CameraMode.PERSPECTIVE};
             context.viewer.setCameraMode(Potree.CameraMode.ORTHOGRAPHIC);
-            if (!linkedView || linkedView.view_type !== "VERTICAL_SLICE") context.viewer.setTopView();
+            // Keep the user's current camera. Selection is a screen-space
+            // interaction and must not unexpectedly move a zoomed-in scene.
             const epoch = toolEpoch;
             insertionPending = true;
             requestAnimationFrame(() => requestAnimationFrame(() => {

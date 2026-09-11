@@ -1,5 +1,17 @@
 # Changelog
 
+## Phase 34A9 - Linked-view stability follow-up
+
+- Point appearance is persisted per view immediately, so renderer settling
+  telemetry cannot overwrite an explicit point size or shape choice.
+- Detached editor controls resynchronize after shared authoritative selection
+  work completes. Selection activation preserves the current camera instead of
+  forcing an unexpected top view.
+- Live status distinguishes the active view, display sample, display budget,
+  quality preset, and settling state. Large-rectangle overload and long-session
+  crash resistance remain open human soak gates.
+
+
 ## Phase 34A9 - Professional profile workbench (in progress)
 
 - Replaced raw Replace/Add/Subtract labels with plain-language new-shape

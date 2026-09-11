@@ -389,6 +389,21 @@ class LinkedViews(QObject):
         state = "shown" if visible else "hidden"
         self.page.status.setText(f"{self.scene_actions[overlay].text()} {state} in {view.title}.")
 
+    def set_point_display(self, view_id, style, size):
+        """Persist appearance immediately so telemetry cannot restore stale defaults."""
+        if view_id not in self.page.workspace.views:
+            return
+        view = self.page.workspace.views[view_id]
+        lod = dict(view.lod)
+        lod.update(point_style=str(style), point_size=int(size))
+        self.page.workspace.update_view(view_id, lod=lod)
+        self.persist()
+
+    def refresh_detached_controls(self):
+        for window in tuple(self.detached.values()):
+            if not window.closing:
+                window.refresh_edit_controls()
+
     @property
     def depth_error(self):
         for key, limits in self.depth.items():
@@ -471,11 +486,16 @@ class LinkedViews(QObject):
         if self.rendered_id != page.workspace.active_view_id or not page._view_state:
             return
         state = page._view_state
+        view = page.workspace.views[self.rendered_id]
+        # Renderer telemetry is observational. Point appearance is workspace
+        # state so a settling frame cannot restore Automatic/2px over an
+        # explicit user choice.
+        lod = dict(view.lod)
+        lod["quality"] = state.get("quality", lod.get("quality", "Automatic"))
         page.workspace.update_view(self.rendered_id, camera=state.get("camera", {}),
             render_mode=state.get("mode","Classification"),
             display_filters={"classes":state.get("classes"),"height_filter":state.get("height_filter")},
-            lod={"quality":state.get("quality","Automatic"),
-                 "point_style":state.get("point_style","Circular"), "point_size":state.get("point_size",0)})
+            lod=lod)
 
     def persist(self):
         page = self.page

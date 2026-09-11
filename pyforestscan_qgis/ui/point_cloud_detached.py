@@ -100,7 +100,7 @@ class DetachedView(QDialog):
         self.mode.currentTextChanged.connect(lambda value:self.send({"action":"mode","mode":value}))
         row.addWidget(self.mode)
         from .point_cloud_appearance import PointAppearance
-        self.appearance = PointAppearance(self.send, self)
+        self.appearance = PointAppearance(self._send_point_display, self)
         row.addWidget(self.appearance)
         from .point_cloud_class_visibility import ClassVisibilityMenu
         self.class_visibility = ClassVisibilityMenu(self.send, self)
@@ -168,6 +168,14 @@ class DetachedView(QDialog):
     def send(self, value):
         if self.worker and not self.closing:
             self.worker.send(value)
+
+    def _send_point_display(self, value):
+        self.send(value)
+        self.controller.set_point_display(
+            self.view_id,
+            value.get("style", "Circular"),
+            value.get("size", 0),
+        )
 
     def clear_selection_error(self):
         self.selection_error = ""
@@ -286,11 +294,13 @@ class DetachedView(QDialog):
             self.tool.blockSignals(False)
         if acknowledged:
             self.controller.observe_cursor(self.view_id, telemetry["editor"].get("cursor"))
+            view = self.controller.page.workspace.views[self.view_id]
+            lod = dict(view.lod)
+            lod["quality"] = telemetry.get("quality", lod.get("quality", "Automatic"))
             self.controller.page.workspace.update_view(self.view_id,camera=telemetry.get("camera",{}),
                 render_mode=telemetry.get("mode","Classification"),
                 display_filters={"classes":telemetry.get("classes"),"height_filter":telemetry.get("height_filter")},
-                lod={"quality":telemetry.get("quality","Automatic"),
-                     "point_style":telemetry.get("point_style","Circular"),"point_size":telemetry.get("point_size",0)})
+                lod=lod)
         signature = (editor.state.get("overlay"),editor.state.get("revision"))
         if signature[0] and signature != self.overlay:
             self.send({"action":"editor_overlay","path":signature[0]})

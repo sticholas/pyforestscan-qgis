@@ -182,3 +182,21 @@ the production JavaScript gesture harness. Human layout and interaction review
 of these controls remains required. More realistic forest rendering, improved
 depth cues, and appearance presets remain a separate unfinished slice; this UX
 change does not claim those visual-quality gates.
+
+
+## Linked-view stability evidence
+
+A follow-up stability slice made workspace state authoritative for point
+appearance. The main and detached viewers persist the selected shape and point
+size immediately; subsequent renderer telemetry is observational and updates
+quality/camera state without restoring stale Automatic or 2px defaults.
+Detached editing controls are refreshed after the shared editor leaves its
+busy state. Selection activation also preserves the current camera, so a user
+working in a zoomed-in region is not moved to top view merely by arming a
+selection tool.
+
+The focused QGIS-free point-cloud suite passes 447 tests with 117 expected
+skips. This is a regression contract, not a claim that the reported long-session
+QGIS flicker or rectangle-selection crash is fully qualified. Remaining gates
+are a fresh human soak with multiple linked/detached views, adaptive-budget
+transition evidence, and a bounded rectangle-selection stress test.
