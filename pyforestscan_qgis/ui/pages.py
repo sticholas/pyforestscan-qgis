@@ -155,6 +155,7 @@ from ..core.workspace import (
 from .advisor import PRODUCT_EXPLANATIONS, QGIS_TOOL_INSTRUCTIONS
 from .help import info_badge, info_help_button
 from ..core.point_cloud.selection_product_request import build_selection_product_request, selection_scope_from_context, selection_product_options
+from ..core.point_cloud.selection_plan import write_scoped_product_plan
 from .help_topics import scientific_group_help, semantic_action_help, semantic_help
 from .output_loading import LoadableOutput, collect_loadable_outputs, compact_dataset_summary_lines, output_loading_summary
 from .state import ProjectSummary
@@ -1731,8 +1732,14 @@ class ProcessingPage(MissionPage):
         self.prepare_selection_product_button.setEnabled(False)
         self.prepare_selection_product_button.clicked.connect(self.prepare_selected_product)
         _apply_button_role(self.prepare_selection_product_button, "secondary")
+        self.clear_selection_scope_button = QPushButton("Use Whole Dataset")
+        self.clear_selection_scope_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
+        self.clear_selection_scope_button.setEnabled(False)
+        self.clear_selection_scope_button.clicked.connect(lambda: self.set_selection_scope(None))
+        _apply_button_role(self.clear_selection_scope_button, "neutral")
         selection_product_row.addWidget(self.selection_product_combo, 1)
         selection_product_row.addWidget(self.prepare_selection_product_button, 0)
+        selection_product_row.addWidget(self.clear_selection_scope_button, 0)
         overview.addLayout(selection_product_row)
         self.selection_product_request: dict[str, object] | None = None
 
@@ -1836,6 +1843,7 @@ class ProcessingPage(MissionPage):
                 "Selection scope: Whole dataset. Use Prepare Product from the Point Cloud viewer to add a bounded scope.")
             self.selection_product_combo.setEnabled(False)
             self.prepare_selection_product_button.setEnabled(False)
+            self.clear_selection_scope_button.setEnabled(False)
             return
         try:
             scope_model = selection_scope_from_context(self.selection_scope)
@@ -1846,9 +1854,11 @@ class ProcessingPage(MissionPage):
             self.selection_scope_label.setText(f"Selection scope could not be prepared: {error}")
             self.selection_product_combo.setEnabled(False)
             self.prepare_selection_product_button.setEnabled(False)
+            self.clear_selection_scope_button.setEnabled(False)
             return
         self.selection_product_combo.setEnabled(True)
         self.prepare_selection_product_button.setEnabled(True)
+        self.clear_selection_scope_button.setEnabled(True)
         kind = str(self.selection_scope.get("scope_kind", "AREA")).title()
         count = self.selection_scope.get("point_count")
         count_text = f"{int(count):,} source points" if isinstance(count, int) else "source points to verify"
@@ -1875,17 +1885,31 @@ class ProcessingPage(MissionPage):
         except (TypeError, ValueError, KeyError, OSError) as error:
             self.selection_scope_label.setText(f"Product request could not be prepared: {error}")
             return
-        self.selection_product_request = request.to_dict()
+        payload = request.to_dict()
+        base_plan = self.product_plan_edit.text().strip()
+        review_plan_path = None
+        if base_plan:
+            base_path = Path(base_plan)
+            if not base_path.exists():
+                self.selection_scope_label.setText("Prepare the normal Product Plan before preparing a selected product.")
+                return
+            destination_root = self.run_context.reports_dir if self.run_context is not None else base_path.parent
+            review_plan_path = destination_root / f"selection_{request.selection_id}_{request.product.value}_review.json"
+            write_scoped_product_plan(base_path, request, review_plan_path)
+            payload["review_plan_path"] = str(review_plan_path)
+        self.selection_product_request = payload
         review = " Scientific review is required before execution." if request.review_required else ""
         self.selection_scope_label.setText(
             f"Product request: {request.summary}. Review-only; processing has not started.{review}")
+        review_path_text = f"Review plan: {review_plan_path}\n" if review_plan_path else ""
         self.log_text.setPlainText(
             f"Prepared product request: {request.summary}\n"
             f"Source: {request.source_path}\n"
             f"Bounds: {request.bounds}\n"
             f"Vertical filter: {request.vertical_axis}\n"
             f"Authority: {request.authority}\n"
-            "No source data was modified and no processing job was started.")
+            + review_path_text
+            + "No source data was modified and no processing job was started.")
         _set_status_badge(self.status_label, "WARNING", "Status: Product request prepared for review; processing has not started.")
 
     def set_run_context(self, context: RunContext | None) -> None:
@@ -1953,6 +1977,10 @@ class ProcessingPage(MissionPage):
 
     def start_job(self) -> None:
         """Start a processing job from the active Product Planner report."""
+        if self.selection_scope:
+            _set_status_badge(self.status_label, "WARNING", "Status: Selected-scope request is review-only; execution is not wired yet.")
+            self.log_text.setPlainText("Use Whole Dataset to return to the normal Product Plan run path. Selected-scope execution is intentionally blocked until bounded PBM translation is validated.")
+            return
         plan_path = self.product_plan_edit.text().strip()
         output_folder = self.job_output_folder_edit.text().strip()
         summary_path = self.run_context.job_summary_json if self.run_context is not None else None

@@ -41,3 +41,4 @@ geometry, bounds, vertical filter, point count, output folder, and review
 status. It is a review artifact only: no PBM job is launched and no source
 points are changed. Profile raster requests are visibly marked for scientific
 review rather than being presented as automatically safe.
+The selected product can also be materialized as a separate review JSON artifact containing one product and the authoritative scope. The base Product Plan is never overwritten. Processing blocks the normal Start action while a selected scope is active until bounded PBM execution is validated; **Use Whole Dataset** returns to the established route.

@@ -1,5 +1,7 @@
 # Changelog
 
+- Added review-only scoped Product Plan artifacts for viewer selections. The base plan remains unchanged, and Processing blocks accidental whole-dataset execution while a selected scope awaits bounded PBM translation.
+
 - Added a QGIS-free `SelectionProductRequest` contract and a Processing-page
   product chooser for authoritative viewer selections. Prepared requests carry
   source identity, geometry, bounds, vertical filters, point counts, and
