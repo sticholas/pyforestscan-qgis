@@ -40,6 +40,19 @@ class PipelineContext:
         return selection_scope_from_context(value) if value is not None else None
 
     @property
+    def selection_execution_status(self) -> str:
+        """Return the explicit execution status for a scoped plan."""
+        value = self.product_plan.get("selection_execution")
+        if not isinstance(value, Mapping):
+            return ""
+        return str(value.get("status", ""))
+
+    @property
+    def selection_execution_ready(self) -> bool:
+        """Return whether the scoped plan has passed its execution gate."""
+        return self.selection_scope is not None and self.selection_execution_status == "READY_FOR_EXECUTION"
+
+    @property
     def selection_bounds(self) -> tuple[tuple[float, float], tuple[float, float]] | None:
         """Return the rectangular envelope used for bounded source reads."""
         scope = self.selection_scope

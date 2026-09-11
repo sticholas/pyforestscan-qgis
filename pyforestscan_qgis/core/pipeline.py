@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .pipeline_context import PipelineContext
+from .pipeline_context import PipelineContextError
 from .pipeline_events import PipelineEvent, PipelineEventLevel, pipeline_utc_now
 from .pipeline_results import PipelineResult, PipelineStepResult, PipelineStepStatus
 from .pipeline_steps import PipelineStage, PipelineStep, default_product_steps
@@ -116,6 +117,19 @@ def registered_product_ids() -> tuple[str, ...]:
     return tuple(product.value for product in PRODUCT_LABELS)
 
 
+def _selection_request_kwargs(context: PipelineContext) -> dict[str, object]:
+    """Return bounded request fields only after the explicit execution gate."""
+    if context.selection_scope is None:
+        return {}
+    if not context.selection_execution_ready:
+        raise PipelineContextError(
+            "Selected-scope execution is still review-only; bounded PBM translation has not been validated."
+        )
+    return {
+        "bounds": context.selection_bounds,
+        "polygon_execution_input": context.selection_polygon_execution_input,
+    }
+
 def _execute_chm_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:
     if adapter is None:
         return _step_result(step, PipelineStepStatus.FAILED, "CHM execution requires an adapter.")
@@ -142,6 +156,7 @@ def _execute_chm_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 spatial_assignment_scope=context.spatial_assignment_scope,
                 source_crs_status=context.source_crs_status,
                 source_point_count=context.source_point_count,
+                **_selection_request_kwargs(context),
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.

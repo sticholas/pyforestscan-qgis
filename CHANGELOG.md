@@ -1,5 +1,7 @@
 # Changelog
 
+- Added the first guarded scoped-product consumer boundary for CHM. Validated plans pass the existing bounded envelope and polygon transport; review-only plans fail closed, and whole-dataset processing is unchanged.
+
 - Added scoped-plan translation into PipelineContext, including the authoritative source envelope and existing polygon transport contract. Execution remains gated until bounded reads and PBM preflight consume these values safely.
 
 - Added review-only scoped Product Plan artifacts for viewer selections. The base plan remains unchanged, and Processing blocks accidental whole-dataset execution while a selected scope awaits bounded PBM translation.
