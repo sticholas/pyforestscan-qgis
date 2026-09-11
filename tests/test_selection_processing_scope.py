@@ -1,6 +1,6 @@
 import unittest
 from pathlib import Path
-from pyforestscan_qgis.core.point_cloud.selection_processing import SelectionProcessingScope, selection_scope_from_definition
+from pyforestscan_qgis.core.point_cloud.selection_processing import (SelectionProcessingScope, selection_scope_from_definition, selection_product_options)
 
 class SelectionProcessingScopeTests(unittest.TestCase):
     def scope(self, **changes):
@@ -50,3 +50,12 @@ class SelectionProcessingScopeTests(unittest.TestCase):
         self.assertEqual("Canopy Profile", scope.view_title)
         self.assertEqual("PROFILE", scope.scope_kind)
         self.assertEqual((1.0, 3.0), scope.hag_range)
+
+
+    def test_product_options_keep_profile_products_visible_with_review_guidance(self):
+        scope = self.scope(scope_kind="PROFILE")
+        options = selection_product_options(scope)
+        statuses = {item.product.value: item.status for item in options}
+        self.assertEqual("AVAILABLE", statuses["point_density"])
+        self.assertEqual("REVIEW", statuses["chm"])
+        self.assertTrue(any("bounded source-space selection" in item.reason for item in options))

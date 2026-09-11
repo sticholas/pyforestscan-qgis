@@ -5,6 +5,9 @@ import math
 from pathlib import Path
 from typing import Any, Mapping
 
+from ..product_registry import MISSION_CONTROL_PRODUCTS
+from ..types import ProductType
+
 _SCOPE_KINDS = {"AREA", "COLUMN", "PROFILE"}
 _AXES = {"Z", "HeightAboveGround"}
 
@@ -109,3 +112,34 @@ def selection_scope_from_definition(definition: Mapping[str, Any], *, source_pat
         hag_range=definition.get("hag_filter"),
         vertical_axis=str(definition.get("profile_axis", "Z")),
     )
+
+
+@dataclass(frozen=True)
+class SelectionProductOption:
+    """Product choice shown for one authoritative selection scope."""
+
+    product: ProductType
+    status: str
+    reason: str
+
+
+def selection_product_options(scope: SelectionProcessingScope) -> tuple[SelectionProductOption, ...]:
+    """Return truthful product choices without hiding scope-specific caveats.
+
+    All currently registered Mission Control products can consume a bounded
+    source-space polygon once their request adapter is wired. Profile scopes
+    are marked for review because a narrow corridor can be scientifically
+    unsuitable for some raster products; density/voxel products remain the
+    natural first choices. No option implies that execution is already wired.
+    """
+    options = []
+    for definition in MISSION_CONTROL_PRODUCTS:
+        if scope.scope_kind == "PROFILE" and definition.product not in {
+                ProductType.POINT_DENSITY, ProductType.VOXEL_STAT}:
+            status = "REVIEW"
+            reason = "Profile corridor is bounded; confirm raster extent and sampling before running."
+        else:
+            status = "AVAILABLE"
+            reason = "Uses the authoritative bounded source-space selection."
+        options.append(SelectionProductOption(definition.product, status, reason))
+    return tuple(options)
