@@ -1,5 +1,12 @@
 # Changelog
 
+- Added a QGIS-free Selection Processing Bridge contract carrying source
+  identity, authoritative geometry, scope kind, resolved source-point count,
+  and optional elevation/HAG limits. This prepares direct product handoff
+  without treating rendered LOD points as processing input; product-specific
+  launch and eligibility remain the next slice.
+
+
 ## Phase 34A9 - Linked-view stability follow-up
 
 - Point appearance is persisted per view immediately, so renderer settling
