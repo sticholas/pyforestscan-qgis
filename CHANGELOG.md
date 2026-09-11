@@ -756,3 +756,7 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 - Changed eligible standalone CHM/Rumple missing-unit readiness from blocker to warning while preserving CRS requirements for polygon, reprojection, and cross-source alignment.
 - Froze unit basis/authority/mode into PBM requests and checkpoint identities so prerun and execution agree and assumed/trusted preparations never collide.
 - Added the fallback preference under collapsed LiDAR Spatial Reference tools without restoring global warning acknowledgement.
+- Added an explicit scoped CHM preflight and promotion gate in Mission Control.
+  The gate uses the authoritative Processing Engine readiness state, reports
+  blockers before execution, and writes a derived executable plan without
+  modifying the base plan or source dataset.

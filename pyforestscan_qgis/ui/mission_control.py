@@ -780,6 +780,7 @@ class MissionControlDock(QDockWidget):
         self.environment_page.set_processing_engine_state(engine)
         self.settings_page.set_processing_engine_state(engine)
         self.batch_page.set_processing_engine_state(engine)
+        self.processing_page.set_backend_readiness(ready)
         self._refresh_home()
         self._update_status_bar()
         self._notify(message, "success" if ready else "warning")

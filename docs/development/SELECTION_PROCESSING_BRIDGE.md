@@ -45,3 +45,15 @@ The selected product can also be materialized as a separate review JSON artifact
 The pipeline context can now rehydrate a scoped review plan and expose its source-space envelope plus the existing PolygonExecutionInput transport model. This is translation evidence only; product pipeline steps do not consume the scope until bounded reads, CRS handling, and PBM preflight are validated.
 The CHM pipeline now has the first guarded consumer boundary: a plan marked READY_FOR_EXECUTION passes the scope envelope and polygon transport into ChmRequest, while REVIEW_ONLY plans fail closed with an actionable PipelineContextError. Whole-dataset plans remain unchanged.
 The scoped CHM preflight gate now checks PBM readiness, supported source form, source existence when supplied, CRS, closed geometry, non-empty authoritative selection, and scientific review status. Only a passing report can promote a plan to READY_FOR_EXECUTION; the current UI does not perform that promotion yet.
+
+## Scoped CHM readiness gate
+
+The Processing page now uses the authoritative Processing Engine state when a
+viewer selection is prepared for CHM. The Validate Selected CHM action runs
+the QGIS-free bounded-source preflight and shows exact blockers in the
+technical log. A successful preflight enables the explicit Promote for
+Execution action. Promotion writes a derived selection_*_chm_ready.json plan
+beside the active run reports; the base Product Plan and original source
+remain unchanged. Starting a selected-scope job is blocked until this
+promotion has completed. Non-CHM selections remain review-only until their
+own product gate is implemented.

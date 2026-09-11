@@ -23,3 +23,12 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("selectionProcessingRequested.connect", source)
         self.assertIn("self.processing_page.set_selection_scope(scope)", source)
         self.assertIn('self._navigate_to("Processing")', source)
+
+
+    def test_processing_exposes_explicit_chm_preflight_and_promotion(self):
+        source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
+        self.assertIn('QPushButton("Validate Selected CHM")', source)
+        self.assertIn('QPushButton("Promote for Execution")', source)
+        self.assertIn("preflight_selection_chm", source)
+        self.assertIn("set_backend_readiness", source)
+        self.assertIn("validate and promote it first", source)
