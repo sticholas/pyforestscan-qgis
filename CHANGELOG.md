@@ -1,5 +1,12 @@
 # Changelog
 
+- Added a review-only **Prepare Product** handoff from the Point Cloud editor
+  to guided Processing. It carries the authoritative source selection, scope
+  kind, point count, and elevation/HAG limits without starting processing or
+  modifying the original source. Direct product request translation remains
+  intentionally deferred until its PBM and bounded-input contracts are
+  validated.
+
 - Added scope-aware product guidance: Area and Column selections expose
   bounded-source candidates, while Profile selections keep products visible
   with REVIEW guidance for raster extent and sampling; density and voxel

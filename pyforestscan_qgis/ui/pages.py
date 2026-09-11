@@ -1715,6 +1715,11 @@ class ProcessingPage(MissionPage):
 
         self.execution_backend_label = _body_label("Execution backend: PBM when READY; QGIS Python fallback only when PBM is unavailable.")
         overview.addWidget(self.execution_backend_label)
+        self.selection_scope_label = _body_label("Selection scope: Whole dataset. Use Prepare Product from the Point Cloud viewer to add a bounded scope.")
+        self.selection_scope_label.setWordWrap(True)
+        self.selection_scope_label.setProperty("workflowGuidance", True)
+        overview.addWidget(self.selection_scope_label)
+        self.selection_scope: dict[str, object] | None = None
 
         self.job_title_edit = QLineEdit("Mission Control Product Job")
         self.job_title_edit.setPlaceholderText("Optional run label")
@@ -1806,8 +1811,26 @@ class ProcessingPage(MissionPage):
             self.processing_stage_label.setText("Stage: Ready when a Product Plan is available")
         self.log_text.setPlainText((self.log_text.toPlainText().strip() + "\n" if self.log_text.toPlainText().strip() else "") + "Processing state refreshed.")
 
+    def set_selection_scope(self, scope: dict[str, object] | None) -> None:
+        """Show a prepared authoritative viewer scope without starting a job."""
+        self.selection_scope = dict(scope) if scope else None
+        if not self.selection_scope:
+            self.selection_scope_label.setText(
+                "Selection scope: Whole dataset. Use Prepare Product from the Point Cloud viewer to add a bounded scope.")
+            return
+        kind = str(self.selection_scope.get("scope_kind", "AREA")).title()
+        count = self.selection_scope.get("point_count")
+        count_text = f"{int(count):,} source points" if isinstance(count, int) else "source points to verify"
+        axis = str(self.selection_scope.get("vertical_axis", "Z"))
+        limits = self.selection_scope.get("hag_range") if axis == "HeightAboveGround" else self.selection_scope.get("z_range")
+        height_text = "all heights" if not limits else f"{'HAG' if axis == 'HeightAboveGround' else 'elevation'} {limits[0]:g}-{limits[1]:g}"
+        self.selection_scope_label.setText(
+            f"Selection scope: {kind} | {count_text} | {height_text} | "
+            "authoritative source geometry prepared; processing has not started.")
+
     def set_run_context(self, context: RunContext | None) -> None:
         """Use the active Mission Control run context."""
+
         self.run_context = context
         if context is None:
             self.current_plan_label.setText("Product plan file: none")

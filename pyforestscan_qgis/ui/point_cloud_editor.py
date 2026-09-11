@@ -120,6 +120,7 @@ class EditorWorker(QThread):
 
 class EditorPanel(QWidget):
     exportReady = pyqtSignal(object)
+    selectionProcessingRequested = pyqtSignal(object)
 
     def __init__(self, page):
         super().__init__(page)
@@ -451,6 +452,9 @@ class EditorPanel(QWidget):
         self.use_button = self.button("Use in Process", "SP_ArrowRight", self.use_export,
             "Select the validated immutable export in Process without starting processing. The editing session remains open.")
         history_row.addWidget(self.use_button)
+        self.prepare_product_button = self.button("Prepare Product", "SP_ArrowRight", self.prepare_product,
+            "Prepare the authoritative selection as a bounded product scope in Mission Control. This does not start processing or modify the source.")
+        history_row.addWidget(self.prepare_product_button)
         layout.addLayout(history_row)
         self.history = QListWidget()
         self.history.setToolTip("Recent staged operations, newest first. The saved journal retains the full history and redo cursor.")
@@ -502,6 +506,8 @@ class EditorPanel(QWidget):
         self.redo_button.setEnabled(ready and self.state.get("can_redo", False))
         self.export_button.setEnabled(ready and self.state.get("edits", 0) > 0)
         self.use_button.setEnabled(bool(self.state.get("exported")) and not self.busy)
+        self.prepare_product_button.setEnabled(ready and bool(
+            (self.state.get("selection") or {}).get("resolved_point_count")))
         self.cancel.setVisible(self.busy)
         self.cancel.setEnabled(self.busy and not self.cancel_requested)
         self.recover_action.setEnabled(not self.busy)
@@ -1365,6 +1371,34 @@ class EditorPanel(QWidget):
     def use_export(self):
         if self.state.get("exported"):
             self.send("verify_handoff", export_id=self.state["exported"]["export_id"])
+
+    def prepare_product(self):
+        """Send the authoritative selection to guided Processing for review."""
+        selection = self.state.get("selection") or {}
+        definitions = self.state.get("selection_definitions") or ()
+        if not selection.get("resolved_point_count") or not definitions:
+            self.summary.setText("Prepare Product: resolve a non-empty authoritative selection first.")
+            return
+        try:
+            from ..core.point_cloud.selection_processing import selection_scope_from_definition
+            definition = dict(definitions[-1])
+            view = self.page.workspace.views.get(definition.get("view_id"))
+            view_type = getattr(getattr(view, "view_type", None), "value", str(getattr(view, "view_type", "")))
+            definition["scope_kind"] = (
+                "PROFILE" if view_type == "VERTICAL_SLICE" else
+                "AREA" if view_type == "AREA_DETAIL" else "COLUMN")
+            scope = selection_scope_from_definition(
+                definition,
+                source_path=self.source,
+                source_fingerprint=str(self.state.get("source_fingerprint", "")),
+                point_count=int(selection.get("resolved_point_count", 0)),
+                view_title=str(definition.get("view_name", "")),
+            )
+        except (KeyError, TypeError, ValueError, OSError) as error:
+            self.summary.setText("Prepare Product unavailable: " + str(error))
+            return
+        self.selectionProcessingRequested.emit(scope.to_processing_context())
+        self.summary.setText("Product scope prepared | " + scope.summary + " | Review it in Processing.")
 
     def source_changed(self, value):
         dialog = QMessageBox(self)

@@ -148,6 +148,7 @@ class MissionControlDock(QDockWidget):
         self.page_by_name = dict(zip(self.INTERNAL_PAGE_NAMES, self.pages))
         self.point_cloud_page = PointCloudPage()
         self.point_cloud_page.editor.exportReady.connect(self._use_edited_cloud)
+        self.point_cloud_page.editor.selectionProcessingRequested.connect(self._prepare_selection_scope)
         self.page_by_name["Point Cloud"] = self.point_cloud_page
         self.page_by_name.update({"Process":self.batch_page,"Tools & Setup":self.settings_page})
         self.batch_page.set_job_token_factory(self._begin_current_job)
@@ -177,6 +178,11 @@ class MissionControlDock(QDockWidget):
             self.point_cloud_page.editor.summary.setText(str(error))
             return
         self._navigate_to("Process")
+
+    def _prepare_selection_scope(self, scope: dict) -> None:
+        """Route a viewer scope to guided Processing for explicit review."""
+        self.processing_page.set_selection_scope(scope)
+        self._navigate_to("Processing")
 
     def resizeEvent(self, event: object) -> None:  # noqa: N802 - Qt API name.
         """Keep the live status strip readable at narrow dock widths."""

@@ -19,7 +19,15 @@ select area/column/profile -> review source-point count and height range ->
 choose product -> review product-specific requirements -> run
 
 Product-specific eligibility is now represented as AVAILABLE or REVIEW guidance
-for each registered product. The Mission Control launcher and request translation
-remain the next implementation slice. Until that wiring is validated, the
-existing explicit export-to-Process handoff remains the qualified route for
-edited derivatives.
+for each registered product. The Point Cloud editor now has an explicit
+**Prepare Product** action. It creates this contract from the latest
+authoritative selection and routes to Processing for review; it does not start
+a job, mutate the source, or silently choose a product. Product-specific
+request translation and execution remain the next implementation slice. Until
+that wiring is validated, the existing explicit export-to-Process handoff
+remains the qualified route for edited derivatives.
+
+Processing displays a prepared scope as a review-only label containing its
+scope kind, source-point count, vertical limits, and the statement that
+processing has not started. Clearing or replacing the processing context must
+not create a second selection authority.
