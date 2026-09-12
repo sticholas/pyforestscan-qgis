@@ -208,6 +208,23 @@ class PipelineContext:
         return value or "canopy_cover.tif"
 
     @property
+    def dtm_output_filename(self) -> str:
+        """Return the planned DTM output filename."""
+        value = str(self._parameter("dtm_output_filename", "dtm.tif"))
+        return value or "dtm.tif"
+
+    @property
+    def point_density_output_filename(self) -> str:
+        """Return the planned point-density output filename."""
+        value = str(self._parameter("point_density_output_filename", "point_density.tif"))
+        return value or "point_density.tif"
+
+    @property
+    def point_density_per_area(self) -> bool:
+        """Return whether density is normalized by cell area."""
+        return bool(self._parameter("point_density_per_area", True))
+
+    @property
     def parameters(self) -> dict[str, object]:
         """Return user-selected execution parameters for summary output."""
         raw = self.product_plan.get("parameters")

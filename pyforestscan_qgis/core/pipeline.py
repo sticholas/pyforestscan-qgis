@@ -12,7 +12,7 @@ from .pipeline_events import PipelineEvent, PipelineEventLevel, pipeline_utc_now
 from .pipeline_results import PipelineResult, PipelineStepResult, PipelineStepStatus
 from .pipeline_steps import PipelineStage, PipelineStep, default_product_steps
 from .product_plan import PRODUCT_LABELS
-from .types import CanopyCoverRequest, ChmRequest, FhdRequest, PadRequest, PaiRequest, RumpleRequest
+from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, PadRequest, PaiRequest, PointDensityRequest, RumpleRequest
 
 
 @dataclass(frozen=True)
@@ -72,7 +72,17 @@ class Pipeline:
                 generated_outputs = result.artifacts
                 results.append(result)
                 continue
-            if self.product in {"chm", "canopy_cover", "pad", "pai", "fhd", "rumple"} and step.stage is PipelineStage.EXPORT and generated_outputs:
+            if self.product == "dtm" and step.stage is PipelineStage.GENERATE_PRODUCT:
+                result = _execute_dtm_step(context, step, adapter)
+                generated_outputs = result.artifacts
+                results.append(result)
+                continue
+            if self.product == "point_density" and step.stage is PipelineStage.GENERATE_PRODUCT:
+                result = _execute_point_density_step(context, step, adapter)
+                generated_outputs = result.artifacts
+                results.append(result)
+                continue
+            if self.product in {"chm", "canopy_cover", "pad", "pai", "fhd", "rumple", "dtm", "point_density"} and step.stage is PipelineStage.EXPORT and generated_outputs:
                 output_label = "CSV table" if self.product == "rumple" else "GeoTIFF"
                 results.append(_step_result(step, PipelineStepStatus.PASSED, f"{self.label} {output_label} export is available.", generated_outputs))
                 continue
@@ -292,6 +302,68 @@ def _execute_rumple_step(context: PipelineContext, step: PipelineStep, adapter: 
         return _step_result(step, PipelineStepStatus.FAILED, f"Rumple generation did not produce its requested output: {result.output_path}")
     label="legacy scalar CSV" if result.output_path.suffix.lower()==".csv" else "spatial GeoTIFF"
     return _step_result(step, PipelineStepStatus.PASSED, f"Rumple {label} created: {result.output_path}", (result.output_path,))
+
+
+def _execute_dtm_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:
+    if adapter is None:
+        return _step_result(step, PipelineStepStatus.FAILED, "DTM execution requires an adapter.")
+    if not context.source_dataset:
+        return _step_result(step, PipelineStepStatus.FAILED, "DTM execution requires a source dataset.")
+    if not context.crs:
+        return _step_result(step, PipelineStepStatus.FAILED, "DTM execution requires dataset CRS metadata.")
+    try:
+        output_path = _dtm_output_path(context)
+        result = adapter.generate_dtm(
+            DtmRequest(
+                input_path=context.source_dataset,
+                output_path=output_path,
+                crs=context.crs,
+                resolution=context.grid_resolution,
+                **_selection_request_kwargs(context),
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
+        return _step_result(step, PipelineStepStatus.FAILED, f"DTM generation failed: {exc}")
+    if not result.output_path.exists():
+        return _step_result(step, PipelineStepStatus.FAILED, f"DTM generation did not produce a GeoTIFF: {result.output_path}")
+    return _step_result(step, PipelineStepStatus.PASSED, f"DTM GeoTIFF created: {result.output_path}", (result.output_path,))
+
+
+def _execute_point_density_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:
+    if adapter is None:
+        return _step_result(step, PipelineStepStatus.FAILED, "Point Density execution requires an adapter.")
+    if not context.source_dataset:
+        return _step_result(step, PipelineStepStatus.FAILED, "Point Density execution requires a source dataset.")
+    if not context.crs:
+        return _step_result(step, PipelineStepStatus.FAILED, "Point Density execution requires dataset CRS metadata.")
+    try:
+        output_path = _point_density_output_path(context)
+        result = adapter.create_point_density(
+            PointDensityRequest(
+                input_path=context.source_dataset,
+                output_path=output_path,
+                grid_resolution=context.grid_resolution,
+                voxel_height=context.voxel_height,
+                crs=context.crs,
+                per_area=context.point_density_per_area,
+                **_selection_request_kwargs(context),
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
+        return _step_result(step, PipelineStepStatus.FAILED, f"Point Density generation failed: {exc}")
+    if not result.output_path.exists():
+        return _step_result(step, PipelineStepStatus.FAILED, f"Point Density generation did not produce a GeoTIFF: {result.output_path}")
+    return _step_result(step, PipelineStepStatus.PASSED, f"Point Density GeoTIFF created: {result.output_path}", (result.output_path,))
+
+
+def _dtm_output_path(context: PipelineContext) -> Path:
+    """Return the validated DTM output path for a pipeline context."""
+    return _simple_geotiff_output_path(context.output_folder, context.dtm_output_filename, "DTM")
+
+
+def _point_density_output_path(context: PipelineContext) -> Path:
+    """Return the validated point-density output path for a pipeline context."""
+    return _simple_geotiff_output_path(context.output_folder, context.point_density_output_filename, "Point Density")
 
 
 def _fhd_output_path(context: PipelineContext) -> Path:

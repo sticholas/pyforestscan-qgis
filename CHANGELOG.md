@@ -766,3 +766,6 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 - Preserved viewer elevation and Height Above Ground ranges through scoped
   product requests and applied them after HAG normalization with actionable
   empty-selection errors.
+- Added guided pipeline execution handlers for scoped DTM and Point Density.
+  Voxel Statistic remains Advanced Toolbox-only until its guided contract is
+  deliberately defined.

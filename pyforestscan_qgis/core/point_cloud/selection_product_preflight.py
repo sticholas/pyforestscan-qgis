@@ -20,6 +20,8 @@ SCOPED_EXECUTABLE_PRODUCTS = frozenset({
     ProductType.PAI,
     ProductType.FHD,
     ProductType.RUMPLE,
+    ProductType.DTM,
+    ProductType.POINT_DENSITY,
 })
 _SUPPORTED_SUFFIXES = (".las", ".laz", ".copc", ".copc.laz")
 

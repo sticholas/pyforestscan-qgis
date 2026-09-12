@@ -78,3 +78,12 @@ HAG selections. An empty result is a visible product failure rather than a
 silent full-source fallback. Spatial bounds and polygon transport remain
 separate fields so area and vertical constraints are both auditable in the
 PBM job specification.
+
+## DTM and Point Density coverage
+
+DTM and Point Density now use the same guided Pipeline executor as CHM,
+Canopy Cover, PAD, PAI, FHD, and Rumple. Their output paths and guided
+parameters are taken from PipelineContext, their adapter requests carry the
+selection bounds and vertical range, and PBM remains the execution boundary.
+Voxel Statistic is intentionally still an Advanced Toolbox operation and is
+not advertised as a guided scoped product.
