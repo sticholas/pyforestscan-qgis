@@ -68,6 +68,18 @@ class PipelineContext:
         return selection_scope_to_polygon_input(scope) if scope is not None else None
 
     @property
+    def selection_vertical_axis(self) -> str:
+        """Return the selected vertical coordinate axis."""
+        scope = self.selection_scope
+        return scope.vertical_axis if scope is not None else ""
+
+    @property
+    def selection_height_range(self) -> tuple[float, float] | None:
+        """Return the selected elevation or HAG range."""
+        scope = self.selection_scope
+        return scope.height_range if scope is not None else None
+
+    @property
     def source_dataset(self) -> str | None:
         """Return the source dataset recorded by Product Planner."""
         value = self.product_plan.get("source_dataset")

@@ -68,3 +68,13 @@ explicit "scoped execution is not wired yet" blocker until their pipeline
 handlers are implemented. A successful gate still requires PBM readiness,
 source existence, a supported source format, valid closed geometry, and any
 scientific review to be cleared.
+
+## Vertical selection fidelity
+
+Viewer scopes carry both the selected vertical axis and its finite range into
+the product request. The adapter applies the range after its normal HAG
+preparation step, using Z for elevation selections and HeightAboveGround for
+HAG selections. An empty result is a visible product failure rather than a
+silent full-source fallback. Spatial bounds and polygon transport remain
+separate fields so area and vertical constraints are both auditable in the
+PBM job specification.

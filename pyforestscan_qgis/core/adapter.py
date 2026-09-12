@@ -353,6 +353,7 @@ class PyForestScanAdapter:
             if planned_method == "existing_normalized_height" and inspected.has_existing_hag and not capabilities.has_existing_hag:
                 raise SourceDimensionMismatch(getattr(request, "hag_source_dimension", "HeightAboveGround"), names)
             hag_started=time.perf_counter();point_array, preparation_plan = _ensure_hag_for_product(point_array, request, resolution, "chm", handlers=handlers)
+            point_array = _apply_selection_height_filter(point_array, request)
             capabilities = PointDimensionCapabilities.from_names(point_array.dtype.names)
             names = capabilities.names
             planned_method = "existing_normalized_height"
@@ -1185,6 +1186,7 @@ class PyForestScanAdapter:
         point_array, capabilities = _canonicalize_hag_dimension(point_array)
         resolution = _resolve_product_spatial_reference(request_or_path, source_local_allowed=True)
         point_array, preparation_plan = _ensure_hag_for_product(point_array, request_or_path, resolution, str(product_label), handlers=handlers)
+        point_array = _apply_selection_height_filter(point_array, request_or_path)
         capabilities = PointDimensionCapabilities.from_names(point_array.dtype.names)
         names = capabilities.names
         required = {"X", "Y", "HeightAboveGround"}
@@ -1309,6 +1311,25 @@ class PyForestScanAdapter:
             )
             self._log_sink(LogRecord(level=level, message=message, context=typed_context))
 
+
+
+def _apply_selection_height_filter(point_array: object, request: object) -> object:
+    """Apply the viewer's authoritative Z/HAG range after normalization."""
+    selected_range = getattr(request, "selection_height_range", None)
+    if selected_range is None:
+        return point_array
+    axis = str(getattr(request, "selection_vertical_axis", "") or "Z")
+    dimension = "HeightAboveGround" if axis == "HeightAboveGround" else "Z"
+    names = getattr(getattr(point_array, "dtype", None), "names", ()) or ()
+    if dimension not in names:
+        raise ProcessingError(f"Selected {axis} range requires the {dimension} dimension.")
+    lower, upper = (float(value) for value in selected_range)
+    values = point_array[dimension]
+    mask = (values >= lower) & (values <= upper)
+    filtered = point_array[mask]
+    if len(filtered) == 0:
+        raise ProcessingError(f"Selected {axis} range {lower:g}-{upper:g} contains no source points.")
+    return filtered
 
 
 def _read_lidar_spatial_kwargs(request: object, *, hag: bool) -> dict[str, object]:

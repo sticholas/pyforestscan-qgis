@@ -763,3 +763,6 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 - Extended bounded selection transport across the currently executable
   product pipelines and added a product-generic preflight. Products without
   a scoped pipeline now fail closed with an explicit readiness blocker.
+- Preserved viewer elevation and Height Above Ground ranges through scoped
+  product requests and applied them after HAG normalization with actionable
+  empty-selection errors.

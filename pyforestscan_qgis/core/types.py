@@ -156,6 +156,8 @@ class ChmRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
     work_unit_id: str = ""
     attempt_id: str = ""
     completed_count: int = 0
@@ -207,6 +209,8 @@ class CanopyCoverRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -236,6 +240,8 @@ class PadRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -268,6 +274,8 @@ class PaiRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -297,6 +305,8 @@ class FhdRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -327,6 +337,8 @@ class RumpleRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
     hag_method: str = "automatic"
     hag_source_dimension: str = "HeightAboveGround"
     hag_method_signature: str = ""
@@ -372,6 +384,8 @@ class HagNormalizationRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -399,6 +413,8 @@ class DtmRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -427,6 +443,8 @@ class PointDensityRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -457,6 +475,8 @@ class VoxelStatRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
