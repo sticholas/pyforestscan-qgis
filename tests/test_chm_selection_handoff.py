@@ -30,6 +30,8 @@ class ChmSelectionHandoffTests(unittest.TestCase):
     def test_ready_scope_passes_existing_bounded_fields(self):
         values = _selection_request_kwargs(self._context("READY_FOR_EXECUTION"))
         self.assertEqual(values["bounds"], ((0.0, 0.0), (10.0, 8.0)))
+        self.assertEqual(values["selection_vertical_axis"], "Z")
+        self.assertEqual(values["selection_height_range"], (2.0, 20.0))
         self.assertEqual(values["polygon_execution_input"].source_kind, "viewer_selection")
 
     def test_review_scope_fails_closed(self):

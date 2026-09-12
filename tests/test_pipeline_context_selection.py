@@ -27,6 +27,8 @@ class PipelineContextSelectionTests(unittest.TestCase):
             }), encoding="utf-8")
             context = load_pipeline_contexts(plan_path, Path(folder))[0]
         self.assertEqual(context.selection_bounds, ((0.0, 0.0), (10.0, 8.0)))
+        self.assertEqual(context.selection_vertical_axis, "Z")
+        self.assertEqual(context.selection_height_range, (2.0, 20.0))
         polygon = context.selection_polygon_execution_input
         self.assertEqual(polygon.source_kind, "viewer_selection")
         self.assertEqual(polygon.processing_crs_authid, "EPSG:32604")
