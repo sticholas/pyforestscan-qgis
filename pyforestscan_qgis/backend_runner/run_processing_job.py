@@ -225,7 +225,7 @@ def _request_from_spec(spec: BackendJobSpec) -> Any:
 def _coerce_value(key: str, value: Any) -> Any:
     if key.endswith("path") or key in {"input_path", "output_path", "dtm_path"}:
         return Path(value) if value is not None else None
-    if key in {"bounds", "z_index_range"} and isinstance(value, list):
+    if key in {"bounds", "z_index_range", "selection_height_range"} and isinstance(value, list):
         return tuple(tuple(item) if isinstance(item, list) else item for item in value)
     return value
 

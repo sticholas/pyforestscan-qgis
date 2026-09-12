@@ -87,3 +87,7 @@ parameters are taken from PipelineContext, their adapter requests carry the
 selection bounds and vertical range, and PBM remains the execution boundary.
 Voxel Statistic is intentionally still an Advanced Toolbox operation and is
 not advertised as a guided scoped product.
+
+The PBM job-spec decoder also normalizes the serialized height range back to
+the typed tuple expected by adapter requests. This keeps the managed
+subprocess contract equivalent to the in-process contract.

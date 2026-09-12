@@ -769,3 +769,5 @@ Internal beta release target with versioned ZIP packaging, release manifest gene
 - Added guided pipeline execution handlers for scoped DTM and Point Density.
   Voxel Statistic remains Advanced Toolbox-only until its guided contract is
   deliberately defined.
+- Fixed PBM job-spec reconstruction for scoped vertical ranges so serialized
+  elevation/HAG constraints remain typed and effective in the backend process.
