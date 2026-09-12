@@ -308,6 +308,11 @@ class TabDetachTests(unittest.TestCase):
         owner.sync_tabs.assert_called_once()
         owner.persist.assert_called_once()
 
+    def test_linked_view_cache_is_reused_when_query_worker_is_cold(self):
+        source = (ROOT / "pyforestscan_qgis/ui/point_cloud_linked_views.py").read_text()
+        self.assertIn('if key in self.cache:', source)
+        self.assertNotIn('if key in self.cache and self.query_worker:', source)
+
     def test_detach_accepts_acknowledged_warm_parked_view(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_linked_views.py").read_text()
         self.assertIn('entry = self.residents.parked.pop(key, None)', source)

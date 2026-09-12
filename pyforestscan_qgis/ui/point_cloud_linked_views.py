@@ -847,7 +847,7 @@ class LinkedViews(QObject):
             frame_ms=telemetry.get("frame_ms",0))
         command = {"action":"query","request_id":self.request_id,"source_identity":identity,
                    "view":asdict(view),"point_budget":max(1,allocations[view.view_id]["points"])}
-        if key in self.cache and self.query_worker:
+        if key in self.cache:
             command["cached"] = self.cache[key]
         command["view_cache_key"] = self.original_info.get("cache_fingerprint")
         self.request_key = key
