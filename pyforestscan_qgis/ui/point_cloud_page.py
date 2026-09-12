@@ -22,6 +22,7 @@ from ..compat.qt import qt_enum
 from ..core.backend.process_env import hidden_subprocess_kwargs
 from ..core.point_cloud.runtime import ViewerRuntimeService, viewer_environment
 from ..core.point_cloud.run_record import ViewerRunRecord
+from ..core.point_cloud.display_stability import DisplayTelemetryStabilizer
 
 # Workers are not children of disposable widgets. Keep them alive through unload;
 # each exits after its owned subprocess is reaped, then releases this reference.
@@ -307,6 +308,7 @@ class PointCloudPage(QWidget):
         self._restore_expected = None
         self._pending_save = None
         self._view_state = None
+        self._display_stabilizer = DisplayTelemetryStabilizer()
         self._source_info = {}
         self._closing = False
         self.last_run_folder = None
@@ -737,6 +739,7 @@ class PointCloudPage(QWidget):
             self.linked.sync_tabs()
         self._filter_bounds_initialized = False
         self._view_state = None
+        self._display_stabilizer.reset()
         self._pending_save = None
         self._source_info = {}
         self.class_list.clear()
@@ -805,14 +808,15 @@ class PointCloudPage(QWidget):
                 self.status.setText("Source open | Original unchanged")
                 if telemetry.get("mode") == "RGB" and telemetry.get("rgb_diagnostic", {}).get("message"):
                     self.status.setText(telemetry["rgb_diagnostic"]["message"])
-            displayed = telemetry.get('render_diagnostics', {}).get('rendered_points', telemetry.get('displayed', 0))
-            budget = telemetry.get('budget')
+            display_summary = self._display_stabilizer.observe(telemetry)
+            displayed = display_summary["displayed"]
+            budget = display_summary["budget"]
             active_view = self.workspace.views.get(self.workspace.active_view_id)
             view_label = active_view.title if active_view else "Active view"
             budget_text = f" | Display budget: {budget:,}" if isinstance(budget, int) else ""
             self.details.setText(
                 f"{view_label} | Display sample: {displayed:,}{budget_text} | "
-                f"{telemetry.get('quality', 'Automatic')} | {telemetry.get('detail', 'Refining')}")
+                f"{display_summary['quality']} | {display_summary['detail']}")
             if telemetry.get('context_lost'):
                 self.status.setText("Viewer graphics context was reset. Restoring view...")
             if not self._filter_bounds_initialized and telemetry.get("z_range"):
