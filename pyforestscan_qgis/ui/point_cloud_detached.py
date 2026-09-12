@@ -211,7 +211,12 @@ class DetachedView(QDialog):
 
     def refresh_edit_controls(self):
         editor = self.controller.page.editor
-        ready = bool(editor.worker and editor.state.get("ready")) and not editor.busy
+        ready = bool(
+            getattr(self, "worker", None)
+            and getattr(self, "telemetry", {}).get("ready")
+            and getattr(self, "telemetry", {}).get("editor", {}).get("ready")
+            and editor.state.get("ready")
+        ) and not editor.busy and not getattr(self, "closing", False)
         self.tool.setEnabled(ready and not self.controller.depth_error)
         self.selection_mode.setEnabled(ready)
         self.classify_button.setEnabled(ready and bool(

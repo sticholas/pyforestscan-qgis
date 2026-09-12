@@ -308,6 +308,12 @@ class TabDetachTests(unittest.TestCase):
         owner.sync_tabs.assert_called_once()
         owner.persist.assert_called_once()
 
+    def test_detach_accepts_acknowledged_warm_parked_view(self):
+        source = (ROOT / "pyforestscan_qgis/ui/point_cloud_linked_views.py").read_text()
+        self.assertIn('entry = self.residents.parked.pop(key, None)', source)
+        self.assertIn('worker.update.disconnect(entry["update"])', source)
+        self.assertIn('self._detach_entry(key, entry, position)', source)
+
     def test_title_only_changes_update_existing_tabs_and_detached_windows(self):
         from pyforestscan_qgis.core.point_cloud.workspace import (
             AreaGeometry, PointCloudWorkspaceModel, SliceGeometry, ViewType)
@@ -355,10 +361,11 @@ class TabDetachTests(unittest.TestCase):
         self.assertEqual(model.views["overview"].camera,item.camera)
         owner.open_active.assert_called_once()
 
-    def test_detached_controls_require_authoritative_editor(self):
+    def test_detached_controls_require_detached_renderer_and_authoritative_editor(self):
         editor = SimpleNamespace(worker=None, busy=False, state={"ready": True,
             "can_undo": True, "can_redo": True, "selection": {"resolved_point_count": 8}})
-        window = SimpleNamespace(controller=SimpleNamespace(page=SimpleNamespace(editor=editor), depth_error=""),
+        window = SimpleNamespace(worker=None, telemetry={"ready": True, "editor": {"ready": True}},
+            closing=False, controller=SimpleNamespace(page=SimpleNamespace(editor=editor), depth_error=""),
             tool=Mock(), selection_mode=Mock(), classify_button=Mock(),
             action_buttons={"undo": Mock(), "redo": Mock(), "invert": Mock()}, resize_button=Mock())
         DetachedView.refresh_edit_controls(window)
@@ -367,9 +374,10 @@ class TabDetachTests(unittest.TestCase):
             button.setEnabled.assert_called_with(False)
 
     def test_detached_controls_follow_busy_selection_and_journal(self):
-        editor = SimpleNamespace(worker=object(), busy=False, state={"ready": True,
+        editor = SimpleNamespace(worker=None, busy=False, state={"ready": True,
             "can_undo": True, "can_redo": False, "selection": {"resolved_point_count": 8}})
-        window = SimpleNamespace(controller=SimpleNamespace(page=SimpleNamespace(editor=editor), depth_error=""),
+        window = SimpleNamespace(worker=object(), telemetry={"ready": True, "editor": {"ready": True}},
+            closing=False, controller=SimpleNamespace(page=SimpleNamespace(editor=editor), depth_error=""),
             tool=Mock(), selection_mode=Mock(), classify_button=Mock(),
             action_buttons={"undo": Mock(), "redo": Mock(), "invert": Mock()}, resize_button=Mock())
         DetachedView.refresh_edit_controls(window)

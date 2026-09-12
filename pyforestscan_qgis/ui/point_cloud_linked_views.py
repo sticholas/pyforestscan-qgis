@@ -982,27 +982,44 @@ class LinkedViews(QObject):
             self.query_worker.update.disconnect(self.result)
             self.query_worker.stop()
 
+    def _detach_entry(self, key, entry, position=None):
+        """Transfer one acknowledged renderer without changing shared authority."""
+        from .point_cloud_detached import DetachedView
+        window = DetachedView(self, key, entry)
+        self.detached[key] = window
+        window.dockRequested.connect(self.dock)
+        if position is not None:
+            window.move(position)
+        self.sync_tabs()
+        self.persist()
+
     def detach(self, key, position=None):
         if key in self.detached:
             self.detached[key].raise_()
+            self.detached[key].activateWindow()
             return
-        if key != self.rendered_id or not self.page.worker or self.waiting:
+        if key != self.rendered_id:
+            entry = self.residents.parked.pop(key, None)
+            if entry is None:
+                self.page.status.setText("Open the view before moving it to a separate window.")
+                return
+            worker = entry["worker"]
+            worker.update.disconnect(entry["update"])
+            worker.finished.disconnect(entry["finished"])
+            self._detach_entry(key, entry, position)
+            return
+        if not self.page.worker or self.waiting:
             self.page.status.setText("Open the view before moving it to a separate window.")
             return
         if getattr(self.page.worker, "_surface_transfer", None):
             self.page.status.setText("Finishing the view transfer. Please wait.")
             return
         self.capture()
-        from .point_cloud_detached import DetachedView
         entry = self.residents.take_current()
         if entry is None:
             self.page.status.setText("Wait for the view to finish opening before detaching.")
             return
-        window = DetachedView(self,key,entry)
-        self.detached[key] = window
-        window.dockRequested.connect(self.dock)
-        if position is not None:
-            window.move(position)
+        self._detach_entry(key, entry, position)
         self.rendered_id = None
         attached = [view_id for view_id in self.page.workspace.views if view_id not in self.detached]
         if attached:
@@ -1010,8 +1027,6 @@ class LinkedViews(QObject):
             self.open_active()
         else:
             self.page.status.setText("View is open in a separate window. Use Dock All Views to return it.")
-        self.sync_tabs()
-        self.persist()
 
     def dock(self, key):
         window = self.detached.get(key)
