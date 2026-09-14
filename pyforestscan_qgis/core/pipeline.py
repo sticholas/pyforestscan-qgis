@@ -11,7 +11,7 @@ from .pipeline_events import PipelineEvent, PipelineEventLevel, pipeline_utc_now
 from .pipeline_results import PipelineResult, PipelineStepResult, PipelineStepStatus
 from .pipeline_steps import PipelineStage, PipelineStep, default_product_steps
 from .product_plan import PRODUCT_LABELS
-from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, PadRequest, PaiRequest, PointDensityRequest, RumpleRequest
+from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, PadRequest, PaiRequest, PointDensityRequest, RumpleRequest, VoxelStatRequest
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,12 @@ class Pipeline:
                 generated_outputs = result.artifacts
                 results.append(result)
                 continue
-            if self.product in {"chm", "canopy_cover", "pad", "pai", "fhd", "rumple", "dtm", "point_density"} and step.stage is PipelineStage.EXPORT and generated_outputs:
+            if self.product == "voxel_stat" and step.stage is PipelineStage.GENERATE_PRODUCT:
+                result = _execute_voxel_stat_step(context, step, adapter)
+                generated_outputs = result.artifacts
+                results.append(result)
+                continue
+            if self.product in {"chm", "canopy_cover", "pad", "pai", "fhd", "rumple", "dtm", "point_density", "voxel_stat"} and step.stage is PipelineStage.EXPORT and generated_outputs:
                 output_label = "CSV table" if self.product == "rumple" else "GeoTIFF"
                 results.append(_step_result(step, PipelineStepStatus.PASSED, f"{self.label} {output_label} export is available.", generated_outputs))
                 continue
@@ -184,6 +189,31 @@ def _execute_point_density_step(context: PipelineContext, step: PipelineStep, ad
     if not result.output_path.exists():
         return _step_result(step, PipelineStepStatus.FAILED, f"Point Density generation did not produce a GeoTIFF: {result.output_path}")
     return _step_result(step, PipelineStepStatus.PASSED, f"Point Density GeoTIFF created: {result.output_path}", (result.output_path,))
+
+
+def _execute_voxel_stat_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:
+    """Create a documented calculate_voxel_stat raster through the adapter."""
+    if adapter is None or not context.source_dataset:
+        return _step_result(step, PipelineStepStatus.FAILED, "Voxel Statistic execution requires an adapter and source dataset.")
+    if not context.crs:
+        return _step_result(step, PipelineStepStatus.FAILED, "Voxel Statistic execution requires dataset CRS metadata.")
+    try:
+        result = adapter.create_voxel_stat(VoxelStatRequest(
+            input_path=context.source_dataset,
+            output_path=context.output_folder / "voxel_statistic.tif",
+            grid_resolution=context.grid_resolution,
+            voxel_height=context.voxel_height,
+            crs=context.crs,
+            dimension=context.voxel_stat_dimension,
+            stat=context.voxel_stat_stat,
+            z_index_range=context.voxel_stat_z_index_range,
+            bounds=context.bounds,
+        ))
+    except Exception as exc:  # noqa: BLE001 - adapter errors are durable pipeline results.
+        return _step_result(step, PipelineStepStatus.FAILED, f"Voxel Statistic generation failed: {exc}")
+    if not result.output_path.exists():
+        return _step_result(step, PipelineStepStatus.FAILED, f"Voxel Statistic generation did not produce a GeoTIFF: {result.output_path}")
+    return _step_result(step, PipelineStepStatus.PASSED, f"Voxel Statistic GeoTIFF created: {result.output_path}", (result.output_path,))
 
 
 def _execute_pad_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:

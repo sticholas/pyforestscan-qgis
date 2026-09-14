@@ -18,6 +18,8 @@ Release documentation describes how to package, validate, and evaluate PyForestS
 - [v0.2.0-beta.3 Release Notes](v0.2.0-beta.3.md)
 - [v0.2.0-beta.4 Release Notes](v0.2.0-beta.4.md)
 - [v0.2.0-beta.5 Release Notes](v0.2.0-beta.5.md)
+- [v0.2.0-beta.6 Release Notes](v0.2.0-beta.6.md)
+- [Pre-point-viewer Release 1 Baseline](PRE_POINT_VIEWER_RELEASE_1.md)
 - [v0.1.0-beta.2 Release Notes](v0.1.0-beta.2.md)
 - [v0.1.0-beta.1 Release Notes](v0.1.0-beta.1.md)
 - [Clean Machine ZIP Smoke Test](CLEAN_MACHINE_SMOKE_TEST.md)

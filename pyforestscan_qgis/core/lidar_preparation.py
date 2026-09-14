@@ -91,6 +91,30 @@ class PreparedLidarCapabilities:
 
 
 @dataclass(frozen=True)
+class HAGResolution:
+    """Authoritative HAG dependency decision shared by HAG products."""
+
+    source: str
+    artifact: Path | None
+    method: str
+    reused: bool
+    signature: str
+    blockers: tuple[str, ...] = ()
+
+
+def resolve_hag(assessment: LidarPreparationAssessment, *, checkpoint_root: Path | None = None) -> HAGResolution:
+    """Resolve HAG without introducing an unrelated CHM dependency."""
+    plan = HeightNormalizationPlanner().plan(assessment, checkpoint_root=checkpoint_root)
+    if assessment.dimensions.has_existing_hag:
+        return HAGResolution("existing_dimension", None, plan.height_mode.value, True, plan.signature, plan.blockers)
+    if plan.height_mode is HeightNormalizationPlanMode.DTM_EXISTING:
+        return HAGResolution("derived_from_dtm", plan.prepared_artifact, plan.height_mode.value, True, plan.signature, plan.blockers)
+    if plan.can_execute:
+        return HAGResolution("generated", plan.prepared_artifact, plan.height_mode.value, False, plan.signature, plan.blockers)
+    return HAGResolution("unavailable", None, plan.height_mode.value, False, plan.signature, plan.blockers)
+
+
+@dataclass(frozen=True)
 class HagSpatialContextRequirement:
     """Ground context required around tiled product cores."""
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## Pre-point-viewer release 1 (baseline)
+
+- Declares the verified `0.2.0-beta.7` processing build as the main pre-point-viewer release baseline.
+- Includes bounded tiled execution for polygon/EPT workflows, durable shared progress and heartbeat reporting, cooperative pause/cancel/retry handling, product dependency planning, and the fast preflight path.
+- Repairs the preflight performance-telemetry crash (`KeyError: 'TOTAL'`) and makes diagnostics best-effort so telemetry cannot fail a valid preflight.
+- Preserves versioned release artifacts and records this baseline separately from future point-viewer development.
+
+## 0.2.0-beta.7
+
+- Fixed Voxel Statistic feasibility reporting so selected intensity rasters are not blocked before execution.
+
+## 0.2.0-beta.6
+
+- Added Mission Control Voxel Statistic products, including intensity raster aggregation controls.
+- Made Polygon Area progress determinate and registered selected footprint indexes during preflight.
+
 ## 0.2.0-beta.5 - 2026-09-10
 
 - Fixed an inspection-start race where a retained heartbeat from an earlier job could immediately and falsely fail a new run as stalled.

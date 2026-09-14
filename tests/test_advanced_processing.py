@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import types
@@ -507,6 +508,45 @@ class AdvancedProcessingTests(unittest.TestCase):
             with patch("pyforestscan_qgis.core.adapter._read_bounded_local_lidar", return_value=(point_array,)) as bounded:
                 PyForestScanAdapter().generate_dtm(request)
         bounded.assert_called_once_with(request)
+
+    def test_dtm_normalizes_structured_matrix_to_records(self) -> None:
+        from pyforestscan_qgis.core.adapter import _point_cloud_array_sequence
+        matrix = np.zeros((1, 2), dtype=[("X", "f8"), ("Y", "f8"), ("Z", "f8")])
+        arrays = _point_cloud_array_sequence([matrix], operation="DTM generation")
+        self.assertEqual(arrays[0].shape, (2,))
+        self.assertEqual(arrays[0].dtype.names, ("X", "Y", "Z"))
+
+    def test_dtm_recovers_from_scalar_filter_result(self) -> None:
+        point_array = np.array([(0.0, 0.0, 1.0, 2), (1.0, 1.0, 2.0, 1)], dtype=[("X", "f8"), ("Y", "f8"), ("Z", "f8"), ("Classification", "u1")])
+        fake_pyforestscan = types.ModuleType("pyforestscan")
+        fake_handlers = types.ModuleType("pyforestscan.handlers")
+        fake_filters = types.ModuleType("pyforestscan.filters")
+        fake_handlers.read_lidar = lambda *args, **kwargs: [point_array]  # type: ignore[attr-defined]
+        fake_filters.filter_select_ground = lambda arrays: [np.array([1.0, 2.0])]  # type: ignore[attr-defined]
+        fake_pyforestscan.generate_dtm = lambda points, resolution=2.0: (np.ones((1, 1)), [0.0, 1.0, 0.0, 1.0])  # type: ignore[attr-defined]
+        fake_handlers.create_geotiff = lambda layer, output_file, crs, extent, nodata=-9999: Path(output_file).write_text("fake", encoding="utf-8")  # type: ignore[attr-defined]
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(sys.modules, {"pyforestscan": fake_pyforestscan, "pyforestscan.handlers": fake_handlers, "pyforestscan.filters": fake_filters}):
+            result = PyForestScanAdapter().generate_dtm(DtmRequest("plot.laz", Path(temp_dir) / "dtm.tif", "EPSG:32610"))
+            self.assertTrue(result.output_path.exists())
+
+    def test_dtm_failure_persists_contract_diagnostic(self) -> None:
+        point_array = np.array([(0.0, 0.0, 1.0, 2)], dtype=[("X", "f8"), ("Y", "f8"), ("Z", "f8"), ("Classification", "u1")])
+        fake_pyforestscan = types.ModuleType("pyforestscan")
+        fake_handlers = types.ModuleType("pyforestscan.handlers")
+        fake_filters = types.ModuleType("pyforestscan.filters")
+        fake_handlers.read_lidar = lambda *args, **kwargs: [point_array]  # type: ignore[attr-defined]
+        fake_filters.filter_select_ground = lambda arrays: [np.array([1.0])]  # type: ignore[attr-defined]
+        def fail_generate(*args, **kwargs):
+            raise IndexError("invalid index to scalar variable")
+        fake_pyforestscan.generate_dtm = fail_generate  # type: ignore[attr-defined]
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(sys.modules, {"pyforestscan": fake_pyforestscan, "pyforestscan.handlers": fake_handlers, "pyforestscan.filters": fake_filters}):
+            diagnostics = Path(temp_dir) / "diagnostics"
+            with self.assertRaises(Exception):
+                PyForestScanAdapter().generate_dtm(DtmRequest("plot.laz", Path(temp_dir) / "dtm.tif", "EPSG:32610", diagnostics_path=diagnostics))
+            payload = json.loads((diagnostics / "dtm_failure.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["exception_class"], "IndexError")
+            self.assertIn("invalid index to scalar variable", payload["message"])
+            self.assertTrue(payload["traceback"])
 
     def test_preprocess_request_maps_full_filter_parameters(self) -> None:
         request = build_point_cloud_preprocess_request(

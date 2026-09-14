@@ -26,6 +26,16 @@ class BackendJobResult:
     traceback: str | None = None
     error_code: str = ""
     retryable: bool | None = None
+    root_exception_type: str = ""
+    root_exception_message: str = ""
+    root_errno: int | None = None
+    root_winerror: int | None = None
+    root_filename: str | None = None
+    root_filename2: str | None = None
+    root_module: str = ""
+    root_function: str = ""
+    root_line: int | None = None
+    wrapper_chain: tuple[str, ...] = ()
 
     @property
     def success(self) -> bool:
@@ -48,6 +58,16 @@ class BackendJobResult:
             "stderr": self.stderr,
             "error_code": self.error_code,
             "retryable": self.retryable,
+            "root_exception_type": self.root_exception_type,
+            "root_exception_message": self.root_exception_message,
+            "root_errno": self.root_errno,
+            "root_winerror": self.root_winerror,
+            "root_filename": self.root_filename,
+            "root_filename2": self.root_filename2,
+            "root_module": self.root_module,
+            "root_function": self.root_function,
+            "root_line": self.root_line,
+            "wrapper_chain": list(self.wrapper_chain),
         }
         if include_traceback and self.traceback:
             payload["traceback"] = self.traceback
@@ -71,6 +91,12 @@ class BackendJobResult:
             traceback=data.get("traceback"),
             error_code=str(data.get("error_code", "")),
             retryable=data.get("retryable"),
+            root_exception_type=str(data.get("root_exception_type", "")),
+            root_exception_message=str(data.get("root_exception_message", "")),
+            root_errno=data.get("root_errno"), root_winerror=data.get("root_winerror"),
+            root_filename=data.get("root_filename"), root_filename2=data.get("root_filename2"),
+            root_module=str(data.get("root_module", "")), root_function=str(data.get("root_function", "")),
+            root_line=data.get("root_line"), wrapper_chain=tuple(str(item) for item in data.get("wrapper_chain", ())),
         )
 
     def write(self, path: Path) -> Path:

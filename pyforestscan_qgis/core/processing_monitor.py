@@ -19,7 +19,10 @@ class ProcessingTimeoutPolicy:
     mode: TimeoutMode = TimeoutMode.AUTOMATIC
     startup_timeout: float = 60.0
     heartbeat_timeout: float = 1800.0
-    no_progress_timeout: float = 3600.0
+    # A bounded work-unit must prove forward progress promptly.  This is
+    # deliberately much shorter than the legacy heartbeat watchdog: a live
+    # process is not evidence that a remote read is advancing.
+    no_progress_timeout: float = 300.0
     maximum_wall_time: float | None = None
     graceful_shutdown_timeout: float = 15.0
     product_overrides: Mapping[str, float] = field(default_factory=dict)
@@ -95,8 +98,8 @@ def evaluate_liveness(policy: ProcessingTimeoutPolicy, *, elapsed: float, heartb
         return LivenessDecision("timed_out", "Configured custom maximum wall time was reached.")
     if heartbeat_age is not None and heartbeat_age > policy.heartbeat_timeout:
         return LivenessDecision("stalled", f"No heartbeat for {heartbeat_age:.0f} seconds.")
-    if progress_age is not None and progress_age > policy.no_progress_timeout and heartbeat_age is None:
-        return LivenessDecision("stalled", f"No progress for {progress_age:.0f} seconds and heartbeat is unavailable.")
+    if progress_age is not None and progress_age > policy.no_progress_timeout:
+        return LivenessDecision("stalled", f"No structured progress for {progress_age:.0f} seconds; the source read may be stalled.")
     return LivenessDecision("running", "Job is running and responsive.")
 
 

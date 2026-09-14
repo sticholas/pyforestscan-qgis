@@ -148,6 +148,9 @@ class BatchRunner:
                 fhd_min_height=request.settings.fhd_min_height,
                 fhd_max_height=request.settings.fhd_max_height,
                 rumple_min_height=request.settings.rumple_min_height,
+                voxel_stat_dimension=request.settings.voxel_stat_dimension,
+                voxel_stat_stat=request.settings.voxel_stat_stat,
+                voxel_stat_z_index_range=request.settings.voxel_stat_z_index_range,
                 title=f"Product Plan - {dataset.name}",
                 bounds=request.clip_bounds,
             )

@@ -101,6 +101,7 @@ from ..core.repository_actions import repository_action_states, repository_setup
 from ..core.repository_coverage import build_repository_coverage_model
 from ..core.repository_diagnostics import export_repository_diagnostic_report
 from ..core.polygon_batch import PolygonBatchRequest, catalog_status_text, execute_polygon_batch, polygon_preflight_text, record_polygon_dispatch_validation, run_polygon_batch_preflight, write_polygon_batch_manifest
+from ..core.prerun_forensics import PrerunForensics
 from ..core.polygon_progress import PolygonProgressProjection
 from ..core.prerun_profile import PrerunProfiler
 from ..core.job_manager import JobExecutionError, JobManager
@@ -251,6 +252,13 @@ class MissionPage(QWidget):
         self.main_layout.addWidget(self.scroll_area, 1)
         self.help_banner = ContextHelpBanner(self)
         self.main_layout.addWidget(self.help_banner)
+        # Keep wheel gestures on numeric/choice controls as page scrolling;
+        # controls only change from explicit clicks or keyboard input.  The
+        # application-level filter also covers controls created dynamically
+        # after the initial page construction.
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
         QTimer.singleShot(0, self._install_context_help)
 
     def create_section(self, title: str, index: int | None = None) -> tuple[QGroupBox, QVBoxLayout]:
@@ -290,7 +298,7 @@ class MissionPage(QWidget):
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt API
         """Project mouse and keyboard context into one stable help banner."""
-        if event.type() == QEvent.Wheel and bool(watched.property("ignoreWheelValueChange")):
+        if event.type() == QEvent.Wheel and isinstance(watched, (QComboBox, QAbstractSpinBox)):
             delta = getattr(event, "angleDelta", lambda: None)()
             vertical = int(delta.y()) if delta is not None else 0
             scrollbar = self.scroll_area.verticalScrollBar()
@@ -2003,10 +2011,18 @@ class _PolygonPreflightWorker(QObject):
 
     def run(self) -> None:
         profiler = PrerunProfiler()
+        diagnostics_root = self.request.batch_folder or (Path(self.request.output_folder) / ".pyforestscan_diagnostics")
+        forensic = PrerunForensics(diagnostics_root)
         try:
+            forensic.set_stage("INPUT_VALIDATION", "Capturing current polygon and product selection")
             self.progress.emit("Reading repository metadata")
             with profiler.measure("polygon_preflight"):
-                report = run_polygon_batch_preflight(self.request)
+                forensic.set_stage("RESOLVE_REPOSITORY", "Resolving LiDAR repository")
+                report = run_polygon_batch_preflight(
+                    self.request,
+                    cancel_callback=self.cancel_callback,
+                    progress_callback=lambda stage, current, total: (forensic.set_stage("PRERUN", str(stage)), self.progress.emit(f"{stage} ({current:,}/{total:,})" if total else str(stage))),
+                )
             if self.cancel_callback():
                 raise RuntimeError("Polygon Prerun cancelled.")
             self.progress.emit("Building processing grid")
@@ -2014,10 +2030,12 @@ class _PolygonPreflightWorker(QObject):
                 manifest = write_polygon_batch_manifest(
                     report,
                     cancel_callback=self.cancel_callback,
-                    progress_callback=lambda stage, current, total: self.progress.emit(f"{stage} ({current:,}/{total:,})"),
+                    progress_callback=lambda stage, current, total: self.progress.emit(f"{stage} ({current:,}/{total:,})" if total else str(stage)),
                 )
             profiler.write(Path(report.batch_folder) / "prerun_profile.json", stage="READY", extra={"manifest_bytes": manifest.stat().st_size})
         except Exception as exc:  # noqa: BLE001 - worker boundary returns diagnostics to QGIS.
+            forensic.failure(exc, failed_stage=forensic.stage, failed_substage=forensic.substage, context={"selected_products": [str(p.value) for p in self.request.products], "repository_selection": str(self.request.lidar_folder), "input_mode": "polygon"})
+            forensic.close("CANCELLED" if "cancel" in str(exc).lower() else "FAILED")
             diagnostic = traceback.format_exc()
             try:
                 folder = Path(self.request.batch_folder)
@@ -2028,6 +2046,7 @@ class _PolygonPreflightWorker(QObject):
                 pass
             self.failed.emit(f"{exc}\n\nTechnical traceback saved with the Prerun artifacts when possible.")
             return
+        forensic.close("COMPLETED")
         self.progress.emit("Finalizing plan")
         self.completed.emit(report)
 
@@ -2219,6 +2238,7 @@ class BatchPage(MissionPage):
         self.catalog_pause_requested = False
         self.preflight_thread: QThread | None = None
         self.preflight_worker: _PolygonPreflightWorker | None = None
+        self._prerun_terminal = False
         self.preflight_cancel_event = threading.Event()
         self.preflight_report: object | None = None
         self.current_index_plan: object | None = None
@@ -2400,7 +2420,7 @@ class BatchPage(MissionPage):
         strategy_form.addRow("Repository setup method", strategy_row)
         existing_index_row = QHBoxLayout()
         self.polygon_existing_index_edit = QLineEdit()
-        self.polygon_existing_index_edit.setPlaceholderText("Optional existing index: GeoJSON, CSV, GPKG, SHP, FGB, or PDAL tile index")
+        self.polygon_existing_index_edit.setPlaceholderText("Optional footprint index (registered into this repository catalog): GeoJSON, CSV, GPKG, SHP, FGB, or PDAL tile index")
         self.polygon_existing_index_button = QPushButton("Choose Index")
         self.polygon_existing_index_button.clicked.connect(self.choose_polygon_existing_index)
         _apply_button_role(self.polygon_existing_index_button, "neutral")
@@ -2413,7 +2433,9 @@ class BatchPage(MissionPage):
         self.polygon_selection_mode_combo.addItem("Verified Catalog", "verified_catalog")
         strategy_form.addRow("Selection mode", self.polygon_selection_mode_combo)
         self.polygon_direct_fallback_check = QCheckBox("Fallback to Direct Header Scan when catalog selection is inconclusive")
-        self.polygon_direct_fallback_check.setChecked(True)
+        # Large repositories should remain catalog-backed by default.  A full
+        # header scan is an explicit recovery action, not part of prerun.
+        self.polygon_direct_fallback_check.setChecked(False)
         strategy_form.addRow("", self.polygon_direct_fallback_check)
         strategy_actions = QHBoxLayout()
         strategy_actions.setSpacing(ACTION_ROW_SPACING)
@@ -2711,6 +2733,13 @@ class BatchPage(MissionPage):
         self.rumple_min_height_spin = _automatic_height_spin()
         self.point_density_per_area_check = QCheckBox("Density per unit area")
         self.point_density_per_area_check.setChecked(True)
+        self.voxel_stat_dimension_combo = QComboBox()
+        self.voxel_stat_dimension_combo.setEditable(True)
+        self.voxel_stat_dimension_combo.addItems(("HeightAboveGround", "Z", "Intensity", "Classification", "ReturnNumber", "NumberOfReturns", "ScanAngleRank", "UserData", "PointSourceId", "GpsTime", "Red", "Green", "Blue", "NIR"))
+        self.voxel_stat_dimension_combo.setToolTip("Point-array field to aggregate. Choose a listed LAS/COPC dimension or type any field available in the selected source.")
+        self.voxel_stat_stat_combo = QComboBox()
+        self.voxel_stat_stat_combo.addItems(("count", "mean", "sum", "min", "max", "median", "std"))
+        self.voxel_stat_stat_combo.setToolTip("Aggregation supported by PyForestScan calculate_voxel_stat.")
         self.chm_interpolation_combo = QComboBox()
         self.chm_interpolation_combo.addItems(("linear", "nearest", "cubic"))
         self.chm_interpolation_combo.currentTextChanged.connect(self._update_chm_interpolation_help)
@@ -2746,6 +2775,8 @@ class BatchPage(MissionPage):
             self.rumple_min_height_spin,
             self.point_density_per_area_check,
             self.chm_interpolation_combo,
+            self.voxel_stat_dimension_combo,
+            self.voxel_stat_stat_combo,
         ):
             control.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
             control.setMinimumHeight(control.sizeHint().height())
@@ -2765,8 +2796,10 @@ class BatchPage(MissionPage):
             ("canopy_cover.k", "Canopy Cover", "Extinction coefficient", self.canopy_extinction_spin),
             ("rumple.min_height", "Rumple", "Minimum height", self.rumple_min_height_spin),
             ("point_density.per_area", "Point Density", "", self.point_density_per_area_check),
+            ("voxel_stat.dimension", "Voxel Statistic", "Point dimension", self.voxel_stat_dimension_combo),
+            ("voxel_stat.stat", "Voxel Statistic", "Aggregation", self.voxel_stat_stat_combo),
         )
-        self.scientific_group_order = ("Shared Settings", "CHM", "DTM", "PAD", "PAI", "FHD", "Canopy Cover", "Rumple", "Point Density")
+        self.scientific_group_order = ("Shared Settings", "CHM", "DTM", "PAD", "PAI", "FHD", "Canopy Cover", "Rumple", "Point Density", "Voxel Statistic")
         self.scientific_groups: dict[str, tuple[QWidget, tuple[QFormLayout, QFormLayout], tuple[QWidget, QWidget]]] = {}
         for group_name in self.scientific_group_order:
             group_widget = QWidget()
@@ -3044,6 +3077,9 @@ class BatchPage(MissionPage):
         self.engine_status_label = _body_label("Processing Engine: Checking")
         process_layout.addWidget(self.engine_status_label)
         self.worker_status_label = _body_label("Processing capacity: Automatic")
+        self.worker_status_label.setWordWrap(False)
+        self.worker_status_label.setMinimumHeight(28)
+        self.worker_status_label.setMaximumHeight(28)
         process_layout.addWidget(self.worker_status_label)
         self.processing_confidence_label = _details_label("Completed regions are saved as processing continues. Valid completed regions can be resumed after an interruption.")
         self.processing_confidence_label.setVisible(False)
@@ -3432,7 +3468,7 @@ class BatchPage(MissionPage):
             control.valueChanged.connect(self._on_product_selection_changed)
         for combo in (self.processing_profile_combo, self.execution_mode_combo, self.chm_interpolation_combo,
                       self.polygon_index_strategy_combo, self.polygon_selection_mode_combo, self.mask_engine_combo,
-                      self.mask_failure_policy_combo):
+                      self.mask_failure_policy_combo, self.voxel_stat_dimension_combo, self.voxel_stat_stat_combo):
             combo.currentIndexChanged.connect(self._on_product_selection_changed)
         for option in (self.stop_on_error_check,
                        self.skip_completed_check, self.retry_failed_only_check, self.overwrite_existing_check,
@@ -3583,7 +3619,7 @@ class BatchPage(MissionPage):
         """Project stable semantic rows into stacked product-owned groups."""
         fields = {field for _key, _group, _label, field in self.product_setting_rows}
         raster_products = set(ProductType)
-        binned_products = {ProductType.PAD, ProductType.PAI, ProductType.FHD, ProductType.CANOPY_COVER}
+        binned_products = {ProductType.PAD, ProductType.PAI, ProductType.FHD, ProductType.CANOPY_COVER, ProductType.VOXEL_STAT}
         active = {
             self.resolution_spin: bool(selected & raster_products),
             self.height_bin_spin: bool(selected & binned_products),
@@ -3599,6 +3635,8 @@ class BatchPage(MissionPage):
             self.rumple_min_height_spin: ProductType.RUMPLE in selected,
             self.point_density_per_area_check: ProductType.POINT_DENSITY in selected,
             self.chm_interpolation_combo: ProductType.CHM in selected,
+            self.voxel_stat_dimension_combo: ProductType.VOXEL_STAT in selected,
+            self.voxel_stat_stat_combo: ProductType.VOXEL_STAT in selected,
         }
         for group_name in self.scientific_group_order:
             group_widget, forms, form_widgets = self.scientific_groups[group_name]
@@ -3869,6 +3907,8 @@ class BatchPage(MissionPage):
             state_text = f"Catalog {latest.status.value.title()} - {latest.stage.value}; discovered {latest.discovered:,}; indexed {latest.indexed:,}; errors {latest.errors:,}."
         else:
             state_text = catalog_status_text(selection.normalized_path, path)
+        if selection.valid and (selection.normalized_path / "ept.json").is_file():
+            state_text = "EPT source ready — direct spatial selection is active; a LiDAR catalog is not required."
         incorrect_ept_catalog = bool(selection.valid and path and path.exists() and incorrect_ept_catalog_detected(path, Path(folder)))
         if incorrect_ept_catalog:
             state_text = "Incorrect EPT Catalog Detected - this catalog indexes internal EPT node files individually. Use Repair EPT Catalog."
@@ -4508,6 +4548,7 @@ class BatchPage(MissionPage):
 
     def run_preflight(self) -> None:
         """Run batch preflight and update readiness display."""
+        self._prerun_terminal = False
         self.preflight_button.setEnabled(False)
         self.preflight_text.setPlainText("Running Prerun Check...")
         self.status_label.setText("Checking request...")
@@ -4578,13 +4619,45 @@ class BatchPage(MissionPage):
         """Request cancellation at the next pure-core planning safe point."""
         self.preflight_cancel_event.set()
         self.cancel_preflight_button.setEnabled(False)
+        # Reflect the request immediately; the worker may still be finishing
+        # one catalog/network call, but the UI must never look unresponsive.
+        self.preflight_button.setEnabled(True)
+        self._update_run_button_enabled()
+        self.preflight_report = None
+        self._refresh_footprint_label()
+        self._update_selected_polygon_layer_status()
         self.preflight_summary_label.setText("Cancelling Prerun after the current planning step...")
+        thread = self.preflight_thread
+        if thread is not None and thread.isRunning():
+            thread.requestInterruption()
+            # Repository/catalog inspection can be a blocking filesystem or
+            # network call that cannot observe the Python callback.  Bound the
+            # cancellation latency and terminate only this disposable
+            # preflight worker; no scientific execution owns this thread.
+            QTimer.singleShot(250, lambda: self._force_stop_preflight(thread))
+
+    def _force_stop_preflight(self, thread: QThread) -> None:
+        if thread is self.preflight_thread and thread.isRunning():
+            thread.terminate()
+            thread.wait(1000)
+            self.preflight_thread = None
+            self.preflight_worker = None
+            self.cancel_preflight_button.setVisible(False)
+            self.preflight_button.setEnabled(True)
+            self.preflight_summary_label.setText("Prerun cancelled. Refresh inputs, then run Prerun Check again.")
+            self.preflight_text.setPlainText("Prerun cancelled before the current planning operation completed.")
+            self._update_processing_density(ProcessingUiState.IDLE)
 
     def _on_polygon_preflight_progress(self, message: str) -> None:
+        if self._prerun_terminal:
+            return
         self.preflight_summary_label.setText(f"Analyzing selected area... {message}")
         self.preflight_text.setPlainText(f"Prerun is running in the background.\nCurrent stage: {message}")
 
     def _on_polygon_preflight_complete(self, report: object) -> None:
+        if self._prerun_terminal:
+            return
+        self._prerun_terminal = True
         self.preflight_report = report
         self.set_spatial_intervention(report.blockers)
         self.preflight_text.setPlainText(self._polygon_guided_review_text(report))
@@ -4597,12 +4670,17 @@ class BatchPage(MissionPage):
         self._update_processing_density(ProcessingUiState.IDLE)
 
     def _on_polygon_preflight_failed(self, message: str) -> None:
+        self._prerun_terminal = True
         cancelled = "cancelled" in message.lower()
         self.preflight_text.setPlainText(("Prerun cancelled." if cancelled else "PRERUN_FAILED: ") + ("" if cancelled else message))
         self.preflight_summary_label.setText("Prerun cancelled." if cancelled else "Prerun failed. Review the diagnostic artifact.")
         self.preflight_report = None
         self._update_run_button_enabled()
         self._publish_session_state()
+        self.preflight_button.setEnabled(True)
+        self.cancel_preflight_button.setVisible(False)
+        self.cancel_preflight_button.setEnabled(False)
+        self._update_processing_density(ProcessingUiState.FAILED if not cancelled else ProcessingUiState.IDLE)
 
     def _on_polygon_layer_changed(self, *_args: object) -> None:
         self._adopted_polygon_selection = None
@@ -4846,6 +4924,8 @@ class BatchPage(MissionPage):
             "fhd_max_height": fhd_max,
             "rumple_min_height": optional(self.rumple_min_height_spin),
             "point_density_per_area": self.point_density_per_area_check.isChecked(),
+            "voxel_stat_dimension": self.voxel_stat_dimension_combo.currentText().strip(),
+            "voxel_stat_stat": self.voxel_stat_stat_combo.currentText().strip().lower(),
         }
 
     def _build_batch_request(self, batch_folder: Path | None = None, datasets: tuple[Path, ...] | None = None) -> BatchRequest:
@@ -4940,6 +5020,7 @@ class BatchPage(MissionPage):
             selection_mode=str(self.polygon_selection_mode_combo.currentData() or "automatic"),
             direct_header_fallback=self.polygon_direct_fallback_check.isChecked(),
             repository_crs_override=repository_crs_override,
+            existing_index_path=Path(self.polygon_existing_index_edit.text().strip()) if self.polygon_existing_index_edit.text().strip() else None,
             spatial_policy=default_source_local_policy_store().read(),
             polygon_options=PolygonBatchOptions(
                 exact_raster_mask=self.exact_raster_mask_check.isChecked(),
@@ -5116,6 +5197,11 @@ class BatchPage(MissionPage):
 
     def _reconcile_processing_ui(self) -> None:
         launch = read_attempt_status(self._active_launch_attempt)
+        # Polygon tile progress is the authoritative live message.  Launch
+        # heartbeat reconciliation must not overwrite it on its timer tick,
+        # which previously caused the visible two-message jump.
+        if getattr(self, "_polygon_progress", None) is not None and self.batch_thread is not None and self.batch_thread.isRunning():
+            return
         if self.batch_thread is not None and self.batch_thread.isRunning() and launch["stage"]:
             elapsed_seconds = int(launch["elapsed_ms"] / 1000)
             labels = {
@@ -5282,11 +5368,17 @@ class BatchPage(MissionPage):
             for candidate in self.batch_items
         )
         total = max(1, getattr(self, "_total_items", 1))
-        if self._processed_items:
+        if status == "running":
+            # Running item notifications describe activity; they must not
+            # reset the authoritative tile progress projected by
+            # _on_polygon_progress.
+            pass
+        elif self._processed_items:
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(min(99, int((self._processed_items / total) * 100)))
         else:
-            self.progress_bar.setRange(0, 0)
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(0)
         dataset_name = Path(getattr(item, "dataset_path")).name
         self._processing_current_file = dataset_name
         message = getattr(item, "message")
@@ -5316,21 +5408,35 @@ class BatchPage(MissionPage):
                 source, batch_run_context(source, folder, reuse_existing=True),
                 "running", message, (), stage,
             ))
-        percent = event.get("progress_percent")
-        if percent is None:
-            self.progress_bar.setRange(0, 0)
-        else:
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(max(0, min(99, int(float(percent)))))
+        # Project the scheduler's durable tile state into the existing visible
+        # Processing card. This is the authoritative path for both folder and
+        # polygon workflows; it prevents the card from remaining at Starting.
+        source_value = str(event.get("source") or entity_id or self._processing_current_file or "LiDAR source")
+        self._processing_current_file = Path(source_value).name if source_value else "LiDAR source"
+        product_value = str(event.get("product") or "")
+        if not product_value:
+            product_value = message.split(":", 1)[0] if ":" in message else "Processing"
+        self._processing_current_product = product_value.replace("_", " ").title()
+        current_id = str(event.get("current_work_unit_id") or "")
         completed = int(event.get("completed", 0) or 0)
         total = int(event.get("required_work_units", event.get("total", 0)) or 0)
+        if "tile" in message.lower() or stage in {"Processing Regions", "WORK_UNIT_PROGRESS", "Processing tiles"}:
+            step = f"Processing tile {min(total, completed + 1)} of {total}" if total else "Processing tiles"
+        else:
+            step = stage.replace("_", " ").title()
+        self._refresh_processing_elapsed(step=step)
+        # Keep the legacy indeterminate branch documented for compatibility;
+        # live polygon work uses the determinate projection below.
+        # self.progress_bar.setRange(0, 0)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(projection.progress_percent(event))
         active = int(event.get("running", 0) or 0)
         remaining = max(0, total - completed - int(event.get("failed", 0) or 0))
         eta = event.get("eta_seconds")
         eta_text = "Calculating" if eta is None else _compact_duration(float(eta))
         health = str(event.get("health") or "WORKING").replace("_", " ").title()
         self.worker_status_label.setText(
-            f"{message}  |  {completed} of {total or '?'} regions complete  |  "
+            f"{message}  |  {completed} of {total or projection.total_datasets or '?'} regions complete  |  "
             f"{active} regions processing  |  {remaining} remaining  |  "
             f"Elapsed {_compact_duration(elapsed)}  |  ETA {eta_text}  |  {health}"
         )
@@ -6461,6 +6567,11 @@ def register_context_help(widget: QWidget, text: str, owner: MissionPage) -> Non
     if not widget.accessibleName():
         label = widget.text() if isinstance(widget, QAbstractButton) else widget.objectName()
         widget.setAccessibleName(str(label or type(widget).__name__).replace("_", " ").strip())
+    # Every numeric and choice control must let the page scroll unless the user
+    # deliberately changes it by keyboard or pointer.  Registering this here
+    # covers dynamically rebuilt scientific settings as well as initial UI.
+    if isinstance(widget, (QComboBox, QAbstractSpinBox)):
+        widget.setProperty("ignoreWheelValueChange", True)
     widget.installEventFilter(owner)
 
 

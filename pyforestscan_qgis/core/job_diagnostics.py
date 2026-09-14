@@ -38,6 +38,13 @@ class JobErrorCode(str, Enum):
     OUTPUT_MASK_FAILED = "OUTPUT_MASK_FAILED"
     HAG_COLLINEAR_INPUT = "HAG_COLLINEAR_INPUT"
     EMPTY_SPATIAL_READ = "EMPTY_SPATIAL_READ"
+    EMPTY_EPT_READ = "EMPTY_EPT_READ"
+    EMPTY_AFTER_POLYGON_CLIP = "EMPTY_AFTER_POLYGON_CLIP"
+    EMPTY_AFTER_HEIGHT_PREPARATION = "EMPTY_AFTER_HEIGHT_PREPARATION"
+    EMPTY_CHM_INPUT = "EMPTY_CHM_INPUT"
+    EMPTY_VOXEL_INPUT = "EMPTY_VOXEL_INPUT"
+    MISSING_REQUIRED_DIMENSION = "MISSING_REQUIRED_DIMENSION"
+    CRS_CLIP_MISMATCH = "CRS_CLIP_MISMATCH"
     HAG_INSUFFICIENT_GROUND = "HAG_INSUFFICIENT_GROUND"
     HAG_INVALID_GEOMETRY = "HAG_INVALID_GEOMETRY"
     NATIVE_BACKEND_CRASH = "NATIVE_BACKEND_CRASH"
@@ -280,6 +287,57 @@ def write_failure_artifacts(result: BatchResult, diagnostics_dir: Path) -> tuple
     error_report = diagnostics_dir / "error_report.html"
     bundle = diagnostics_dir / "technical_diagnostics.zip"
     products = tuple(product for item in result.items for product in item.product_results)
+    failed_product = next((product for product in products if product.status == "FAILED"), None)
+    failed_item = next((item for item in result.items if any(product.status == "FAILED" for product in item.product_results)), None)
+    technical = str(getattr(failed_product, "technical_detail", "") or getattr(failed_product, "message", "") or "")
+    exception_type = ""
+    exception_message = technical
+    if ":" in technical:
+        exception_type, exception_message = technical.split(":", 1)
+    attempt_id = str(getattr(result, "attempt_id", "") or "")
+    job_id = str(getattr(result, "job_id", "") or result.batch_id)
+    work_unit = ""
+    work_unit_folder = ""
+    checkpoint_path = ""
+    if failed_item is not None:
+        work_unit_folder = str(getattr(failed_item.run_context, "run_folder", ""))
+        work_unit = str(getattr(failed_item, "failed_work_unit_id", "") or getattr(failed_item, "latest_completed_work_unit", "") or "")
+        work_unit_folder = str(getattr(failed_item, "work_unit_folder", "") or getattr(failed_item.run_context, "run_folder", ""))
+    traceback_text = ""
+    for candidate in sorted(diagnostics_dir.glob("*_failure.json")):
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+            traceback_text = str(payload.get("traceback") or "")
+            exception_type = str(payload.get("exception_type") or exception_type)
+            exception_message = str(payload.get("exception") or exception_message)
+            break
+        except (OSError, ValueError, TypeError):
+            continue
+    if not traceback_text and failed_product is not None:
+        candidate_traceback = str(getattr(failed_product, "technical_detail", "") or "")
+        if "Traceback" in candidate_traceback:
+            traceback_text = candidate_traceback
+    failure_kind = "UNEXPECTED_EXCEPTION" if traceback_text else "SCIENTIFIC_CONDITION"
+    error_code = str(getattr(failed_product, "error_code", "") or "PRODUCT_EXECUTION_FAILED")
+    if failed_item is not None and failed_item.product_results:
+        metrics = {}
+        for candidate in failed_item.product_results:
+            if candidate.status == "FAILED":
+                metrics = getattr(candidate, "metrics", {}) if hasattr(candidate, "metrics") else {}
+                break
+    write_json(diagnostics_dir / "exception.json", {"failure_kind": failure_kind, "error_code": error_code, "exception_type": exception_type or ("" if failure_kind == "SCIENTIFIC_CONDITION" else "ProcessingError"), "exception_message": exception_message, "traceback": traceback_text or None})
+    write_text(diagnostics_dir / "traceback.txt", traceback_text)
+    write_json(diagnostics_dir / "scientific_context.json", {"requested_products": list(getattr(result, "items", ())[0].requested_products) if result.items else [], "active_product": failed_product.product if failed_product else "", "dependency": "DTM for Voxel Statistic" if failed_product and failed_product.product == "dtm" else "", "source_path": str(failed_item.dataset_path) if failed_item else "", "work_unit_id": work_unit})
+    write_json(diagnostics_dir / "dependency_plan.json", {"requested_products": list(getattr(result, "items", ())[0].requested_products) if result.items else [], "active_product": failed_product.product if failed_product else "", "dependency": "DTM" if failed_product and failed_product.product == "dtm" else ""})
+    completed_units = int(getattr(failed_item, "completed_work_units", 0) if failed_item else 0)
+    total_units = int(getattr(failed_item, "total_work_units", 0) if failed_item else 0)
+    latest_unit = str(getattr(failed_item, "latest_completed_work_unit", "") if failed_item else "")
+    failure_stage = str(getattr(failed_item, "failure_stage", "scientific_execution") if failed_item else "scientific_execution")
+    if work_unit:
+        checkpoint_path = str(Path(work_unit_folder) / "work_units" / (failed_product.product if failed_product else "") / work_unit / "status.json")
+    write_json(diagnostics_dir / "work_unit.json", {"work_unit_id": work_unit, "work_unit_folder": work_unit_folder, "checkpoint_path": checkpoint_path, "latest_completed_work_unit": latest_unit, "completed_work_units": completed_units, "total_work_units": total_units})
+    write_json(diagnostics_dir / "runtime.json", {"job_id": job_id, "attempt_id": attempt_id})
+    write_json(diagnostics_dir / "failure_summary.json", {"attempt_id": attempt_id, "job_id": job_id, "requested_product": failed_item.requested_products[0] if failed_item and failed_item.requested_products else "", "active_product": failed_product.product if failed_product else "", "dependency": "HAG (no CHM)" if failed_product and failed_product.product == "voxel_stat" else "", "stage": failure_stage, "work_unit_id": work_unit, "work_unit_folder": work_unit_folder, "checkpoint_path": checkpoint_path, "error_code": error_code, "failure_kind": failure_kind, "exception_type": exception_type or ("" if failure_kind == "SCIENTIFIC_CONDITION" else "ProcessingError"), "exception_message": exception_message, "traceback_path": str(diagnostics_dir / "traceback.txt"), "source_path": str(failed_item.dataset_path) if failed_item else "", "timestamp": result.finished_at, "completed_work_units": completed_units, "total_work_units": total_units})
     rows = "".join(
         "<tr>"
         f"<td>{escape(product.product)}</td><td>{escape(product.status)}</td>"
@@ -299,6 +357,8 @@ def write_failure_artifacts(result: BatchResult, diagnostics_dir: Path) -> tuple
         f"<p><strong>Successful products:</strong> {escape(successful)}<br>"
         f"<strong>Failed products:</strong> {escape(failed)}<br>"
         f"<strong>Output folder:</strong> {escape(str(result.batch_folder))}</p>"
+        f"<p><strong>Attempt:</strong> {escape(attempt_id or 'Unavailable')}<br><strong>Job:</strong> {escape(job_id)}<br><strong>Technical error:</strong> {escape(exception_type or 'ProcessingError')}: {escape(exception_message)}</p>"
+        f"<details><summary>Technical Error / Traceback</summary><pre>{escape(traceback_text or technical)}</pre></details>"
         "<p>Successful outputs were preserved. Attach the technical diagnostics ZIP when reporting a problem.</p>"
         f"<table><tr><th>Product</th><th>Status</th><th>Explanation</th><th>Error code</th></tr>{rows}</table>"
         "</body></html>",

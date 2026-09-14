@@ -262,15 +262,26 @@ class PolygonExecutionPlan:
 
 
 class PolygonSourceSelectionService:
+    _repository_cache: dict[tuple[str, str], ResolvedLidarRepository] = {}
     def resolve_repository(self, selected_path: Path | str, catalog_path: Path | str | None = None) -> ResolvedLidarRepository:
         selected = Path(selected_path).expanduser()
-        resolved = selected.resolve() if selected.exists() else selected.absolute()
+        # Syntactic normalization is enough for a registered repository.  Do
+        # not canonicalize every UNC component or rediscover its contents on
+        # every prerun; the catalog/descriptor stages own deeper validation.
+        resolved = selected.absolute()
         catalog = Path(catalog_path) if catalog_path is not None else default_lidar_catalog_path(resolved)
+        cache_key = (str(resolved).casefold(), str(catalog).casefold())
+        cached = self._repository_cache.get(cache_key)
+        if cached is not None:
+            self._last_polygon_context = None
+            return cached
         ept = resolve_ept_selection(resolved)
         if ept is not None:
             bounds, crs, points, resolved, payload = _read_ept_metadata(ept.ept_json)
             source_extent = SpatialEnvelope.from_bounds(bounds, crs) if bounds is not None and crs else None
-            state_repair = repair_ept_crs_catalog_state(catalog, ept.ept_json) if catalog.exists() else None
+            # CRS/catalog repair is repository maintenance, never part of the
+            # latency-sensitive identity lookup.
+            state_repair = None
             warnings = tuple(resolved.warnings)
             if state_repair is not None and state_repair.repaired:
                 warnings = (*warnings, state_repair.message)
@@ -279,7 +290,7 @@ class PolygonSourceSelectionService:
                 errors = (*errors, "EPT metadata does not provide a usable root extent.")
             if not crs:
                 errors = (*errors, "The EPT coordinate system could not be determined.")
-            return ResolvedLidarRepository(
+            result = ResolvedLidarRepository(
                 repository_id=_repo_id(ept.normalized_repository, "ept"),
                 selected_path=selected,
                 normalized_path=ept.normalized_repository,
@@ -296,17 +307,15 @@ class PolygonSourceSelectionService:
                 source_spatial_reference=resolved,
                 ept_spatial_metadata=ept_spatial_metadata_summary(str(ept.ept_json), payload, resolved),
             )
+            self._repository_cache[cache_key] = result
+            return result
+        # Repository identity is a descriptor lookup only.  Do not open or
+        # validate every catalog record here; the bounded spatial query owns
+        # catalog access and returns the effective CRS/coverage.
         source_crs = None
         source_extent = None
         warnings: tuple[str, ...] = ()
-        if catalog.exists():
-            integrity = inspect_catalog_integrity(catalog, resolved)
-            source_crs = integrity.repository_crs_override
-            if integrity.extent_union is not None and source_crs:
-                source_extent = SpatialEnvelope.from_bounds(integrity.extent_union, source_crs)
-            if integrity.status == "CRS Assignment Required":
-                warnings = ("Repository coordinate system assignment is required before coverage can be compared with polygons.",)
-        return ResolvedLidarRepository(
+        result = ResolvedLidarRepository(
             repository_id=_repo_id(resolved, "indexed_repository"),
             selected_path=selected,
             normalized_path=resolved,
@@ -321,6 +330,8 @@ class PolygonSourceSelectionService:
             warnings=warnings,
             errors=(),
         )
+        self._repository_cache[cache_key] = result
+        return result
 
     def select_sources(
         self,

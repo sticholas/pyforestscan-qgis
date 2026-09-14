@@ -39,11 +39,14 @@ from .polygon_transport import polygon_execution_input_from_selection, unique_po
 from .raster_mask import RasterMaskOptions, RasterMaskResult, apply_polygon_mask_to_outputs, is_maskable_raster
 from .output_registry import generated_output_for_path, write_output_registry
 from .polygon_lidar_processing import selected_path_invariant
-from .source_aware_processing import AlignedRasterGrid, NativeSource, SourceAwareWorkPlanner, SpatialExtent
+from .source_aware_processing import AlignedRasterGrid, NativeSource, SourceAwareWorkPlanner, SpatialExtent, PRODUCT_POLICIES
 from .rumple_adaptive import derive_rumple_grid, rumple_core_extent
 from .rumple_raster_io import create_rumple_raster_from_chm, raster_totals, write_rumple_summary
 from .durable_errors import DurableErrorRecord, write_recent_error
 from .work_unit_scheduler import CheckpointStore, PolygonProductWorkScheduler, WorkUnitResult
+from .generic_tiled_executor import execute_tiled_product
+from .tile_diagnostics import ScientificConditionError, EMPTY_EPT_READ, EMPTY_AFTER_POLYGON_CLIP, EMPTY_AFTER_HEIGHT_PREPARATION, EMPTY_CHM_INPUT, EMPTY_VOXEL_INPUT
+from .exceptions import ProcessingError
 from .hag_strategy import hag_method_signature
 from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, HagNormalizationRequest, PadRequest, PaiRequest, PointDensityRequest, ProductType, RumpleRequest, VoxelStatRequest
 from .backend.processing_engine import ProcessingRuntimeToken
@@ -51,6 +54,7 @@ from .backend.process_env import hidden_subprocess_kwargs
 from .coordinator_lifecycle import CoordinatorHandle, CoordinatorTerminalResult, bounded_process_output
 from .job_diagnostics import write_failure_artifacts
 from .source_alternatives import SourceRelationship, canonicalize_source_alternatives
+from .adaptive_lidar_indexing import register_existing_footprint_index
 
 POLYGON_MANIFEST_NAME = "polygon_batch_manifest.json"
 POLYGON_EXECUTION_MANIFEST_NAME = "polygon_execution_manifest.json"
@@ -77,10 +81,11 @@ class PolygonBatchRequest:
     shared_execution_options: BatchExecutionOptions | None = None
     polygon_options: PolygonBatchOptions = PolygonBatchOptions()
     selection_mode: str = "automatic"
-    direct_header_fallback: bool = True
+    direct_header_fallback: bool = False
     repository_crs_override: str | None = None
     spatial_policy: SourceLocalFallbackPolicy | None = None
     runtime_token: ProcessingRuntimeToken | None = None
+    existing_index_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -117,14 +122,28 @@ class PolygonBatchPreflightReport:
     direct_selection: PolygonLidarSelectionResult | None = None
     selection_comparison: SelectionMethodComparison | None = None
     source_alternative_detections: tuple[object, ...] = ()
+    performance: dict[str, object] | None = None
 
     @property
     def has_warnings(self) -> bool:
         return bool(self.warnings)
 
 
-def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: Callable[[], tuple[bool, str]] | None = None) -> PolygonBatchPreflightReport:
+def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: Callable[[], tuple[bool, str]] | None = None, cancel_callback=None, progress_callback=None) -> PolygonBatchPreflightReport:
     """Resolve repository identity, select sources, and build one execution plan."""
+    if cancel_callback is not None and cancel_callback():
+        raise RuntimeError("Polygon Prerun cancelled.")
+    started_at = time.perf_counter()
+    timings: dict[str, float] = {}
+    def progress(stage: str) -> None:
+        if progress_callback is not None:
+            progress_callback(stage, 0, 0)
+    def timed(stage: str):
+        class _Timer:
+            def __enter__(self): self.t0 = time.perf_counter(); return self
+            def __exit__(self, *_): timings[stage] = (time.perf_counter() - self.t0) * 1000.0
+        return _Timer()
+    progress("Loading spatial policy")
     active_spatial_policy = request.spatial_policy or default_source_local_policy_store().read()
     if request.spatial_policy is None:
         request = replace(request, spatial_policy=active_spatial_policy)
@@ -133,17 +152,48 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
     if effective_repository_crs != request.repository_crs_override:
         request = replace(request, repository_crs_override=effective_repository_crs)
     service = PolygonSourceSelectionService()
-    repository = service.resolve_repository(request.lidar_folder, request.catalog_path)
+    progress("Resolving LiDAR repository")
+    with timed("REPOSITORY_RESOLUTION"):
+        repository = service.resolve_repository(request.lidar_folder, request.catalog_path)
+    if cancel_callback is not None and cancel_callback():
+        raise RuntimeError("Polygon Prerun cancelled.")
     if effective_repository_crs and repository.repository_kind != "ept":
         repository = replace(repository, source_crs=effective_repository_crs, resolution_method="shared_spatial_assignment")
     catalog_path = repository.catalog_path or request.catalog_path or default_lidar_catalog_path(repository.normalized_path)
+    # An explicitly selected footprint index is a source of catalog records, not
+    # itself a PyForestScan catalog. Register it before checking readiness so the
+    # Polygon Area workflow does not report a missing catalog after the user has
+    # supplied valid coverage data.
+    index_registration_error: str | None = None
+    if request.existing_index_path is not None:
+        index_path = Path(request.existing_index_path)
+        if not index_path.is_file():
+            index_registration_error = f"Selected existing footprint index does not exist: {index_path}"
+        elif repository.repository_kind == "ept":
+            index_registration_error = "An external footprint index is not used for an EPT repository; its metadata supplies coverage directly."
+        else:
+            try:
+                catalog_path = register_existing_footprint_index(index_path, repository.normalized_path, catalog_path)
+                request = replace(request, catalog_path=Path(catalog_path))
+                repository = service.resolve_repository(request.lidar_folder, request.catalog_path)
+            except Exception as exc:  # noqa: BLE001 - surface malformed indexes as preflight blockers.
+                index_registration_error = f"Could not register selected footprint index: {exc}"
+    progress("Preparing polygon query geometry")
     query_geometry = derive_polygon_query_geometry(request.polygon, catalog_crs=repository.source_crs or request.catalog_crs)
+    if cancel_callback is not None and cancel_callback():
+        raise RuntimeError("Polygon Prerun cancelled.")
     batch_folder = request.batch_folder or _planned_polygon_batch_folder(request.output_folder)
     manifest_path = batch_folder / POLYGON_MANIFEST_NAME
     empty_inventory = LidarInventory(repository.normalized_path, ())
     blockers: list[str] = []
     warnings: list[str] = list(query_geometry.warnings)
-    backend_ready, backend_message, runtime_token = _probe_pbm_backend(backend_probe, tuple(product.value for product in request.products))
+    if index_registration_error:
+        blockers.append(index_registration_error)
+    elif request.existing_index_path is not None:
+        warnings.append(f"Registered selected footprint index into active catalog: {catalog_path}")
+    progress("Checking processing engine")
+    with timed("ENGINE_READINESS_CHECK"):
+        backend_ready, backend_message, runtime_token = _probe_pbm_backend(backend_probe, tuple(product.value for product in request.products))
     if runtime_token is not None:
         request = replace(request, runtime_token=runtime_token)
     if not backend_ready:
@@ -209,7 +259,11 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         )
     if repository.repository_kind == "ept" and Path(catalog_path).exists() and incorrect_ept_catalog_detected(catalog_path, repository.normalized_path):
         blockers.append("Incorrect EPT Catalog Detected. Repair EPT Catalog before running; internal EPT node files should be one logical EPT dataset.")
-    selection = service.select_sources(repository, request.polygon, catalog_crs=repository.source_crs or request.catalog_crs, thresholds=request.thresholds, spatial_policy=active_spatial_policy)
+    progress("Selecting intersecting LiDAR coverage")
+    with timed("SOURCE_COVERAGE_RESOLUTION"):
+        selection = service.select_sources(repository, request.polygon, catalog_crs=repository.source_crs or request.catalog_crs, thresholds=request.thresholds, spatial_policy=active_spatial_policy)
+    if cancel_callback is not None and cancel_callback():
+        raise RuntimeError("Polygon Prerun cancelled.")
     if repository.repository_kind == "ept":
         query_geometry = PolygonQueryGeometry(
             envelope=selection.transformed_envelope.to_bounds(),
@@ -224,7 +278,10 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
     direct_selection = None
     comparison = None
     selection_method = "catalog"
-    if repository.repository_kind not in {"ept", "copc"} and request.direct_header_fallback:
+    # Do not scan an entire large repository when the spatial catalog already
+    # returned usable intersecting records.  Header fallback is only needed
+    # for an empty/unusable catalog or an explicit Direct Header Scan choice.
+    if repository.repository_kind not in {"ept", "copc"} and request.direct_header_fallback and (not selected or request.selection_mode == "direct_header_scan"):
         direct_selection = DirectLidarFolderSelector(spatial_policy=active_spatial_policy).select(repository.normalized_path, request.polygon, repository_crs_override=request.repository_crs_override or repository.source_crs, recursive=request.recursive)
         comparison = compare_selection_methods(direct_selection, selected, catalog_seconds=0 if query is None else query.query_seconds)
         catalog_status = "" if query is None else str(getattr(query, "catalog_integrity_status", ""))
@@ -254,13 +311,15 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         warnings = [item for item in warnings if "cannot yet be compared" not in str(item).lower()]
     blockers.extend(message.to_text() for message in selection.blockers)
     try:
-        plan = build_polygon_processing_plan(
+        progress("Building product readiness plan")
+        with timed("PRODUCT_PARAMETER_AND_GRID_PLAN"):
+            plan = build_polygon_processing_plan(
             inventory,
             request.polygon.to_polygon_selection(),
             request.output_folder,
             tuple(product.value for product in request.products),
-            processing_crs=request.polygon.processing_crs,
-        )
+                processing_crs=request.polygon.processing_crs,
+            )
     except ValueError as exc:
         blockers.append(str(exc))
         plan = _empty_plan(inventory, request, query_geometry, warnings)
@@ -302,6 +361,34 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         backend_ready=backend_ready,
         backend_message=backend_message,
     )
+    # Performance telemetry is strictly optional: it must never turn a valid
+    # preflight into a failure.  Keep the canonical ``total_ms`` field and a
+    # backwards-compatible ``TOTAL`` alias for older consumers, but avoid
+    # indexing an optional key during the hot path (the 005e crash was exactly
+    # ``KeyError: 'TOTAL'`` here).
+    total_ms = (time.perf_counter() - started_at) * 1000.0
+    timings["TOTAL"] = total_ms
+    performance = {
+        "schema": "pyforestscan-prerun-performance-v1",
+        "total_ms": total_ms,
+        "TOTAL": total_ms,
+        "stages_ms": dict(timings),
+        "repository_type": repository.repository_kind,
+        "catalog_path": str(catalog_path),
+        "candidate_sources": len(selected),
+        "full_scan": False,
+        "headers_opened": 0,
+        "point_reads": 0,
+    }
+    if total_ms > 1000.0:
+        try:
+            batch_folder.mkdir(parents=True, exist_ok=True)
+            (batch_folder / "prerun_performance.json").write_text(json.dumps(performance, indent=2), encoding="utf-8")
+        except Exception:
+            # Diagnostics are best effort and may not be writable (or may
+            # encounter an unusual path/serialization issue).  Never fail the
+            # actual preflight for telemetry.
+            pass
     return PolygonBatchPreflightReport(
         request=request,
         inventory=inventory,
@@ -332,6 +419,7 @@ def run_polygon_batch_preflight(request: PolygonBatchRequest, *, backend_probe: 
         direct_selection=direct_selection,
         selection_comparison=comparison,
         source_alternative_detections=alternative_detections,
+        performance=performance,
     )
 
 
@@ -1247,7 +1335,7 @@ def _write_polygon_source_resolution(report: PolygonBatchPreflightReport, folder
 
 def build_source_aware_chm_plan(report: PolygonBatchPreflightReport, *, cancel_callback=None, progress_callback=None):
     """Build the bounded CHM plan used by prerun, manifests, and the future executor."""
-    if not ({ProductType.CHM, ProductType.RUMPLE} & set(report.request.products)) or not report.selected_sources:
+    if not report.selected_sources or not any(PRODUCT_POLICIES.get(product.value, None) and PRODUCT_POLICIES[product.value].partitionable for product in report.request.products):
         return None
     bounds = report.query_geometry.envelope
     envelope = SpatialExtent(bounds.xmin, bounds.ymin, bounds.xmax, bounds.ymax)
@@ -1260,7 +1348,7 @@ def build_source_aware_chm_plan(report: PolygonBatchPreflightReport, *, cancel_c
         sources=tuple(native),
         polygon_envelope=envelope,
         processing_crs=report.query_geometry.catalog_crs or report.request.polygon.processing_crs,
-        product="chm",
+        product=next((product.value for product in report.request.products if PRODUCT_POLICIES.get(product.value, None) and PRODUCT_POLICIES[product.value].partitionable), "chm"),
         resolution=report.request.settings.grid_resolution,
         available_memory_bytes=__import__("pyforestscan_qgis.core.adaptive_processing",fromlist=["available_memory_bytes"]).available_memory_bytes(),
         cpu_count=max(1, os.cpu_count() or _shared_options(report).worker_count),
@@ -1359,6 +1447,121 @@ def _is_logical_spatial_report(report: PolygonBatchPreflightReport) -> bool:
     return bool(report.selected_sources) and len(report.selected_sources) == 1 and repository_kind == "ept" and report.selected_sources[0].source_type == "ept"
 
 
+def _execute_generic_tiled_product(report, adapter, context, source, plan, product, *, item_callback=None, control_callback=None, progress_callback=None):
+    """Run any raster product through bounded EPT tiles and a core mosaic."""
+    product_folder = context.run_folder / "work_units" / product.value
+    product_folder.mkdir(parents=True, exist_ok=True)
+    checkpoint = CheckpointStore(product_folder, f"{report.plan_signature}:{product.value}")
+    final_path = context.run_folder / "mosaics" / f"{product.value}.tif"
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    progress_sequence = 0
+
+    def execute_tile(unit, attempt):
+        tile_folder = product_folder / unit.work_unit_id
+        tile_folder.mkdir(parents=True, exist_ok=True)
+        tile_path = tile_folder / f"{product.value}.tif"
+        # Every retry gets an isolated immutable diagnostic history.  The
+        # checkpoint remains at the work-unit root; scratch never overlaps it.
+        diagnostics_path = tile_folder / "diagnostics" / "history" / context.run_folder.name
+        read = unit.read_extent
+        request = _logical_product_request(product, source.path, tile_path, report)
+        extra = {
+            "bounds": EptBounds.from_value(((read.xmin, read.xmax), (read.ymin, read.ymax)), crs=report.query_geometry.catalog_crs).to_json(),
+            "crop_polygon": None, "crop_polygon_path": None, "polygon_execution_input": None,
+        }
+        request_fields = getattr(request, "__dataclass_fields__", {})
+        if "work_unit_id" in request_fields:
+            extra["work_unit_id"] = unit.work_unit_id
+        if "attempt_id" in request_fields:
+            extra["attempt_id"] = context.run_folder.name
+        if "diagnostics_path" in request_fields:
+            extra["diagnostics_path"] = diagnostics_path
+        if "source_coverage_expectation" in request_fields:
+            extra["source_coverage_expectation"] = unit.source_coverage_expectation
+        if "source_dimensions" in request_fields:
+            extra["source_dimensions"] = tuple(getattr(report.selected_sources[0], "dimensions", ()) or ())
+        request = replace(request, **extra)
+        _emit_polygon_stage(item_callback, source, context, "Tile Started", f"{product.value}: {unit.work_unit_id} ({unit.execution_order + 1}/{len(plan.work_units)})")
+        try:
+            result = _run_logical_product(adapter, product, request)
+        except (ScientificConditionError, ProcessingError) as exc:
+            # Only a proven source/clip gap is converted to NoData.  An
+            # expected source gap remains a failure until hierarchy evidence
+            # proves that the EPT is genuinely empty.
+            code = getattr(exc, "code", "")
+            empty_backend = "empty point arrays" in str(exc).lower() or "no usable lidar points" in str(exc).lower()
+            # A bounded tile can legitimately contain no points even when its
+            # envelope intersects the polygon (sparse EPT coverage, edge
+            # cells, or a clipped sliver).  The backend historically reported
+            # this as a fatal CHM empty-array error; represent it as an
+            # aligned NoData tile so the remaining tiles can mosaic.
+            if code in {EMPTY_AFTER_POLYGON_CLIP} or (code == EMPTY_EPT_READ and str(unit.source_coverage_expectation).lower() not in {"expected", "required"}) or empty_backend:
+                nodata_path = tile_folder / f"{product.value}.tif"
+                _create_empty_core_tile_raster(nodata_path, unit, plan)
+                return WorkUnitResult(unit.work_unit_id, "CompleteNoData", nodata_path, attempt_count=attempt, error_code=code or EMPTY_CHM_INPUT, message="No LiDAR points intersected this tile; emitted NoData.", metrics={"core_extent": unit.core_extent.__dict__, "read_extent": unit.read_extent.__dict__, "product": product.value, "failure_kind": "SCIENTIFIC_CONDITION", "stage": getattr(exc, "stage", "CHM"), "diagnostics_path": str(diagnostics_path)})
+            raise
+        produced = Path(getattr(result, "output_path", tile_path))
+        if not produced.is_file():
+            raise RuntimeError(f"{product.value} tile {unit.work_unit_id} did not produce a raster.")
+        from .tile_diagnostics import write_stage_record
+        write_stage_record(diagnostics_path, stage="TILE_RASTER_WRITTEN", payload={"path": str(produced), "size_bytes": produced.stat().st_size})
+        write_stage_record(diagnostics_path, stage="TILE_VALIDATED", payload={"path": str(produced), "valid": True})
+        _emit_polygon_stage(item_callback, source, context, "Tile Complete", f"{product.value}: {unit.work_unit_id} finished.")
+        return WorkUnitResult(unit.work_unit_id, "Complete", produced, attempt_count=attempt, metrics={"core_extent": unit.core_extent.__dict__, "read_extent": unit.read_extent.__dict__, "product": product.value, "diagnostics_path": str(diagnostics_path)})
+
+    def mosaic(results):
+        paths = tuple(Path(item.output_path) for item in results if item.output_path)
+        if not paths:
+            raise RuntimeError(f"{product.value} produced no completed tile rasters.")
+        _emit_polygon_stage(item_callback, source, context, "Combining results", f"Mosaicking {len(paths)} {product.value} tiles on the global aligned grid.")
+        _mosaic_core_rasters(paths, final_path, plan)
+        return final_path
+
+    def scheduler_progress(progress):
+        """Forward the scheduler's durable tile state to the single UI stream."""
+        nonlocal progress_sequence
+        progress_sequence += 1
+        if progress_callback is None:
+            return
+        active_ids = tuple(getattr(progress, "current_units", ()) or ())
+        progress_callback({
+            "schema": "pyforestscan-progress-v1",
+            "event_type": "WORK_UNIT_PROGRESS",
+            "sequence": progress_sequence,
+            "event_sequence": progress_sequence,
+            "attempt_id": context.run_folder.name,
+            "job_id": context.run_folder.name,
+            "state": "RUNNING",
+            "entity_type": "dataset",
+            "entity_id": str(source.path),
+            "source": str(source.path),
+            "product": product.value,
+            "active_stage": str(getattr(progress, "stage", "Processing tiles")),
+            "current_activity": f"{product.value}: {getattr(progress, 'completed', 0)} of {getattr(progress, 'total', len(plan.work_units))} tiles complete",
+            "current_work_unit_id": active_ids[0] if active_ids else str(getattr(progress, "latest_completed", "")),
+            "current_work_unit_ids": list(active_ids),
+            "completed": int(getattr(progress, "completed", 0) or 0),
+            "failed": int(getattr(progress, "failed", 0) or 0),
+            "running": int(getattr(progress, "active", 0) or 0),
+            "attempted": int(getattr(progress, "attempted", 0) or 0),
+            "required_work_units": int(getattr(progress, "total", len(plan.work_units)) or len(plan.work_units)),
+            "progress_percent": int(getattr(progress, "progress_percent", 0) or 0),
+            "elapsed_seconds": float(getattr(progress, "elapsed_seconds", 0.0) or 0.0),
+            "eta_seconds": getattr(progress, "eta_seconds", None),
+            "health": str(getattr(progress, "health", "WORKING")),
+            "paused": bool(getattr(progress, "paused", False)),
+        })
+
+    def scheduler_event(event):
+        if progress_callback is None: return
+        nonlocal progress_sequence
+        progress_sequence += 1
+        progress_callback({"schema":"pyforestscan-progress-v1", "event_type": event.get("event_type"), "sequence": progress_sequence, "event_sequence": progress_sequence, "attempt_id": context.run_folder.name, "job_id": context.run_folder.name, "state": event.get("status", "RUNNING"), "entity_type":"work_unit", "entity_id": event.get("work_unit_id", ""), "source": str(source.path), "product": product.value, "current_work_unit_id": event.get("work_unit_id", ""), "current_activity": event.get("message", event.get("event_type", ""))})
+
+    tiled = execute_tiled_product(product=product.value, work_units=plan.work_units, checkpoint=checkpoint, execute_tile=execute_tile, mosaic_tiles=mosaic, concurrency=plan.concurrency_limit, retry_count=2, transient=_transient_work_unit_error, progress_callback=scheduler_progress, control_callback=control_callback, event_callback=scheduler_event)
+    return tiled
+
+
 def _execute_logical_spatial_batch(
     report: PolygonBatchPreflightReport,
     adapter: PyForestScanAdapter,
@@ -1385,6 +1588,87 @@ def _execute_logical_spatial_batch(
             item_callback=item_callback, control_callback=control_callback,
             progress_callback=progress_callback,
         )
+    # All other raster products now use the same bounded tile lifecycle.  Keep
+    # one product per tiled invocation so every output has an independent
+    # checkpoint and an unambiguous progress stream.
+    if len(report.request.products) == 1 and scalable_plan is not None and len(scalable_plan.work_units) > 1:
+        tiled_product = report.request.products[0]
+        if tiled_product not in {ProductType.CHM, ProductType.RUMPLE}:
+            tiled_product_folder = context.run_folder / "work_units" / tiled_product.value
+            try:
+                _emit_polygon_stage(item_callback, source, context, "Preparing tiled execution", f"Planning {len(scalable_plan.work_units)} bounded {tiled_product.value} regions.")
+                tiled = _execute_generic_tiled_product(report, adapter, context, source, scalable_plan, tiled_product, item_callback=item_callback, control_callback=control_callback, progress_callback=progress_callback)
+                if tiled.status == "completed" and tiled.output_path:
+                    output = Path(tiled.output_path)
+                    _emit_polygon_stage(item_callback, source, context, "Clipping to selected area", "Applying the exact selected-area mask.")
+                    _mask_paths([output], report)
+                    _emit_polygon_stage(item_callback, source, context, "Validating output", "Validating the mosaicked raster and spatial metadata.")
+                    _validate_raster_output(output, report.query_geometry.catalog_crs or report.request.polygon.processing_crs, scalable_plan.grid.resolution)
+                    final = context.outputs_dir / output.name
+                    final.parent.mkdir(parents=True, exist_ok=True)
+                    output.replace(final)
+                    item = BatchItemResult(Path(source.path), context, "completed", tiled.message, (final,), _requested_extent_summary(report), (tiled_product.value,), (ProductExecutionResult(tiled_product.value, "SUCCEEDED", tiled.message, (final,)),))
+                else:
+                    # Promote nested tile diagnostics to the job-level bundle
+                    # so a worker scratch directory can never hide the cause.
+                    diagnostics = context.run_folder / "diagnostics"
+                    diagnostics.mkdir(parents=True, exist_ok=True)
+                    for nested in tiled_product_folder.rglob("*.json"):
+                        if nested.name in {"dtm_input_structure.json", "dtm_failure.json", "traceback.txt", "tile_diagnostics.json"}:
+                            try:
+                                tile_label = nested.parent.parent.name if nested.parent.name == "diagnostics" else nested.parent.name
+                                target = diagnostics / f"{tiled_product}_{tile_label}_{nested.name}"
+                                target.write_bytes(nested.read_bytes())
+                            except OSError:
+                                pass
+                    completed_count = sum(item.status in {"Complete", "CompleteNoData", "SkippedOutsidePolygon"} for item in tiled.tile_results)
+                    failed_tiles = tuple(item for item in tiled.tile_results if item.status == "Failed")
+                    first_failed = failed_tiles[0] if failed_tiles else None
+                    failure_metrics = dict(getattr(first_failed, "metrics", {}) or {}) if first_failed else {}
+                    failure_code = str(getattr(first_failed, "error_code", "") or "TILED_EXECUTION_FAILED") if first_failed else "TILED_EXECUTION_FAILED"
+                    failure_message = str(getattr(first_failed, "message", "") or tiled.message)
+                    technical = str(failure_metrics.get("traceback") or failure_message)
+                    failure_stage = str(failure_metrics.get("stage") or "TILED_EXECUTION")
+                    item = BatchItemResult(Path(source.path), context, tiled.status, tiled.message, (), _requested_extent_summary(report), (tiled_product.value,), (ProductExecutionResult(tiled_product.value, "CANCELLED" if tiled.status == "cancelled" else "FAILED", failure_message, (), failure_code, technical),), completed_count, len(scalable_plan.work_units), "", failure_stage, str(getattr(first_failed, "work_unit_id", "") or ""), str(context.run_folder))
+                finished_at = datetime.now(timezone.utc).isoformat()
+                result = BatchResult("polygon-logical", report.request.title, started_at, finished_at, batch_folder, (item,), batch_folder / "batch_summary.json", batch_folder / "batch_summary.csv", batch_folder / "batch_summary.html")
+                result = write_batch_summaries(result)
+                write_failure_artifacts(result, context.run_folder / "diagnostics")
+                return result
+            except Exception as exc:
+                _emit_polygon_stage(item_callback, source, context, "Product Failed", f"{tiled_product.value} tiled execution failed: {exc}")
+                # A tiled attempt is authoritative. Never fall through to the
+                # legacy whole-source adapter after bounded work has started;
+                # that would silently reread the full EPT and duplicate science.
+                completed_units = 0
+                latest_completed = ""
+                for status_path in tiled_product_folder.glob("*/status.json"):
+                    try:
+                        status = json.loads(status_path.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        continue
+                    if str(status.get("status")) in {"Complete", "CompleteNoData", "SkippedOutsidePolygon"}:
+                        completed_units += 1
+                        latest_completed = str(status.get("work_unit_id") or status_path.parent.name)
+                failure_stage = "MOSAIC" if isinstance(exc, NameError) or "mosaic" in str(exc).lower() or "final" in str(exc).lower() else "TILED_EXECUTION"
+                failure_code = str(getattr(exc, "code", "TILED_EXECUTION_FAILED") or "TILED_EXECUTION_FAILED")
+                failure_kind = str(getattr(exc, "failure_kind", "UNEXPECTED_EXCEPTION"))
+                failure_item = BatchItemResult(
+                    Path(source.path), context, "failed",
+                    f"{tiled_product.value} tiled execution failed: {exc}", (),
+                    _requested_extent_summary(report), (tiled_product.value,),
+                    (ProductExecutionResult(tiled_product.value, "FAILED", str(exc), (), failure_code, "" if failure_kind == "SCIENTIFIC_CONDITION" else traceback.format_exc()),),
+                    completed_units, len(scalable_plan.work_units), latest_completed, failure_stage, "", str(context.run_folder),
+                )
+                failure_result = BatchResult(
+                    "polygon-logical", report.request.title, started_at,
+                    datetime.now(timezone.utc).isoformat(), batch_folder,
+                    (failure_item,), batch_folder / "batch_summary.json",
+                    batch_folder / "batch_summary.csv", batch_folder / "batch_summary.html",
+                )
+                failure_result = write_batch_summaries(failure_result)
+                write_failure_artifacts(failure_result, context.run_folder / "diagnostics")
+                return failure_result
     try:
         _emit_polygon_stage(item_callback, source, context, "Preparing Inputs", "Preparing durable polygon job workspace.")
         write_polygon_batch_manifest(report, [{"source": str(source.path), "clipped": "native", "points": str(source.point_count or "unknown"), "bounds_used": str(report.query_geometry.ept_bounds), "job_folder": str(job_folder)}], batch_folder=batch_folder)
@@ -2148,6 +2432,10 @@ def _verified_rumple_core_paths(results, rumple_grid, expected_signature: str) -
 def _mosaic_core_rasters(paths, output_path: Path, plan) -> None:
     if not paths or any(path is None or not Path(path).is_file() for path in paths):
         raise RuntimeError("CHM mosaic requires at least one verified required-core raster.")
+    forbidden = {".las", ".laz", ".copc", ".json"}
+    source_paths = [Path(path) for path in paths if Path(path).suffix.lower() in forbidden]
+    if source_paths:
+        raise RuntimeError("TILED_FINALIZATION_SOURCE_READ_FORBIDDEN: finalization accepts raster tile artifacts only.")
     try:
         from osgeo import gdal
     except ImportError as exc:
@@ -2161,6 +2449,24 @@ def _mosaic_core_rasters(paths, output_path: Path, plan) -> None:
     if translated is None: raise RuntimeError("CHM transactional mosaic write failed.")
     translated = None; vrt.unlink(missing_ok=True); temporary.replace(output_path)
 
+
+def _validate_raster_output(path: Path, expected_crs: str, expected_resolution: float) -> None:
+    """Validate a tiled product before it is published as a final output."""
+    from .finalization_recovery import validate_raster
+    valid, details = validate_raster(Path(path))
+    if not valid:
+        raise RuntimeError(f"Raster validation failed for {path.name}: {details}")
+    actual_crs = str(details.get("crs") or "")
+    if expected_crs and actual_crs and expected_crs not in actual_crs and actual_crs not in expected_crs:
+        raise RuntimeError(f"Raster CRS validation failed: expected {expected_crs}, found {actual_crs}.")
+    resolution = details.get("resolution")
+    if resolution is not None:
+        try:
+            if abs(float(resolution) - float(expected_resolution)) > max(1e-6, float(expected_resolution) * 1e-3):
+                raise RuntimeError(f"Raster resolution validation failed: expected {expected_resolution}, found {resolution}.")
+        except (TypeError, ValueError):
+            pass
+
 def _create_empty_aligned_raster(output_path: Path,plan) -> None:
     try:
         from osgeo import gdal,osr
@@ -2172,6 +2478,34 @@ def _create_empty_aligned_raster(output_path: Path,plan) -> None:
     dataset.SetGeoTransform((plan.grid.origin_x,plan.grid.resolution,0.0,plan.grid.total_extent.ymax,0.0,-plan.grid.resolution))
     reference=osr.SpatialReference();reference.SetFromUserInput(plan.grid.crs);dataset.SetProjection(reference.ExportToWkt())
     band=dataset.GetRasterBand(1);band.SetNoDataValue(plan.grid.nodata);band.Fill(plan.grid.nodata);band.FlushCache();dataset=None;temporary.replace(output_path)
+
+
+def _create_empty_core_tile_raster(output_path: Path, unit, plan) -> None:
+    """Create a globally aligned NoData raster for one empty tile core."""
+    try:
+        from osgeo import gdal, osr
+    except ImportError as exc:
+        raise RuntimeError("GDAL is required to create an aligned NoData tile raster.") from exc
+    grid = plan.grid
+    resolution = float(grid.resolution)
+    extent = unit.core_extent
+    columns = max(1, int(round((extent.xmax - extent.xmin) / resolution)))
+    rows = max(1, int(round((extent.ymax - extent.ymin) / resolution)))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output_path.with_suffix(".partial.tif")
+    dataset = gdal.GetDriverByName("GTiff").Create(str(temporary), columns, rows, 1, gdal.GDT_Float32, options=("TILED=YES", "COMPRESS=DEFLATE"))
+    if dataset is None:
+        raise RuntimeError("Aligned NoData tile creation failed.")
+    dataset.SetGeoTransform((extent.xmin, resolution, 0.0, extent.ymax, 0.0, -resolution))
+    reference = osr.SpatialReference()
+    reference.SetFromUserInput(grid.crs)
+    dataset.SetProjection(reference.ExportToWkt())
+    band = dataset.GetRasterBand(1)
+    band.SetNoDataValue(grid.nodata)
+    band.Fill(grid.nodata)
+    band.FlushCache()
+    dataset = None
+    temporary.replace(output_path)
 
 def _transient_work_unit_error(exc: Exception) -> bool:
     text = str(exc).lower()
@@ -2233,7 +2567,7 @@ def _logical_product_request(product: ProductType, input_path: Path, output_path
         cell_area = settings.grid_resolution * settings.grid_resolution if settings.point_density_per_area else None
         return PointDensityRequest(grid_resolution=settings.grid_resolution, voxel_height=settings.height_bin_size or 1.0, per_area=settings.point_density_per_area, cell_area=cell_area, **kwargs)
     if product == ProductType.VOXEL_STAT:
-        return VoxelStatRequest(grid_resolution=settings.grid_resolution, voxel_height=settings.height_bin_size or 1.0, dimension="HeightAboveGround", stat="count", **kwargs)
+        return VoxelStatRequest(grid_resolution=settings.grid_resolution, voxel_height=settings.height_bin_size or 1.0, dimension=settings.voxel_stat_dimension, stat=settings.voxel_stat_stat, z_index_range=settings.voxel_stat_z_index_range, **kwargs)
     raise ValueError(f"Unsupported polygon product for logical EPT/COPC execution: {product.value}")
 
 
@@ -2324,12 +2658,15 @@ def _write_product_failure_diagnostic(diagnostics_dir: Path, product: ProductTyp
     atomic_write_json(path, {
         "product": product.value,
         "status": "FAILED",
-        "error_code": "PRODUCT_EXECUTION_FAILED",
+        "error_code": str(getattr(exc, "code", "PRODUCT_EXECUTION_FAILED") or "PRODUCT_EXECUTION_FAILED"),
+        "failure_kind": str(getattr(exc, "failure_kind", "UNEXPECTED_EXCEPTION")),
         "exception_type": type(exc).__name__,
         "exception": str(exc),
         "pyforestscan_function": "generate_dtm" if product == ProductType.DTM else product.value,
         "parameters": parameters,
-        "traceback": traceback.format_exc(),
+        "traceback": None if getattr(exc, "failure_kind", "") == "SCIENTIFIC_CONDITION" else traceback.format_exc(),
+        "stage": str(getattr(exc, "stage", "scientific_execution")),
+        "diagnostics": getattr(exc, "diagnostics", {}),
     })
     return path
 

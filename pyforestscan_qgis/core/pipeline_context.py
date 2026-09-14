@@ -92,6 +92,28 @@ class PipelineContext:
         return float(value) if value is not None else 1.0
 
     @property
+    def voxel_stat_dimension(self) -> str:
+        """Return the source field selected for voxel aggregation."""
+        return str(self._parameter("voxel_stat_dimension", "HeightAboveGround")).strip()
+
+    @property
+    def voxel_stat_stat(self) -> str:
+        """Return the requested voxel aggregation statistic."""
+        return str(self._parameter("voxel_stat_stat", "count")).lower()
+
+    @property
+    def voxel_stat_z_index_range(self) -> tuple[int, int] | None:
+        """Return an optional inclusive/exclusive vertical-bin range."""
+        value = self._parameter("voxel_stat_z_index_range", None)
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            return None
+        try:
+            start, stop = int(value[0]), int(value[1])
+        except (TypeError, ValueError):
+            return None
+        return (start, stop) if start >= 0 and stop > start else None
+
+    @property
     def pad_output_filename(self) -> str:
         """Return the planned PAD output filename."""
         value = str(self._parameter("pad_output_filename", "pad.tif"))

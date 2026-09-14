@@ -1,6 +1,6 @@
 """Crash-safe bounded scheduler for polygon product work units."""
 from __future__ import annotations
-import hashlib,json,threading,time
+import hashlib,json,threading,time,traceback
 from concurrent.futures import FIRST_COMPLETED,ThreadPoolExecutor,wait
 from dataclasses import asdict,dataclass,field,replace
 from datetime import datetime,timezone
@@ -76,9 +76,24 @@ class CheckpointStore:
         if not d:return None
         out=Path(d["output_path"]) if d.get("output_path") else None
         if d.get("job_signature")!=self.signature or d.get("status") not in SUCCESS_STATUSES:return None
-        if d.get("status") in {"CompleteNoData","SkippedOutsidePolygon"}:return WorkUnitResult(unit_id,d["status"],attempt_count=int(d.get("attempt_count",1)),metrics=d.get("metrics",{}))
+        if d.get("status") in {"CompleteNoData","SkippedOutsidePolygon"}:
+            return WorkUnitResult(unit_id,d["status"],out if out and out.is_file() else None,attempt_count=int(d.get("attempt_count",1)),checksum=str(d.get("checksum") or ""),metrics=d.get("metrics",{}),error_code=str(d.get("error_code") or ""),message=str(d.get("message") or ""))
         if out is None or not out.is_file() or _checksum(out)!=d.get("checksum"):return None
         return WorkUnitResult(unit_id,"Complete",out,int(d.get("attempt_count",1)),float(d.get("runtime_seconds",0)),checksum=d["checksum"],metrics=d.get("metrics",{}))
+    def classify(self, unit_id):
+        d=self.load(unit_id)
+        if not d or d.get("job_signature")!=self.signature: return "NEW"
+        status=d.get("status")
+        if status in SUCCESS_STATUSES: return "COMPLETE_VALID" if self.load_valid(unit_id) else "COMPLETE_INVALID"
+        if status in {"Starting","Running"}: return "ACTIVE"
+        if status in {"Failed","Interrupted"}: return "FAILED_DETERMINISTIC" if d.get("error_code") in DETERMINISTIC_CODES else "FAILED_RETRYABLE"
+        return "INCOMPLETE_STALE"
+    def prepare_retry(self, unit_id):
+        folder=self.path(unit_id).parent
+        remove_invalid_temporaries(folder)
+        lease=folder/"active_attempt.json"
+        try: lease.unlink()
+        except OSError: pass
     def reconcile(self,unit_id,*,pid_alive=lambda _pid:False,result_path=None):
         remove_invalid_temporaries(self.path(unit_id).parent)
         data=self.load(unit_id)
@@ -95,8 +110,8 @@ class CheckpointStore:
         return status
 
 class PolygonProductWorkScheduler:
-    def __init__(self,units,executor,checkpoint_store,concurrency=1,retry_count=2,transient=lambda e:False,progress_callback=None,circuit_breaker=None,adaptive_controller=None,control_callback=None,worker_registry=None):
-        self.units=tuple(units);self.executor=executor;self.store=checkpoint_store;self.concurrency=max(1,min(int(concurrency),5));self.retry_count=max(0,retry_count);self.transient=transient;self.callback=progress_callback;self.breaker=circuit_breaker or WorkFailureCircuitBreaker();self.adaptive_controller=adaptive_controller;self.control_callback=control_callback;self.worker_registry=worker_registry;self._pause=threading.Event();self._cancel=threading.Event();self.stop_reason="";self._durations=[];self._last_emit=0.0
+    def __init__(self,units,executor,checkpoint_store,concurrency=1,retry_count=2,transient=lambda e:False,progress_callback=None,circuit_breaker=None,adaptive_controller=None,control_callback=None,worker_registry=None,event_callback=None):
+        self.units=tuple(units);self.executor=executor;self.store=checkpoint_store;self.concurrency=max(1,min(int(concurrency),5));self.retry_count=max(0,retry_count);self.transient=transient;self.callback=progress_callback;self.event_callback=event_callback;self.breaker=circuit_breaker or WorkFailureCircuitBreaker();self.adaptive_controller=adaptive_controller;self.control_callback=control_callback;self.worker_registry=worker_registry;self._pause=threading.Event();self._cancel=threading.Event();self.stop_reason="";self._durations=[];self._last_emit=0.0;self._event_sequence=0
     def pause(self):self._pause.set()
     def resume(self):self._pause.clear()
     def cancel(self):self._cancel.set()
@@ -112,7 +127,7 @@ class PolygonProductWorkScheduler:
                 target=self.concurrency
                 if self.adaptive_controller is not None:target=min(self.concurrency,len(active)+self.adaptive_controller.dispatch_capacity(len(active)))
                 while pending and len(active)<target and not self._pause.is_set() and not self._cancel.is_set() and not self.stop_reason:
-                    unit=pending.pop(0);attempt=next_attempts.pop(unit.work_unit_id,1);self.store.mark_starting(unit,attempt);active[pool.submit(self._execute,unit,attempt)]=(unit,attempt);self.store.mark_running(unit,attempt)
+                    unit=pending.pop(0);attempt=next_attempts.pop(unit.work_unit_id,1);self.store.mark_starting(unit,attempt);active[pool.submit(self._execute,unit,attempt)]=(unit,attempt);self.store.mark_running(unit,attempt);self._event("WORK_UNIT_STARTED", unit.work_unit_id, attempt=attempt)
                 self._emit(started,results,active,retries,len(pending))
                 if self._cancel.is_set() or self.stop_reason:
                     for future in active:future.cancel()
@@ -132,10 +147,22 @@ class PolygonProductWorkScheduler:
                         if self.transient(exc) and code not in DETERMINISTIC_CODES|{NATIVE_CRASH_CODE} and attempt<=self.retry_count:
                             retries+=1
                             if self.adaptive_controller is not None:self.adaptive_controller.observe(WorkUnitResult(unit.work_unit_id,"Failed",attempt_count=attempt,error_code=code,message=str(exc)))
-                            next_attempts[unit.work_unit_id]=attempt+1;pending.insert(0,unit);self.store.save_state(unit.work_unit_id,"Pending",{"work_unit":_unit_payload(unit),"attempt_count":attempt,"retry_reason":str(exc)});continue
-                        result=WorkUnitResult(unit.work_unit_id,"Failed",attempt_count=attempt,error_code=code,message=str(exc))
+                            next_attempts[unit.work_unit_id]=attempt+1;pending.insert(0,unit);self.store.save_state(unit.work_unit_id,"Pending",{"work_unit":_unit_payload(unit),"attempt_count":attempt,"retry_reason":str(exc)});self._event("WORK_UNIT_RETRYING", unit.work_unit_id, attempt=attempt+1, message=str(exc));continue
+                        result=WorkUnitResult(
+                            unit.work_unit_id,"Failed",attempt_count=attempt,error_code=code,message=str(exc),
+                            metrics={
+                                "failure_kind": str(getattr(exc, "failure_kind", "UNEXPECTED_EXCEPTION")),
+                                "stage": str(getattr(exc, "stage", "TILED_EXECUTION")),
+                                "exception_type": type(exc).__name__,
+                                "exception_message": str(exc),
+                                "traceback": traceback.format_exc() if not getattr(exc, "failure_kind", "") == "SCIENTIFIC_CONDITION" else None,
+                                "diagnostics": getattr(exc, "diagnostics", {}),
+                                "backend_details": getattr(exc, "details", {}),
+                            },
+                        )
                     if self._cancel.is_set() and result.status=="Failed":result=replace(result,status="Cancelled",error_code="CANCELLED",message="Processing was cancelled; completed checkpoints were preserved.")
                     results[unit.work_unit_id]=result;self.store.save(result)
+                    self._event("WORK_UNIT_NODATA" if result.status=="CompleteNoData" else ("WORK_UNIT_FAILED" if result.status=="Failed" else ("WORK_UNIT_CANCELLED" if result.status=="Cancelled" else "WORK_UNIT_COMPLETED")), unit.work_unit_id, attempt=attempt, status=result.status, message=result.message)
                     if result.runtime_seconds>0:self._durations.append(result.runtime_seconds)
                     if self.adaptive_controller is not None:self.adaptive_controller.observe(result)
                     if result.status=="Failed":
@@ -164,6 +191,11 @@ class PolygonProductWorkScheduler:
         weights={unit.work_unit_id:max(1.0,float(unit.polygon_intersection_area or unit.core_extent.width*unit.core_extent.height)) for unit in self.units};complete_weight=sum(weights.get(key,1.0) for key,value in results.items() if value.status in SUCCESS_STATUSES);active_weight=sum(weights.get(value[0].work_unit_id,1.0) for value in active.values())
         workers=tuple(item.__dict__ for item in self.worker_registry.snapshots()) if self.worker_registry is not None else ()
         self.callback(SchedulerProgress(stage,completed,len(self.units),failed,len(active),retries,elapsed,tuple(v[0].work_unit_id for v in active.values()),next(reversed(results),"") if results else "",eta,attempted,remaining,bool(self._pause.is_set()),self.stop_reason,weighted_progress(complete_weight,active_weight,sum(weights.values())),confidence,controller.health if controller else "WORKING",target,workers))
+
+    def _event(self, event_type, work_unit_id, **payload):
+        if self.event_callback is None: return
+        self._event_sequence += 1
+        self.event_callback({"schema":"pyforestscan-work-unit-event-v1","event_type":event_type,"sequence":self._event_sequence,"work_unit_id":work_unit_id,**payload})
 
     def _refresh_control(self):
         control=self.control_callback() if self.control_callback is not None else None

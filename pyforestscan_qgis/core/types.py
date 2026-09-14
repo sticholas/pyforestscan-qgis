@@ -423,6 +423,7 @@ class DtmRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    diagnostics_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -481,6 +482,11 @@ class VoxelStatRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    work_unit_id: str = ""
+    attempt_id: str = ""
+    diagnostics_path: Path | None = None
+    source_dimensions: tuple[str, ...] = ()
+    source_coverage_expectation: str = "unknown"
 
 
 @dataclass(frozen=True)

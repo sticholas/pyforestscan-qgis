@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+from dataclasses import replace
 from html import escape
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,12 @@ def batch_result_to_dict(result: BatchResult) -> dict[str, Any]:
                     }
                     for product in item.product_results
                 ],
+                "completed_work_units": item.completed_work_units,
+                "total_work_units": item.total_work_units,
+                "latest_completed_work_unit": item.latest_completed_work_unit,
+                "failure_stage": item.failure_stage,
+                "failed_work_unit_id": item.failed_work_unit_id,
+                "work_unit_folder": item.work_unit_folder,
             }
             for item in result.items
         ],
@@ -56,6 +63,11 @@ def batch_result_to_dict(result: BatchResult) -> dict[str, Any]:
         "output_registry_path": str(result.output_registry_path) if result.output_registry_path else None,
         "load_outputs_after_completion": result.load_outputs_after_completion,
         "scientific_outcome": result.scientific_outcome,
+        "attempt_id": result.attempt_id,
+        "job_id": result.job_id or result.batch_id,
+        "report_path": str(result.summary_html),
+        "diagnostics_path": str(result.diagnostics_path) if result.diagnostics_path else None,
+        "failure_summary_path": str(result.failure_summary_path) if result.failure_summary_path else None,
     }
 
 
@@ -110,11 +122,15 @@ def write_batch_summary_html(result: BatchResult, path: Path | str | None = None
         for item in result.items
         for product in item.product_results
     ) or '<tr><td colspan="4">No product-level results were recorded.</td></tr>'
+    sources = ", ".join(sorted({str(item.dataset_path) for item in result.items})) or "Unavailable"
+    requested = ", ".join(sorted({product.product for item in result.items for product in item.product_results})) or ", ".join(sorted({product for item in result.items for product in item.requested_products})) or "Unavailable"
     html = f"""<!doctype html>
 <html><head><meta charset=\"utf-8\"><title>{escape(result.title)}</title>
 <style>body{{font-family:Arial,sans-serif;margin:24px;color:#23313a}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #dfe6e9;padding:8px;text-align:left}}th{{background:#eef3f4}}</style>
 </head><body>
-<h1>{escape(result.title)}</h1>
+<h1>PyForestScan Processing Report</h1>
+<p><b>Attempt ID:</b> {escape(result.attempt_id or 'Unavailable')}<br><b>Job ID:</b> {escape(result.job_id or result.batch_id)}<br><b>Plugin build/commit:</b> {escape(_attempt_identity(result).get('plugin_session_commit') or _attempt_identity(result).get('plugin_build_id') or 'Unavailable')}<br><b>Source:</b> {escape(sources)}<br><b>Requested products:</b> {escape(requested)}</p>
+<h2>{escape(result.title)}</h2>
 <h2>Status: {escape(result.scientific_outcome.replace('_', ' ').title())}</h2>
 <p>Started: {escape(result.started_at)}<br>Finished: {escape(result.finished_at)}<br>Batch folder: {escape(str(result.batch_folder))}</p>
 <p>Total files: {len(result.items)} &nbsp; Completed: {result.success_count} &nbsp; Failed: {result.failure_count} &nbsp; Skipped: {result.skipped_count}<br>Total outputs: {result.total_output_count} &nbsp; Observed output storage: {_format_bytes(result.total_estimated_output_bytes)}</p>
@@ -129,10 +145,67 @@ def write_batch_summary_html(result: BatchResult, path: Path | str | None = None
 
 def write_batch_summaries(result: BatchResult) -> BatchResult:
     """Write all batch summary formats and return the result."""
+    # Legacy batch_summary.* remains for compatibility, but every attempt also
+    # receives an immutable report path. The returned result points only to the
+    # attempt-specific files, preventing Open Report from selecting stale data.
     write_batch_summary_json(result)
     write_batch_summary_csv(result)
     write_batch_summary_html(result)
-    return result
+    attempt_id = _attempt_id_for_result(result)
+    if not attempt_id:
+        return result
+    attempt_dir = Path(result.batch_folder) / "attempts" / attempt_id
+    attempt_dir.mkdir(parents=True, exist_ok=True)
+    attempt_result = replace(result,
+        summary_json=attempt_dir / "summary.json",
+        summary_csv=attempt_dir / "summary.csv",
+        summary_html=attempt_dir / "summary.html",
+        attempt_id=attempt_id,
+        job_id=result.batch_id,
+        diagnostics_path=Path(result.batch_folder) / "diagnostics",
+    )
+    write_batch_summary_json(attempt_result)
+    write_batch_summary_csv(attempt_result)
+    write_batch_summary_html(attempt_result)
+    _update_latest_attempt(result, attempt_result)
+    return attempt_result
+
+
+def _attempt_id_for_result(result: BatchResult) -> str:
+    try:
+        payload = json.loads((Path(result.batch_folder) / "latest_attempt.json").read_text(encoding="utf-8"))
+        return str(payload.get("attempt_id") or "")
+    except (OSError, ValueError, TypeError):
+        return ""
+
+
+def _attempt_identity(result: BatchResult) -> dict[str, Any]:
+    attempt_id = result.attempt_id or _attempt_id_for_result(result)
+    if not attempt_id:
+        return {}
+    try:
+        return json.loads((Path(result.batch_folder) / "attempts" / attempt_id / "launch_attempt.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def _update_latest_attempt(original: BatchResult, attempt_result: BatchResult) -> None:
+    path = Path(original.batch_folder) / "latest_attempt.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        payload = {"attempt_id": attempt_result.attempt_id}
+    payload.update({
+        "attempt_id": attempt_result.attempt_id,
+        "job_id": attempt_result.job_id,
+        "outcome": attempt_result.scientific_outcome,
+        "report_path": str(attempt_result.summary_html),
+        "diagnostics_path": str(attempt_result.diagnostics_path or ""),
+        "finished_at": attempt_result.finished_at,
+    })
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
 
 
 def _format_bytes(value: int) -> str:

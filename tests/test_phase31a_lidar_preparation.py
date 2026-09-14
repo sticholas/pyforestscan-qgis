@@ -14,7 +14,7 @@ from pyforestscan_qgis.backend_runner.job_spec import build_job_spec_from_reques
 from pyforestscan_qgis.backend_runner.pbm_lidar_preparation import _pipeline
 from pyforestscan_qgis.core.classification_inspection import ClassificationAssessment, ClassificationInspectionService, assessment_from_array
 from pyforestscan_qgis.core.dataset_report import build_dataset_explorer_report, report_to_dict
-from pyforestscan_qgis.core.lidar_preparation import HeightNormalizationPlanMode, HeightNormalizationPlanner, PreparationReadiness, build_preparation_assessment, preparation_recommendations
+from pyforestscan_qgis.core.lidar_preparation import HeightNormalizationPlanMode, HeightNormalizationPlanner, PreparationReadiness, build_preparation_assessment, preparation_recommendations, resolve_hag
 from pyforestscan_qgis.core.lidar_preparation_execution import _write_prepared_checkpoint, checkpoint_is_compatible, execute_preparation, validate_hag_quality
 from pyforestscan_qgis.core.source_coordinate_units import SourceCoordinateUnits, assess_source_coordinate_units
 from pyforestscan_qgis.core.types import Bounds3D, ChmRequest, DatasetFormat, DatasetInspection, DatasetSource, RumpleRequest
@@ -43,6 +43,12 @@ class PreparationPlannerTests(unittest.TestCase):
         self.assertEqual(plan.readiness, PreparationReadiness.READY)
         self.assertEqual(plan.height_mode, HeightNormalizationPlanMode.USE_EXISTING_HAG)
         self.assertFalse(plan.steps)
+
+    def test_resolver_prefers_existing_hag_without_dtm_or_chm(self):
+        resolution = resolve_hag(self.assessment(("X", "Y", "Z", "HeightAboveGround")))
+        self.assertEqual(resolution.source, "existing_dimension")
+        self.assertTrue(resolution.reused)
+        self.assertNotIn("CHM", resolution.method)
 
     def test_existing_ground_selects_delaunay(self):
         plan = HeightNormalizationPlanner().plan(self.assessment(("X", "Y", "Z", "Classification"), ground=True))

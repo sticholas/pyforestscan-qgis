@@ -30,6 +30,14 @@ from .classification_inspection import assessment_from_array
 from .lidar_preparation import HeightNormalizationPlanner, HeightNormalizationPlanMode, build_preparation_assessment
 from .lidar_preparation_execution import checkpoint_is_compatible, execute_preparation
 from .source_coordinate_units import assess_processing_coordinate_units, assess_source_coordinate_units
+from .tile_diagnostics import (
+    EMPTY_EPT_READ,
+    EMPTY_VOXEL_INPUT,
+    MISSING_REQUIRED_DIMENSION,
+    ScientificConditionError,
+    point_array_summary,
+    write_stage_record,
+)
 from .polygon_transport import looks_like_wkt, materialize_polygon_input, polygon_execution_input_from_mapping
 from .ept_subset import EptSubsetRequest, EptSubsetResult, ept_read_lidar_kwargs
 from .types import (
@@ -861,11 +869,28 @@ class PyForestScanAdapter:
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
+            write_stage_record(request.diagnostics_path, stage="REQUEST", payload={
+                "product": "voxel_stat",
+                "work_unit_id": request.work_unit_id,
+                "bounds": request.bounds,
+                "processing_crs": request.crs,
+                "source_coverage_expectation": request.source_coverage_expectation,
+                "selected_dimension": request.dimension,
+            })
+            write_stage_record(request.diagnostics_path, stage="EPT_READ_STARTED", payload={"bounds": request.bounds, "crs": request.crs})
             point_array = self._read_hag_point_array(request, "voxel statistic")
+            source_summary = point_array_summary(point_array)
+            write_stage_record(request.diagnostics_path, stage="AFTER_HEIGHT_PREPARATION", payload=source_summary)
+            if not source_summary.get("point_count"):
+                raise ScientificConditionError(EMPTY_EPT_READ, "EPT source returned zero points for Voxel Statistic.", stage="EPT_READ", diagnostics=source_summary)
             names = getattr(point_array.dtype, "names", ()) or ()
             if request.dimension not in names:
-                raise ProcessingError(f"Voxel Statistic input is missing requested dimension: {request.dimension}")
+                payload = {"dimensions": list(names), "selected_dimension": request.dimension}
+                write_stage_record(request.diagnostics_path, stage="VOXEL_STAT_FAILED", payload=payload)
+                raise ScientificConditionError(MISSING_REQUIRED_DIMENSION, f"Voxel Statistic input is missing requested dimension: {request.dimension}", stage="VOXEL_STAT", diagnostics=payload)
             voxel_resolution = (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height)
+            write_stage_record(request.diagnostics_path, stage="VOXEL_STAT_INPUT_VALIDATED", payload={"point_count": source_summary.get("point_count"), "dimensions": list(names), "selected_dimension": request.dimension, "voxel_resolution": voxel_resolution})
+            write_stage_record(request.diagnostics_path, stage="VOXEL_STAT_STARTED", payload={"point_count": source_summary.get("point_count"), "dimensions": list(names), "selected_dimension": request.dimension, "selected_range": source_summary.get(f"{request.dimension}_range")})
             voxel_stat, extent = pyforestscan.calculate_voxel_stat(
                 point_array,
                 voxel_resolution,
@@ -920,6 +945,7 @@ class PyForestScanAdapter:
                 written=bool(metrics.get("written", raw_output is not None)),
                 limitation=metrics.get("limitation"),
             )
+            write_stage_record(request.diagnostics_path, stage="VOXEL_STAT_COMPLETED", payload={"point_count": source_summary.get("point_count"), "extent": extent})
         self._progress.start("Reading lidar with HeightAboveGround")
         self._log(LogLevel.INFO, "Starting HAG normalization", input=str(request.input_path))
         try:
@@ -953,6 +979,9 @@ class PyForestScanAdapter:
         except ProcessingError:
             self._progress.fail("HAG normalization failed")
             raise
+        except ScientificConditionError:
+            self._progress.fail("Voxel Statistic scientific condition")
+            raise
         except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
             self._progress.fail("HAG normalization failed")
             raise ProcessingError(f"HAG normalization failed: {exc}") from exc
@@ -984,9 +1013,26 @@ class PyForestScanAdapter:
             self._progress.update(30, "Point cloud loaded")
             arrays = filters.classify_ground_points(point_cloud) if request.classify_ground else point_cloud
             ground_arrays = filters.filter_select_ground(arrays)
-            ground_points = _point_cloud_array_sequence(ground_arrays, operation="DTM generation")
+            try:
+                ground_points = _point_cloud_array_sequence(ground_arrays, operation="DTM generation")
+            except ProcessingError:
+                # Some PyForestScan/PDAL combinations return a flattened
+                # scalar array from filter_select_ground.  Recover from the
+                # original structured arrays using the documented class-2
+                # contract instead of passing numeric scalars into
+                # pyforestscan.calculate.generate_dtm.
+                ground_points = _select_ground_structured_arrays(arrays, operation="DTM generation")
+            _validate_dtm_ground_contract(ground_points, request)
+            _write_dtm_input_diagnostic(request, ground_points)
             self._progress.update(60, "Ground points selected")
-            dtm, extent = pyforestscan.generate_dtm(ground_points, resolution=request.resolution)
+            try:
+                dtm, extent = pyforestscan.generate_dtm(ground_points, resolution=request.resolution)
+            except IndexError as exc:
+                if "invalid index to scalar variable" not in str(exc).lower():
+                    raise
+                _write_dtm_failure_diagnostic(request, exc, ground_arrays=ground_arrays, ground_points=ground_points)
+                ground_points = _select_ground_structured_arrays(arrays, operation="DTM generation")
+                dtm, extent = pyforestscan.generate_dtm(ground_points, resolution=request.resolution)
             extent = _aligned_dtm_extent(dtm, extent, request.resolution)
             self._progress.update(80, "DTM array calculated")
             handlers.create_geotiff(dtm, str(output_path), request.crs, extent, nodata=request.nodata)
@@ -997,6 +1043,7 @@ class PyForestScanAdapter:
             self._progress.fail("DTM generation failed")
             raise
         except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            _write_dtm_failure_diagnostic(request, exc, ground_arrays=locals().get("ground_arrays"), ground_points=locals().get("ground_points"))
             self._progress.fail("DTM generation failed")
             raise ProcessingError(f"DTM generation failed: {exc}") from exc
 
@@ -1283,13 +1330,40 @@ class PyForestScanAdapter:
         else:
             point_cloud = handlers.read_lidar(str(input_path), str(crs), **_read_lidar_spatial_kwargs(request_or_path, hag=True))
         if point_cloud is None:
-            raise ProcessingError(f"PyForestScan returned no point data for {product_label} generation.")
+            diagnostics_path = getattr(request_or_path, "diagnostics_path", None)
+            write_stage_record(diagnostics_path, stage="EPT_READ_COMPLETED", payload={"point_count": 0, "returned_array_count": 0, "dimensions": []})
+            code = EMPTY_EPT_READ if product_label == "voxel statistic" else "EMPTY_EPT_READ"
+            raise ScientificConditionError(code, f"PyForestScan returned no point data for {product_label} generation.", stage="EPT_READ", diagnostics={"point_count": 0})
         self._progress.update(25, "Point cloud loaded")
         point_array = _merge_point_cloud_arrays(point_cloud)
+        diagnostics_path = getattr(request_or_path, "diagnostics_path", None)
+        source_summary = point_array_summary(point_array)
+        write_stage_record(diagnostics_path, stage="EPT_READ_COMPLETED", payload=source_summary)
+        write_stage_record(diagnostics_path, stage="POLYGON_CLIP_STARTED", payload={"points_before": source_summary.get("point_count"), "polygon_crs": getattr(request_or_path, "crs", crs), "point_crs": getattr(request_or_path, "crs", crs)})
+        # Tiled production reads an exact bounded EPT window and applies the
+        # final polygon mask during raster finalization; no point coordinates
+        # are duplicated in diagnostics.
+        write_stage_record(diagnostics_path, stage="POLYGON_CLIP_COMPLETED", payload={"points_before": source_summary.get("point_count"), "points_after": source_summary.get("point_count"), "mode": "bounded_window_before_final_raster_mask"})
+        if not source_summary.get("point_count"):
+            raise ScientificConditionError(EMPTY_EPT_READ, f"PyForestScan returned zero points for {product_label} generation.", stage="EPT_READ", diagnostics=point_array_summary(point_array))
         point_array, capabilities = _canonicalize_hag_dimension(point_array)
+        hag_summary = _validate_existing_hag(point_array)
+        write_stage_record(diagnostics_path, stage="HAG_RESOLUTION_STARTED", payload=hag_summary)
+        if hag_summary.get("present"):
+            write_stage_record(diagnostics_path, stage="HAG_EXISTING_FOUND", payload=hag_summary)
+            if not hag_summary.get("valid"):
+                raise ProcessingError("HAG_PREPARATION_UNAVAILABLE: HeightAboveGround is present but contains no finite values.")
         resolution = _resolve_product_spatial_reference(request_or_path, source_local_allowed=True)
         product_key = _product_key_from_label(product_label)
-        point_array, preparation_plan = _ensure_hag_for_product(point_array, request_or_path, resolution, product_key, handlers=handlers)
+        try:
+            point_array, preparation_plan = _ensure_hag_for_product(point_array, request_or_path, resolution, product_key, handlers=handlers)
+        except ScientificConditionError:
+            raise
+        except ProcessingError as exc:
+            summary = point_array_summary(point_array)
+            write_stage_record(diagnostics_path, stage="HEIGHT_PREPARATION_FAILED", payload={**summary, "message": str(exc)})
+            raise
+        write_stage_record(diagnostics_path, stage="HEIGHT_PREPARATION_COMPLETED", payload=point_array_summary(point_array))
         capabilities = PointDimensionCapabilities.from_names(point_array.dtype.names)
         names = capabilities.names
         required = {"X", "Y", "HeightAboveGround"}
@@ -1780,6 +1854,32 @@ def _canonicalize_hag_dimension(point_array: object) -> tuple[object, PointDimen
     return normalized, PointDimensionCapabilities.from_names(normalized.dtype.names)
 
 
+def _validate_existing_hag(point_array: object) -> dict[str, object]:
+    """Validate an existing HAG field without rejecting legitimate negatives."""
+    names = getattr(getattr(point_array, "dtype", None), "names", ()) or ()
+    if "HeightAboveGround" not in names:
+        return {"present": False, "valid": False, "point_count": int(len(point_array)), "finite_count": 0}
+    numpy = _import_required("numpy", ProcessingError)
+    values = numpy.asarray(point_array["HeightAboveGround"], dtype=float)
+    finite = numpy.isfinite(values)
+    count = int(values.size)
+    finite_count = int(finite.sum())
+    negatives = int((values[finite] < 0).sum()) if finite_count else 0
+    summary = {
+        "present": True,
+        "valid": finite_count > 0,
+        "point_count": count,
+        "finite_count": finite_count,
+        "percent_finite": (100.0 * finite_count / count) if count else 0.0,
+        "percent_negative": (100.0 * negatives / finite_count) if finite_count else 0.0,
+        "minimum": float(values[finite].min()) if finite_count else None,
+        "maximum": float(values[finite].max()) if finite_count else None,
+        "negative_count": negatives,
+        "extreme_count": int((numpy.abs(values[finite]) > 10000).sum()) if finite_count else 0,
+    }
+    return summary
+
+
 def _ensure_hag_for_product(point_array: object, request: object, resolution: object, product: str, *, handlers: object) -> tuple[object, object]:
     """Assess and prepare one in-memory execution array using the shared planner."""
     point_array, capabilities = _canonicalize_hag_dimension(point_array)
@@ -1799,6 +1899,11 @@ def _ensure_hag_for_product(point_array: object, request: object, resolution: ob
         point_count=getattr(request, "source_point_count", None) or len(point_array),
     )
     plan = HeightNormalizationPlanner().plan(assessment, checkpoint_root=output.parent / ".pyforestscan_prepared")
+    diagnostics_path = getattr(request, "diagnostics_path", None)
+    if plan.height_mode is HeightNormalizationPlanMode.DTM_EXISTING:
+        write_stage_record(diagnostics_path, stage="HAG_DTM_REQUIRED", payload={"dtm_path": str(getattr(request, "dtm_path", "")), "method": plan.height_mode.value, "signature": plan.signature})
+    elif plan.height_mode is not HeightNormalizationPlanMode.USE_EXISTING_HAG:
+        write_stage_record(diagnostics_path, stage="HAG_DTM_REQUIRED", payload={"dtm_path": str(getattr(request, "dtm_path", "") or ""), "method": plan.height_mode.value, "signature": plan.signature})
     if capabilities.has_existing_hag:
         return point_array, plan
     if not plan.can_execute:
@@ -2027,7 +2132,169 @@ def _point_cloud_array_sequence(point_cloud: object, *, operation: str) -> list[
             raise ProcessingError(
                 f"PyForestScan point array for {operation} is missing fields: {', '.join(missing)}."
             )
-    return arrays
+    normalized: list[object] = []
+    for array in arrays:
+        # PyForestScan's public DTM contract is a list of one-dimensional
+        # structured arrays.  PDAL can occasionally return a structured
+        # matrix or a zero-dimensional structured value for a one-point tile;
+        # preserve every field but normalize the record container before the
+        # library iterates ``for pt in array``.
+        ndim = getattr(array, "ndim", 1)
+        if ndim != 1 and hasattr(array, "reshape"):
+            try:
+                array = array.reshape(-1)
+            except (TypeError, ValueError):
+                pass
+        normalized.append(array)
+    return normalized
+
+
+def _select_ground_structured_arrays(point_cloud: object, *, operation: str) -> list[object]:
+    """Recover class-2 structured arrays when a filter returns scalars."""
+    numpy = _import_required("numpy", ProcessingError)
+    candidates = list(point_cloud) if isinstance(point_cloud, (list, tuple)) else [point_cloud]
+    selected: list[object] = []
+    for candidate in candidates:
+        fields = getattr(getattr(candidate, "dtype", None), "names", None)
+        if not fields:
+            continue
+        array = candidate.reshape(-1) if getattr(candidate, "ndim", 1) != 1 else candidate
+        if "Classification" in fields:
+            array = array[array["Classification"] == 2]
+        if getattr(array, "size", 0):
+            selected.append(array)
+    if not selected:
+        raise ProcessingError(f"No structured class-2 ground points were available for {operation}.")
+    return selected
+
+
+def _write_dtm_input_diagnostic(request: DtmRequest, arrays: list[object]) -> None:
+    """Persist the exact DTM input structure for reproducible failures."""
+    path = getattr(request, "diagnostics_path", None)
+    if path is None:
+        return
+    try:
+        from .atomic_state import atomic_write_json
+        atomic_write_json(Path(path) / "dtm_input_structure.json", {
+            "array_count": len(arrays),
+            "product_requested": "DTM",
+            "dependency": "terrain preparation",
+            "source": str(request.input_path),
+            "bounds": request.bounds,
+            "resolution": request.resolution,
+            "arrays": [{
+                "type": type(array).__name__,
+                "dtype": str(getattr(array, "dtype", None)),
+                "fields": list(getattr(getattr(array, "dtype", None), "names", ()) or ()),
+                "shape": list(getattr(array, "shape", ()) or ()),
+                "ndim": int(getattr(array, "ndim", 0) or 0),
+                "size": int(getattr(array, "size", 0) or 0),
+            } for array in arrays],
+            "ground_point_count": sum(int(getattr(array, "size", 0) or 0) for array in arrays),
+            "coordinate_summary": _ground_coordinate_summary(arrays),
+        })
+    except (OSError, TypeError, ValueError):
+        return
+
+
+def _ground_coordinate_summary(arrays: list[object]) -> dict[str, object]:
+    """Summarize ground coordinates without persisting point values."""
+    try:
+        import numpy as np
+        x = np.concatenate([np.asarray(array["X"]).reshape(-1) for array in arrays])
+        y = np.concatenate([np.asarray(array["Y"]).reshape(-1) for array in arrays])
+        z = np.concatenate([np.asarray(array["Z"]).reshape(-1) for array in arrays])
+        finite = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
+        xy = np.column_stack((x[finite], y[finite])) if finite.any() else np.empty((0, 2))
+        unique_xy = int(np.unique(xy, axis=0).shape[0]) if xy.size else 0
+        return {
+            "X_shape": list(x.shape), "Y_shape": list(y.shape), "Z_shape": list(z.shape),
+            "finite_X": int(np.isfinite(x).sum()), "finite_Y": int(np.isfinite(y).sum()), "finite_Z": int(np.isfinite(z).sum()),
+            "unique_ground_xy": unique_xy,
+            "ground_xy_min": [float(xy[:, 0].min()), float(xy[:, 1].min())] if xy.size else None,
+            "ground_xy_max": [float(xy[:, 0].max()), float(xy[:, 1].max())] if xy.size else None,
+            "ground_z_min": float(z[finite].min()) if finite.any() else None,
+            "ground_z_max": float(z[finite].max()) if finite.any() else None,
+        }
+    except (KeyError, TypeError, ValueError):
+        return {"error": "coordinate summary unavailable"}
+
+
+def _validate_dtm_ground_contract(arrays: list[object], request: DtmRequest) -> None:
+    """Reject invalid DTM inputs before PyForestScan performs scalar indexing."""
+    if not isinstance(arrays, list) or not arrays:
+        error = ProcessingError("DTM_INPUT_CONTRACT_INVALID: expected a non-empty list of structured arrays.")
+        error.code = "DTM_INPUT_CONTRACT_INVALID"
+        raise error
+    try:
+        import numpy as np
+        for index, array in enumerate(arrays):
+            names = getattr(getattr(array, "dtype", None), "names", None)
+            if not names or not {"X", "Y", "Z"}.issubset(names) or getattr(array, "ndim", 0) != 1:
+                error = ProcessingError(f"DTM_INPUT_CONTRACT_INVALID: array {index} is not a one-dimensional structured XYZ array.")
+                error.code = "DTM_INPUT_CONTRACT_INVALID"
+                raise error
+            if not np.isfinite(np.asarray(array["X"])).all() or not np.isfinite(np.asarray(array["Y"])).all() or not np.isfinite(np.asarray(array["Z"])).all():
+                error = ProcessingError("DTM_NONFINITE_GROUND_POINTS: ground coordinates contain non-finite values.")
+                error.code = "DTM_NONFINITE_GROUND_POINTS"
+                raise error
+    except ProcessingError:
+        raise
+    except (TypeError, ValueError, KeyError) as exc:
+        error = ProcessingError(f"DTM_INPUT_CONTRACT_INVALID: {exc}")
+        error.code = "DTM_INPUT_CONTRACT_INVALID"
+        raise error from exc
+
+
+def _array_contract_summary(value: object) -> dict[str, object]:
+    """Return a JSON-safe description of the object at a DTM contract boundary."""
+    dtype = getattr(value, "dtype", None)
+    shape = getattr(value, "shape", None)
+    try:
+        size = int(getattr(value, "size"))
+    except (TypeError, ValueError, AttributeError):
+        size = None
+    try:
+        length = len(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        length = None
+    return {
+        "type": type(value).__name__,
+        "repr": repr(value)[:500],
+        "shape": list(shape) if shape is not None else None,
+        "ndim": getattr(value, "ndim", None),
+        "dtype": str(dtype) if dtype is not None else None,
+        "dtype_names": list(getattr(dtype, "names", ()) or ()) if dtype is not None else [],
+        "len": length,
+        "size": size,
+        "scalar": bool(getattr(value, "ndim", 1) == 0),
+        "structured": bool(getattr(dtype, "names", None)),
+    }
+
+
+def _write_dtm_failure_diagnostic(request: DtmRequest, exc: BaseException, *, ground_arrays=None, ground_points=None) -> None:
+    """Persist the complete DTM contract failure without hiding the exception."""
+    path = getattr(request, "diagnostics_path", None)
+    if path is None:
+        return
+    try:
+        import traceback
+        from .atomic_state import atomic_write_json
+        tb = traceback.extract_tb(exc.__traceback__)
+        frame = tb[-1] if tb else None
+        atomic_write_json(Path(path) / "dtm_failure.json", {
+            "schema": "pyforestscan-dtm-failure-v1",
+            "exception_class": type(exc).__name__,
+            "message": str(exc),
+            "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+            "module": getattr(frame, "filename", "") if frame else "",
+            "function": getattr(frame, "name", "") if frame else "",
+            "line_number": getattr(frame, "lineno", None) if frame else None,
+            "ground_arrays": [_array_contract_summary(item) for item in ground_arrays] if isinstance(ground_arrays, (list, tuple)) else _array_contract_summary(ground_arrays) if ground_arrays is not None else None,
+            "ground_points": [_array_contract_summary(item) for item in ground_points] if isinstance(ground_points, (list, tuple)) else _array_contract_summary(ground_points) if ground_points is not None else None,
+        })
+    except (OSError, TypeError, ValueError):
+        return
 
 
 def _product_key_from_label(label: object) -> str:

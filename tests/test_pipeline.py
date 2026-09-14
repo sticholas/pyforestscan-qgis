@@ -256,6 +256,24 @@ class PipelineFrameworkTests(unittest.TestCase):
             self.assertEqual((root / "outputs" / "point_density.tif",), result.output_paths)
             self.assertTrue(adapter.density_request.per_area)
 
+    def test_voxel_stat_pipeline_passes_selected_intensity_controls(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            report = root / "dataset_report.json"
+            report.write_text(json.dumps({"geometry": {"crs": "EPSG:32610"}}), encoding="utf-8")
+            plan = _write_product_plan(root / "product_plan.json", report, product="voxel_stat", label="Voxel Statistic")
+            payload = json.loads(plan.read_text(encoding="utf-8"))
+            payload["parameters"].update({"voxel_stat_dimension": "Intensity", "voxel_stat_stat": "mean", "voxel_stat_z_index_range": [0, 4]})
+            plan.write_text(json.dumps(payload), encoding="utf-8")
+            context = load_pipeline_contexts(plan, root / "logs")[0]
+            adapter = _FakeTerrainDensityAdapter()
+            result = build_default_pipeline_registry().get("voxel_stat").run(context, adapter=adapter, execute_products=True)
+
+            self.assertTrue(result.passed)
+            self.assertEqual("Intensity", adapter.voxel_request.dimension)
+            self.assertEqual("mean", adapter.voxel_request.stat)
+            self.assertEqual((0, 4), adapter.voxel_request.z_index_range)
+
 
 
 def _write_product_plan(path: Path, dataset_report: Path, product: str = "chm", label: str = "Canopy Height Model (CHM)") -> Path:
@@ -378,6 +396,7 @@ class _FakeFhdRumpleAdapter:
 class _FakeTerrainDensityAdapter:
     dtm_request = None
     density_request = None
+    voxel_request = None
 
     def generate_dtm(self, request):  # type: ignore[no-untyped-def]
         self.dtm_request = request
@@ -390,6 +409,12 @@ class _FakeTerrainDensityAdapter:
         request.output_path.parent.mkdir(parents=True, exist_ok=True)
         request.output_path.write_text("fake density", encoding="utf-8")
         return PointDensityResult(request.output_path, (0.0, 1.0, 0.0, 1.0), request.grid_resolution, request.voxel_height, request.crs)
+
+    def create_voxel_stat(self, request):  # type: ignore[no-untyped-def]
+        self.voxel_request = request
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        request.output_path.write_text("fake voxel", encoding="utf-8")
+        return _FakeChmResult(request.output_path)
 
 
 if __name__ == "__main__":

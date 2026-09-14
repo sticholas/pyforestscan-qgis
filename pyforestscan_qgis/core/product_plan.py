@@ -30,6 +30,7 @@ PRODUCT_OUTPUTS = {
     ProductType.RUMPLE: ("rumple.tif", "GeoTIFF raster", "Spatial canopy-surface complexity with a supporting scalar summary.")
     ,ProductType.POINT_DENSITY: ("point_density.tif", "GeoTIFF raster", "Point return density per output cell area.")
     ,ProductType.DTM: ("dtm.tif", "GeoTIFF raster", "Estimated ground elevation raster.")
+    ,ProductType.VOXEL_STAT: ("voxel_statistic.tif", "GeoTIFF raster", "Selected point-dimension statistic aggregated in a 3D voxel grid.")
 }
 
 
@@ -94,6 +95,9 @@ class ProductPlannerRequest:
     fhd_min_height: float = 0.0
     fhd_max_height: float | None = None
     rumple_min_height: float | None = None
+    voxel_stat_dimension: str = "HeightAboveGround"
+    voxel_stat_stat: str = "count"
+    voxel_stat_z_index_range: tuple[int, int] | None = None
     canopy_cover_output_filename: str = "canopy_cover.tif"
     title: str = "PyForestScan Product Planner"
     notes: str = ""
@@ -129,6 +133,9 @@ class ProductPlannerReport:
     fhd_min_height: float
     fhd_max_height: float | None
     rumple_min_height: float | None
+    voxel_stat_dimension: str
+    voxel_stat_stat: str
+    voxel_stat_z_index_range: tuple[int, int] | None
     canopy_cover_output_filename: str
     notes: str
     estimated_columns: int | None
@@ -175,6 +182,7 @@ def build_product_plan(
     _validate_canopy_cover_parameters(request)
     _validate_height_binned_parameters(request)
     _validate_metric_output_parameters(request)
+    _validate_voxel_stat_parameters(request)
 
     feasibility = _feasibility_by_product(explorer_report)
     dataset_warnings = _dataset_warnings(explorer_report)
@@ -227,6 +235,9 @@ def build_product_plan(
         fhd_min_height=request.fhd_min_height,
         fhd_max_height=request.fhd_max_height,
         rumple_min_height=request.rumple_min_height,
+        voxel_stat_dimension=request.voxel_stat_dimension,
+        voxel_stat_stat=request.voxel_stat_stat,
+        voxel_stat_z_index_range=request.voxel_stat_z_index_range,
         bounds=request.bounds,
         canopy_cover_output_filename=request.canopy_cover_output_filename,
         notes=request.notes,
@@ -269,6 +280,9 @@ def plan_to_dict(report: ProductPlannerReport) -> dict[str, Any]:
             "fhd_min_height": report.fhd_min_height,
             "fhd_max_height": report.fhd_max_height,
             "rumple_min_height": report.rumple_min_height,
+            "voxel_stat_dimension": report.voxel_stat_dimension,
+            "voxel_stat_stat": report.voxel_stat_stat,
+            "voxel_stat_z_index_range": list(report.voxel_stat_z_index_range) if report.voxel_stat_z_index_range else None,
             "canopy_cover_output_filename": report.canopy_cover_output_filename,
             "bounds": [list(axis) for axis in report.bounds] if report.bounds else None,
         },
@@ -475,6 +489,20 @@ def _validate_metric_output_parameters(request: ProductPlannerRequest) -> None:
     rumple_name = Path(request.rumple_output_filename)
     if rumple_name.name != request.rumple_output_filename or rumple_name.suffix.lower() not in {".tif", ".tiff", ".csv"}:
         raise ProductPlanError("Rumple output filename must be a simple GeoTIFF filename; CSV is accepted only for legacy scalar plans.")
+
+
+def _validate_voxel_stat_parameters(request: ProductPlannerRequest) -> None:
+    """Validate documented calculate_voxel_stat controls when requested."""
+    if ProductType.VOXEL_STAT not in request.requested_products:
+        return
+    if not request.voxel_stat_dimension.strip():
+        raise ProductPlanError("Voxel Statistic requires a point dimension name.")
+    if request.voxel_stat_stat.lower() not in {"mean", "sum", "count", "min", "max", "median", "std"}:
+        raise ProductPlanError("Voxel Statistic aggregation must be mean, sum, count, min, max, median, or std.")
+    if request.voxel_stat_z_index_range is not None:
+        start, stop = request.voxel_stat_z_index_range
+        if start < 0 or stop <= start:
+            raise ProductPlanError("Voxel Statistic Z-bin range must be increasing non-negative indexes.")
 
 
 def _validate_canopy_cover_parameters(request: ProductPlannerRequest) -> None:

@@ -71,7 +71,11 @@ PRODUCT_DEFINITIONS: tuple[ProductDefinition, ...] = (
     ProductDefinition(ProductType.POINT_DENSITY, "Point Density", "Point Density", "Summarizes LiDAR return density for each output cell.", "calculate_point_density", "product", (), "point_density.tif", "2D GeoTIFF", "points per output cell area", (
         ProductParameter("per_area", "Density per unit area", True),
     )),
-    ProductDefinition(ProductType.VOXEL_STAT, "Voxel Statistic", "Voxel Statistic", "Computes a selected statistic for a point attribute in a 3D voxel grid.", "calculate_voxel_stat", "advanced_operation", (), "voxel_statistic.tif", "GeoTIFF", "depends on statistic"),
+    ProductDefinition(ProductType.VOXEL_STAT, "Voxel Statistic", "Voxel Statistic", "Computes a selected statistic for a selected point attribute in a 3D voxel grid.", "calculate_voxel_stat", "product", (), "voxel_statistic.tif", "GeoTIFF", "depends on statistic", (
+        ProductParameter("dimension", "Point dimension", "HeightAboveGround"),
+        ProductParameter("stat", "Aggregation statistic", "count"),
+        _VOXEL_HEIGHT,
+    )),
 )
 
 PRODUCT_BY_TYPE = {definition.product: definition for definition in PRODUCT_DEFINITIONS}
@@ -86,7 +90,7 @@ CALCULATE_FUNCTION_CLASSIFICATIONS = {
     "calculate_pai": "product",
     "calculate_point_density": "product",
     "calculate_rumple": "product",
-    "calculate_voxel_stat": "advanced_operation",
+    "calculate_voxel_stat": "product",
     "generate_dtm": "product",
 }
 

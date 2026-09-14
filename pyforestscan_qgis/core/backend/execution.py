@@ -48,6 +48,24 @@ def matching_heartbeat_age(path: Path, job_id: str) -> float | None:
         return None
 
 
+def matching_progress_age(run_folder: Path, job_id: str, elapsed: float = 0.0) -> float | None:
+    """Return age of the authoritative append-only progress stream."""
+    path = Path(run_folder) / "progress" / "progress_events.jsonl"
+    try:
+        if not path.is_file() or path.stat().st_size == 0:
+            return max(0.0, float(elapsed))  # startup/no-progress budget applies
+        last = ""
+        with path.open("rb") as stream:
+            stream.seek(max(0, path.stat().st_size - 8192))
+            last = stream.read().decode("utf-8", "replace").strip().splitlines()[-1]
+        payload = json.loads(last)
+        if str(payload.get("job_id", "")) != job_id:
+            return max(0.0, float(elapsed))
+        return max(0.0, time.time() - path.stat().st_mtime)
+    except (OSError, ValueError, IndexError):
+        return max(0.0, float(elapsed))
+
+
 def cancel_active_processing_jobs() -> int:
     """Terminate PBM child processes owned by this plugin process."""
     with _ACTIVE_PROCESS_LOCK:
@@ -76,7 +94,8 @@ class NativeBackendCrash(RuntimeError):
     def __init__(self,message,details=None):super().__init__(message);self.details=details or {}
 
 class BackendJobFailure(RuntimeError):
-    def __init__(self,message,code="EXECUTION_FAILED",retryable=False):super().__init__(message);self.code=code;self.retryable=retryable
+    def __init__(self,message,code="EXECUTION_FAILED",retryable=False,details=None):
+        super().__init__(message);self.code=code;self.retryable=retryable;self.details=details or {}
 
 
 GUI_EXECUTABLE_MARKERS = (
@@ -273,6 +292,16 @@ class BackendExecutionService:
             traceback=result.traceback,
             error_code=result.error_code,
             retryable=result.retryable,
+            root_exception_type=result.root_exception_type,
+            root_exception_message=result.root_exception_message,
+            root_errno=result.root_errno,
+            root_winerror=result.root_winerror,
+            root_filename=result.root_filename,
+            root_filename2=result.root_filename2,
+            root_module=result.root_module,
+            root_function=result.root_function,
+            root_line=result.root_line,
+            wrapper_chain=result.wrapper_chain,
         )
         level = "INFO" if result.success and completed.returncode == 0 else "ERROR"
         write_backend_log_entry(
@@ -284,7 +313,7 @@ class BackendExecutionService:
             details={"returncode": completed.returncode, "result": str(spec.result_path), "backend_python": str(self.paths.python_executable)},
         )
         if completed.returncode != 0 or not result.success:
-            raise BackendJobFailure("; ".join(result.errors) or summarize_subprocess_output(completed.stderr, completed.stdout) or "PBM backend job failed.",result.error_code or "EXECUTION_FAILED",bool(result.retryable))
+            raise BackendJobFailure("; ".join(result.errors) or summarize_subprocess_output(completed.stderr, completed.stdout) or "PBM backend job failed.",result.error_code or "EXECUTION_FAILED",bool(result.retryable), details=result.to_dict())
         return result
 
     def verify_runtime_contract(self, *, refresh: bool = False) -> dict[str, Any]:
@@ -319,7 +348,8 @@ class BackendExecutionService:
                     time.sleep(0.1)
                     elapsed = time.monotonic() - started
                     age = matching_heartbeat_age(heartbeat, spec.job_id)
-                    decision = evaluate_liveness(self.timeout_policy, elapsed=elapsed, heartbeat_age=age, progress_age=None, started=True, product=spec.product)
+                    progress_age = matching_progress_age(spec.run_folder, spec.job_id, elapsed)
+                    decision = evaluate_liveness(self.timeout_policy, elapsed=elapsed, heartbeat_age=age, progress_age=progress_age, started=True, product=spec.product)
                     if decision.status in {"stalled", "timed_out"}:
                         self._terminate_process_tree(process)
                         raise ProcessingMonitorError(decision.status, decision.reason)

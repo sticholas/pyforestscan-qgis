@@ -70,6 +70,10 @@ class Phase27JEptTests(unittest.TestCase):
             text = polygon_preflight_text(report)
 
         self.assertTrue(report.ready)
+        self.assertIsNotNone(report.performance)
+        self.assertIn("total_ms", report.performance)
+        self.assertIn("TOTAL", report.performance)
+        self.assertGreaterEqual(float(report.performance["total_ms"]), 0.0)
         self.assertEqual(len(report.selected_sources), 1)
         self.assertIn("Logical inputs: 1", text)
         self.assertIn("Repository: EPT dataset", text)
