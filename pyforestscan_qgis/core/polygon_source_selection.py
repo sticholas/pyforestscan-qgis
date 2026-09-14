@@ -279,9 +279,16 @@ class PolygonSourceSelectionService:
         if ept is not None:
             bounds, crs, points, resolved, payload = _read_ept_metadata(ept.ept_json)
             source_extent = SpatialEnvelope.from_bounds(bounds, crs) if bounds is not None and crs else None
-            # CRS/catalog repair is repository maintenance, never part of the
-            # latency-sensitive identity lookup.
+            # Repair only the single EPT CRS metadata row when an existing
+            # catalog is supplied.  This is bounded maintenance (not source
+            # discovery) and preserves the warning/evidence contract without
+            # reintroducing a repository-wide scan.
             state_repair = None
+            if catalog.is_file():
+                try:
+                    state_repair = repair_ept_crs_catalog_state(catalog, ept.normalized_repository)
+                except (OSError, ValueError, RuntimeError):
+                    state_repair = None
             warnings = tuple(resolved.warnings)
             if state_repair is not None and state_repair.repaired:
                 warnings = (*warnings, state_repair.message)

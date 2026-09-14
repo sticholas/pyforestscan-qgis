@@ -15,8 +15,8 @@ class Phase33AReleaseAuditTests(unittest.TestCase):
     def test_version_drop_is_consistent(self) -> None:
         version = (ROOT / "pyforestscan_qgis/__version__.py").read_text(encoding="utf-8")
         metadata = (ROOT / "pyforestscan_qgis/metadata.txt").read_text(encoding="utf-8")
-        self.assertIn('PLUGIN_VERSION = "0.2.0-beta.6"', version)
-        self.assertIn("version=0.2.0-beta.6", metadata)
+        self.assertIn('PLUGIN_VERSION = "0.2.0-beta.7"', version)
+        self.assertIn("version=0.2.0-beta.7", metadata)
 
     def test_release_audit_files_exist(self) -> None:
         for relative in (

@@ -945,7 +945,6 @@ class PyForestScanAdapter:
                 written=bool(metrics.get("written", raw_output is not None)),
                 limitation=metrics.get("limitation"),
             )
-            write_stage_record(request.diagnostics_path, stage="VOXEL_STAT_COMPLETED", payload={"point_count": source_summary.get("point_count"), "extent": extent})
         self._progress.start("Reading lidar with HeightAboveGround")
         self._log(LogLevel.INFO, "Starting HAG normalization", input=str(request.input_path))
         try:

@@ -104,7 +104,10 @@ def write_stage_record(path: Path | str | None, *, stage: str, payload: dict[str
     target = Path(path)
     # Backend contracts pass a diagnostics directory; normalize that form to
     # the attempt-local summary file.  Never call mkdir on a JSON path.
-    if target.exists() and target.is_dir() or target.suffix.lower() != ".json":
+    # A diagnostics directory is normalized to its summary file.  A directory
+    # whose name already ends in .json is instead a real destination collision
+    # and must be recorded outside the active tile diagnostics path.
+    if target.suffix.lower() != ".json":
         target = target / "tile_diagnostics.json"
     target.parent.mkdir(parents=True, exist_ok=True)
     with _path_lock(target):

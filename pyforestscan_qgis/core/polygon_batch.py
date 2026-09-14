@@ -81,7 +81,9 @@ class PolygonBatchRequest:
     shared_execution_options: BatchExecutionOptions | None = None
     polygon_options: PolygonBatchOptions = PolygonBatchOptions()
     selection_mode: str = "automatic"
-    direct_header_fallback: bool = False
+    # Automatic fallback is limited to an absent/empty catalog; it does not
+    # trigger a repository-wide scan when catalog coverage is usable.
+    direct_header_fallback: bool = True
     repository_crs_override: str | None = None
     spatial_policy: SourceLocalFallbackPolicy | None = None
     runtime_token: ProcessingRuntimeToken | None = None

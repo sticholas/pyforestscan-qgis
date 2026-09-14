@@ -45,6 +45,7 @@ python3 -m unittest tests.test_lidar_catalog \
 - [Product methods](docs/scientific-methods/README.md)
 - [Compatibility](docs/COMPATIBILITY.md)
 - [Release baseline](docs/releases/PRE_POINT_VIEWER_RELEASE_1.md)
+- [Release Roadmap](docs/releases/RELEASE_ROADMAP.md)
 - [Documentation index](docs/README.md)
 
 ## Development
