@@ -1,5 +1,76 @@
 # Mission Control
 
+## Recent Results
+
+The Process page ends with a compact Recent Results area. It shows up to 15
+registry-backed jobs, newest first, without scanning output folders. Each entry can
+load its registered outputs into QGIS or open its final output folder and
+human-readable report. Starting a new run preserves this history.
+
+The Processing section expands only while useful activity is running and returns to
+a compact **Complete** or **Completed with issues** summary at terminal state.
+
+## Process page
+
+Process follows one continuous sequence: choose Mode, LiDAR Data, Processing Area, Products, optional Advanced Scientific Settings, Output, then run Prerun Check and Process LiDAR. Major sections remain in this order at every dock width. Products and Advanced adapt internally to available width without splitting the workflow.
+
+Advanced Scientific Settings shows only parameters relevant to selected products and is collapsed by default. Refresh and Zoom to Area remain beside the area they affect. Processing progress and the current result appear below the action row, while contextual help remains in the page footer.
+
+The Process configuration is content-sized: Mode and Output use compact inline rows, Products uses only its checkbox rows, and collapsed Advanced occupies one title row. Spare window height appears after the workflow instead of inside configuration sections. Prerun Check and Process LiDAR use equal geometry.
+
+For a loaded QGIS polygon layer, select features with normal map tools and choose **Use Selected Features**. The summary reports selected feature count, area, geometry validity, and CRS. **Refresh** adopts later map-selection changes without running repository preparation; **Zoom to Area** uses the same normalized geometry that Prerun will freeze.
+
+## Processing Engine setup
+
+Tools & Setup always offers one engine action: **Set Up Processing Engine**, or **Repair / Reload Processing Engine** after setup or when recovery is needed. Ready means the complete managed runtime contract was established for this plugin build. Startup only reads that local state; setup occurs only after confirmation.
+
+The Process page keeps its selections when setup is needed and enables processing after the successful state refresh. CRS and units controls appear inline only when preflight cannot safely resolve the current source, then disappear after assignment and automatic recheck.
+
+Mission Control opens independently of Processing Engine readiness. It first constructs the complete interface, then resolves lightweight engine status. Missing or damaged engine files show setup or repair guidance and disable processing; they do not block navigation, settings, diagnostics, or existing results.
+
+## Tools & Setup
+
+Tools & Setup uses a single Processing Engine card. Ready engines show status only; setup-required engines show **Set Up**; repair-required engines show **Repair**. **Advanced Settings** is always visible and contains only the default output folder and startup preference. **Troubleshooting** is collapsed and contains **Recheck Processing Engine** plus **Open Diagnostics**. Technical paths, package details, compatibility evidence, and logs are hidden until diagnostics is opened.
+
+The separate LiDAR spatial-reference section is collapsed by default. The removed Recent Item Limit affected only recent-workspace display and never controlled processing scale.
+
+## Long processing runs
+
+Standard wording presents the managed runtime as the **Processing Engine**, work units as **areas**, and source preparation as **Preparing LiDAR**. Progress separates area processing from finalization. Technical scheduler, runtime-token, and contract details remain in troubleshooting views.
+
+After Processing Engine Setup or Repair, Mission Control refreshes all status surfaces and automatically rebuilds an existing Prerun with the new runtime identity. Repository, polygon, and product selections are preserved.
+
+Normal Tools & Setup shows one Processing Engine card and one Set Up/Repair action. Recheck and technical backend information are collapsed under Troubleshooting. Process shows a compact Set Up/Repair action in place, preserves selections, and refreshes automatically through `processingEngineStateChanged`.
+
+The normal setup surface presents one Processing Engine state: Ready, Checking, Setup required, Needs repair, Update required, or Failed. Setup verifies automatically. Technical PBM terminology, module contracts, and logs remain under troubleshooting. Process validates readiness before preserving a job token or creating batch work.
+
+## Processing Engine status
+
+Mission Control presents one Processing Engine state: Ready, Checking, Setup required, Updating, Repair required, Incompatible, or Failed. Normal setup exposes one state-dependent action. Detailed PBM controls, dependency probes, protocol identity, and logs belong under troubleshooting.
+
+Polygon and Folder processing use the same engine verifier immediately before launch. An incomplete engine blocks the launch before a scientific batch attempt is created.
+
+Polygon Selection asks for a coordinate system only when the repository cannot identify one. Choosing a CRS writes a shared repository assignment, reruns Prerun Check, and leaves source files untouched. Successful review stays compact; provenance is available in Technical Details.
+
+For strongly compatible unreferenced LiDAR, the default advanced preference automatically uses the polygon coordinate system and displays a non-blocking assumed-reference warning. Technical views distinguish raw overlap, alignment, and final selection.
+
+Prerun preparation remains concise, for example **Height normalization will be generated automatically**. Ground samples, parameters, provenance, and recommendations remain in technical output rather than the primary workflow.
+
+Process LiDAR automatically refreshes stale readiness where safe; Prerun Check
+remains the explicit review action. Processing capacity is Automatic. Worker
+counts, source planning, checkpoint policy, and finalization implementation are
+not user decisions and remain available only in diagnostics/provenance.
+
+Phase 32R completes that simplification: repository preparation is part of
+Prerun, `Zoom to Area` is the only normal map action, and one compact Advanced
+section retains resolution, intermediate retention, and repository maintenance.
+
+
+Phase 29A makes the two retained workspaces content-driven: empty file and report surfaces stay compact, populated lists cap at six visible rows, product and concurrency controls follow current selections, backend maintenance stays under troubleshooting, and the live footer reports only current-session state. See the [Phase 29A Productization UI Audit](../development/PHASE_29A_PRODUCTIZATION_UI_AUDIT.md).
+
+
+Safe EPT progress uses work-unit language such as `2 complete, 3 failed, 5 of 120 attempted, 115 not started`. Scientific pauses and native crashes are distinct states; normal mode does not expose raw Windows exception codes.
+
 Mission Control is the floating-by-default, dockable graphical operating environment for PyForestScan
 QGIS. It opens as a large application-style window by default and keeps a
 bounded navigation sidebar so the main page stack can use the full available
@@ -25,33 +96,41 @@ flowchart TD
 
 ## Pages
 
-- Home: workflow dashboard with environment status, active dataset, workspace status,
-  generated products, batch status, recommended next action, recent run folder,
-  and primary Start Single Dataset / Start Batch actions. Version details are
-  collapsed by default.
-- Workspace: welcome/resume surface with Continue Last Workspace, Start New
-  Workspace, Recent Workspaces, status, recent runs, key output links, timeline,
-  notes, and clear/reset controls.
-- Environment: adapter-backed runtime checks for QGIS, Python, PyForestScan,
-  PDAL, GDAL, rasterio, and numpy.
-- Scientific Advisor: deterministic Knowledge Engine guidance after Dataset Explorer, including warnings, product explanations, parameter suggestions, and QGIS QA tools.
-- Dataset: choose LAS, LAZ, COPC, or EPT plus an output folder, create the active
-  run folder, write Dataset Explorer reports, show a spatial footprint preview,
-  add the footprint to QGIS, and zoom the main map canvas.
-- Planning: Product Planner uses the active Dataset Explorer report and writes
-  plan reports into the run folder. No product execution is performed.
-- Processing: start implemented product jobs from the active Product Planner
-  report, view selected products, output folder, Processing Footprint, current status,
-  and progress by default. Product Plan JSON paths, pipeline stages, and logs are
-  available under Technical Details.
-- Batch: discover multiple LAS, LAZ, COPC, and EPT datasets from a folder, select
-  files, apply one shared product plan/settings set, process them sequentially
-  by default or through guarded Parallel safe mode, filter results, retry
-  failures, cancel remaining files, and optionally load generated outputs into
-  QGIS.
-- Results: view friendly Dataset Report, Product Plan, Job Summary, Output
-  Folder, and Products links first, with raw paths under Run files and logs.
-- Settings: default output folder for Mission Control runs.
+The primary sidebar order is Batch, Results, Scientific Advisor, Environment,
+Settings, and Advanced Toolbox. Batch is the startup workspace. Advanced
+Toolbox opens the existing QGIS Processing Toolbox.
+
+- Batch: the primary workspace. Choose **LiDAR Folder Selection** or **Polygon
+  Selection**, select data, products, and an output folder, run the **Prerun
+  Check**, then process. Automatic repository, CRS, strategy, and concurrency
+  decisions are the default; specialist controls are collapsed.
+- Results: generated products first, followed by Open Output Folder and Load
+  into QGIS. Processing summaries and diagnostics are collapsed.
+- Scientific Advisor: optional Knowledge Engine guidance. It is never required
+  before processing.
+- Environment: PBM readiness and active execution backend first. QGIS Python
+  fallback and technical dependency details are collapsed.
+- Settings: user defaults and PBM backend controls. Technical logs remain
+  collapsed.
+- Advanced Toolbox: opens the existing parameter-rich Processing Toolbox.
+
+## Release-Candidate Polygon Workflow
+
+Polygon mode presents one continuous workspace:
+
+`LiDAR Data -> Processing Area -> Products -> Output Folder -> Prerun Check -> Process LiDAR -> Results`
+
+The former numbered workflow strip is removed. Repository recognition, indexing,
+CRS normalization, bounded preparation, scheduling, checkpointing, exact masking,
+and final clipping are automatic unless user input is genuinely required.
+
+Every page includes one bounded context-help strip below its content. Hover and
+keyboard focus both update it. Tooltips and accessible names remain available,
+so hover is not the only help path.
+
+Home, Workspace, Dataset, Planning, and Processing remain internal compatibility
+pages. Their state, services, and signal wiring are preserved, but they are not
+shown in primary navigation.
 
 ## UI Architecture
 
@@ -59,6 +138,8 @@ The Qt shell sets a production-oriented minimum size and Mission Control applies
 runtime stretch factors so the page stack expands horizontally and vertically.
 Each page uses one full-width vertical scroll area; individual pages should avoid
 adding nested scroll areas unless there is a specific interaction reason.
+
+Mission Control follows the permanent [Mission Control UX Standard](../development/MISSION_CONTROL_UX_STANDARD.md): one primary action per page, no empty sections, collapsed technical details, concise empty states, and consistent workflow terminology. Visual hierarchy, status badges, dialogs, notifications, tables, icons, and future module integration follow the [PyForestScan Design System](../development/PYFORESTSCAN_DESIGN_SYSTEM.md). Phase 24F applies that system with shared spacing tokens, button role styling, status-badge tones, compact empty states, and calmer Backend/Processing/Batch/Results layouts. Phase 25A tightens workflow continuity by collapsing rarely used reset/output/backend details and keeping empty states compact. Phase 25B adds guided workflow continuity with subtle step indicators and one Next Step card on each primary workflow page. Phase 25C corrects the default route to Home -> Workspace if needed -> Dataset -> Planning -> Processing -> Results, keeps Batch optional, keeps Scientific Advisor as support guidance, and adds subtle readiness markers beside existing readiness text. Phase 25D makes Results output loading functional and tightens content-driven card sizing. Phase 26A adds the first product-readiness audit: native action icon intents, calmer backend copy, status wording consistency, and developer terminology kept under advanced/troubleshooting disclosure; see the [Visual Polish Audit](../development/VISUAL_POLISH_AUDIT.md) and [Product Readiness Audit I](../development/PRODUCT_READINESS_AUDIT_I.md). Phase 26B standardizes action lifecycle behavior so Environment, Dataset, Planning, Processing, Batch, Results, and Backend actions disable while running, show concise progress, refresh dependent pages automatically, and surface completion/failure via QGIS message-bar notifications. Phase 26C adds a shared current-session Project Summary so Home, Workspace, Processing, Results, and Scientific Advisor agree on the active dataset, output folder, generated products, loaded products, processing state, backend/environment state, last run time, and project CRS when available.
 
 - `pyforestscan_qgis/ui/forms/mission_control.ui`: Qt Designer shell for the
   dock header, sidebar, page stack, and status bar.
@@ -68,6 +149,14 @@ adding nested scroll areas unless there is a specific interaction reason.
   in-memory footprint layer integration, and main-canvas zoom helpers.
 - `pyforestscan_qgis/ui/state.py`: plain-Python immutable Mission Control state.
 - `pyforestscan_qgis/core/workspace/`: QGIS-free workspace package containing run-folder context, workspace persistence, session/state/history/timeline/notes models, and display helpers.
+
+## Internal Workflow Compatibility
+
+The legacy single-dataset path remains available internally as Home -> Workspace if needed -> Dataset -> Planning -> Processing -> Results. Home summarizes backend/environment readiness, selected data, workflow status, and output location, then uses Continue to move to the next incomplete step. If readiness is not established, Continue and Check Environment route to Environment. Dataset routes to Planning, Planning routes to Processing, and Processing completion points to Results. Batch is optional and is never inserted into the default Continue path. Scientific Advisor is support guidance and is not required before Processing.
+
+Mission Control keeps pages synchronized as the workflow changes. Choosing a new dataset clears stale Planning, Processing, Advisor, and Results content until Dataset Explorer runs again. Backend verification or install completion refreshes Environment and Home. Processing completion updates Results and Home, and Load Outputs records a concise result message without exposing raw logs in the primary UI.
+
+The current-session Project Summary is in-memory only. It is not a history database, autosave system, or cross-computer persistence layer. It tracks what has happened in the active Mission Control session: dataset type/path, workspace/output folder, generated products, loaded products, processing state, backend/environment state, last processing time, and QGIS project CRS when QGIS exposes it. Results uses this to separate Generated Products, Loaded Products, Available Products, and Missing Requested Products; Processing uses it to show products that already exist before rerun.
 
 ## Signal And Slot Architecture
 
@@ -82,11 +171,15 @@ flowchart LR
     H["Plan built"] --> I["planningChanged"]
     K["Job update"] --> L["jobUpdated"]
     N["Batch complete"] --> O["batchCompleted"]
+    P["Results Load Outputs"] --> Q["outputsLoaded"]
+    R["Backend action"] --> S["backendStateChanged"]
     D --> J["Status bar and Home"]
     F --> J
     I --> J
     L --> J
     L --> M["Results job history"]
+    Q --> J
+    S --> D
 ```
 
 ## Scope Boundary
@@ -94,7 +187,7 @@ flowchart LR
 Mission Control coordinates current workflows only. Dataset footprint preview uses
 QGIS APIs only in the UI layer; core adapter and report code remain QGIS-free.
 The run folder is not a required `.pfs` project file. The Processing page runs the active Product
-Planner JSON through JobManager and the pipeline registry. CHM, Canopy Cover, PAD, PAI, FHD, and Rumple are implemented through the adapter for single-dataset workflows. Raster outputs are loaded with product-aware default styling: CHM, Canopy Cover, PAI, and FHD use grayscale, while PAD uses its documented RGB band composite. Users can restyle layers manually in QGIS.
+Planner JSON through JobManager and the pipeline registry. CHM, Canopy Cover, PAD, PAI, FHD, and Rumple are implemented through the adapter for single-dataset workflows. Raster outputs are loaded with product-aware default styling: single-band rasters use grayscale, and PAD uses a representative grayscale height slice from the authoritative multiband volume. Optional PAD composites are labeled as derived height-band visualizations. Users can restyle layers manually in QGIS.
 
 
 
@@ -126,14 +219,17 @@ default so users see the next useful decision before deeper rationale.
 
 ## Planning Layout
 
-The Planning page is grouped into Dataset, Output, Product Selection, Shared
-Parameters, Advanced Product Settings, and Run Summary sections. Product-specific
-filenames and CHM / Canopy Cover controls are collapsed by default because the
-recommended/shared settings are enough for the normal workflow.
+The Planning page is grouped into Dataset, Product Selection, Shared
+Parameters, Advanced Output Folder, Advanced Product Settings, and Run Summary
+sections. Product-specific filenames, output overrides, and CHM / Canopy Cover
+controls are collapsed by default because the recommended/shared settings are
+enough for the normal workflow.
 
 ## Processing Footprint
 
 Mission Control does not predict runtime in the primary UI. The Processing page
+explicitly shows the active execution backend. For the internal beta, PBM is the preferred backend when READY; QGIS Python remains a fallback for workflows that have not been routed.
+
 instead displays a Processing Footprint based on Product Planner raster
 dimensions, selected products, height-bin count, and a conservative float32
 assumption of 4 bytes per raster cell. CHM, Canopy Cover, PAI, and FHD count as
@@ -145,14 +241,14 @@ selection.
 
 ## Batch Processing
 
-Mission Control includes a Batch page for sequential folder-to-products workflows. Users choose an input folder, optional recursive discovery, selected files, one output folder, products, and shared settings. Batch v1 creates one `pyforestscan_batch_<timestamp>` folder and one normal run folder per selected dataset. Each dataset reuses Dataset Explorer, Product Planner, JobManager, the pipeline registry, and the adapter boundary. Failures are recorded per file and do not stop the whole batch unless the user enables stop-on-error. Batch summary JSON, CSV, and HTML files are shown in Results after completion.
+Mission Control includes a Batch page for folder-to-products workflows. Standard File Batch lets users choose an input folder, optional recursive discovery, selected files, one output folder, products, and shared settings. Polygon Area Processing lets users choose or paste a LiDAR repository path without scanning it, run bounded Quick Probe, explicitly build/update/resume its catalog, choose a polygon source, output folder, and products; preflight queries intersecting catalog records, execution stages clipped LAZ inputs, masks supported rasters outside the exact polygon, and the normal Batch executor processes those staged files. Batch creates one `pyforestscan_batch_<timestamp>` folder and one normal run folder per selected dataset or clipped source. Each dataset reuses Dataset Explorer, Product Planner, JobManager, the pipeline registry, and the adapter boundary. Failures are recorded per file and do not stop the whole batch unless the user enables stop-on-error. Batch summary JSON, CSV, and HTML files are shown in Results after completion.
 
 
 ## UX Streamlining
 
-The Home page is intentionally a workflow dashboard rather than a documentation landing page. The former Open Documentation button was removed from Home because it competed with the primary actions. Users start work through Start Single Dataset or Start Batch, while technical paths and internal files remain collapsed on their respective pages.
+The Home page is intentionally a workflow overview rather than a documentation landing page. It shows only backend/environment readiness, selected dataset, workflow status, current output folder, Continue, and Check Environment. Continue routes to Environment when readiness needs attention, then Dataset, Planning, Processing, or Results as the run progresses. Technical paths and internal files remain collapsed on their respective pages.
 
-Batch v2 keeps the default workflow focused on the choices users need: input folder, selected files, output folder, products, shared settings, and run controls. Internal reports remain available through Results and run-folder summaries.
+Batch keeps the default Standard File Batch workflow focused on the choices users need: input folder, selected files, output folder, products, shared settings, and run controls. Polygon Area Processing adds a separate mode for catalog-backed LiDAR repository plus polygon source workflows so Dataset remains a single-dataset page. Internal reports remain available through Results and run-folder summaries.
 
 
 ## Batch Execution Modes
@@ -162,7 +258,7 @@ Batch defaults to Sequential. Parallel Safe mode is explicit, capped at six work
 
 ## Batch Preflight And Resume UI
 
-The Batch page uses a three-step flow: Preflight, Run Batch, and Review Results. The Run button stays disabled until preflight passes. If preflight reports warnings, the user must explicitly acknowledge them before running. Preflight shows ready status, blockers, warnings, estimated output storage, free disk space, files to process, completed files, skipped files, retry files, manifest path, execution mode, and max workers.
+The Batch page uses a three-step flow: Discover Files, Preflight, and Run Batch / Review Results. The Run button stays disabled until preflight passes. If preflight reports warnings, the user must explicitly acknowledge them before running. Preflight shows ready status, blockers, warnings, estimated output storage, free disk space, files to process, completed files, skipped files, retry files, manifest path, execution mode, and max workers.
 
 When `batch_manifest.json` exists, Mission Control exposes Resume Batch. Completed files are skipped by default and failed files can be retried with the current shared settings.
 
@@ -170,3 +266,88 @@ When `batch_manifest.json` exists, Mission Control exposes Resume Batch. Complet
 ## External Worker Mode
 
 External Worker mode is disabled and is not selectable in Mission Control. Manual validation showed that QGIS GUI Python can launch full QGIS application windows instead of headless jobs. The preserved external-worker code is future research only and is blocked by core guardrails unless an explicit developer flag is set outside normal use.
+
+## Repository Preparation
+
+Selecting LiDAR and running Prerun triggers bounded repository recognition and
+the safest available preparation path. Normal users do not choose an indexing
+strategy or run a separate Prepare Repository step. Inspect, update, and repair
+actions remain under Advanced for maintenance and recovery.
+
+## Polygon Area Processing Help And Terminology
+
+The release-candidate path uses automatic repository preparation. One persistent
+hover/focus help strip replaces normal-flow information badges.
+
+Preflight shows compact execution readiness: repository type, logical inputs, backend status, workload, estimated points, output, warnings, and expandable-style technical diagnostics.
+
+
+## Phase 27K Polygon And Help Updates
+
+Polygon Area Processing now distinguishes geometry content from backend vector paths. PBM materializes the clipping polygon in the job workspace and PyForestScan receives a real GeoPackage or GeoJSON path. The Batch page uses central InfoBadge topics for repository, polygon source, and setup method help.
+
+## Phase 27L processing validation
+
+The Processing page includes **Validate Processing Request**. It explains the PBM request-validation gate that checks backend API compatibility, EPT metadata, bounds syntax, polygon input, CRS, and output writability before product execution.
+
+## Phase 27M Results And Polygon Outputs
+
+Results can read `generated_outputs.json` registries from Standard Batch and Polygon Area Processing. Load Generated Outputs adds final masked rasters or supported tables to QGIS, skips duplicates, and leaves unmasked intermediates hidden from the primary result list.
+
+## Phase 27N Polygon Guided Review
+
+Polygon preflight now shows a concise review with plan status, LiDAR data type, logical inputs, processing capacity, final clipping, warnings, and blockers. The full preflight text remains under Technical Report.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.
+
+## Phase 27P Notes
+
+Catalog health now separates embedded CRS from effective CRS. A bounded LAS/LAZ catalog with all source CRS values missing is `CRS Assignment Required`, not healthy, and polygon preflight does not report true no coverage until comparable CRS metadata exists. Repository CRS override metadata is explicit and reversible. Live QGIS coverage/zoom services now require actual layer insertion or canvas extent changes before reporting success.
+
+## Phase 28A productized workflow
+
+Mission Control opens on **Batch** and shows the primary sidebar **Batch, Results, Scientific Advisor, Environment, Settings, Advanced Toolbox**. Home, Workspace, Dataset, Planning, and Processing remain internal compatibility pages. Normal processing uses **LiDAR Folder Selection** or **Polygon Selection**, then products, output folder, **Prerun Check**, and **Process**. Repository and spatial specialist controls are collapsed under Advanced sections.
+
+## Retained-page synchronization
+
+Batch selections update Results context and Scientific Advisor automatically. Advanced Toolbox opens or focuses QGIS Processing and also shows provider registration, algorithm count, groups, and refresh feedback.
+
+## Compact retained interface
+
+Batch follows Processing Mode -> LiDAR Data/Processing Area -> Products -> Output Folder -> Prerun Check -> Process. Results hides output actions until products exist. Advisor, Environment, Settings, and Advanced Toolbox keep technical details collapsed by default.
+
+## Compact expanders and live status
+
+Advanced Scientific Settings and Details use consistent disclosure rows with visible arrows and keyboard focus. Their hidden bodies reserve no space. Processing is a compact readiness row while idle or complete and expands only while Prerun or processing is active. Tools & Setup keeps Preferences and diagnostics collapsed; READY shows Recheck and a quiet Repair action, while missing or broken engines promote Setup or Repair respectively.
+
+## Processing reliability
+Mission Control displays current LiDAR and area selection rather than a historical dataset. Every workflow-defining Process control contributes to the current input identity. Changing that identity invalidates Prerun Check, Advisor guidance, progress, and current output references. Results load only explicitly registered outputs from a completed current attempt and never discover outputs by scanning folders. Session reset preserves files, PBM, catalogs, preferences, and previous-run history.
+
+Run-defining controls are disabled while processing owns the active job. Pause, cancellation, progress, and troubleshooting controls remain available where supported.
+## Large-job progress
+CHM progress reports stage, completed/total areas, active/failed units, elapsed time, and ETA only after stable throughput.
+
+
+## Phase 28G Exact Polygon Completion
+
+Polygon prerun summaries distinguish candidate, required, and skipped areas. Recovery and progress use durable counts; no starting work-unit selector is exposed.
+
+
+## Phase 28H Adaptive Scale and Compact Workspace
+
+Mission Control now has two visible destinations: Process and Tools & Setup. Process combines the former Batch and Results workflow; internal legacy pages preserve capability without primary navigation clutter.
+# Terminal Recovery
+
+Processing controls are restored after every terminal outcome. A hidden-by-default Refresh Status action can repair a stale UI projection without deleting outputs or cancelling work. QGIS layer-loading failure is reported separately from successful scientific processing.
+# Phase 30D Process workspace
+
+The Process workspace uses automatic scheduling and automatic current-job output loading. Normal Prerun Check shows inputs, output, storage, blockers, and warnings without scheduler internals. Advanced retains processing profile, conflict/recovery controls, and applicable polygon finalization controls; no global warning acknowledgement is shown.
+# Phase 30E CRS presentation
+
+Resolved CRS remains quiet. Source-local standalone processing may show **Source coordinates**. Spatial ambiguity presents one compact assignment action; technical evidence stays in diagnostics.
+
+When coordinate units are the sole blocker, Process shows **Preparation needs one detail** with metres/feet, file/repository scope, and Continue. Users may instead choose a CRS or explicitly use the project CRS. Tools & Setup contains collapsed **LiDAR Spatial Reference** management. Assignment never reprojects coordinates.
+
+With the default Phase 31C policy, eligible standalone CHM/Rumple no longer show that intervention: Prerun is ready with a concise source-coordinate fallback warning. The compact assignment action appears only when policy requires explicit assignment or geography is required. No global warning acknowledgement is used.

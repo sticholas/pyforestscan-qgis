@@ -25,6 +25,7 @@ class WorkspaceSession:
     remember_last_output_folder: bool = True
     maximum_recent_items: int = 10
     auto_save_enabled: bool = True
+    open_mission_control_on_startup: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Return JSON-serializable session data."""
@@ -43,6 +44,7 @@ class WorkspaceSession:
             "remember_last_output_folder": self.remember_last_output_folder,
             "maximum_recent_items": self.maximum_recent_items,
             "auto_save_enabled": self.auto_save_enabled,
+            "open_mission_control_on_startup": self.open_mission_control_on_startup,
         }
 
     @classmethod
@@ -63,6 +65,7 @@ class WorkspaceSession:
             remember_last_output_folder=bool(payload.get("remember_last_output_folder", True)),
             maximum_recent_items=max(1, int(payload.get("maximum_recent_items", 10))),
             auto_save_enabled=bool(payload.get("auto_save_enabled", True)),
+            open_mission_control_on_startup=bool(payload.get("open_mission_control_on_startup", False)),
         )
 
 

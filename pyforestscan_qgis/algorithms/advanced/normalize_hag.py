@@ -66,7 +66,7 @@ class NormalizeHagAlgorithm(AdvancedPyForestScanAlgorithm):
             crop_polygon=self.parameterAsString(parameters, self.CROP_POLYGON, context),
         )
         request = build_hag_request(params)
-        result = run_adapter_call(feedback, "Height Above Ground", lambda: PyForestScanAdapter().normalize_heights(request))
+        result = run_adapter_call(feedback, "Height Above Ground", lambda: PyForestScanAdapter(execution_mode="pbm_backend").normalize_heights(request))
         message = "HAG point cloud written" if result.written else "HAG read completed; no point-cloud output was requested"
         if result.limitation:
             feedback.pushInfo(result.limitation)

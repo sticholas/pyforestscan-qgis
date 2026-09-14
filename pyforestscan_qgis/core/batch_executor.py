@@ -14,8 +14,11 @@ from typing import Callable
 from .adapter import PyForestScanAdapter
 from .batch import BatchItemResult, BatchRequest, BatchResult, batch_run_context, create_batch_folder
 from .batch_results import write_batch_summaries
+from .output_registry import generated_output_for_path, write_output_registry
 from .batch_manifest import MANIFEST_NAME, create_manifest, load_manifest, update_manifest_item, write_manifest
 from .batch_runner import BatchControlCallback, BatchExecutionError, BatchJobCallback, BatchProgressCallback, BatchRunner
+from .automatic_execution import choose_automatic_execution
+from .backend.process_env import hidden_subprocess_kwargs
 from .external_worker import (
     EXTERNAL_WORKER_DISABLED_MESSAGE,
     EXTERNAL_WORKER_MODE,
@@ -31,7 +34,7 @@ from .external_worker import (
 SEQUENTIAL_MODE = "sequential"
 PARALLEL_SAFE_MODE = "parallel_safe"
 MAX_SAFE_WORKERS = 6
-DEFAULT_PARALLEL_WORKERS = 2
+DEFAULT_PARALLEL_WORKERS = 5
 LARGE_FILE_COUNT = 10
 LARGE_WORKLOAD_SCORE = 30
 
@@ -72,6 +75,10 @@ class BatchExecutor:
         """Validate worker limits and return conservative execution guardrails."""
         mode = request.settings.execution_mode
         workers = request.settings.max_workers
+        if mode == "automatic":
+            source_type = "ept" if len(request.datasets) == 1 and Path(request.datasets[0]).name.lower() == "ept.json" else "file"
+            decision = choose_automatic_execution(len(request.datasets), source_type=source_type, worker_ceiling=workers)
+            mode, workers = decision.strategy, decision.effective_workers
         if mode not in {SEQUENTIAL_MODE, PARALLEL_SAFE_MODE, EXTERNAL_WORKER_MODE}:
             raise BatchExecutionError("Batch execution mode must be Sequential, Parallel safe mode, or External worker mode.")
         max_allowed = MAX_EXTERNAL_WORKERS if mode == EXTERNAL_WORKER_MODE else MAX_SAFE_WORKERS
@@ -90,7 +97,7 @@ class BatchExecutor:
                 reason=EXTERNAL_WORKER_DISABLED_MESSAGE,
             )
         if workers > DEFAULT_PARALLEL_WORKERS:
-            warnings.append("More than 2 workers can increase memory, PDAL, and disk pressure.")
+            warnings.append("Higher concurrency can increase memory, PDAL, and disk pressure.")
         if mode == EXTERNAL_WORKER_MODE:
             warnings.append("External worker mode starts separate Python processes and needs extra RAM, CPU, and disk bandwidth.")
         if len(request.datasets) >= LARGE_FILE_COUNT:
@@ -99,16 +106,6 @@ class BatchExecutor:
             warnings.append("Large workload: many file/product combinations selected.")
         if mode == SEQUENTIAL_MODE or (workers == 1 and mode != EXTERNAL_WORKER_MODE):
             return BatchGuardrailReport(mode, SEQUENTIAL_MODE, 1, workload_score, tuple(warnings))
-        if warnings and not request.settings.confirm_large_parallel:
-            return BatchGuardrailReport(
-                requested_mode=mode,
-                effective_mode=SEQUENTIAL_MODE,
-                max_workers=workers,
-                workload_score=workload_score,
-                warnings=tuple(warnings),
-                blocked=True,
-                reason="Selected non-sequential mode requires confirmation for this workload.",
-            )
         return BatchGuardrailReport(mode, EXTERNAL_WORKER_MODE if mode == EXTERNAL_WORKER_MODE else PARALLEL_SAFE_MODE, workers, workload_score, tuple(warnings))
 
     def run(
@@ -181,7 +178,7 @@ class BatchExecutor:
                 job_id = manifest_item.job_id if manifest_item is not None and manifest_item.job_id else f"pfs-file-{uuid.uuid4().hex[:10]}"
                 spec = build_worker_job_spec(job_id, dataset, batch_folder, request.settings)
                 spec_path = write_worker_job_spec(spec)
-                process = subprocess.Popen(worker_run_command(spec_path), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                process = subprocess.Popen(worker_run_command(spec_path), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, **hidden_subprocess_kwargs())
                 running[process] = (dataset, spec.result_path)
             if not running:
                 break
@@ -219,7 +216,9 @@ class BatchExecutor:
             summary_json=batch_folder / "batch_summary.json",
             summary_csv=batch_folder / "batch_summary.csv",
             summary_html=batch_folder / "batch_summary.html",
+            load_outputs_after_completion=request.settings.load_outputs_into_qgis,
         )
+        result = _with_output_registry(result, source_mode="standard_file_batch")
         return write_batch_summaries(result)
 
     def _item_from_worker_process(self, process: subprocess.Popen[str], dataset: Path, batch_folder: Path, result_path: Path) -> BatchItemResult:
@@ -265,13 +264,16 @@ class BatchExecutor:
                         if item_callback is not None:
                             item_callback(item)
                     queued = []
-                while queued and not stop_queue and len(running) < guardrail.max_workers:
+                while queued and not stop_queue and control != "pause" and len(running) < guardrail.max_workers:
                     dataset = Path(queued.pop(0))
-                    future = pool.submit(self._run_one_dataset, dataset, batch_folder, request, job_callback)
+                    future = pool.submit(self._run_one_dataset, dataset, batch_folder, request, job_callback, control_callback)
                     running[future] = dataset
                 if not running:
+                    if control == "pause" and queued:
+                        time.sleep(0.05)
+                        continue
                     break
-                done, _pending = wait(tuple(running.keys()), return_when=FIRST_COMPLETED)
+                done, _pending = wait(tuple(running.keys()), timeout=0.1, return_when=FIRST_COMPLETED)
                 for future in done:
                     dataset = running.pop(future)
                     try:
@@ -306,7 +308,9 @@ class BatchExecutor:
             summary_json=batch_folder / "batch_summary.json",
             summary_csv=batch_folder / "batch_summary.csv",
             summary_html=batch_folder / "batch_summary.html",
+            load_outputs_after_completion=request.settings.load_outputs_into_qgis,
         )
+        result = _with_output_registry(result, source_mode="standard_file_batch")
         return write_batch_summaries(result)
 
     def _run_one_dataset(
@@ -315,8 +319,12 @@ class BatchExecutor:
         batch_folder: Path,
         request: BatchRequest,
         job_callback: BatchJobCallback | None,
+        control_callback: BatchControlCallback | None,
     ) -> BatchItemResult:
-        runner = BatchRunner(adapter=self.adapter_factory(), job_callback=job_callback)
+        runner = BatchRunner(
+            adapter=self.adapter_factory(), job_callback=job_callback,
+            control_callback=control_callback,
+        )
         return runner.run_dataset(dataset, batch_folder, request)
 
     def _write_partial_summary(self, batch_id: str, request: BatchRequest, batch_folder: Path, started_at: str, items: list[BatchItemResult]) -> None:
@@ -331,7 +339,9 @@ class BatchExecutor:
             summary_json=batch_folder / "batch_summary.json",
             summary_csv=batch_folder / "batch_summary.csv",
             summary_html=batch_folder / "batch_summary.html",
+            load_outputs_after_completion=request.settings.load_outputs_into_qgis,
         )
+        partial = _with_output_registry(partial, source_mode="standard_file_batch")
         write_batch_summaries(partial)
 
     def _skipped_item(self, dataset: Path, batch_folder: Path, message: str) -> BatchItemResult:
@@ -341,3 +351,20 @@ class BatchExecutor:
     def _failed_item(self, dataset: Path, batch_folder: Path, message: str) -> BatchItemResult:
         context = batch_run_context(dataset, batch_folder, reuse_existing=True).ensure_directories()
         return BatchItemResult(dataset, context, "failed", message, (), "Unavailable")
+
+
+
+def _with_output_registry(result: BatchResult, *, source_mode: str) -> BatchResult:
+    outputs = [
+        generated_output_for_path(output, job_id=result.batch_id, source_mode=source_mode)
+        for item in result.items
+        if item.status == "completed"
+        for output in item.outputs
+        if Path(output).exists()
+    ]
+    if not outputs:
+        return result
+    registry_path = write_output_registry(outputs, result.batch_folder)
+    from dataclasses import replace
+
+    return replace(result, output_registry_path=registry_path)

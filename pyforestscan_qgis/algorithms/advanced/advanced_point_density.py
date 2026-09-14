@@ -34,7 +34,7 @@ class AdvancedPointDensityAlgorithm(AdvancedPyForestScanAlgorithm):
         """Register Processing parameters."""
         self.add_input_dataset(); self.add_crs(); self.add_xy_resolution()
         self.addParameter(QgsProcessingParameterNumber(self.VOXEL_HEIGHT, self.tr("voxel_resolution Z / voxel height"), type=QgsProcessingParameterNumber.Double, defaultValue=1.0, minValue=0.01))
-        self.addParameter(QgsProcessingParameterBoolean(self.PER_AREA, self.tr("per_area"), defaultValue=False))
+        self.addParameter(QgsProcessingParameterBoolean(self.PER_AREA, self.tr("per_area"), defaultValue=True))
         self.addParameter(QgsProcessingParameterNumber(self.CELL_AREA, self.tr("cell_area"), type=QgsProcessingParameterNumber.Double, defaultValue=None, minValue=0.000001, optional=True))
         self.add_geotiff_output("Output Point Density GeoTIFF")
         self.addOutput(QgsProcessingOutputString(self.OUTPUT_MESSAGE, self.tr("Status message")))
@@ -54,6 +54,6 @@ class AdvancedPointDensityAlgorithm(AdvancedPyForestScanAlgorithm):
             cell_area=self.optional_double(parameters, self.CELL_AREA, context),
         )
         request = build_point_density_request(params)
-        result = run_adapter_call(feedback, "Point Density", lambda: PyForestScanAdapter().create_point_density(request))
+        result = run_adapter_call(feedback, "Point Density", lambda: PyForestScanAdapter(execution_mode="pbm_backend").create_point_density(request))
         load_raster_if_requested(result.output_path, "point_density_geotiff", context, feedback, add)
         return self.push_result(feedback, result.output_path, "Point Density")

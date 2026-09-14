@@ -10,4 +10,5 @@ Related developer documents:
 - [Pipeline Framework](../development/PIPELINE_FRAMEWORK.md)
 - [Batch Processing](../development/BATCH_PROCESSING.md)
 - [Workspace Architecture](../development/WORKSPACE_ARCHITECTURE.md)
+- [PyForestScan Design System](../development/PYFORESTSCAN_DESIGN_SYSTEM.md)
 - [Advanced Processing Toolbox](../development/ADVANCED_PROCESSING_TOOLBOX.md)

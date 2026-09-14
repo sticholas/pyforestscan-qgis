@@ -9,14 +9,37 @@ from __future__ import annotations
 
 import importlib
 import json
+import time
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable as TypingCallable
 from urllib.parse import urlparse
 
 from .config import AdapterConfig, DatasetOpenOptions, InspectionOptions
 from .dependency_check import EnvironmentReport, collect_environment_report
 from .exceptions import AdapterError, DatasetError, EnvironmentError, ProcessingError
+from .scientific_boundary import assert_scientific_import_allowed, qgis_runtime_active
+from .ept_bounds import EptBounds, EptBoundsError, validate_pyforestscan_bounds_value
+from .ept_spatial_reference import resolve_ept_spatial_reference
+from .pad_products import PadDerivativeSpec, calculate_pad_derivative, pad_band_mapping, pad_metadata_tags
+from .spatial_reference_resolver import SpatialReferenceResolver, SpatialReferenceStatus
+from .point_dimensions import PointDimensionCapabilities, SourceDimensionMismatch
+from .spatial_reference_contract import SpatialReferenceMode
+from .classification_inspection import assessment_from_array
+from .lidar_preparation import HeightNormalizationPlanner, HeightNormalizationPlanMode, build_preparation_assessment
+from .lidar_preparation_execution import checkpoint_is_compatible, execute_preparation
+from .source_coordinate_units import assess_processing_coordinate_units, assess_source_coordinate_units
+from .tile_diagnostics import (
+    EMPTY_EPT_READ,
+    EMPTY_VOXEL_INPUT,
+    MISSING_REQUIRED_DIMENSION,
+    ScientificConditionError,
+    point_array_summary,
+    write_stage_record,
+)
+from .polygon_transport import looks_like_wkt, materialize_polygon_input, polygon_execution_input_from_mapping
+from .ept_subset import EptSubsetRequest, EptSubsetResult, ept_read_lidar_kwargs
 from .types import (
     Bounds3D,
     CanopyCoverRequest,
@@ -38,6 +61,8 @@ from .types import (
     HagNormalizationRequest,
     HagNormalizationResult,
     PadRequest,
+    PadDerivativeRequest,
+    PadDerivativeResult,
     PadResult,
     PointCloudPreprocessRequest,
     PointCloudPreprocessResult,
@@ -65,8 +90,25 @@ POINT_CLOUD_EXTENSIONS = {
     ".copc.laz": DatasetFormat.COPC,
 }
 
+EXECUTION_MODE_AUTO = "auto"
+EXECUTION_MODE_QGIS_PYTHON = "qgis_python"
+EXECUTION_MODE_PBM_BACKEND = "pbm_backend"
+
+PBM_ROUTED_PRODUCTS = {
+    ProductType.CHM,
+    ProductType.PAD,
+    ProductType.PAI,
+    ProductType.FHD,
+    ProductType.CANOPY_COVER,
+    ProductType.RUMPLE,
+    ProductType.POINT_DENSITY,
+    ProductType.VOXEL_STAT,
+    ProductType.DTM,
+}
+
 DEFAULT_PRODUCTS = (
     ProductType.CHM,
+    ProductType.DTM,
     ProductType.PAD,
     ProductType.PAI,
     ProductType.FHD,
@@ -80,10 +122,15 @@ DEFAULT_PRODUCTS = (
 class AdapterProgress:
     """Small progress interface independent of QGIS Processing feedback."""
 
-    def __init__(self) -> None:
+    def __init__(self, callback: Callable[[ProgressSnapshot], None] | None = None) -> None:
         """Create an idle progress tracker."""
         self._snapshot = ProgressSnapshot(state=ProgressState.IDLE, percent=0.0)
         self._canceled = False
+        self._callback = callback
+
+    def _publish(self) -> None:
+        if self._callback is not None:
+            self._callback(self._snapshot)
 
     def start(self, message: str) -> None:
         """Mark an operation as running."""
@@ -93,6 +140,7 @@ class AdapterProgress:
             message=message,
             canceled=self._canceled,
         )
+        self._publish()
 
     def update(self, percent: float, message: str = "") -> None:
         """Update progress percentage and optional message."""
@@ -104,6 +152,7 @@ class AdapterProgress:
             message=message,
             canceled=self._canceled,
         )
+        self._publish()
 
     def complete(self, message: str = "") -> None:
         """Mark the operation as complete."""
@@ -113,6 +162,7 @@ class AdapterProgress:
             message=message,
             canceled=self._canceled,
         )
+        self._publish()
 
     def fail(self, message: str) -> None:
         """Mark the operation as failed."""
@@ -122,6 +172,7 @@ class AdapterProgress:
             message=message,
             canceled=self._canceled,
         )
+        self._publish()
 
     def cancel(self) -> None:
         """Request cancellation for future adapter work."""
@@ -132,6 +183,7 @@ class AdapterProgress:
             message=self._snapshot.message,
             canceled=True,
         )
+        self._publish()
 
     def snapshot(self) -> ProgressSnapshot:
         """Return the current immutable progress snapshot."""
@@ -145,12 +197,27 @@ class PyForestScanAdapter:
         self,
         config: AdapterConfig | None = None,
         log_sink: LogSink | None = None,
+        execution_mode: str = EXECUTION_MODE_AUTO,
+        backend_service_factory: TypingCallable[[], object] | None = None,
+        runtime_token: object | None = None,
+        runtime_products: tuple[str, ...] = (),
+        progress_sink: Callable[[ProgressSnapshot], None] | None = None,
     ) -> None:
         """Create an adapter with immutable configuration and optional logging."""
         self.config = config or AdapterConfig()
         self._log_sink = log_sink
-        self._progress = AdapterProgress()
+        self.execution_mode = execution_mode
+        self._backend_service_factory = backend_service_factory
+        self._runtime_token = runtime_token
+        self._runtime_products = tuple(runtime_products)
+        self._progress = AdapterProgress(progress_sink)
         self._open_dataset: DatasetSource | None = None
+        self._chm_cache: dict[tuple[object, ...], tuple[object, object]] = {}
+
+    def bind_processing_runtime(self, runtime_token: object, products: tuple[str, ...] = ()) -> None:
+        """Bind the immutable Prerun runtime identity to subsequent PBM jobs."""
+        self._runtime_token = runtime_token
+        self._runtime_products = tuple(products)
 
     def check_environment(self) -> EnvironmentReport:
         """Return the existing structured dependency environment report."""
@@ -235,7 +302,8 @@ class PyForestScanAdapter:
             if source.format is DatasetFormat.EPT:
                 inspection = self._inspect_ept(source, opts)
             else:
-                inspection = self._inspect_with_pdal(source, opts)
+                pbm_inspection = self._run_pbm_inspection_if_selected(source, opts)
+                inspection = pbm_inspection if pbm_inspection is not None else self._inspect_with_pdal(source, opts)
         except AdapterError:
             self._progress.fail("Dataset inspection failed")
             raise
@@ -256,42 +324,89 @@ class PyForestScanAdapter:
             raise ProcessingError("CHM X resolution must be greater than zero.")
         if request.y_resolution is not None and request.y_resolution <= 0:
             raise ProcessingError("CHM Y resolution must be greater than zero.")
-        if not request.crs:
-            raise ProcessingError("CHM generation requires a dataset CRS.")
+        resolution = _resolve_product_spatial_reference(request, source_local_allowed=True)
+        if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
+            request = replace(request, crs=None)
+        elif resolution.resolved_crs and not request.crs:
+            request = replace(request, crs=resolution.resolved_crs)
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.CHM, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for CHM")
         self._log(LogLevel.INFO, "Starting CHM generation", input=str(request.input_path), output=str(output_path))
+        science_timing={"schema":"pyforestscan-chm-stage-timing-v1","work_unit_id":str(getattr(request,"work_unit_id","")),"process_id":__import__("os").getpid()}
+        total_started=time.perf_counter()
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, hag=True)
+            planned_method = getattr(request, "hag_method", "classified_ground_delaunay")
+            if planned_method not in {"existing_normalized_height", "classified_ground_delaunay"}:
+                raise ProcessingError(f"Unsupported planned HAG method for CHM: {planned_method}")
+            read_started=time.perf_counter()
+            if _requires_local_bounded_read(request):
+                point_cloud = _read_bounded_local_lidar(request)
+            elif resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
+                point_cloud = _read_source_local_lidar(request)
+            else:
+                point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **_read_lidar_spatial_kwargs(request, hag=planned_method != "existing_normalized_height"))
+            science_timing["ept_read_and_point_decode_seconds"]=time.perf_counter()-read_started
             if point_cloud is None:
                 raise ProcessingError("PyForestScan returned no point data for CHM generation.")
             self._progress.update(35, "Point cloud loaded")
-            point_array = _merge_point_cloud_arrays(point_cloud)
-            names = getattr(point_array.dtype, "names", ()) or ()
+            merge_started=time.perf_counter();point_array = _merge_point_cloud_arrays(point_cloud)
+            science_timing["array_merge_seconds"]=time.perf_counter()-merge_started
+            science_timing["point_count"]=int(getattr(point_array,"shape",(0,))[0])
+            point_array, capabilities = _canonicalize_hag_dimension(point_array)
+            names = capabilities.names
+            inspected = PointDimensionCapabilities.from_names(getattr(request, "source_dimensions", ()))
+            if planned_method == "existing_normalized_height" and inspected.has_existing_hag and not capabilities.has_existing_hag:
+                raise SourceDimensionMismatch(getattr(request, "hag_source_dimension", "HeightAboveGround"), names)
+            hag_started=time.perf_counter();point_array, preparation_plan = _ensure_hag_for_product(point_array, request, resolution, "chm", handlers=handlers)
+            capabilities = PointDimensionCapabilities.from_names(point_array.dtype.names)
+            names = capabilities.names
+            planned_method = "existing_normalized_height"
+            request = replace(request, hag_method=planned_method, hag_source_dimension="HeightAboveGround")
+            _write_source_local_adapter_trace(request, "pdal_read", {"dimensions": list(names), "has_existing_hag": capabilities.has_existing_hag})
+            if planned_method == "existing_normalized_height":
+                from .chm_work_unit_execution import validate_existing_hag_array
+                validate_existing_hag_array(point_array, request)
+            science_timing["hag_contract_seconds"]=time.perf_counter()-hag_started
             required = {"X", "Y", "HeightAboveGround"}
             missing = sorted(required.difference(names))
             if missing:
-                raise ProcessingError(f"CHM input is missing required dimensions: {', '.join(missing)}")
-            chm, extent = pyforestscan.calculate_chm(
+                suffix = " for the planned existing-HAG method" if planned_method == "existing_normalized_height" else ""
+                raise ProcessingError(f"CHM input is missing required dimensions{suffix}: {', '.join(missing)}")
+            calculation_started=time.perf_counter();chm, extent = pyforestscan.calculate_chm(
                 point_array,
                 _xy_resolution(request.grid_resolution, request.y_resolution),
                 interpolation=request.interpolation,
                 interp_valid_region=request.interp_valid_region,
                 interp_clean_edges=request.interp_clean_edges,
             )
+            science_timing["pyforestscan_chm_seconds"]=time.perf_counter()-calculation_started
             self._progress.update(70, "CHM array calculated")
-            handlers.create_geotiff(chm, str(output_path), request.crs, extent)
+            self._chm_cache[_chm_cache_key(request)] = (chm, extent)
+            write_started=time.perf_counter()
+            if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
+                _write_source_local_geotiff(chm, output_path, extent, product="Canopy Height Model")
+                _write_source_local_adapter_trace(request, "chm_writer", {"source_local": True, "crs": None, "hag_mode": "EXISTING_HAG"})
+            else:
+                handlers.create_geotiff(chm, str(output_path), request.crs, extent)
+                _write_crs_provenance(output_path, resolution, request)
+            science_timing["buffered_raster_write_seconds"]=time.perf_counter()-write_started
+            _write_preparation_output_tags(output_path, preparation_plan)
             _validate_created_output(output_path)
+            science_timing["total_seconds"]=time.perf_counter()-total_started
+            _write_chm_stage_timing(request,science_timing)
             self._progress.complete("CHM GeoTIFF created")
             self._log(LogLevel.INFO, "CHM generation complete", output=str(output_path))
             return ChmResult(
                 output_path=output_path,
                 spatial_extent=tuple(float(value) for value in extent),
                 grid_resolution=request.grid_resolution,
-                crs=request.crs,
+                crs=request.crs or "",
             )
         except ProcessingError:
             self._progress.fail("CHM generation failed")
@@ -314,11 +429,14 @@ class PyForestScanAdapter:
             raise ProcessingError("PAD generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.PAD, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for PAD")
         self._log(LogLevel.INFO, "Starting PAD generation", input=str(request.input_path), output=str(output_path))
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
-            point_array = self._read_hag_point_array(request.input_path, request.crs, "PAD")
+            point_array = self._read_hag_point_array(request, "PAD")
             voxel_returns, extent = pyforestscan.assign_voxels(
                 point_array,
                 (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height),
@@ -331,7 +449,7 @@ class PyForestScanAdapter:
                 drop_ground=request.drop_ground,
             )
             self._progress.update(75, "PAD array calculated")
-            _write_multiband_geotiff(pad, output_path, request.crs, extent)
+            _write_multiband_geotiff(pad, output_path, request.crs, extent, voxel_height=request.voxel_height, beer_lambert_constant=request.beer_lambert_constant, drop_ground=request.drop_ground)
             _validate_created_output(output_path)
             self._progress.complete("PAD GeoTIFF created")
             self._log(LogLevel.INFO, "PAD generation complete", output=str(output_path), bands=pad.shape[2])
@@ -350,6 +468,58 @@ class PyForestScanAdapter:
             self._progress.fail("PAD generation failed")
             raise ProcessingError(f"PAD generation failed: {exc}") from exc
 
+    def create_pad_derivative(self, request: PadDerivativeRequest) -> PadDerivativeResult:
+        """Create a single-band visualization from an authoritative PAD volume."""
+        derivative_type = str(request.derivative_type).strip().lower()
+        if derivative_type not in {"slice", "maximum", "mean", "integrated"}:
+            raise ProcessingError(f"Unsupported PAD derivative type: {request.derivative_type}")
+        if request.voxel_height <= 0:
+            raise ProcessingError("PAD derivative voxel height must be greater than zero.")
+        input_path = Path(request.input_path)
+        if not input_path.is_file():
+            raise ProcessingError(f"PAD derivative input does not exist: {input_path}")
+        output_path = Path(request.output_path)
+        _validate_output_path(output_path)
+        pbm_result = self._run_pbm_auxiliary_if_selected("pad_derivative", request)
+        if pbm_result is not None:
+            metrics = getattr(pbm_result, "product_metrics", {}) or {}
+            outputs = getattr(pbm_result, "outputs", {}) or {}
+            return PadDerivativeResult(
+                output_path=Path(outputs.get("primary") or metrics.get("output_path") or output_path),
+                derivative_type=str(metrics.get("derivative_type") or derivative_type),
+                band_count=int(metrics.get("band_count", 1)),
+            )
+        try:
+            rasterio = _import_required("rasterio", ProcessingError)
+            spec = PadDerivativeSpec(
+                derivative_type=derivative_type,
+                output_path=output_path,
+                voxel_height=request.voxel_height,
+                min_height=request.min_height,
+                max_height=request.max_height,
+                slice_height=request.slice_height,
+                band_index=request.band_index,
+            )
+            with rasterio.open(input_path) as src:
+                volume = src.read().transpose(2, 1, 0)
+                profile = src.profile.copy()
+            derivative = calculate_pad_derivative(volume, spec)
+            profile.update(count=1, dtype=derivative.dtype.name)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with rasterio.open(output_path, "w", **profile) as dst:
+                dst.write(derivative.T, 1)
+                dst.update_tags(
+                    pyforestscan_product="PAD derivative visualization",
+                    derivative_type=derivative_type,
+                    source_pad=str(input_path),
+                )
+            _validate_created_output(output_path)
+            return PadDerivativeResult(output_path=output_path, derivative_type=derivative_type)
+        except ProcessingError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            raise ProcessingError(f"PAD derivative generation failed: {exc}") from exc
+
     def create_pai(self, request: PaiRequest) -> PaiResult:
         """Generate a PAI GeoTIFF through PyForestScan."""
         if request.grid_resolution <= 0:
@@ -366,12 +536,15 @@ class PyForestScanAdapter:
             raise ProcessingError("PAI generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.PAI, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for PAI")
         self._log(LogLevel.INFO, "Starting PAI generation", input=str(request.input_path), output=str(output_path))
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_array = self._read_hag_point_array(request.input_path, request.crs, "PAI")
+            point_array = self._read_hag_point_array(request, "PAI")
             voxel_returns, extent = pyforestscan.assign_voxels(
                 point_array,
                 (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height),
@@ -425,12 +598,15 @@ class PyForestScanAdapter:
             raise ProcessingError("FHD generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.FHD, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for FHD")
         self._log(LogLevel.INFO, "Starting FHD generation", input=str(request.input_path), output=str(output_path))
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_array = self._read_hag_point_array(request.input_path, request.crs, "FHD")
+            point_array = self._read_hag_point_array(request, "FHD")
             voxel_returns, extent = pyforestscan.assign_voxels(
                 point_array,
                 (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height),
@@ -462,46 +638,80 @@ class PyForestScanAdapter:
             raise ProcessingError(f"FHD generation failed: {exc}") from exc
 
     def create_rumple(self, request: RumpleRequest) -> RumpleResult:
-        """Generate scalar rumple index and write a CSV summary."""
+        """Generate a patch-centered Rumple GeoTIFF plus scalar summary."""
         if request.grid_resolution <= 0:
             raise ProcessingError("Rumple X resolution must be greater than zero.")
         if request.y_resolution is not None and request.y_resolution <= 0:
             raise ProcessingError("Rumple Y resolution must be greater than zero.")
         if request.min_height is not None and request.min_height < 0:
             raise ProcessingError("Rumple minimum height must be zero or greater.")
-        if not request.crs:
-            raise ProcessingError("Rumple generation requires a dataset CRS.")
+        resolution = _resolve_product_spatial_reference(request, source_local_allowed=True)
+        if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
+            request = replace(request, crs=None)
+        elif resolution.resolved_crs and not request.crs:
+            request = replace(request, crs=resolution.resolved_crs)
         output_path = Path(request.output_path)
-        _validate_csv_output_path(output_path)
+        if output_path.suffix.lower() not in {".tif", ".tiff", ".csv"}:
+            raise ProcessingError("Rumple output must be a GeoTIFF, or CSV for legacy scalar compatibility.")
+        pbm_result = self._run_pbm_product_if_selected(ProductType.RUMPLE, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for rumple")
         self._log(LogLevel.INFO, "Starting rumple generation", input=str(request.input_path), output=str(output_path))
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
-            point_array = self._read_hag_point_array(request.input_path, request.crs, "rumple")
-            chm, extent = pyforestscan.calculate_chm(
-                point_array,
-                _xy_resolution(request.grid_resolution, request.y_resolution),
-                interpolation=request.interpolation,
-                interp_valid_region=request.interp_valid_region,
-                interp_clean_edges=request.interp_clean_edges,
-            )
-            self._progress.update(65, "Internal CHM prerequisite calculated")
+            cache_key = _chm_cache_key(request)
+            if cache_key in self._chm_cache:
+                chm, extent = self._chm_cache[cache_key]
+                chm_source = "reused compatible CHM from current adapter session"
+                self._progress.update(55, "Compatible CHM reused")
+            else:
+                point_array = self._read_hag_point_array(request, "rumple")
+                chm, extent = pyforestscan.calculate_chm(
+                    point_array,
+                    _xy_resolution(request.grid_resolution, request.y_resolution),
+                    interpolation=request.interpolation,
+                    interp_valid_region=request.interp_valid_region,
+                    interp_clean_edges=request.interp_clean_edges,
+                )
+                self._chm_cache[cache_key] = (chm, extent)
+                chm_source = "internally generated for Rumple"
+                self._progress.update(65, "Internal CHM prerequisite calculated")
             rumple_index = float(pyforestscan.calculate_rumple(
                 chm,
                 _xy_resolution(request.grid_resolution, request.y_resolution),
                 min_height=request.min_height,
             ))
-            self._progress.update(85, "Rumple index calculated")
-            _write_rumple_csv(output_path, rumple_index, request, extent)
+            from .localized_rumple import calculate_local_rumple_surface, rumple_patch_extent
+            surface = calculate_local_rumple_surface(chm, _xy_resolution(request.grid_resolution, request.y_resolution), request.min_height)
+            if not surface.valid_patch_count:
+                raise ProcessingError("Rumple cannot be calculated because no valid 2x2 CHM surface patches remain.")
+            difference = abs(rumple_index - surface.aggregate_rumple)
+            tolerance = 1e-10 * max(1.0, abs(rumple_index))
+            if output_path.suffix.lower() != ".csv" and difference > tolerance:
+                raise ProcessingError(f"Rumple scalar compatibility check failed ({difference:.3g} > {tolerance:.3g}).")
+            self._progress.update(85, "Spatial Rumple surface calculated")
+            if output_path.suffix.lower() == ".csv":
+                summary_path = output_path
+            else:
+                _write_rumple_geotiff(output_path, surface.values, request.crs, rumple_patch_extent(extent, surface.cell_resolution), request, surface, rumple_index)
+                _write_crs_provenance(output_path, resolution, request)
+                if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
+                    _write_source_local_adapter_trace(request, "rumple_writer", {"source_local": True, "crs": None, "supporting_chm": chm_source})
+                summary_path = output_path.with_name(f"{output_path.stem}_summary.csv")
+            _write_rumple_csv(summary_path, rumple_index, request, extent, chm_source=chm_source, spatial_aggregate=surface.aggregate_rumple, valid_patch_count=surface.valid_patch_count)
             _validate_created_output(output_path)
-            self._progress.complete("Rumple summary created")
-            self._log(LogLevel.INFO, "Rumple generation complete", output=str(output_path), rumple_index=rumple_index)
+            self._progress.complete("Rumple raster created" if output_path.suffix.lower() != ".csv" else "Rumple summary created")
+            self._log(LogLevel.INFO, "Rumple generation complete", output=str(output_path), rumple_index=rumple_index, valid_patch_count=surface.valid_patch_count)
             return RumpleResult(
                 output_path=output_path,
                 rumple_index=rumple_index,
                 spatial_extent=tuple(float(value) for value in extent),
                 grid_resolution=request.grid_resolution,
-                crs=request.crs,
+                crs=request.crs or "",
+                summary_path=summary_path,
+                valid_patch_count=surface.valid_patch_count,
+                spatial_aggregate=surface.aggregate_rumple,
             )
         except ProcessingError:
             self._progress.fail("Rumple generation failed")
@@ -534,12 +744,15 @@ class PyForestScanAdapter:
             raise ProcessingError("Canopy cover generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.CANOPY_COVER, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for canopy cover")
         self._log(LogLevel.INFO, "Starting canopy cover generation", input=str(request.input_path), output=str(output_path))
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_array = self._read_hag_point_array(request.input_path, request.crs, "canopy cover")
+            point_array = self._read_hag_point_array(request, "canopy cover")
             voxel_returns, extent = pyforestscan.assign_voxels(
                 point_array,
                 (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height),
@@ -592,12 +805,15 @@ class PyForestScanAdapter:
             raise ProcessingError("Point Density generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.POINT_DENSITY, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for point density")
         self._log(LogLevel.INFO, "Starting point density generation", input=str(request.input_path), output=str(output_path))
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_array = self._read_hag_point_array(request.input_path, request.crs, "point density")
+            point_array = self._read_point_density_array(request)
             x_resolution, y_resolution = _xy_resolution(request.grid_resolution, request.y_resolution)
             voxel_returns, extent = pyforestscan.assign_voxels(point_array, (x_resolution, y_resolution, request.voxel_height))
             self._progress.update(55, "Voxel returns calculated")
@@ -645,16 +861,36 @@ class PyForestScanAdapter:
             raise ProcessingError("Voxel Statistic generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.VOXEL_STAT, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for voxel statistic")
         self._log(LogLevel.INFO, "Starting voxel statistic generation", input=str(request.input_path), output=str(output_path))
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_array = self._read_hag_point_array(request.input_path, request.crs, "voxel statistic")
+            write_stage_record(request.diagnostics_path, stage="REQUEST", payload={
+                "product": "voxel_stat",
+                "work_unit_id": request.work_unit_id,
+                "bounds": request.bounds,
+                "processing_crs": request.crs,
+                "source_coverage_expectation": request.source_coverage_expectation,
+                "selected_dimension": request.dimension,
+            })
+            write_stage_record(request.diagnostics_path, stage="EPT_READ_STARTED", payload={"bounds": request.bounds, "crs": request.crs})
+            point_array = self._read_hag_point_array(request, "voxel statistic")
+            source_summary = point_array_summary(point_array)
+            write_stage_record(request.diagnostics_path, stage="AFTER_HEIGHT_PREPARATION", payload=source_summary)
+            if not source_summary.get("point_count"):
+                raise ScientificConditionError(EMPTY_EPT_READ, "EPT source returned zero points for Voxel Statistic.", stage="EPT_READ", diagnostics=source_summary)
             names = getattr(point_array.dtype, "names", ()) or ()
             if request.dimension not in names:
-                raise ProcessingError(f"Voxel Statistic input is missing requested dimension: {request.dimension}")
+                payload = {"dimensions": list(names), "selected_dimension": request.dimension}
+                write_stage_record(request.diagnostics_path, stage="VOXEL_STAT_FAILED", payload=payload)
+                raise ScientificConditionError(MISSING_REQUIRED_DIMENSION, f"Voxel Statistic input is missing requested dimension: {request.dimension}", stage="VOXEL_STAT", diagnostics=payload)
             voxel_resolution = (*_xy_resolution(request.grid_resolution, request.y_resolution), request.voxel_height)
+            write_stage_record(request.diagnostics_path, stage="VOXEL_STAT_INPUT_VALIDATED", payload={"point_count": source_summary.get("point_count"), "dimensions": list(names), "selected_dimension": request.dimension, "voxel_resolution": voxel_resolution})
+            write_stage_record(request.diagnostics_path, stage="VOXEL_STAT_STARTED", payload={"point_count": source_summary.get("point_count"), "dimensions": list(names), "selected_dimension": request.dimension, "selected_range": source_summary.get(f"{request.dimension}_range")})
             voxel_stat, extent = pyforestscan.calculate_voxel_stat(
                 point_array,
                 voxel_resolution,
@@ -697,22 +933,31 @@ class PyForestScanAdapter:
             raise ProcessingError("DTM-backed HAG requires a DTM raster path.")
         if request.output_path is not None:
             _validate_las_output_path(Path(request.output_path))
+        pbm_result = self._run_pbm_auxiliary_if_selected("normalize_hag", request)
+        if pbm_result is not None:
+            metrics = getattr(pbm_result, "product_metrics", {}) or {}
+            outputs = getattr(pbm_result, "outputs", {}) or {}
+            raw_output = metrics.get("output_path") or outputs.get("primary") or request.output_path
+            return HagNormalizationResult(
+                output_path=Path(raw_output) if raw_output else None,
+                point_count=int(metrics["point_count"]) if metrics.get("point_count") is not None else None,
+                crs=str(metrics.get("crs") or request.crs),
+                written=bool(metrics.get("written", raw_output is not None)),
+                limitation=metrics.get("limitation"),
+            )
+            write_stage_record(request.diagnostics_path, stage="VOXEL_STAT_COMPLETED", payload={"point_count": source_summary.get("point_count"), "extent": extent})
         self._progress.start("Reading lidar with HeightAboveGround")
         self._log(LogLevel.INFO, "Starting HAG normalization", input=str(request.input_path))
         try:
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
-            point_cloud = handlers.read_lidar(
-                str(request.input_path),
-                request.crs,
-                bounds=request.bounds,
+            read_kwargs = _read_lidar_spatial_kwargs(request, hag=not request.use_dtm)
+            read_kwargs.update(
                 thin_radius=request.thin_radius,
-                hag=not request.use_dtm,
                 hag_dtm=request.use_dtm,
                 dtm=str(request.dtm_path) if request.dtm_path is not None else None,
-                crop_poly=bool(request.crop_polygon),
-                poly=request.crop_polygon,
                 reproject=request.reproject,
             )
+            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **read_kwargs)
             if point_cloud is None:
                 raise ProcessingError("PyForestScan returned no point data for HAG normalization.")
             point_count = _point_count_from_point_cloud(point_cloud)
@@ -734,6 +979,9 @@ class PyForestScanAdapter:
         except ProcessingError:
             self._progress.fail("HAG normalization failed")
             raise
+        except ScientificConditionError:
+            self._progress.fail("Voxel Statistic scientific condition")
+            raise
         except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
             self._progress.fail("HAG normalization failed")
             raise ProcessingError(f"HAG normalization failed: {exc}") from exc
@@ -747,21 +995,45 @@ class PyForestScanAdapter:
             raise ProcessingError("DTM generation requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_output_path(output_path)
+        pbm_result = self._run_pbm_product_if_selected(ProductType.DTM, request)
+        if pbm_result is not None:
+            return pbm_result
         self._progress.start("Reading lidar for DTM")
         self._log(LogLevel.INFO, "Starting DTM generation", input=str(request.input_path), output=str(output_path))
         try:
             pyforestscan = _import_required("pyforestscan", ProcessingError)
             handlers = _import_required("pyforestscan.handlers", ProcessingError)
             filters = _import_required("pyforestscan.filters", ProcessingError)
-            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, hag=False)
+            if _requires_local_bounded_read(request):
+                point_cloud = _read_bounded_local_lidar(request)
+            else:
+                point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **_read_lidar_spatial_kwargs(request, hag=False))
             if point_cloud is None:
                 raise ProcessingError("PyForestScan returned no point data for DTM generation.")
             self._progress.update(30, "Point cloud loaded")
             arrays = filters.classify_ground_points(point_cloud) if request.classify_ground else point_cloud
             ground_arrays = filters.filter_select_ground(arrays)
-            ground_points = _merge_point_cloud_arrays(ground_arrays)
+            try:
+                ground_points = _point_cloud_array_sequence(ground_arrays, operation="DTM generation")
+            except ProcessingError:
+                # Some PyForestScan/PDAL combinations return a flattened
+                # scalar array from filter_select_ground.  Recover from the
+                # original structured arrays using the documented class-2
+                # contract instead of passing numeric scalars into
+                # pyforestscan.calculate.generate_dtm.
+                ground_points = _select_ground_structured_arrays(arrays, operation="DTM generation")
+            _validate_dtm_ground_contract(ground_points, request)
+            _write_dtm_input_diagnostic(request, ground_points)
             self._progress.update(60, "Ground points selected")
-            dtm, extent = pyforestscan.generate_dtm(ground_points, resolution=request.resolution)
+            try:
+                dtm, extent = pyforestscan.generate_dtm(ground_points, resolution=request.resolution)
+            except IndexError as exc:
+                if "invalid index to scalar variable" not in str(exc).lower():
+                    raise
+                _write_dtm_failure_diagnostic(request, exc, ground_arrays=ground_arrays, ground_points=ground_points)
+                ground_points = _select_ground_structured_arrays(arrays, operation="DTM generation")
+                dtm, extent = pyforestscan.generate_dtm(ground_points, resolution=request.resolution)
+            extent = _aligned_dtm_extent(dtm, extent, request.resolution)
             self._progress.update(80, "DTM array calculated")
             handlers.create_geotiff(dtm, str(output_path), request.crs, extent, nodata=request.nodata)
             _validate_created_output(output_path)
@@ -771,6 +1043,7 @@ class PyForestScanAdapter:
             self._progress.fail("DTM generation failed")
             raise
         except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            _write_dtm_failure_diagnostic(request, exc, ground_arrays=locals().get("ground_arrays"), ground_points=locals().get("ground_points"))
             self._progress.fail("DTM generation failed")
             raise ProcessingError(f"DTM generation failed: {exc}") from exc
 
@@ -780,6 +1053,17 @@ class PyForestScanAdapter:
             raise ProcessingError("Point-cloud preprocessing requires a dataset CRS.")
         output_path = Path(request.output_path)
         _validate_las_output_path(output_path)
+        pbm_result = self._run_pbm_auxiliary_if_selected("point_cloud_preprocess", request)
+        if pbm_result is not None:
+            metrics = getattr(pbm_result, "product_metrics", {}) or {}
+            outputs = getattr(pbm_result, "outputs", {}) or {}
+            result_path = Path(metrics.get("output_path") or outputs.get("primary") or output_path)
+            return PointCloudPreprocessResult(
+                output_path=result_path,
+                point_count=int(metrics["point_count"]) if metrics.get("point_count") is not None else None,
+                crs=str(metrics.get("crs") or request.crs),
+                operations=tuple(str(item) for item in metrics.get("operations", ())),
+            )
         operations: list[str] = []
         self._progress.start("Reading lidar for preprocessing")
         try:
@@ -852,20 +1136,282 @@ class PyForestScanAdapter:
             self._progress.fail("Point-cloud preprocessing failed")
             raise ProcessingError(f"Point-cloud preprocessing failed: {exc}") from exc
 
-    def _read_hag_point_array(self, input_path: Path | str, crs: str, product_label: str) -> object:
+
+    def extract_lidar_subset(self, request: EptSubsetRequest) -> EptSubsetResult:
+        """Extract an EPT subset and write it as LAS/LAZ through the active backend."""
+        output_path = Path(request.output_path)
+        _validate_las_output_path(output_path)
+        pbm_result = self._run_pbm_ept_subset_if_selected(request)
+        if pbm_result is not None:
+            return pbm_result
+        self._progress.start("Reading EPT subset")
+        self._log(LogLevel.INFO, "Starting EPT subset extraction", input=str(request.input_path), output=str(output_path))
+        try:
+            handlers = _import_required("pyforestscan.handlers", ProcessingError)
+            kwargs = {key: value for key, value in ept_read_lidar_kwargs(request).items() if value is not None}
+            point_cloud = handlers.read_lidar(str(request.input_path), request.crs, **kwargs)
+            if point_cloud is None:
+                raise ProcessingError("PyForestScan returned no point data for EPT subset extraction.")
+            self._progress.update(70, "EPT subset read")
+            handlers.write_las(point_cloud, str(output_path), srs=request.crs, compress=request.compress)
+            _validate_created_point_cloud_output(output_path)
+            point_count = _point_count_from_point_cloud(point_cloud)
+            message = f"EPT subset written to {output_path}"
+            self._progress.complete("EPT subset written")
+            self._log(LogLevel.INFO, "EPT subset extraction complete", output=str(output_path))
+            return EptSubsetResult(output_path=output_path, point_count=point_count, written=True, message=message)
+        except ProcessingError:
+            self._progress.fail("EPT subset extraction failed")
+            raise
+        except Exception as exc:  # noqa: BLE001 - convert dependency errors at boundary.
+            self._progress.fail("EPT subset extraction failed")
+            raise ProcessingError(f"EPT subset extraction failed: {exc}") from exc
+
+    def _run_pbm_ept_subset_if_selected(self, request: EptSubsetRequest) -> EptSubsetResult | None:
+        if self.execution_mode == EXECUTION_MODE_QGIS_PYTHON:
+            return None
+        service = self._backend_service()
+        try:
+            availability = service.can_execute_processing()
+        except Exception as exc:  # noqa: BLE001 - fall back in auto, fail in forced PBM.
+            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
+                raise ProcessingError(f"PBM backend is not available for EPT subset extraction: {exc}") from exc
+            if qgis_runtime_active():
+                raise ProcessingError(f"EPT subset extraction could not resolve the managed Processing Engine: {exc}") from exc
+            return None
+        if not availability.ready:
+            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
+                raise ProcessingError(availability.message)
+            if qgis_runtime_active():
+                raise ProcessingError(f"EPT subset extraction is unavailable: {availability.message}")
+            return None
+        self._progress.start("Running EPT subset extraction through PyForestScan Backend Manager")
+        self._log(LogLevel.INFO, "Running EPT subset through PBM backend", backend_python=str(availability.backend_python))
+        try:
+            backend_result = service.run_product("ept_subset_extract", request)
+        except Exception as exc:  # noqa: BLE001 - convert backend subprocess errors at adapter boundary.
+            self._progress.fail("PBM backend EPT subset extraction failed")
+            raise ProcessingError(f"PBM backend EPT subset extraction failed: {exc}") from exc
+        metrics = getattr(backend_result, "product_metrics", {}) or {}
+        outputs = getattr(backend_result, "outputs", {}) or {}
+        output_path = Path(metrics.get("output_path") or outputs.get("primary") or request.output_path)
+        point_count = metrics.get("point_count")
+        self._progress.complete("PBM backend EPT subset extraction complete")
+        return EptSubsetResult(
+            output_path=output_path,
+            point_count=int(point_count) if point_count is not None else None,
+            written=bool(metrics.get("written", True)),
+            message=str(metrics.get("message") or f"EPT subset written to {output_path}"),
+        )
+
+    def _run_pbm_auxiliary_if_selected(self, product: str, request: object) -> object | None:
+        """Dispatch non-raster Toolbox operations to managed Python."""
+        if self.execution_mode == EXECUTION_MODE_QGIS_PYTHON:
+            return None
+        service = self._backend_service()
+        try:
+            availability = service.can_execute_processing()
+        except Exception as exc:  # noqa: BLE001
+            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND or qgis_runtime_active():
+                raise ProcessingError(f"Managed Processing Engine is unavailable for {product}: {exc}") from exc
+            return None
+        if not availability.ready:
+            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND or qgis_runtime_active():
+                raise ProcessingError(availability.message)
+            return None
+        try:
+            return service.run_product(product, request)
+        except Exception as exc:  # noqa: BLE001
+            raise ProcessingError(f"Managed Processing Engine {product} failed: {exc}") from exc
+
+    def selected_execution_backend(self) -> str:
+        """Return the currently selected processing backend label."""
+        if self._can_use_pbm_backend():
+            return EXECUTION_MODE_PBM_BACKEND
+        if qgis_runtime_active() and self.execution_mode != EXECUTION_MODE_QGIS_PYTHON:
+            return "processing_engine_unavailable"
+        return EXECUTION_MODE_QGIS_PYTHON
+
+    def _backend_service(self) -> object:
+        if self._backend_service_factory is not None:
+            return self._backend_service_factory()
+        from .backend import BackendService
+
+        return BackendService()
+
+    def _can_use_pbm_backend(self) -> bool:
+        if self.execution_mode == EXECUTION_MODE_QGIS_PYTHON:
+            return False
+        try:
+            service = self._backend_service()
+            availability = service.can_execute_processing()
+            return bool(availability.ready)
+        except Exception:
+            return False
+
+    def _run_pbm_product_if_selected(self, product: ProductType, request: object):
+        if product not in PBM_ROUTED_PRODUCTS or self.execution_mode == EXECUTION_MODE_QGIS_PYTHON:
+            return None
+        service = self._backend_service()
+        availability = None
+        if self._runtime_token is None:
+            try:
+                availability = service.can_execute_processing()
+            except Exception as exc:  # noqa: BLE001 - discovery is allowed before token freeze.
+                if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
+                    raise ProcessingError(f"PBM backend is not available for {product.value}: {exc}") from exc
+                return None
+            if not availability.ready:
+                if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
+                    raise ProcessingError(availability.message)
+                return None
+        self._progress.start(f"Running {product.value} through PyForestScan Backend Manager")
+        backend_python = getattr(self._runtime_token, "executable", None) or getattr(availability, "backend_python", "")
+        self._log(LogLevel.INFO, "Running product through PBM backend", product=product.value, backend_python=str(backend_python))
+        try:
+            if self._runtime_token is None:
+                backend_result = service.run_product(product.value, request)
+            else:
+                backend_result = service.run_product(
+                    product.value,
+                    request,
+                    runtime_token=self._runtime_token,
+                    runtime_products=self._runtime_products,
+                )
+        except Exception as exc:  # noqa: BLE001 - convert backend subprocess errors at adapter boundary.
+            self._progress.fail(f"PBM backend {product.value} failed")
+            raise ProcessingError(_backend_user_error(product, exc)) from exc
+        self._progress.complete(f"PBM backend {product.value} complete")
+        return _adapter_result_from_backend(product, request, backend_result)
+
+
+    def _run_pbm_inspection_if_selected(self, source: DatasetSource, options: InspectionOptions) -> DatasetInspection | None:
+        if self.execution_mode == EXECUTION_MODE_QGIS_PYTHON:
+            return None
+        service = self._backend_service()
+        try:
+            availability = service.can_execute_processing()
+        except Exception as exc:  # noqa: BLE001 - fall back in auto, fail in forced PBM.
+            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
+                raise DatasetError(f"PBM backend is not available for Dataset Explorer: {exc}") from exc
+            if qgis_runtime_active():
+                raise DatasetError(f"Dataset Explorer could not resolve the managed Processing Engine: {exc}") from exc
+            return None
+        if not availability.ready:
+            if self.execution_mode == EXECUTION_MODE_PBM_BACKEND:
+                raise DatasetError(availability.message)
+            if qgis_runtime_active():
+                raise DatasetError(f"Dataset Explorer is unavailable: {availability.message}")
+            return None
+        self._log(LogLevel.INFO, "Inspecting dataset through PBM backend", backend_python=str(availability.backend_python), path=str(source.path))
+        result = service.run_dataset_inspection(
+            Path(source.path),
+            source.crs or "",
+            {
+                "include_classification_summary": options.include_classification_summary,
+                "include_dimensions": options.include_dimensions,
+                "max_points_for_classification_summary": options.max_points_for_classification_summary,
+            },
+            self.config.working_directory or Path(source.path).parent,
+        )
+        return _dataset_inspection_from_backend_metrics(result.product_metrics)
+
+    def _read_hag_point_array(self, request_or_path: object, crs: str | None = None, product_label: str | None = None) -> object:
         """Read lidar with HeightAboveGround and return one structured point array."""
+        if product_label is None:
+            product_label = str(crs or "product")
+            crs = str(getattr(request_or_path, "crs", "") or "")
         handlers = _import_required("pyforestscan.handlers", ProcessingError)
-        point_cloud = handlers.read_lidar(str(input_path), crs, hag=True)
+        input_path = getattr(request_or_path, "input_path", request_or_path)
+        if _requires_local_bounded_read(request_or_path):
+            point_cloud = _read_bounded_local_lidar(request_or_path)
+        elif not crs:
+            point_cloud = _read_source_local_lidar(request_or_path)
+        else:
+            point_cloud = handlers.read_lidar(str(input_path), str(crs), **_read_lidar_spatial_kwargs(request_or_path, hag=True))
         if point_cloud is None:
-            raise ProcessingError(f"PyForestScan returned no point data for {product_label} generation.")
+            diagnostics_path = getattr(request_or_path, "diagnostics_path", None)
+            write_stage_record(diagnostics_path, stage="EPT_READ_COMPLETED", payload={"point_count": 0, "returned_array_count": 0, "dimensions": []})
+            code = EMPTY_EPT_READ if product_label == "voxel statistic" else "EMPTY_EPT_READ"
+            raise ScientificConditionError(code, f"PyForestScan returned no point data for {product_label} generation.", stage="EPT_READ", diagnostics={"point_count": 0})
         self._progress.update(25, "Point cloud loaded")
         point_array = _merge_point_cloud_arrays(point_cloud)
-        names = getattr(point_array.dtype, "names", ()) or ()
+        diagnostics_path = getattr(request_or_path, "diagnostics_path", None)
+        source_summary = point_array_summary(point_array)
+        write_stage_record(diagnostics_path, stage="EPT_READ_COMPLETED", payload=source_summary)
+        write_stage_record(diagnostics_path, stage="POLYGON_CLIP_STARTED", payload={"points_before": source_summary.get("point_count"), "polygon_crs": getattr(request_or_path, "crs", crs), "point_crs": getattr(request_or_path, "crs", crs)})
+        # Tiled production reads an exact bounded EPT window and applies the
+        # final polygon mask during raster finalization; no point coordinates
+        # are duplicated in diagnostics.
+        write_stage_record(diagnostics_path, stage="POLYGON_CLIP_COMPLETED", payload={"points_before": source_summary.get("point_count"), "points_after": source_summary.get("point_count"), "mode": "bounded_window_before_final_raster_mask"})
+        if not source_summary.get("point_count"):
+            raise ScientificConditionError(EMPTY_EPT_READ, f"PyForestScan returned zero points for {product_label} generation.", stage="EPT_READ", diagnostics=point_array_summary(point_array))
+        point_array, capabilities = _canonicalize_hag_dimension(point_array)
+        hag_summary = _validate_existing_hag(point_array)
+        write_stage_record(diagnostics_path, stage="HAG_RESOLUTION_STARTED", payload=hag_summary)
+        if hag_summary.get("present"):
+            write_stage_record(diagnostics_path, stage="HAG_EXISTING_FOUND", payload=hag_summary)
+            if not hag_summary.get("valid"):
+                raise ProcessingError("HAG_PREPARATION_UNAVAILABLE: HeightAboveGround is present but contains no finite values.")
+        resolution = _resolve_product_spatial_reference(request_or_path, source_local_allowed=True)
+        product_key = _product_key_from_label(product_label)
+        try:
+            point_array, preparation_plan = _ensure_hag_for_product(point_array, request_or_path, resolution, product_key, handlers=handlers)
+        except ScientificConditionError:
+            raise
+        except ProcessingError as exc:
+            summary = point_array_summary(point_array)
+            write_stage_record(diagnostics_path, stage="HEIGHT_PREPARATION_FAILED", payload={**summary, "message": str(exc)})
+            raise
+        write_stage_record(diagnostics_path, stage="HEIGHT_PREPARATION_COMPLETED", payload=point_array_summary(point_array))
+        capabilities = PointDimensionCapabilities.from_names(point_array.dtype.names)
+        names = capabilities.names
         required = {"X", "Y", "HeightAboveGround"}
         missing = sorted(required.difference(names))
         if missing:
-            raise ProcessingError(f"{product_label} input is missing required dimensions: {', '.join(missing)}")
+            expected = getattr(request_or_path, "hag_source_dimension", "HeightAboveGround")
+            raise SourceDimensionMismatch(expected, names)
+        _write_source_local_adapter_trace(request_or_path, "pdal_read", {"dimensions": list(names), "has_existing_hag": True})
         return point_array
+
+    def _read_point_density_array(self, request: PointDensityRequest) -> object:
+        """Read points for density without imposing a scientific HAG prerequisite.
+
+        PyForestScan's voxel assignment requires a non-negative
+        ``HeightAboveGround`` coordinate, but point density subsequently sums
+        every Z bin.  A source-Z offset therefore preserves the exact count in
+        every XY cell while avoiding an unrelated terrain-normalization step.
+        """
+        if _requires_local_bounded_read(request):
+            point_cloud = _read_bounded_local_lidar(request)
+        else:
+            handlers = _import_required("pyforestscan.handlers", ProcessingError)
+            point_cloud = handlers.read_lidar(
+                str(request.input_path),
+                request.crs,
+                **_read_lidar_spatial_kwargs(request, hag=False),
+            )
+        if point_cloud is None:
+            raise ProcessingError("PyForestScan returned no point data for Point Density generation.")
+        point_array = _merge_point_cloud_arrays(point_cloud)
+        point_array, capabilities = _canonicalize_hag_dimension(point_array)
+        if capabilities.has_existing_hag:
+            return point_array
+        names = capabilities.names
+        if "Z" not in names:
+            raise ProcessingError("Point Density input is missing the required Z dimension.")
+        numpy = _import_required("numpy", ProcessingError)
+        z = numpy.asarray(point_array["Z"], dtype=float)
+        finite = numpy.isfinite(z)
+        if not finite.any():
+            raise ProcessingError("Point Density input contains no finite elevation values.")
+        dtype = [(name, point_array.dtype.fields[name][0]) for name in names]
+        dtype.append(("HeightAboveGround", "f8"))
+        prepared = numpy.empty(point_array.shape, dtype=dtype)
+        for name in names:
+            prepared[name] = point_array[name]
+        prepared["HeightAboveGround"] = z - float(z[finite].min())
+        return prepared
 
     def clip_dataset(self, *args: object, **kwargs: object) -> None:
         """Placeholder for future adapter-managed clipping."""
@@ -890,12 +1436,19 @@ class PyForestScanAdapter:
     def cancel(self) -> None:
         """Request cancellation for future long-running adapter work."""
         self._progress.cancel()
-        self._log(LogLevel.WARNING, "Adapter cancellation requested")
+        from .backend.execution import cancel_active_processing_jobs
+
+        cancelled_processes = cancel_active_processing_jobs()
+        self._log(
+            LogLevel.WARNING, "Adapter cancellation requested",
+            active_processes=cancelled_processes,
+        )
 
     def close(self) -> None:
         """Clear adapter-held dataset references."""
         self._open_dataset = None
         self._progress = AdapterProgress()
+        self._chm_cache.clear()
         self._log(LogLevel.INFO, "Adapter closed")
 
     def _coerce_dataset(self, dataset: DatasetSource | str | Path | None) -> DatasetSource:
@@ -981,6 +1534,165 @@ class PyForestScanAdapter:
             self._log_sink(LogRecord(level=level, message=message, context=typed_context))
 
 
+
+def _read_lidar_spatial_kwargs(request: object, *, hag: bool) -> dict[str, object]:
+    """Return spatial read options carried across the PBM request boundary."""
+    kwargs: dict[str, object] = {"hag": hag}
+    bounds = getattr(request, "bounds", None)
+    crop_polygon = getattr(request, "crop_polygon", None)
+    crop_polygon_path = getattr(request, "crop_polygon_path", None)
+    polygon_input = polygon_execution_input_from_mapping(getattr(request, "polygon_execution_input", None))
+    if crop_polygon_path is None and polygon_input is not None:
+        output_path = Path(getattr(request, "output_path", Path.cwd()))
+        prepared = materialize_polygon_input(polygon_input, output_path.parent / ".polygon_inputs")
+        crop_polygon_path = prepared.temporary_vector_path
+    if bounds is not None:
+        kwargs["bounds"] = prepare_ept_bounds(bounds, crs=str(getattr(request, "crs", ""))).to_pyforestscan_value()
+        validate_pyforestscan_bounds_value(kwargs["bounds"])
+    if crop_polygon_path:
+        kwargs["crop_poly"] = True
+        kwargs["poly"] = str(crop_polygon_path)
+    elif crop_polygon and not looks_like_wkt(crop_polygon):
+        kwargs["crop_poly"] = True
+        kwargs["poly"] = str(crop_polygon)
+    return kwargs
+
+
+def _requires_local_bounded_read(request: object) -> bool:
+    """Return whether PyForestScan would ignore bounds for this local source."""
+    if getattr(request, "bounds", None) is None:
+        return False
+    source = str(getattr(request, "input_path", "")).lower()
+    return source.endswith((".las", ".laz", ".copc", ".copc.laz"))
+
+
+def _read_bounded_local_lidar(request: object) -> object:
+    """Read one local LAS/LAZ/COPC window with PDAL before PyForestScan science.
+
+    PyForestScan 0.1.x forwards ``bounds`` only to ``readers.ept``.  Using its
+    reader for a prepared local LAZ would therefore load the complete source for
+    every area.  This adapter-owned pipeline enforces the frozen work-unit bounds.
+    """
+    path = Path(getattr(request, "input_path"))
+    bounds = prepare_ept_bounds(getattr(request, "bounds"), crs=str(getattr(request, "crs", "")))
+    expression = bounds.to_pdal_range_string()
+    lowered = str(path).lower()
+    reader_type = "readers.copc" if lowered.endswith((".copc", ".copc.laz")) else "readers.las"
+    reader: dict[str, object] = {"type": reader_type, "filename": str(path)}
+    stages: list[dict[str, object]] = [reader]
+    if reader_type == "readers.copc":
+        reader["bounds"] = expression
+    else:
+        stages.append({"type": "filters.crop", "bounds": expression})
+    pdal = _import_required("pdal", ProcessingError)
+    pipeline = pdal.Pipeline(json.dumps({"pipeline": stages}))
+    count = pipeline.execute()
+    arrays = tuple(pipeline.arrays or ())
+    _write_source_local_adapter_trace(request, "bounded_pdal_read", {"reader": reader_type, "bounds": expression, "points_read": count, "source_size_bytes": path.stat().st_size if path.is_file() else None})
+    if not arrays:
+        raise ProcessingError("PDAL returned no points for the required bounded local read.")
+    return arrays
+
+
+def prepare_ept_bounds(bounds: object, *, crs: str, source: str = "polygon_envelope", transformed: bool = True) -> EptBounds:
+    """Normalize EPT bounds at the one authoritative adapter boundary."""
+    try:
+        return EptBounds.from_value(bounds, crs=crs, source=source, transformed=transformed)
+    except EptBoundsError as exc:
+        raise ProcessingError(f"Invalid EPT bounds for PyForestScan request: {exc}") from exc
+
+def _dataset_inspection_from_backend_metrics(metrics: dict[str, object]) -> DatasetInspection:
+    source_data = dict(metrics.get("source", {}) or {})
+    bounds_data = metrics.get("bounds")
+    if isinstance(bounds_data, dict):
+        bounds = Bounds3D(
+            min_x=float(bounds_data["min_x"]),
+            max_x=float(bounds_data["max_x"]),
+            min_y=float(bounds_data["min_y"]),
+            max_y=float(bounds_data["max_y"]),
+            min_z=float(bounds_data["min_z"]) if bounds_data.get("min_z") is not None else None,
+            max_z=float(bounds_data["max_z"]) if bounds_data.get("max_z") is not None else None,
+        )
+    else:
+        bounds = None
+    classification_summary = tuple(
+        ClassificationCount(int(item["classification"]), int(item["count"]))
+        for item in metrics.get("classification_summary", ()) or ()
+        if isinstance(item, dict)
+    )
+    products = tuple(ProductType(item) for item in metrics.get("supported_products", ()) or ())
+    return DatasetInspection(
+        source=DatasetSource(
+            path=Path(str(source_data.get("path", ""))),
+            format=DatasetFormat(str(source_data.get("format", DatasetFormat.LAS.value))),
+            crs=source_data.get("crs"),
+            is_remote=bool(source_data.get("is_remote", False)),
+        ),
+        point_count=int(metrics["point_count"]) if metrics.get("point_count") is not None else None,
+        bounds=bounds,
+        crs=metrics.get("crs"),
+        dimensions=tuple(str(item) for item in metrics.get("dimensions", ()) or ()),
+        classification_summary=classification_summary,
+        point_format=metrics.get("point_format"),
+        estimated_density=float(metrics["estimated_density"]) if metrics.get("estimated_density") is not None else None,
+        supported_products=products,
+        metadata_source=str(metrics.get("metadata_source", "pbm-backend")),
+        warnings=tuple(str(item) for item in metrics.get("warnings", ()) or ()),
+    )
+
+
+def _adapter_result_from_backend(product: ProductType, request: object, backend_result: object):
+    metrics = getattr(backend_result, "product_metrics", {}) or {}
+    outputs = getattr(backend_result, "outputs", {}) or {}
+    output_path = Path(metrics.get("output_path") or outputs.get("primary") or getattr(request, "output_path"))
+    extent = tuple(float(value) for value in metrics.get("spatial_extent", (0.0, 0.0, 0.0, 0.0)))
+    crs = str(metrics.get("crs") or getattr(request, "crs", ""))
+    if product is ProductType.CHM:
+        return ChmResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), crs)
+    if product is ProductType.PAD:
+        return PadResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), float(metrics.get("voxel_height", getattr(request, "voxel_height"))), int(metrics.get("band_count", 0)), crs)
+    if product is ProductType.PAI:
+        return PaiResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), float(metrics.get("voxel_height", getattr(request, "voxel_height"))), crs)
+    if product is ProductType.FHD:
+        return FhdResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), float(metrics.get("voxel_height", getattr(request, "voxel_height"))), crs)
+    if product is ProductType.RUMPLE:
+        summary=metrics.get("summary_path")
+        return RumpleResult(output_path,float(metrics.get("rumple_index",0.0)),extent,float(metrics.get("grid_resolution",getattr(request,"grid_resolution"))),crs,Path(summary) if summary else None,int(metrics.get("valid_patch_count",0)),metrics.get("spatial_aggregate"))
+    if product is ProductType.CANOPY_COVER:
+        return CanopyCoverResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), float(metrics.get("canopy_height_threshold", getattr(request, "canopy_height_threshold"))), crs)
+    if product is ProductType.POINT_DENSITY:
+        return PointDensityResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), float(metrics.get("voxel_height", getattr(request, "voxel_height"))), crs)
+    if product is ProductType.VOXEL_STAT:
+        return VoxelStatResult(output_path, extent, float(metrics.get("grid_resolution", getattr(request, "grid_resolution"))), float(metrics.get("voxel_height", getattr(request, "voxel_height"))), str(metrics.get("dimension", getattr(request, "dimension"))), str(metrics.get("stat", getattr(request, "stat"))), crs)
+    if product is ProductType.DTM:
+        return DtmResult(output_path, extent, float(metrics.get("resolution", getattr(request, "resolution"))), crs)
+    raise ProcessingError(f"Unsupported PBM backend result product: {product.value}")
+
+
+def _chm_cache_key(request: object) -> tuple[object, ...]:
+    path = Path(str(getattr(request, "input_path", "")))
+    try:
+        stat = path.stat()
+        fingerprint = (stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        fingerprint = (None, None)
+    crs = str(getattr(request, "crs", "") or "").strip()
+    return (
+        str(path),
+        fingerprint,
+        SpatialReferenceMode.RESOLVED.value if crs else SpatialReferenceMode.SOURCE_LOCAL.value,
+        crs or None,
+        str(getattr(request, "hag_method", "existing_normalized_height")),
+        str(getattr(request, "hag_source_dimension", "HeightAboveGround")),
+        str(getattr(request, "hag_method_signature", "")),
+        float(getattr(request, "grid_resolution", 0.0)),
+        float(getattr(request, "y_resolution", getattr(request, "grid_resolution", 0.0)) or getattr(request, "grid_resolution", 0.0)),
+        getattr(request, "interpolation", None),
+        bool(getattr(request, "interp_valid_region", False)),
+        bool(getattr(request, "interp_clean_edges", False)),
+    )
+
+
 def _xy_resolution(x_resolution: float, y_resolution: float | None) -> tuple[float, float]:
     """Return explicit X/Y resolution while preserving guided-mode defaults."""
     return (float(x_resolution), float(y_resolution if y_resolution is not None else x_resolution))
@@ -1017,15 +1729,22 @@ def _validate_las_output_path(output_path: Path) -> None:
             pass
 
 
-def _write_rumple_csv(output_path: Path, rumple_index: float, request: RumpleRequest, spatial_extent: object) -> None:
+def _write_rumple_csv(output_path: Path, rumple_index: float, request: RumpleRequest, spatial_extent: object, *, chm_source: str = "internally generated for Rumple", spatial_aggregate=None, valid_patch_count=0) -> None:
     """Write a scalar rumple result as a small CSV table."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     x_min, x_max, y_min, y_max = spatial_extent
     rows = [
         ("metric", "value"),
         ("rumple_index", f"{rumple_index:.12g}"),
+        ("spatial_raster_aggregate", "" if spatial_aggregate is None else f"{spatial_aggregate:.12g}"),
+        ("absolute_difference", "" if spatial_aggregate is None else f"{abs(rumple_index-spatial_aggregate):.12g}"),
+        ("valid_patch_count", str(valid_patch_count)),
         ("grid_resolution", f"{request.grid_resolution:.12g}"),
         ("min_height", "" if request.min_height is None else f"{request.min_height:.12g}"),
+        ("native_pyforestscan_output", "scalar"),
+        ("chm_source", chm_source),
+        ("supporting_chm_saved", "false"),
+        ("interpretation_note", "Upstream PyForestScan returns this area scalar; the primary QGIS raster stores the same ratio for each valid 2x2 CHM patch."),
         ("crs", request.crs),
         ("extent_x_min", f"{float(x_min):.12g}"),
         ("extent_x_max", f"{float(x_max):.12g}"),
@@ -1034,8 +1753,238 @@ def _write_rumple_csv(output_path: Path, rumple_index: float, request: RumpleReq
     ]
     output_path.write_text("\n".join(f"{name},{value}" for name, value in rows) + "\n", encoding="utf-8")
 
+def _write_rumple_geotiff(output_path, values, crs, extent, request, surface, upstream_scalar, nodata=-9999.0):
+    rasterio=_import_required("rasterio",ProcessingError);numpy=_import_required("numpy",ProcessingError)
+    from rasterio.transform import from_bounds
+    if values.ndim != 2 or not values.size: raise ProcessingError("Rumple raster has invalid dimensions.")
+    xmin,xmax,ymin,ymax=extent;output_path.parent.mkdir(parents=True,exist_ok=True);temporary=output_path.with_suffix(".partial.tif");raster_values=values.T
+    profile={"driver":"GTiff","height":raster_values.shape[0],"width":raster_values.shape[1],"count":1,"dtype":"float32","crs":crs or None,"transform":from_bounds(xmin,ymin,xmax,ymax,raster_values.shape[1],raster_values.shape[0]),"nodata":nodata,"compress":"deflate","tiled":raster_values.shape[0]>=16 and raster_values.shape[1]>=16}
+    with rasterio.open(temporary,"w",**profile) as dst:
+        dst.write(numpy.where(numpy.isfinite(raster_values),raster_values,nodata).astype("float32"),1);dst.set_band_description(1,"Rumple Index")
+        spatial_tags = _source_local_raster_tags() if not crs else {"PYFORESTSCAN_SPATIAL_REFERENCE_MODE": "RESOLVED", "SOURCE_CRS_RESOLVED": "true", "SOURCE_COORDINATE_UNITS": "crs_defined", "CRS_ASSIGNMENT_REQUIRED_FOR_SPATIAL_ALIGNMENT": "false"}
+        dst.update_tags(PRODUCT="Rumple Index",UNITS="dimensionless",METHOD="pyforestscan_qgis_patch_surface_v1",CHM_RESOLUTION=str(surface.cell_resolution),RUMPLE_ANALYSIS_SCALE="2x2 CHM patch",MIN_HEIGHT="None" if request.min_height is None else str(request.min_height),PYFORESTSCAN_SCALAR_COMPATIBLE="true",PYFORESTSCAN_SCALAR=f"{upstream_scalar:.12g}",VALID_PATCH_COUNT=str(surface.valid_patch_count),**spatial_tags)
+    temporary.replace(output_path)
 
-def _write_multiband_geotiff(layer: object, output_path: Path, crs: str, spatial_extent: object, nodata: float = -9999.0) -> None:
+
+def _resolve_product_spatial_reference(request: object, *, source_local_allowed: bool):
+    """Resolve request CRS and block source-local use for spatial comparisons."""
+    polygon_required = bool(
+        getattr(request, "crop_polygon", None)
+        or getattr(request, "crop_polygon_path", None)
+        or getattr(request, "polygon_execution_input", None)
+        or getattr(request, "reproject", False)
+    )
+    resolution = SpatialReferenceResolver().resolve(
+        Path(getattr(request, "input_path")),
+        embedded_crs=str(getattr(request, "crs", "") or ""),
+        spatial_alignment_required=polygon_required,
+        source_local_allowed=source_local_allowed,
+    )
+    if polygon_required and not resolution.safe_for_spatial_alignment:
+        raise ProcessingError(
+            "PyForestScan cannot align this LiDAR with the selected polygon because the LiDAR coordinate system is unknown. "
+            "Assign the source or repository CRS, then run Prerun Check again."
+        )
+    if not resolution.resolved and resolution.status is not SpatialReferenceStatus.SOURCE_LOCAL_ONLY:
+        raise ProcessingError("The LiDAR coordinate system could not be resolved for this operation.")
+    return resolution
+
+
+def _read_source_local_lidar(request: object) -> object:
+    """Read LAS/LAZ/COPC coordinates without injecting a false spatial reference."""
+    if any(getattr(request, name, None) for name in ("bounds", "crop_polygon", "crop_polygon_path", "polygon_execution_input")):
+        raise ProcessingError("Source-local reads cannot perform polygon alignment or transformed bounded selection.")
+    path = Path(getattr(request, "input_path"))
+    lowered = str(path).lower()
+    reader_type = "readers.ept" if lowered.endswith("ept.json") else ("readers.copc" if lowered.endswith((".copc.laz", ".copc")) else "readers.las")
+    pdal = _import_required("pdal", ProcessingError)
+    pipeline = pdal.Pipeline(json.dumps({"pipeline": [{"type": reader_type, "filename": str(path)}]}))
+    pipeline.execute()
+    arrays = tuple(pipeline.arrays or ())
+    if not arrays:
+        raise ProcessingError("PDAL returned no point data for source-local processing.")
+    return arrays
+
+
+def _write_source_local_geotiff(values: object, output_path: Path, extent: object, *, product: str, nodata: float = -9999.0) -> None:
+    """Write an explicitly unassigned source-coordinate GeoTIFF."""
+    rasterio = _import_required("rasterio", ProcessingError)
+    numpy = _import_required("numpy", ProcessingError)
+    from rasterio.transform import from_bounds
+    array = numpy.asarray(values)
+    if array.ndim != 2 or not array.size:
+        raise ProcessingError(f"{product} source-local raster has invalid dimensions.")
+    xmin, xmax, ymin, ymax = extent
+    raster = array.T
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(output_path, "w", driver="GTiff", height=raster.shape[0], width=raster.shape[1], count=1, dtype="float32", crs=None, transform=from_bounds(xmin, ymin, xmax, ymax, raster.shape[1], raster.shape[0]), nodata=nodata, compress="deflate") as dataset:
+        dataset.write(numpy.where(numpy.isfinite(raster), raster, nodata).astype("float32"), 1)
+        dataset.update_tags(PRODUCT=product, **_source_local_raster_tags())
+
+
+def _source_local_raster_tags() -> dict[str, str]:
+    """Return the single metadata contract for unassigned source-coordinate rasters."""
+    return {
+        "PYFORESTSCAN_SPATIAL_REFERENCE": "SOURCE_LOCAL",
+        "PYFORESTSCAN_SPATIAL_REFERENCE_MODE": "SOURCE_LOCAL",
+        "SOURCE_CRS_RESOLVED": "false",
+        "SOURCE_CRS_STATUS": "SOURCE_LOCAL_ONLY",
+        "SOURCE_CRS": "",
+        "OUTPUT_CRS": "",
+        "CRS_RESOLUTION_SOURCE": "source_local",
+        "CRS_CONFIDENCE": "NONE",
+        "TRANSFORMATION_APPLIED": "false",
+        "SOURCE_COORDINATE_UNITS": "unknown",
+        "CRS_ASSIGNMENT_REQUIRED_FOR_SPATIAL_ALIGNMENT": "true",
+    }
+
+
+def _canonicalize_hag_dimension(point_array: object) -> tuple[object, PointDimensionCapabilities]:
+    """Preserve all fields while exposing a supported HAG alias canonically."""
+    names = getattr(getattr(point_array, "dtype", None), "names", ()) or ()
+    capabilities = PointDimensionCapabilities.from_names(names)
+    if not capabilities.has_existing_hag or capabilities.hag_dimension_name == "HeightAboveGround":
+        return point_array, capabilities
+    numpy = _import_required("numpy", ProcessingError)
+    source = capabilities.hag_dimension_name
+    dtype = [("HeightAboveGround" if name == source else name, point_array.dtype.fields[name][0]) for name in names]
+    normalized = numpy.empty(point_array.shape, dtype=dtype)
+    for name in names:
+        normalized["HeightAboveGround" if name == source else name] = point_array[name]
+    return normalized, PointDimensionCapabilities.from_names(normalized.dtype.names)
+
+
+def _validate_existing_hag(point_array: object) -> dict[str, object]:
+    """Validate an existing HAG field without rejecting legitimate negatives."""
+    names = getattr(getattr(point_array, "dtype", None), "names", ()) or ()
+    if "HeightAboveGround" not in names:
+        return {"present": False, "valid": False, "point_count": int(len(point_array)), "finite_count": 0}
+    numpy = _import_required("numpy", ProcessingError)
+    values = numpy.asarray(point_array["HeightAboveGround"], dtype=float)
+    finite = numpy.isfinite(values)
+    count = int(values.size)
+    finite_count = int(finite.sum())
+    negatives = int((values[finite] < 0).sum()) if finite_count else 0
+    summary = {
+        "present": True,
+        "valid": finite_count > 0,
+        "point_count": count,
+        "finite_count": finite_count,
+        "percent_finite": (100.0 * finite_count / count) if count else 0.0,
+        "percent_negative": (100.0 * negatives / finite_count) if finite_count else 0.0,
+        "minimum": float(values[finite].min()) if finite_count else None,
+        "maximum": float(values[finite].max()) if finite_count else None,
+        "negative_count": negatives,
+        "extreme_count": int((numpy.abs(values[finite]) > 10000).sum()) if finite_count else 0,
+    }
+    return summary
+
+
+def _ensure_hag_for_product(point_array: object, request: object, resolution: object, product: str, *, handlers: object) -> tuple[object, object]:
+    """Assess and prepare one in-memory execution array using the shared planner."""
+    point_array, capabilities = _canonicalize_hag_dimension(point_array)
+    units = assess_processing_coordinate_units(getattr(request, "crs", None), getattr(request, "source_coordinate_units", ""), getattr(request, "source_units_basis", "UNRESOLVED"))
+    classification = assessment_from_array(point_array)
+    spatial_mode = "source_local" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "resolved"
+    output = Path(getattr(request, "output_path"))
+    assessment = build_preparation_assessment(
+        source=Path(getattr(request, "input_path")),
+        spatial_reference_mode=spatial_mode,
+        crs=getattr(request, "crs", None),
+        coordinate_units=units,
+        dimensions=capabilities.names,
+        classification=classification,
+        dtm_path=getattr(request, "dtm_path", None),
+        requested_products=(product,),
+        point_count=getattr(request, "source_point_count", None) or len(point_array),
+    )
+    plan = HeightNormalizationPlanner().plan(assessment, checkpoint_root=output.parent / ".pyforestscan_prepared")
+    diagnostics_path = getattr(request, "diagnostics_path", None)
+    if plan.height_mode is HeightNormalizationPlanMode.DTM_EXISTING:
+        write_stage_record(diagnostics_path, stage="HAG_DTM_REQUIRED", payload={"dtm_path": str(getattr(request, "dtm_path", "")), "method": plan.height_mode.value, "signature": plan.signature})
+    elif plan.height_mode is not HeightNormalizationPlanMode.USE_EXISTING_HAG:
+        write_stage_record(diagnostics_path, stage="HAG_DTM_REQUIRED", payload={"dtm_path": str(getattr(request, "dtm_path", "") or ""), "method": plan.height_mode.value, "signature": plan.signature})
+    if capabilities.has_existing_hag:
+        return point_array, plan
+    if not plan.can_execute:
+        raise ProcessingError("; ".join(plan.blockers))
+    if plan.large_source:
+        raise ProcessingError("Large sources must complete durable PBM preparation before product calculation.")
+    filters = _import_required("pyforestscan.filters", ProcessingError)
+    result = execute_preparation(
+        (point_array,),
+        assessment,
+        plan,
+        run_folder=output.parent,
+        job_identity=str(getattr(request, "attempt_id", "") or output.stem),
+        filters_module=filters,
+        handlers_module=handlers,
+        progress=lambda message: None,
+    )
+    _write_source_local_adapter_trace(request, "preparation", {"mode": plan.height_mode.value, "signature": plan.signature, "quality": result.quality.__dict__, "provenance": str(result.provenance_path)})
+    return _merge_point_cloud_arrays(result.arrays), plan
+
+
+def _write_preparation_output_tags(output_path: Path, plan: object) -> None:
+    if not output_path.exists() or output_path.suffix.lower() not in {".tif", ".tiff"}:
+        return
+    try:
+        rasterio = _import_required("rasterio", ProcessingError)
+        mode = getattr(getattr(plan, "height_mode", None), "value", "USE_EXISTING_HAG")
+        source = {
+            "USE_EXISTING_HAG": "existing",
+            "DELAUNAY_FROM_EXISTING_GROUND": "delaunay",
+            "DTM_EXISTING": "dtm",
+            "AUTO_CLASSIFY_GROUND_THEN_DELAUNAY": "generated_ground_then_delaunay",
+        }.get(mode, mode.lower())
+        with rasterio.open(output_path, "r+") as dataset:
+            dataset.update_tags(HAG_SOURCE=source, GROUND_CLASS_SOURCE="automatic_smrf" if "AUTO_CLASSIFY" in mode else "existing", PREPARATION_APPLIED="false" if mode == "USE_EXISTING_HAG" else "true", PREPARATION_SIGNATURE=str(getattr(plan, "signature", "")))
+    except Exception:
+        return
+
+
+def _write_source_local_adapter_trace(request: object, stage: str, payload: dict[str, object]) -> None:
+    """Persist compact execution evidence when a diagnostics path is available."""
+    diagnostics = getattr(request, "diagnostics_path", None)
+    if not diagnostics:
+        diagnostics = Path(getattr(request, "output_path")).parent / "diagnostics"
+    path = Path(diagnostics) / "source_local_trace.json"
+    try:
+        trace = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"stages": {}}
+    except (OSError, json.JSONDecodeError):
+        trace = {"stages": {}}
+    trace.setdefault("stages", {})[stage] = payload
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(trace, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _backend_user_error(product: ProductType, exc: Exception) -> str:
+    """Return one actionable message while diagnostics retain the full chain."""
+    text = str(exc)
+    if "SOURCE_DIMENSION_MISMATCH" in text:
+        detail = text[text.index("SOURCE_DIMENSION_MISMATCH"):].split("; The backend", 1)[0]
+        return f"{product.value.upper()} could not be created. The backend did not detect the expected normalized-height field. {detail}"
+    if "Processing backend needs an update" in text or "BACKEND_CONTRACT_MISMATCH" in text:
+        return "Processing backend needs an update. Open Tools & Setup and choose Repair Backend."
+    parts = [part.strip() for part in text.replace("The backend job failed before completion.;", "").split(";") if part.strip()]
+    reason = parts[-1] if parts else text
+    return f"{product.value.upper()} could not be created. Reason: {reason}"
+
+
+def _write_crs_provenance(output_path: Path, resolution: object, request: object | None = None) -> None:
+    """Attach resolution provenance without changing raster coordinates."""
+    if output_path.suffix.lower() not in {".tif", ".tiff"} or not output_path.exists():
+        return
+    try:
+        rasterio = _import_required("rasterio", ProcessingError)
+        with rasterio.open(output_path, "r+") as dataset:
+            assigned = resolution.status is SpatialReferenceStatus.RESOLVED_USER_ASSIGNMENT or str(getattr(request, "source_crs_status", "")) == "USER_ASSIGNED"
+            dataset.update_tags(PYFORESTSCAN_SPATIAL_REFERENCE="SOURCE_LOCAL" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "RESOLVED", SOURCE_SPATIAL_MODE="SOURCE_LOCAL" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "GEOREFERENCED", PROCESSING_COORDINATE_MODE=str(getattr(request, "processing_coordinate_mode", "source_local")), SOURCE_CRS_RESOLVED="false" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "true", SOURCE_CRS_STATUS="USER_ASSIGNED" if assigned else resolution.status.value, SOURCE_CRS=resolution.resolved_crs, SOURCE_UNITS=str(getattr(request, "source_coordinate_units", "") or "FROM_CRS"), SOURCE_UNITS_BASIS=str(getattr(request, "source_units_basis", "UNRESOLVED")).lower(), SOURCE_UNITS_AUTHORITATIVE="true" if getattr(request, "source_units_authoritative", False) else "false", GEOREFERENCED="false" if resolution.status is SpatialReferenceStatus.SOURCE_LOCAL_ONLY else "true", CRS_ASSIGNED="true" if assigned else "false", CRS_ASSIGNMENT_SCOPE=str(getattr(request, "spatial_assignment_scope", "") or ("file" if assigned else "")), OUTPUT_CRS=resolution.resolved_crs, CRS_RESOLUTION_SOURCE=resolution.source, CRS_CONFIDENCE=resolution.confidence.value, TRANSFORMATION_APPLIED="true" if resolution.transformation_required else "false")
+    except Exception:
+        return
+
+
+def _write_multiband_geotiff(layer: object, output_path: Path, crs: str, spatial_extent: object, nodata: float = -9999.0, *, voxel_height: float = 1.0, beer_lambert_constant: float = 1.0, drop_ground: bool = True) -> None:
     """Write a 3D X/Y/Z PAD array as a multi-band GeoTIFF."""
     rasterio = _import_required("rasterio", ProcessingError)
     numpy = _import_required("numpy", ProcessingError)
@@ -1065,8 +2014,18 @@ def _write_multiband_geotiff(layer: object, output_path: Path, crs: str, spatial
         transform=transform,
         nodata=nodata,
     ) as dataset:
-        for band_index in range(bands):
-            dataset.write(data[:, :, band_index].T, band_index + 1)
+        try:
+            dataset.update_tags(**pad_metadata_tags(voxel_height, beer_lambert_constant, drop_ground, bands))
+        except Exception:
+            pass
+        for mapping in pad_band_mapping(bands, voxel_height, drop_ground=drop_ground):
+            band_number = mapping.band_index
+            dataset.write(data[:, :, band_number - 1].T, band_number)
+            try:
+                dataset.set_band_description(band_number, mapping.description)
+                dataset.update_tags(band_number, height_min=f"{mapping.min_height:g}", height_max=f"{mapping.max_height:g}", units="map_units")
+            except Exception:
+                pass
 
 
 def _validate_csv_output_path(output_path: Path) -> None:
@@ -1088,6 +2047,13 @@ def _validate_csv_output_path(output_path: Path) -> None:
             pass
 
 
+def _write_chm_stage_timing(request, payload: dict[str, object]) -> None:
+    raw=getattr(request,"diagnostics_path",None)
+    if not raw:return
+    from .atomic_state import atomic_write_json
+    atomic_write_json(Path(raw)/"science_timing.json",payload)
+
+
 def _validate_output_path(output_path: Path) -> None:
     """Validate that a GeoTIFF output path can be written."""
     if output_path.suffix.lower() not in {".tif", ".tiff"}:
@@ -1105,6 +2071,17 @@ def _validate_output_path(output_path: Path) -> None:
             probe.unlink()
         except OSError:
             pass
+
+
+def _validate_created_point_cloud_output(output_path: Path) -> None:
+    """Require the PyForestScan LAS/LAZ writer to create a usable file."""
+    if not output_path.exists():
+        raise ProcessingError(f"Point-cloud output was not created: {output_path}")
+    try:
+        if output_path.stat().st_size <= 0:
+            raise ProcessingError(f"Point-cloud output is empty: {output_path}")
+    except OSError as exc:
+        raise ProcessingError(f"Point-cloud output could not be inspected: {output_path}") from exc
 
 
 def _validate_created_output(output_path: Path) -> None:
@@ -1129,6 +2106,224 @@ def _merge_point_cloud_arrays(point_cloud: object) -> object:
         numpy = _import_required("numpy", ProcessingError)
         return numpy.concatenate(arrays)
     return point_cloud
+
+
+def _point_cloud_array_sequence(point_cloud: object, *, operation: str) -> list[object]:
+    """Normalize PyForestScan point data to its public list-of-arrays contract."""
+    candidates = list(point_cloud) if isinstance(point_cloud, (list, tuple)) else [point_cloud]
+    arrays = [
+        array
+        for array in candidates
+        if getattr(array, "size", len(array) if hasattr(array, "__len__") else 0) > 0
+    ]
+    if not arrays:
+        if operation == "DTM generation":
+            raise ProcessingError("No usable ground points were available for DTM generation.")
+        raise ProcessingError(f"PyForestScan returned no point arrays for {operation}.")
+    for index, array in enumerate(arrays):
+        fields = getattr(getattr(array, "dtype", None), "names", None)
+        if fields is None:
+            raise ProcessingError(
+                f"PyForestScan returned an invalid point array for {operation} at index {index}: "
+                f"type={type(array).__name__}."
+            )
+        missing = sorted({"X", "Y", "Z"}.difference(fields))
+        if missing:
+            raise ProcessingError(
+                f"PyForestScan point array for {operation} is missing fields: {', '.join(missing)}."
+            )
+    normalized: list[object] = []
+    for array in arrays:
+        # PyForestScan's public DTM contract is a list of one-dimensional
+        # structured arrays.  PDAL can occasionally return a structured
+        # matrix or a zero-dimensional structured value for a one-point tile;
+        # preserve every field but normalize the record container before the
+        # library iterates ``for pt in array``.
+        ndim = getattr(array, "ndim", 1)
+        if ndim != 1 and hasattr(array, "reshape"):
+            try:
+                array = array.reshape(-1)
+            except (TypeError, ValueError):
+                pass
+        normalized.append(array)
+    return normalized
+
+
+def _select_ground_structured_arrays(point_cloud: object, *, operation: str) -> list[object]:
+    """Recover class-2 structured arrays when a filter returns scalars."""
+    numpy = _import_required("numpy", ProcessingError)
+    candidates = list(point_cloud) if isinstance(point_cloud, (list, tuple)) else [point_cloud]
+    selected: list[object] = []
+    for candidate in candidates:
+        fields = getattr(getattr(candidate, "dtype", None), "names", None)
+        if not fields:
+            continue
+        array = candidate.reshape(-1) if getattr(candidate, "ndim", 1) != 1 else candidate
+        if "Classification" in fields:
+            array = array[array["Classification"] == 2]
+        if getattr(array, "size", 0):
+            selected.append(array)
+    if not selected:
+        raise ProcessingError(f"No structured class-2 ground points were available for {operation}.")
+    return selected
+
+
+def _write_dtm_input_diagnostic(request: DtmRequest, arrays: list[object]) -> None:
+    """Persist the exact DTM input structure for reproducible failures."""
+    path = getattr(request, "diagnostics_path", None)
+    if path is None:
+        return
+    try:
+        from .atomic_state import atomic_write_json
+        atomic_write_json(Path(path) / "dtm_input_structure.json", {
+            "array_count": len(arrays),
+            "product_requested": "DTM",
+            "dependency": "terrain preparation",
+            "source": str(request.input_path),
+            "bounds": request.bounds,
+            "resolution": request.resolution,
+            "arrays": [{
+                "type": type(array).__name__,
+                "dtype": str(getattr(array, "dtype", None)),
+                "fields": list(getattr(getattr(array, "dtype", None), "names", ()) or ()),
+                "shape": list(getattr(array, "shape", ()) or ()),
+                "ndim": int(getattr(array, "ndim", 0) or 0),
+                "size": int(getattr(array, "size", 0) or 0),
+            } for array in arrays],
+            "ground_point_count": sum(int(getattr(array, "size", 0) or 0) for array in arrays),
+            "coordinate_summary": _ground_coordinate_summary(arrays),
+        })
+    except (OSError, TypeError, ValueError):
+        return
+
+
+def _ground_coordinate_summary(arrays: list[object]) -> dict[str, object]:
+    """Summarize ground coordinates without persisting point values."""
+    try:
+        import numpy as np
+        x = np.concatenate([np.asarray(array["X"]).reshape(-1) for array in arrays])
+        y = np.concatenate([np.asarray(array["Y"]).reshape(-1) for array in arrays])
+        z = np.concatenate([np.asarray(array["Z"]).reshape(-1) for array in arrays])
+        finite = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
+        xy = np.column_stack((x[finite], y[finite])) if finite.any() else np.empty((0, 2))
+        unique_xy = int(np.unique(xy, axis=0).shape[0]) if xy.size else 0
+        return {
+            "X_shape": list(x.shape), "Y_shape": list(y.shape), "Z_shape": list(z.shape),
+            "finite_X": int(np.isfinite(x).sum()), "finite_Y": int(np.isfinite(y).sum()), "finite_Z": int(np.isfinite(z).sum()),
+            "unique_ground_xy": unique_xy,
+            "ground_xy_min": [float(xy[:, 0].min()), float(xy[:, 1].min())] if xy.size else None,
+            "ground_xy_max": [float(xy[:, 0].max()), float(xy[:, 1].max())] if xy.size else None,
+            "ground_z_min": float(z[finite].min()) if finite.any() else None,
+            "ground_z_max": float(z[finite].max()) if finite.any() else None,
+        }
+    except (KeyError, TypeError, ValueError):
+        return {"error": "coordinate summary unavailable"}
+
+
+def _validate_dtm_ground_contract(arrays: list[object], request: DtmRequest) -> None:
+    """Reject invalid DTM inputs before PyForestScan performs scalar indexing."""
+    if not isinstance(arrays, list) or not arrays:
+        error = ProcessingError("DTM_INPUT_CONTRACT_INVALID: expected a non-empty list of structured arrays.")
+        error.code = "DTM_INPUT_CONTRACT_INVALID"
+        raise error
+    try:
+        import numpy as np
+        for index, array in enumerate(arrays):
+            names = getattr(getattr(array, "dtype", None), "names", None)
+            if not names or not {"X", "Y", "Z"}.issubset(names) or getattr(array, "ndim", 0) != 1:
+                error = ProcessingError(f"DTM_INPUT_CONTRACT_INVALID: array {index} is not a one-dimensional structured XYZ array.")
+                error.code = "DTM_INPUT_CONTRACT_INVALID"
+                raise error
+            if not np.isfinite(np.asarray(array["X"])).all() or not np.isfinite(np.asarray(array["Y"])).all() or not np.isfinite(np.asarray(array["Z"])).all():
+                error = ProcessingError("DTM_NONFINITE_GROUND_POINTS: ground coordinates contain non-finite values.")
+                error.code = "DTM_NONFINITE_GROUND_POINTS"
+                raise error
+    except ProcessingError:
+        raise
+    except (TypeError, ValueError, KeyError) as exc:
+        error = ProcessingError(f"DTM_INPUT_CONTRACT_INVALID: {exc}")
+        error.code = "DTM_INPUT_CONTRACT_INVALID"
+        raise error from exc
+
+
+def _array_contract_summary(value: object) -> dict[str, object]:
+    """Return a JSON-safe description of the object at a DTM contract boundary."""
+    dtype = getattr(value, "dtype", None)
+    shape = getattr(value, "shape", None)
+    try:
+        size = int(getattr(value, "size"))
+    except (TypeError, ValueError, AttributeError):
+        size = None
+    try:
+        length = len(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        length = None
+    return {
+        "type": type(value).__name__,
+        "repr": repr(value)[:500],
+        "shape": list(shape) if shape is not None else None,
+        "ndim": getattr(value, "ndim", None),
+        "dtype": str(dtype) if dtype is not None else None,
+        "dtype_names": list(getattr(dtype, "names", ()) or ()) if dtype is not None else [],
+        "len": length,
+        "size": size,
+        "scalar": bool(getattr(value, "ndim", 1) == 0),
+        "structured": bool(getattr(dtype, "names", None)),
+    }
+
+
+def _write_dtm_failure_diagnostic(request: DtmRequest, exc: BaseException, *, ground_arrays=None, ground_points=None) -> None:
+    """Persist the complete DTM contract failure without hiding the exception."""
+    path = getattr(request, "diagnostics_path", None)
+    if path is None:
+        return
+    try:
+        import traceback
+        from .atomic_state import atomic_write_json
+        tb = traceback.extract_tb(exc.__traceback__)
+        frame = tb[-1] if tb else None
+        atomic_write_json(Path(path) / "dtm_failure.json", {
+            "schema": "pyforestscan-dtm-failure-v1",
+            "exception_class": type(exc).__name__,
+            "message": str(exc),
+            "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+            "module": getattr(frame, "filename", "") if frame else "",
+            "function": getattr(frame, "name", "") if frame else "",
+            "line_number": getattr(frame, "lineno", None) if frame else None,
+            "ground_arrays": [_array_contract_summary(item) for item in ground_arrays] if isinstance(ground_arrays, (list, tuple)) else _array_contract_summary(ground_arrays) if ground_arrays is not None else None,
+            "ground_points": [_array_contract_summary(item) for item in ground_points] if isinstance(ground_points, (list, tuple)) else _array_contract_summary(ground_points) if ground_points is not None else None,
+        })
+    except (OSError, TypeError, ValueError):
+        return
+
+
+def _product_key_from_label(label: object) -> str:
+    """Normalize human-facing adapter labels to preparation registry keys."""
+    key = str(label).strip().lower().replace(" ", "_")
+    return {"voxel_statistic": "voxel_stat"}.get(key, key)
+
+
+def _aligned_dtm_extent(dtm: object, extent: object, resolution: float) -> list[float]:
+    """Return the exact grid extent represented by a PyForestScan DTM array.
+
+    PyForestScan 0.4.x returns the raw point extrema while the DTM dimensions
+    are derived from resolution-sized bins.  Publishing the raw extrema makes
+    rasterio infer a fractional cell size.  Keep the calculated terrain values
+    unchanged and describe their actual grid instead.
+    """
+    shape = getattr(dtm, "shape", ())
+    if len(shape) != 2 or shape[0] <= 0 or shape[1] <= 0:
+        raise ProcessingError("PyForestScan returned an invalid DTM raster grid.")
+    try:
+        x_min, _x_max, _y_min, y_max = (float(value) for value in extent)
+    except (TypeError, ValueError) as exc:
+        raise ProcessingError("PyForestScan returned an invalid DTM spatial extent.") from exc
+    return [
+        x_min,
+        x_min + float(shape[0]) * resolution,
+        y_max - float(shape[1]) * resolution,
+        y_max,
+    ]
 
 
 def _detect_format(path: str) -> DatasetFormat | None:
@@ -1215,15 +2410,8 @@ def _bounds_from_ept_metadata(metadata: dict[str, Any]) -> Bounds3D | None:
 
 
 def _crs_from_ept_metadata(metadata: dict[str, Any]) -> str | None:
-    srs = metadata.get("srs") or {}
-    if isinstance(srs, dict):
-        authority = srs.get("authority")
-        horizontal = srs.get("horizontal")
-        if authority and horizontal:
-            return f"{authority}:{horizontal}"
-        if srs.get("wkt"):
-            return str(srs["wkt"])
-    return None
+    resolved = resolve_ept_spatial_reference(metadata)
+    return resolved.crs_text if resolved.valid else None
 
 
 def _point_count_from_ept_metadata(metadata: dict[str, Any]) -> int | None:
@@ -1325,6 +2513,12 @@ def _find_nested_value(value: object, key: str) -> object | None:
 
 
 def _import_required(module_name: str, error_type: type[AdapterError]) -> Any:
+    try:
+        assert_scientific_import_allowed(module_name)
+    except RuntimeError as exc:
+        raise error_type(
+            f"Scientific module {module_name} cannot run inside QGIS Python. Use a managed Processing Engine route for this operation."
+        ) from exc
     try:
         return importlib.import_module(module_name)
     except Exception as exc:  # noqa: BLE001 - dependency errors become adapter errors.

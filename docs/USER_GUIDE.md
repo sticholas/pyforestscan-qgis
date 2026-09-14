@@ -1,3 +1,38 @@
+# PyForestScan QGIS User Guide
+
+## Set up or reload the Processing Engine
+
+Open **Tools & Setup** and select **Set Up Processing Engine**. When the status is Ready, the same location provides **Repair / Reload Processing Engine** for deliberate reconciliation after an update or failure. The action manages only the user-local isolated environment and does not load PyForestScan, PDAL, or GDAL into QGIS Python. A valid existing environment is verified and reused instead of needlessly reinstalled.
+
+If Process reports unknown LiDAR units or coordinate system, use the compact controls shown beside that job. Mission Control saves the assignment and reruns the check automatically. No spatial-reference setting is shown when automation resolved the source safely.
+
+Mission Control opens even when the Processing Engine has not been installed or needs repair. You can review settings, diagnostics, and existing results before setup. Processing remains disabled until the engine reports Ready; your selected LiDAR, area, products, and output folder remain available while setup completes.
+
+## Tools & Setup
+
+The Processing Engine card is the normal setup entry point. It shows **Set Up** only when the managed engine is missing and **Repair** when attention is required; no action is shown when the engine is Ready. Advanced Settings keeps the output-folder and startup preferences visible. Troubleshooting is collapsed by default and provides a read-only recheck and consolidated diagnostics.
+
+Click **Set Up** once when prompted. The plugin installs or repairs all supported processing components, verifies them, and changes the Processing Engine to **Ready** automatically. A separate Verify step is not required. If setup is needed from Process, use the inline action; your selected LiDAR, area, products, and output folder remain selected.
+
+When **Processing Engine: Ready** is shown, normal Folder and Polygon products run in the isolated user-local engine, not QGIS Python. **Set Up** installs the complete supported product environment; **Repair** restores a failed contract. If the engine changes after selection, processing stops before job creation and keeps the current LiDAR, area, and product choices.
+
+## Processing Engine
+
+PyForestScan uses an isolated Processing Engine for point-cloud and raster work. When it is ready, Folder and Polygon processing do not require PyForestScan in QGIS Python. If setup or repair is needed, use the single action in **Tools & Setup**. The engine is stored in your user-local PyForestScan folder and does not modify QGIS Python or system Python.
+
+Technical module names, managed-environment details, and setup logs are available under troubleshooting and are not normal workflow requirements.
+
+Folder and Polygon Selection use the same products and automatic processing controls. Polygon Selection additionally requires trustworthy spatial alignment. If prompted, choose the repository CRS (or use the matching project CRS); Mission Control immediately retries source selection.
+
+When unreferenced LiDAR coordinates strongly match the selected polygon, PyForestScan can process them as already expressed in the polygon CRS. Coordinates are not reprojected, and product metadata records the assumption. Tools & Setup offers Automatic, Ask, and Require explicit CRS policies.
+
+## Phase 29B smart workflow
+
+Mission Control stays closed when QGIS starts unless **Advanced Settings > Open Mission Control when QGIS starts** is enabled. Automatic is the normal processing profile; repository setup and spatial readiness are refreshed as needed, while specialist execution controls remain under Custom.
+
+## Phase 29A adaptive layout
+
+Mission Control adapts its visible controls to the current task. Repository maintenance, product-specific parameters, parallel worker settings, previous results, and backend troubleshooting appear only when relevant; the bottom strip continuously summarizes the current session.
 
 ## Mission Control
 
@@ -7,19 +42,20 @@ so the main page stack can use the full window, and each page uses one
 predictable vertical scroll area. It provides guided pages for the current
 workflows:
 
-- Home: workflow dashboard with workspace status, last dataset, output context, generated products, completion, recent activity, recommended next action, recent run folder, and Start Single Dataset / Start Batch actions.
+- Home: compact workflow dashboard with backend status, environment status, current dataset or batch context, last output folder, and Open Dataset / Start Batch / Continue Previous Session actions.
 - Workspace: continue the last workspace, start a new workspace, reopen recent workspaces, view status/runs/timeline/outputs, edit notes, and reset workspace progress.
-- Environment: refresh dependency checks.
-- Dataset: select a lidar dataset and output folder, inspect the dataset, and preview its spatial footprint.
+- Environment: refresh execution readiness, see PBM backend status first, and expand QGIS Python fallback or technical dependency details only when needed.
+- Dataset: select a lidar dataset and output folder, use Analyze Dataset, refresh stale page state when needed, optionally extract an EPT subset, then review dataset summary and footprint details.
 - Planning: build a product plan from the active Dataset Explorer result.
-- Processing: run implemented product jobs from the active Product Planner result.
-- Batch: discover and process multiple lidar files sequentially with shared settings.
+- Processing: run implemented product jobs from the active Product Planner result with the active execution backend shown up front.
+- Batch: follow the three-step Discover Files, Preflight, and Run Batch flow. Parallel Safe and retry tuning remain available under Advanced Batch Options.
 - Results: open friendly Dataset Report, Product Plan, Job Summary, Output Folder,
   and Products links.
 - Settings: choose a default output folder for Mission Control runs.
 
 Mission Control creates a timestamped run folder and manages internal JSON/CSV
-files automatically. Processing Toolbox tools remain available for expert users who want explicit file paths and PyForestScan parameter controls.
+files automatically.
+The beta workflow is intentionally linear: check backend, select a dataset or batch folder, review the recommendation, choose products, run, and review outputs. Technical logs, fallback dependency rows, and internal report paths are collapsed by default. Empty downstream sections stay hidden until they have meaningful content. The visual language follows the [PyForestScan Design System](development/PYFORESTSCAN_DESIGN_SYSTEM.md): primary actions are visually distinct, statuses use approved badge wording, and troubleshooting controls stay secondary. Processing Toolbox tools remain available for expert users who want explicit file paths and PyForestScan parameter controls.
 
 # User Guide
 
@@ -53,13 +89,21 @@ This guide describes current user-facing PyForestScan QGIS workflows: Dataset
 Explorer, Product Planner, Mission Control run folders, CHM, Canopy Cover, PAD,
 PAI, FHD, and Rumple summary processing.
 
+## Backend Manager
+
+Mission Control Settings includes the PyForestScan Backend Manager. It can verify the current backend state, preview the manifest-driven install transaction, show QGIS/backend compatibility, plan repairs, show structured logs, and display advanced module/version information.
+
+Windows internal beta users can click **Install Backend** from Mission Control Settings after confirming that PBM will install into the user-local PyForestScan folder only. PBM does not modify QGIS Python, QGIS installation folders, PATH, shell profiles, system Python, or user environment variables. Linux and macOS install execution remains planned/experimental until smoke tested. When PBM verifies as Ready, Environment Check reports overall `READY`, shows PBM Backend as the active execution backend, and lists QGIS Python scientific packages as an optional fallback environment. Missing QGIS Python PyForestScan/PDAL are not blocking failures unless the user chooses QGIS-Python-only tools.
+
 ## Processing Toolbox Expert Tools
 
 Expert users can run PyForestScan tools from QGIS Processing Toolbox under the `PyForestScan / Diagnostics`, `PyForestScan / Input / I/O`, `PyForestScan / Preprocessing / Filters`, `PyForestScan / Terrain`, and `PyForestScan / Metrics` groups. These tools expose explicit X/Y resolution, interpolation, voxel, height-range, Beer-Lambert, canopy-cover, rumple, and HAG/normalization controls. Mission Control remains the recommended guided workflow for normal use.
 
-Toolbox raster outputs use the same loading/styling rules as Mission Control: CHM, Canopy Cover, PAI, and FHD load as grayscale when possible, while PAD loads as the documented RGB 5/3/2 composite when enough bands exist. Rumple writes a CSV summary because PyForestScan returns a scalar value.
+Toolbox raster outputs use the same loading/styling rules as Mission Control: CHM, Canopy Cover, PAI, FHD, DTM, Point Density, and Voxel Statistic load as grayscale when possible. PAD is an authoritative multiband height-bin volume and loads as a representative grayscale height slice by default. Optional PAD derivative rasters and height-band composites are visualizations, not replacements for PAD. Rumple writes a CSV summary because PyForestScan returns a scalar value.
 
 The HAG/Normalize tool reads lidar with PyForestScan HAG support and can optionally write LAS/LAZ through PyForestScan `write_las`. It also exposes expert read options such as bounds, thinning radius, and crop polygon/WKT. It does not invent unsupported normalized output formats.
+
+Extract EPT Subset appears under `PyForestScan / Input / I/O` and on the Dataset page. It reads an EPT `ept.json` source with optional bounds, polygon crop, thinning, reprojection, and HAG settings, then writes a user-controlled `.las` or `.laz` subset. See [EPT Subset Extraction](scientific/ept-subset-extraction.md).
 
 Generate DTM creates a GeoTIFF from ground-classified points. Point Density writes a single-band GeoTIFF from `calculate_point_density` with explicit `per_area` and optional `cell_area` controls. Voxel Statistic writes a single-band GeoTIFF from `calculate_voxel_stat` with exact `dimension`, `stat`, and optional `z_index_range` controls. Preprocess Point Cloud writes LAS/LAZ after selected PyForestScan filter steps such as outlier cleaning, full SMRF ground classification, ground filtering, PointSourceId filtering, HAG, HAG range filtering, Poisson thinning, and voxel-grid downsampling.
 
@@ -337,8 +381,8 @@ flowchart TD
 
 - FHD uses grid resolution and height bin size, and writes a single-band
   `.tif` or `.tiff` raster.
-- Rumple uses grid resolution to build an internal CHM prerequisite, and writes
-  a scalar `.csv` summary because PyForestScan 0.4.0 returns one rumple index
+- Rumple uses grid resolution to build or reuse an internal CHM prerequisite, and writes
+  a scalar `.csv` summary because PyForestScan returns one rumple index
   value rather than a raster.
 - Rumple output filename must be a simple `.csv` name.
 
@@ -349,9 +393,11 @@ After any raster product completes, confirm the auto-loaded QGIS layer has visib
 contrast without removing and re-adding it manually. CHM, PAI, and FHD should use
 an observed non-zero range when data are present. Canopy Cover should display in
 a `0` to `1` range when provider statistics are unavailable. PAD should load as
-`PyForestScan PAD RGB 5-3-2 - <dataset>` using an RGB composite when at least
-five bands exist. No generated raster should receive a `0` to `0` display range
-unless the provider confirms the raster is truly all zero.
+`PyForestScan PAD height slice - <dataset>` using a representative grayscale
+height slice from the full multiband PAD volume. Optional PAD derivative rasters
+and height-band composites are labeled as derived visualizations. No generated
+raster should receive a `0` to `0` display range unless the provider confirms the
+raster is truly all zero.
 
 ### Canopy Cover QA
 
@@ -402,3 +448,27 @@ Each batch writes `batch_manifest.json` in the batch folder before processing st
 ### External Worker Mode
 
 External worker mode is disabled. Manual validation showed that QGIS GUI Python can open multiple QGIS application windows instead of headless worker jobs. Use Sequential for safest execution or Parallel Safe for bounded in-process speedups. External workers will remain unavailable until a true headless Python launcher is proven.
+
+
+## PyForestScan Backend Manager
+
+Mission Control Settings includes a PyForestScan Backend Manager section. It can show backend status, installed and manifest versions, plugin compatibility, dependency summaries, storage paths, QGIS compatibility, structured logs, repair plans, and the manifest-driven install preview.
+
+On Windows internal beta builds, Mission Control labels the button **Install Backend** and requires an explicit confirmation dialog before starting. The installer runs in a background Qt worker where possible, shows estimated staged progress, current stage/action, elapsed time, and the latest message, and keeps technical logs under Advanced / Troubleshooting. It downloads Micromamba, verifies the checksum when a pinned checksum is available, extracts safely, creates the backend environment from the manifest/spec, verifies Python/imports/executables, promotes the backend, and writes READY config.
+
+Preview Install Plan shows where the user-local backend will be installed, which manifest packages are included, which platform was detected, transaction stages, warnings, verification steps, rollback/repair notes, and offline-install placeholders. Repair shows guidance and logs; update/remove execution remains planned.
+
+PBM will not modify QGIS Python, QGIS install folders, system Python, global user site-packages, or user environment variables. QGIS 3.x is the supported target. QGIS 4.x compatibility checks are defensive and must be tested when QGIS 4.x is available. Environment Check now separates QGIS / Plugin Runtime, PBM Managed Backend, Execution Readiness, QGIS Python fallback environment, and Recommended Next Step. Dataset Explorer local LAS/LAZ/COPC inspection plus CHM, Canopy Cover, PAD, PAI, FHD, Rumple, DTM, Point Density, and Voxel Statistic are routed through PBM when ready. Height Above Ground point-cloud export and Preprocess Point Cloud still require QGIS Python dependencies until routed.
+
+
+## Phase 28H Adaptive Scale and Compact Workspace
+
+For normal work, remain on **Process**: choose LiDAR data and area, select products and output, then select **Process LiDAR**. The current result and QGIS loading actions appear on the same page. Backend, guidance, preferences, and advanced tools are under **Tools & Setup**.
+# Phase 30D processing behavior
+
+Prerun warnings describe conditions that deserve attention but do not require a blanket acknowledgement. A blocker names the failed product requirement and the next action. Scheduling and loading of current primary raster outputs are automatic; Custom processing exposes only an upper worker limit. Unknown-CRS standalone outputs retain an undefined CRS and must not be spatially combined until the CRS is resolved.
+# Automatic coordinate systems
+
+PyForestScan checks embedded metadata, trusted sidecars, saved assignments, repository consensus, and an exact matching QGIS layer. Usually no CRS control appears. Standalone CHM/Rumple can process valid existing-HAG data as **Source coordinates** when no real CRS is known. Polygon workflows instead ask for one coordinate-system assignment because alignment cannot be guessed safely.
+
+For standalone CHM/Rumple with missing units, the default is a clearly recorded metres assumption. This keeps Prerun ready and does not assign a CRS. Tools & Setup can change the fallback to international feet, US survey feet, or require explicit assignment. Assign the correct CRS before polygon or map alignment.

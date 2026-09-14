@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+from .point_dimensions import PointDimensionCapabilities
+
 
 class PipelineContextError(ValueError):
     """Raised when a pipeline context cannot be created."""
@@ -46,6 +48,19 @@ class PipelineContext:
             value = 1.0
         return float(value)
 
+    @property
+    def bounds(self) -> tuple[tuple[float, float], tuple[float, float]] | None:
+        """Return an optional validated XY processing window."""
+        value = self._parameter("bounds", None)
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            return None
+        try:
+            x = (float(value[0][0]), float(value[0][1]))
+            y = (float(value[1][0]), float(value[1][1]))
+        except (TypeError, ValueError, IndexError):
+            return None
+        return (x, y) if x[0] < x[1] and y[0] < y[1] else None
+
 
     @property
     def chm_interpolation(self) -> str:
@@ -77,6 +92,28 @@ class PipelineContext:
         return float(value) if value is not None else 1.0
 
     @property
+    def voxel_stat_dimension(self) -> str:
+        """Return the source field selected for voxel aggregation."""
+        return str(self._parameter("voxel_stat_dimension", "HeightAboveGround")).strip()
+
+    @property
+    def voxel_stat_stat(self) -> str:
+        """Return the requested voxel aggregation statistic."""
+        return str(self._parameter("voxel_stat_stat", "count")).lower()
+
+    @property
+    def voxel_stat_z_index_range(self) -> tuple[int, int] | None:
+        """Return an optional inclusive/exclusive vertical-bin range."""
+        value = self._parameter("voxel_stat_z_index_range", None)
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            return None
+        try:
+            start, stop = int(value[0]), int(value[1])
+        except (TypeError, ValueError):
+            return None
+        return (start, stop) if start >= 0 and stop > start else None
+
+    @property
     def pad_output_filename(self) -> str:
         """Return the planned PAD output filename."""
         value = str(self._parameter("pad_output_filename", "pad.tif"))
@@ -98,13 +135,53 @@ class PipelineContext:
     @property
     def rumple_output_filename(self) -> str:
         """Return the planned rumple output filename."""
-        value = str(self._parameter("rumple_output_filename", "rumple_summary.csv"))
-        return value or "rumple_summary.csv"
+        value = str(self._parameter("rumple_output_filename", "rumple.tif"))
+        return value or "rumple.tif"
 
     @property
     def canopy_cover_height_threshold(self) -> float:
         """Return the planned canopy cover height threshold."""
         return float(self._parameter("canopy_cover_height_threshold", 2.0))
+
+    @property
+    def canopy_cover_max_height(self) -> float | None:
+        value = self._parameter("canopy_cover_max_height", None)
+        return float(value) if value is not None else None
+
+    @property
+    def canopy_cover_extinction_coefficient(self) -> float:
+        return float(self._parameter("canopy_cover_extinction_coefficient", 0.5))
+
+    @property
+    def pad_beer_lambert_constant(self) -> float:
+        return float(self._parameter("pad_beer_lambert_constant", 1.0))
+
+    @property
+    def pad_drop_ground(self) -> bool:
+        return bool(self._parameter("pad_drop_ground", True))
+
+    @property
+    def pai_min_height(self) -> float:
+        return float(self._parameter("pai_min_height", 1.0))
+
+    @property
+    def pai_max_height(self) -> float | None:
+        value = self._parameter("pai_max_height", None)
+        return float(value) if value is not None else None
+
+    @property
+    def fhd_min_height(self) -> float:
+        return float(self._parameter("fhd_min_height", 0.0))
+
+    @property
+    def fhd_max_height(self) -> float | None:
+        value = self._parameter("fhd_max_height", None)
+        return float(value) if value is not None else None
+
+    @property
+    def rumple_min_height(self) -> float | None:
+        value = self._parameter("rumple_min_height", None)
+        return float(value) if value is not None else None
 
     @property
     def canopy_cover_output_filename(self) -> str:
@@ -134,6 +211,57 @@ class PipelineContext:
             return None
         value = geometry.get("crs")
         return str(value) if value else None
+
+    @property
+    def hag_method(self) -> str:
+        """Prefer an existing normalized-height dimension when reported."""
+        return "existing_normalized_height" if self.point_dimensions.has_existing_hag else "classified_ground_delaunay"
+
+    @property
+    def point_dimensions(self) -> PointDimensionCapabilities:
+        """Return normalized source capabilities from Dataset Explorer."""
+        raw = self.dataset_report.get("dimensions", ()) if self.dataset_report else ()
+        names: list[str] = []
+        if isinstance(raw, (list, tuple)):
+            for item in raw:
+                names.append(item if isinstance(item, str) else str(item.get("name", "")) if isinstance(item, Mapping) else "")
+        return PointDimensionCapabilities.from_names(names)
+
+    @property
+    def source_point_count(self) -> int | None:
+        statistics = self.dataset_report.get("point_statistics", {}) if self.dataset_report else {}
+        value = statistics.get("point_count") if isinstance(statistics, Mapping) else None
+        return int(value) if isinstance(value, int) else None
+
+    @property
+    def source_coordinate_units(self) -> str:
+        preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
+        return str(preparation.get("source_coordinate_units") or "") if isinstance(preparation, Mapping) else ""
+
+    @property
+    def spatial_assignment_scope(self) -> str:
+        preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
+        return str(preparation.get("spatial_assignment_scope") or "") if isinstance(preparation, Mapping) else ""
+
+    @property
+    def source_crs_status(self) -> str:
+        preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
+        return str(preparation.get("crs_assignment_status") or "") if isinstance(preparation, Mapping) else ""
+
+    @property
+    def source_units_basis(self) -> str:
+        preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
+        return str(preparation.get("source_units_basis") or "UNRESOLVED") if isinstance(preparation, Mapping) else "UNRESOLVED"
+
+    @property
+    def source_units_authoritative(self) -> bool:
+        preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
+        return bool(preparation.get("source_units_authoritative")) if isinstance(preparation, Mapping) else False
+
+    @property
+    def processing_coordinate_mode(self) -> str:
+        preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
+        return str(preparation.get("processing_coordinate_mode") or "unresolved") if isinstance(preparation, Mapping) else "unresolved"
 
 
 def load_pipeline_contexts(product_plan_path: Path | str, output_folder: Path | str) -> tuple[PipelineContext, ...]:

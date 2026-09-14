@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from .polygon_transport import PolygonExecutionInput
+
 
 class DatasetFormat(str, Enum):
     """Point cloud formats recognized by the adapter."""
@@ -145,11 +147,35 @@ class ChmRequest:
     input_path: Path | str
     output_path: Path
     grid_resolution: float
-    crs: str
+    crs: str | None
     interpolation: str | None = "linear"
     interp_valid_region: bool = False
     interp_clean_edges: bool = False
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
+    work_unit_id: str = ""
+    attempt_id: str = ""
+    completed_count: int = 0
+    total_count: int = 1
+    inspect_hag_suitability: bool = False
+    hag_method: str = "classified_ground_delaunay"
+    hag_source_dimension: str = "HeightAboveGround"
+    hag_method_signature: str = ""
+    diagnostics_path: Path | None = None
+    polygon_intersection_area: float = 0.0
+    polygon_coverage_percent: float = 0.0
+    source_dimensions: tuple[str, ...] = ()
+    source_coordinate_units: str = ""
+    source_units_basis: str = "UNRESOLVED"
+    source_units_authoritative: bool = False
+    processing_coordinate_mode: str = "unresolved"
+    spatial_assignment_scope: str = ""
+    source_crs_status: str = ""
+    source_point_count: int | None = None
+    dtm_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -177,6 +203,10 @@ class CanopyCoverRequest:
     beer_lambert_constant: float = 1.0
     drop_ground: bool = True
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -202,6 +232,10 @@ class PadRequest:
     beer_lambert_constant: float = 1.0
     drop_ground: bool = True
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -214,6 +248,30 @@ class PadResult:
     voxel_height: float
     band_count: int
     crs: str
+
+
+@dataclass(frozen=True)
+class PadDerivativeRequest:
+    """Managed request for a single-band derivative of a PAD volume."""
+
+    input_path: Path | str
+    output_path: Path
+    derivative_type: str
+    voxel_height: float
+    min_height: float | None = None
+    max_height: float | None = None
+    slice_height: float | None = None
+    band_index: int | None = None
+    crs: str | None = None
+
+
+@dataclass(frozen=True)
+class PadDerivativeResult:
+    """Result for a managed PAD derivative raster."""
+
+    output_path: Path
+    derivative_type: str
+    band_count: int = 1
 
 
 @dataclass(frozen=True)
@@ -230,6 +288,10 @@ class PaiRequest:
     beer_lambert_constant: float = 1.0
     drop_ground: bool = True
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -255,6 +317,10 @@ class FhdRequest:
     min_height: float = 0.0
     max_height: float | None = None
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -275,23 +341,43 @@ class RumpleRequest:
     input_path: Path | str
     output_path: Path
     grid_resolution: float
-    crs: str
+    crs: str | None
     min_height: float | None = None
     interpolation: str | None = "linear"
     interp_valid_region: bool = False
     interp_clean_edges: bool = False
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
+    hag_method: str = "automatic"
+    hag_source_dimension: str = "HeightAboveGround"
+    hag_method_signature: str = ""
+    source_dimensions: tuple[str, ...] = ()
+    diagnostics_path: Path | None = None
+    source_coordinate_units: str = ""
+    source_units_basis: str = "UNRESOLVED"
+    source_units_authoritative: bool = False
+    processing_coordinate_mode: str = "unresolved"
+    spatial_assignment_scope: str = ""
+    source_crs_status: str = ""
+    source_point_count: int | None = None
+    dtm_path: Path | None = None
 
 
 @dataclass(frozen=True)
 class RumpleResult:
-    """Adapter result for a scalar rumple index table."""
+    """Adapter result for a spatial Rumple raster and scalar summary."""
 
     output_path: Path
     rumple_index: float
     spatial_extent: tuple[float, float, float, float]
     grid_resolution: float
     crs: str
+    summary_path: Path | None = None
+    valid_patch_count: int = 0
+    spatial_aggregate: float | None = None
 
 
 @dataclass(frozen=True)
@@ -308,6 +394,8 @@ class HagNormalizationRequest:
     bounds: tuple[tuple[float, float], ...] | None = None
     thin_radius: float | None = None
     crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -331,6 +419,11 @@ class DtmRequest:
     resolution: float = 2.0
     classify_ground: bool = False
     nodata: float = -9999.0
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
+    diagnostics_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -355,6 +448,10 @@ class PointDensityRequest:
     per_area: bool = False
     cell_area: float | None = None
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
 
 
 @dataclass(frozen=True)
@@ -381,6 +478,15 @@ class VoxelStatRequest:
     stat: str
     z_index_range: tuple[int, int] | None = None
     y_resolution: float | None = None
+    bounds: tuple[tuple[float, float], ...] | None = None
+    crop_polygon: str | None = None
+    crop_polygon_path: Path | None = None
+    polygon_execution_input: PolygonExecutionInput | None = None
+    work_unit_id: str = ""
+    attempt_id: str = ""
+    diagnostics_path: Path | None = None
+    source_dimensions: tuple[str, ...] = ()
+    source_coverage_expectation: str = "unknown"
 
 
 @dataclass(frozen=True)

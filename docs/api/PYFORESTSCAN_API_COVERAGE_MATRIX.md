@@ -64,7 +64,7 @@ Sources reviewed: official usage pages for importing/preprocessing/writing, DTM,
 | --- | --- | --- | --- | --- | --- | --- |
 | `plot_2d` | point dimensions, color, alpha, size, figure title, slicing, save path | `None` | Not applicable | QGIS layer/table/map canvas workflows | All | QGIS visualization tools are preferred. |
 | `plot_metric` | title, metric, extent, metric name, colormap, figure size, save path | `None` | Not applicable | QGIS raster rendering | All | Plugin styling is QGIS-native. |
-| `plot_pad` | PAD array, slice/axis/color settings | `None` | Not applicable | PAD RGB/QGIS symbology | All | QGIS band rendering is preferred. |
+| `plot_pad` | PAD array, slice/axis/color settings | `None` | Not applicable | PAD height-slice display and derived visualization helpers | All | QGIS displays a representative grayscale slice by default; optional composites are labeled as derived visualizations. |
 
 ## Usage Workflows
 

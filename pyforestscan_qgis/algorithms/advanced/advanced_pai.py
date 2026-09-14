@@ -31,6 +31,6 @@ class AdvancedPaiAlgorithm(AdvancedPyForestScanAlgorithm):
         dataset, crs, output, xres, yres, add = self.common_values(parameters, context)
         params = AdvancedVoxelParameters(dataset, output, crs, xres, yres, add, self.parameterAsDouble(parameters, "VOXEL_HEIGHT", context), self.parameterAsDouble(parameters, "MIN_HEIGHT", context), self.optional_double(parameters, "MAX_HEIGHT", context), self.parameterAsDouble(parameters, "BEER_LAMBERT_CONSTANT", context), self.parameterAsBool(parameters, "DROP_GROUND", context))
         request = build_pai_request(params)
-        result = run_adapter_call(feedback, "PAI", lambda: PyForestScanAdapter().create_pai(request))
+        result = run_adapter_call(feedback, "PAI", lambda: PyForestScanAdapter(execution_mode="pbm_backend").create_pai(request))
         load_raster_if_requested(result.output_path, "pai_geotiff", context, feedback, add)
         return self.push_result(feedback, result.output_path, "PAI")

@@ -1,0 +1,71 @@
+"""Own one source-aware polygon CHM job outside QGIS."""
+from __future__ import annotations
+import argparse,os,pickle,time,traceback,json
+from pathlib import Path
+from pyforestscan_qgis.backend_runner.job_coordinator import DurableJobCoordinator,ProcessingProgressSnapshot,aggregate_work_unit_statuses,utc_now
+from pyforestscan_qgis.core.atomic_state import atomic_write_json
+from pyforestscan_qgis.core.adapter import PyForestScanAdapter
+from pyforestscan_qgis.backend_runner.runtime_contract import inspect_runtime_contract
+from pyforestscan_qgis.core.backend.processing_engine import ProcessingRuntimeToken,product_capability_hash
+
+def _atomic_pickle(path,value):
+    import uuid
+    temporary=path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    with temporary.open("wb") as stream:
+        pickle.dump(value,stream);stream.flush();os.fsync(stream.fileno())
+    os.replace(temporary,path)
+
+def run_payload(payload_path):
+    with Path(payload_path).open("rb") as stream:payload=pickle.load(stream)
+    job_dir=Path(payload["job_dir"]);job_id=payload["job_id"];attempt_id=payload["attempt_id"];coordinator=DurableJobCoordinator(job_dir);coordinator.recover();coordinator.write_identity(job_id,attempt_id,os.sys.argv);started=time.monotonic()
+    products=tuple(product.value for product in payload["report"].request.products)
+    _validate_and_trace_runtime(job_dir,job_id,products)
+    def control():
+        if (job_dir/"cancel_requested.json").exists():return "cancel"
+        if (job_dir/"pause_requested.json").exists():return "pause"
+        return None
+    def progress(item):
+        stage=getattr(item,"stage",getattr(item,"status","Processing Regions"));message=getattr(item,"message","");plan=payload["plan"];counts=aggregate_work_unit_statuses(payload["context"].run_folder/"work_units",plan.candidate_count,plan.required_count)
+        active=tuple(getattr(item,"current_units",())) or tuple(counts["current_work_unit_ids"])
+        current=active[0] if active else ""
+        coordinator.write_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,"running",plan.candidate_count,completed=counts["completed"]+counts["complete_nodata"],failed=counts["failed"],pending=counts["pending"],running=counts["running"],attempted=counts["attempted"],current_work_unit_id=current,current_stage=str(stage),current_activity=str(message),elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now(),candidate_work_units=plan.candidate_count,required_work_units=plan.required_count,skipped_outside_polygon=counts["skipped_outside_polygon"],complete_nodata=counts["complete_nodata"],current_work_unit_ids=active,progress_percent=int(getattr(item,"progress_percent",0)),eta_seconds=getattr(item,"eta_seconds",None),eta_confidence=str(getattr(item,"eta_confidence","CALCULATING")),health=str(getattr(item,"health","WORKING")),target_concurrency=int(getattr(item,"target_concurrency",1)),worker_details=tuple(getattr(item,"worker_details",()))))
+    try:
+        os.environ["PYFORESTSCAN_POLYGON_COORDINATOR"]="1"
+        from pyforestscan_qgis.core.polygon_batch import _execute_source_aware_chm
+        adapter=PyForestScanAdapter(execution_mode="qgis_python")
+        result=_execute_source_aware_chm(payload["report"],adapter,Path(payload["batch_folder"]),payload["context"],payload["source"],payload["plan"],item_callback=progress,control_callback=control)
+        statuses=tuple(getattr(item,"status","").lower() for item in result.items);failed=any(status not in {"completed","cancelled","paused"} for status in statuses)
+        result_path=job_dir/"coordinator_result.pkl";_atomic_pickle(result_path,result)
+        state="cancelled" if "cancelled" in statuses else "paused" if "paused" in statuses else "scientific_blocker" if failed else "complete"
+        atomic_write_json(job_dir/"terminal_result.json",{"job_id":job_id,"attempt_id":attempt_id,"state":state,"result_path":str(result_path),"error":"One or more required work areas failed." if failed else "","finished_at":utc_now()})
+        plan=payload["plan"];counts=aggregate_work_unit_statuses(payload["context"].run_folder/"work_units",plan.candidate_count,plan.required_count)
+        coordinator.write_terminal_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,state,plan.candidate_count,completed=counts["completed"]+counts["complete_nodata"],failed=counts["failed"],pending=counts["pending"],running=counts["running"],attempted=counts["attempted"],current_stage="Cancelled" if state=="cancelled" else "Paused" if state=="paused" else "Scientific Blocker" if failed else "Complete",current_activity="Completed regions were preserved." if state in {"cancelled","paused"} or failed else "",circuit_breaker_state="open" if failed else "closed",finalization_state="paused" if state=="paused" else "cancelled" if state=="cancelled" else "blocked" if failed else "complete",elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now(),candidate_work_units=plan.candidate_count,required_work_units=plan.required_count,skipped_outside_polygon=counts["skipped_outside_polygon"],complete_nodata=counts["complete_nodata"],stop_reason="One or more required processing regions failed." if failed else ""))
+        return 1 if failed else 0
+    except Exception as exc:
+        preparation_failure="SOURCE_PREPARATION" in str(exc) or "NORMALIZED_Z_VALIDATION" in str(exc) or "PREPARED_SOURCE" in str(exc)
+        stage="source_preparation" if preparation_failure else "processing"
+        user_error="PyForestScan could not prepare normalized tree heights for this LiDAR source." if preparation_failure else str(exc)
+        atomic_write_json(job_dir/"terminal_result.json",{"job_id":job_id,"attempt_id":attempt_id,"state":"scientific_blocker" if preparation_failure else "failed","stage":stage,"error":user_error,"technical_error":str(exc),"traceback":traceback.format_exc(),"finished_at":utc_now()})
+        coordinator.write_terminal_snapshot(ProcessingProgressSnapshot(job_id,attempt_id,"scientific_blocker" if preparation_failure else "failed",len(payload["plan"].work_units),current_stage="Source Preparation" if preparation_failure else "Finalization Failed",current_activity=user_error,finalization_state="blocked",elapsed_seconds=time.monotonic()-started,last_heartbeat=utc_now(),stop_reason=str(exc)))
+        return 1
+
+def main():
+    parser=argparse.ArgumentParser();parser.add_argument("--payload",type=Path,required=True);args=parser.parse_args();return run_payload(args.payload)
+def _validate_and_trace_runtime(job_dir,job_id,products):
+    contract=inspect_runtime_contract();token=ProcessingRuntimeToken.from_dict(json.loads(os.environ.get("PYFORESTSCAN_RUNTIME_TOKEN","{}")))
+    if token is None:raise RuntimeError("ENGINE_RUNTIME_TOKEN_MISSING: polygon coordinator was not launched by the Processing Engine.")
+    identity_matches=(
+        str(Path(token.executable).resolve())==str(Path(contract.get("python_executable","")).resolve())
+        and token.backend_runner_hash==str(contract.get("runner_sha256",""))
+        and token.plugin_build_id==str(contract.get("plugin_build_id",""))
+        and token.dependency_manifest_hash==str(contract.get("dependency_manifest_hash",""))
+        and token.product_capability_hash==product_capability_hash(tuple(products))
+    )
+    if not identity_matches:raise RuntimeError("ENGINE_RUNTIME_CHANGED: polygon coordinator runtime differs from the verified Processing Engine.")
+    path=Path(job_dir)/"execution_runtime_trace.json"
+    try:trace=json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"stages":{}}
+    except (OSError,ValueError):trace={"stages":{}}
+    trace.setdefault("stages",{})["polygon_coordinator"]={"job_id":job_id,"pid":os.getpid(),"parent_pid":os.getppid(),"executable":contract.get("python_executable"),"sys_prefix":os.sys.prefix,"cwd":os.getcwd(),"pythonpath":os.environ.get("PYTHONPATH",""),"path":os.environ.get("PATH",""),"sys_path":contract.get("sys_path",[]),"module_locations":contract.get("module_locations",{}),"protocol":contract.get("protocol_version"),"contract_hash":token.contract_hash,"runtime_generation_id":token.runtime_generation_id}
+    atomic_write_json(path,trace)
+
+if __name__=="__main__":raise SystemExit(main())

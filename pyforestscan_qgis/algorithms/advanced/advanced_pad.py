@@ -31,6 +31,6 @@ class AdvancedPadAlgorithm(AdvancedPyForestScanAlgorithm):
         dataset, crs, output, xres, yres, add = self.common_values(parameters, context)
         params = AdvancedVoxelParameters(dataset, output, crs, xres, yres, add, self.parameterAsDouble(parameters, "VOXEL_HEIGHT", context), 0.0, None, self.parameterAsDouble(parameters, "BEER_LAMBERT_CONSTANT", context), self.parameterAsBool(parameters, "DROP_GROUND", context))
         request = build_pad_request(params)
-        result = run_adapter_call(feedback, "PAD", lambda: PyForestScanAdapter().create_pad(request))
+        result = run_adapter_call(feedback, "PAD", lambda: PyForestScanAdapter(execution_mode="pbm_backend").create_pad(request))
         load_raster_if_requested(result.output_path, "pad_geotiff", context, feedback, add)
         return self.push_result(feedback, result.output_path, "PAD")

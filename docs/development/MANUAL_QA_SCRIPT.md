@@ -36,7 +36,7 @@ For each generated product, confirm output exists in the run folder and job summ
 
 - CHM: `outputs/chm.tif`, grayscale display, CRS/extent look correct.
 - Canopy Cover: `outputs/canopy_cover.tif`, grayscale display, values look plausible.
-- PAD: `outputs/pad.tif`, RGB 5/3/2 composite when at least five bands exist, no crash if fewer bands.
+- PAD: `outputs/pad.tif`, authoritative multiband height-bin GeoTIFF, default grayscale height-slice display, no crash if fewer bands.
 - PAI: `outputs/pai.tif`, grayscale display.
 - FHD: `outputs/fhd.tif`, grayscale display.
 - Rumple: `outputs/rumple_summary.csv`, table/report link visible.

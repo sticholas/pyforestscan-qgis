@@ -17,6 +17,7 @@ from .external_worker import (
     external_workers_enabled,
 )
 from .batch_manifest import MANIFEST_NAME, completed_dataset_paths, failed_dataset_paths, load_manifest
+from .dataset_report import build_dataset_explorer_report, report_to_dict
 
 DiskUsageProvider = Callable[[Path], tuple[int, int, int]]
 
@@ -39,6 +40,8 @@ class BatchPreflightReport:
     execution_mode: str
     max_workers: int
     recommended_workers: int
+    processing_spatial_contexts: tuple[tuple[str, dict[str, object]], ...] = ()
+    runtime_token: object | None = None
 
     @property
     def has_warnings(self) -> bool:
@@ -70,7 +73,9 @@ def run_batch_preflight(
         probe.unlink(missing_ok=True)
     except OSError as exc:
         blockers.append(f"Output folder is not writable: {exc}")
-    batch_folder = request.batch_folder or _existing_or_new_batch_folder(request)
+    # A new immutable request always receives a new identity. Historical
+    # manifests are consulted only when the caller explicitly selects one.
+    batch_folder = request.batch_folder or create_batch_folder(request.output_folder)
     manifest_path = batch_folder / MANIFEST_NAME
     completed: tuple[Path, ...] = ()
     failed: tuple[Path, ...] = ()
@@ -90,6 +95,19 @@ def run_batch_preflight(
     if request.settings.retry_failed_only:
         files_to_retry = tuple(path for path in files_to_process if path in failed)
         files_to_process = files_to_retry
+    if request.clip_bounds:
+        files_to_process, outside = _filter_sources_for_clip_bounds(
+            files_to_process, request.clip_bounds, adapter, warnings
+        )
+        if request.settings.retry_failed_only:
+            files_to_retry = files_to_process
+        if outside:
+            files_to_skip = tuple(dict.fromkeys((*files_to_skip, *outside)))
+            warnings.append(
+                f"Rectangular bounds exclude {len(outside)} selected source(s); those sources will be skipped."
+            )
+        if not files_to_process:
+            blockers.append("Rectangular clipping bounds do not intersect any selected LiDAR source.")
     conflicts = _output_conflicts(files_to_process, batch_folder, request.settings.overwrite_existing)
     if conflicts:
         blockers.append("Output conflicts detected: " + "; ".join(str(path) for path in conflicts[:5]))
@@ -103,10 +121,14 @@ def run_batch_preflight(
         warnings.append(f"Free disk space could not be checked: {exc}")
     try:
         readiness = adapter.check_environment().readiness.value
-        if readiness != "READY":
+        backend = adapter.selected_execution_backend() if hasattr(adapter, "selected_execution_backend") else "qgis_python"
+        if readiness == "NOT READY":
             blockers.append(f"Environment is {readiness}; run Environment Check before batch processing.")
+        elif readiness != "READY" and backend == "pbm_backend":
+            warnings.append("QGIS Python scientific dependencies are not READY, but PBM backend is READY and will be used for routed products.")
     except Exception as exc:  # noqa: BLE001 - preflight reports environment uncertainty.
         warnings.append(f"Environment readiness could not be verified: {exc}")
+    spatial_contexts = _check_preparation_spatial_readiness(request, files_to_process, adapter, blockers, warnings)
     workload_score = len(files_to_process) * max(1, len(request.settings.products))
     if len(files_to_process) >= LARGE_FILE_COUNT:
         warnings.append("Large batch: many files selected.")
@@ -146,6 +168,8 @@ def run_batch_preflight(
         execution_mode=request.settings.execution_mode,
         max_workers=request.settings.max_workers,
         recommended_workers=recommend_batch_workers(len(files_to_process), workload_score, request.settings.execution_mode),
+        processing_spatial_contexts=spatial_contexts,
+        runtime_token=request.runtime_token,
     )
 
 
@@ -161,13 +185,6 @@ def estimate_batch_output_bytes(request: BatchRequest, file_count: int | None = 
     if any(product.value == "pad" for product in request.settings.products):
         per_product_bytes += 256 * 1024 * 1024
     return count * max(1, product_count) * per_product_bytes
-
-
-def _existing_or_new_batch_folder(request: BatchRequest) -> Path:
-    manifests = sorted(request.output_folder.glob(f"pyforestscan_batch_*/{MANIFEST_NAME}"), reverse=True)
-    if manifests:
-        return manifests[0].parent
-    return create_batch_folder(request.output_folder)
 
 
 def _output_conflicts(datasets: tuple[Path, ...], batch_folder: Path, overwrite_existing: bool) -> tuple[Path, ...]:
@@ -195,6 +212,73 @@ def recommend_batch_workers(file_count: int, workload_score: int, execution_mode
     if execution_mode == EXTERNAL_WORKER_MODE:
         return min(4, file_count)
     return min(3, file_count) if workload_score <= 8 else 2
+
+
+def _check_preparation_spatial_readiness(request, sources, adapter, blockers, warnings) -> tuple[tuple[str, dict[str, object]], ...]:
+    """Surface resolvable unit metadata before a PBM worker starts."""
+    products = {str(getattr(item, "value", item)) for item in request.settings.products}
+    if not products.intersection({"chm", "rumple", "pad", "pai", "fhd", "canopy_cover", "voxel_stat"}):
+        return ()
+    unresolved: list[Path] = []
+    resolved_contexts: list[tuple[str, dict[str, object]]] = []
+    inspected = tuple(sources[:50])
+    for source in inspected:
+        try:
+            report = build_dataset_explorer_report(adapter.inspect_dataset(source), requested_products=tuple(products))
+        except Exception as exc:  # noqa: BLE001 - ordinary metadata uncertainty is reported, not fatal.
+            warnings.append(f"Preparation metadata could not be checked for {Path(source).name}: {exc}")
+            continue
+        if report.preparation_readiness == "NEEDS_USER_INPUT":
+            unresolved.append(Path(source))
+        preparation = report_to_dict(report).get("preparation", {}) if hasattr(report, "source_coordinate_units") else {}
+        if isinstance(preparation, dict) and preparation:
+            basis = str(preparation.get("source_units_basis", "UNRESOLVED"))
+            resolved_contexts.append((str(Path(source)), {
+                "crs": report.crs or "",
+                "linear_units": str(preparation.get("source_coordinate_units", "")),
+                "unit_basis": basis,
+                "confidence": "ASSUMED" if basis == "ASSUMED_SOURCE_LOCAL" else ("HIGH" if preparation.get("source_units_authoritative") else "NONE"),
+                "source_units_authoritative": bool(preparation.get("source_units_authoritative")),
+                "georeferenced": bool(report.crs),
+                "processing_coordinate_mode": str(preparation.get("processing_coordinate_mode", "unresolved")),
+                "distance_operations_safe": report.preparation_readiness not in {"NEEDS_USER_INPUT", "BLOCKED"},
+                "fallback_applied": basis == "ASSUMED_SOURCE_LOCAL",
+                "warnings": tuple(item.message for item in report.warnings if item.code == "SOURCE_UNITS_ASSUMED"),
+                "blockers": (),
+            }))
+        for item in getattr(report, "warnings", ()):
+            if item.code == "SOURCE_UNITS_ASSUMED":
+                warnings.append(item.message)
+    if unresolved:
+        names = ", ".join(path.name for path in unresolved[:5])
+        blockers.append(f"SOURCE_UNITS_UNKNOWN: PyForestScan found usable preparation inputs for {names}. Choose trusted coordinate units or assign the source coordinate system to continue.")
+    if len(sources) > len(inspected):
+        warnings.append(f"Preparation metadata was checked for the first {len(inspected)} selected sources; repository assignments will be revalidated during execution.")
+    return tuple(resolved_contexts)
+
+
+def _filter_sources_for_clip_bounds(sources, clip_bounds, adapter, warnings):
+    """Skip sources known to be outside an explicit folder-mode XY window."""
+    (xmin, xmax), (ymin, ymax) = clip_bounds
+    included = []
+    outside = []
+    for source in sources:
+        try:
+            inspection = adapter.inspect_dataset(source)
+            bounds = inspection.bounds
+            if bounds is None:
+                included.append(source)
+                warnings.append(f"Could not pre-check clipping overlap for {Path(source).name}; execution will validate it.")
+                continue
+            intersects = not (
+                float(bounds.max_x) <= xmin or float(bounds.min_x) >= xmax
+                or float(bounds.max_y) <= ymin or float(bounds.min_y) >= ymax
+            )
+            (included if intersects else outside).append(source)
+        except Exception as exc:  # noqa: BLE001 - unknown overlap remains executable.
+            included.append(source)
+            warnings.append(f"Could not pre-check clipping overlap for {Path(source).name}: {exc}")
+    return tuple(included), tuple(outside)
 
 
 def _recommended_workers(file_count: int, workload_score: int, execution_mode: str) -> int:

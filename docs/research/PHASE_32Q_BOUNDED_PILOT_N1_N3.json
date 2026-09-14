@@ -1,0 +1,333 @@
+{
+  "requests": [
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r00000_c00000\\request.pkl",
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r00000_c00500\\request.pkl",
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r00000_c01000\\request.pkl",
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r00500_c00000\\request.pkl",
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r00500_c00500\\request.pkl",
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r00500_c01000\\request.pkl",
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r01000_c00000\\request.pkl",
+    "D:\\tmp\\pyforestscan_polygon_batch_planned\\polygon_jobs\\ept-1d62cdc8acd2\\ept-full\\work_units\\wu-40cb5f0be7-01620d46d60f\\bounded_subreads\\r01000_c00500\\request.pkl"
+  ],
+  "concurrency": [
+    1,
+    2,
+    3
+  ],
+  "output": "D:\\tmp\\phase32q_concurrency_benchmark",
+  "status": "COMPLETE",
+  "rows": [
+    {
+      "workers": 1,
+      "wall_seconds": 89.25,
+      "regions_per_minute": 5.378151260504202,
+      "points_per_second": 317570.28571428574,
+      "ept_seconds": 12.014259399962611,
+      "pyforestscan_seconds": 48.96482439979445,
+      "peak_aggregate_rss_upper_bound_bytes": 1329217536,
+      "maximum_worker_rss_bytes": 1329217536,
+      "failures": 0,
+      "outputs_equivalent_to_n1": true,
+      "results": [
+        {
+          "index": 0,
+          "returncode": 0,
+          "elapsed_seconds": 13.875,
+          "peak_rss_bytes": 1204105216,
+          "point_count": 4393782,
+          "ept_seconds": 1.8387929999735206,
+          "pyforestscan_seconds": 8.078853799961507,
+          "output_sha256": "9c8d9c3ad11cebde5814c5df0222dca63c37326a78617058919d38756dfcdcee",
+          "stderr_tail": ""
+        },
+        {
+          "index": 1,
+          "returncode": 0,
+          "elapsed_seconds": 13.344000000040978,
+          "peak_rss_bytes": 1172119552,
+          "point_count": 4281075,
+          "ept_seconds": 1.7847272000508383,
+          "pyforestscan_seconds": 7.8171391999349,
+          "output_sha256": "5504dda0d3eb63ca6d70c3a185a366687f1b07f55ad3d613a168955c292b81a6",
+          "stderr_tail": ""
+        },
+        {
+          "index": 2,
+          "returncode": 0,
+          "elapsed_seconds": 6.625,
+          "peak_rss_bytes": 588677120,
+          "point_count": 1566342,
+          "ept_seconds": 0.7330846999539062,
+          "pyforestscan_seconds": 3.0517016999656335,
+          "output_sha256": "47a6e734fdd7593b72e84a82a930120be58bba499c87795adbf956edc26af95e",
+          "stderr_tail": ""
+        },
+        {
+          "index": 3,
+          "returncode": 0,
+          "elapsed_seconds": 13.85999999998603,
+          "peak_rss_bytes": 1202089984,
+          "point_count": 4563281,
+          "ept_seconds": 1.8903979000169784,
+          "pyforestscan_seconds": 8.189655099995434,
+          "output_sha256": "aa8513b9b92c3eacd9b164247775e0ebf3e226b360efb38b476885e1b2a421a9",
+          "stderr_tail": ""
+        },
+        {
+          "index": 4,
+          "returncode": 0,
+          "elapsed_seconds": 16.875,
+          "peak_rss_bytes": 1329217536,
+          "point_count": 6178111,
+          "ept_seconds": 2.534672799985856,
+          "pyforestscan_seconds": 9.858882699976675,
+          "output_sha256": "594fbd8c6102927c4675f8d0add9d648c484f9719039d3c871d7aa5cbcf9b05e",
+          "stderr_tail": ""
+        },
+        {
+          "index": 5,
+          "returncode": 0,
+          "elapsed_seconds": 7.829000000027008,
+          "peak_rss_bytes": 629121024,
+          "point_count": 2252970,
+          "ept_seconds": 1.060051599983126,
+          "pyforestscan_seconds": 3.7664661000017077,
+          "output_sha256": "d2dc37bea3a3dac947bd36bf82e313e7fe46a6741714b8be5af1719a76e88aa8",
+          "stderr_tail": ""
+        },
+        {
+          "index": 6,
+          "returncode": 0,
+          "elapsed_seconds": 7.73499999998603,
+          "peak_rss_bytes": 652423168,
+          "point_count": 2219762,
+          "ept_seconds": 0.9668846999993548,
+          "pyforestscan_seconds": 3.771140299970284,
+          "output_sha256": "39c13b06da887cf35feb7748322da61498e3b6d73d18112b9fc278680bd50d70",
+          "stderr_tail": ""
+        },
+        {
+          "index": 7,
+          "returncode": 0,
+          "elapsed_seconds": 8.75,
+          "peak_rss_bytes": 710193152,
+          "point_count": 2887825,
+          "ept_seconds": 1.2056474999990314,
+          "pyforestscan_seconds": 4.43098549998831,
+          "output_sha256": "b0fdb4826af70c0b7a34088357a1f01311254332bc10b46a3b690fcfcf9c2921",
+          "stderr_tail": ""
+        }
+      ],
+      "speedup": 1.0,
+      "parallel_efficiency": 1.0
+    },
+    {
+      "workers": 2,
+      "wall_seconds": 47.14000000001397,
+      "regions_per_minute": 10.18243529910602,
+      "points_per_second": 601254.7305895545,
+      "ept_seconds": 12.530928500113077,
+      "pyforestscan_seconds": 50.48740059987176,
+      "peak_aggregate_rss_upper_bound_bytes": 2546491392,
+      "maximum_worker_rss_bytes": 1331806208,
+      "failures": 0,
+      "outputs_equivalent_to_n1": true,
+      "results": [
+        {
+          "index": 0,
+          "returncode": 0,
+          "elapsed_seconds": 14.170999999972992,
+          "peak_rss_bytes": 1198252032,
+          "point_count": 4393782,
+          "ept_seconds": 1.985151099972427,
+          "pyforestscan_seconds": 8.115897700074129,
+          "output_sha256": "9c8d9c3ad11cebde5814c5df0222dca63c37326a78617058919d38756dfcdcee",
+          "stderr_tail": ""
+        },
+        {
+          "index": 1,
+          "returncode": 0,
+          "elapsed_seconds": 13.875,
+          "peak_rss_bytes": 1168756736,
+          "point_count": 4281075,
+          "ept_seconds": 1.9556981000350788,
+          "pyforestscan_seconds": 7.943398199975491,
+          "output_sha256": "5504dda0d3eb63ca6d70c3a185a366687f1b07f55ad3d613a168955c292b81a6",
+          "stderr_tail": ""
+        },
+        {
+          "index": 2,
+          "returncode": 0,
+          "elapsed_seconds": 6.64000000001397,
+          "peak_rss_bytes": 576376832,
+          "point_count": 1566342,
+          "ept_seconds": 0.8284349000314251,
+          "pyforestscan_seconds": 3.042643000022508,
+          "output_sha256": "47a6e734fdd7593b72e84a82a930120be58bba499c87795adbf956edc26af95e",
+          "stderr_tail": ""
+        },
+        {
+          "index": 3,
+          "returncode": 0,
+          "elapsed_seconds": 14.969000000040978,
+          "peak_rss_bytes": 1214685184,
+          "point_count": 4563281,
+          "ept_seconds": 1.925514500006102,
+          "pyforestscan_seconds": 9.088232499896549,
+          "output_sha256": "aa8513b9b92c3eacd9b164247775e0ebf3e226b360efb38b476885e1b2a421a9",
+          "stderr_tail": ""
+        },
+        {
+          "index": 4,
+          "returncode": 0,
+          "elapsed_seconds": 17.57799999997951,
+          "peak_rss_bytes": 1331806208,
+          "point_count": 6178111,
+          "ept_seconds": 2.640331899980083,
+          "pyforestscan_seconds": 10.199267099960707,
+          "output_sha256": "594fbd8c6102927c4675f8d0add9d648c484f9719039d3c871d7aa5cbcf9b05e",
+          "stderr_tail": ""
+        },
+        {
+          "index": 5,
+          "returncode": 0,
+          "elapsed_seconds": 7.828000000095926,
+          "peak_rss_bytes": 631504896,
+          "point_count": 2252970,
+          "ept_seconds": 1.026415599975735,
+          "pyforestscan_seconds": 3.8120681999716908,
+          "output_sha256": "d2dc37bea3a3dac947bd36bf82e313e7fe46a6741714b8be5af1719a76e88aa8",
+          "stderr_tail": ""
+        },
+        {
+          "index": 6,
+          "returncode": 0,
+          "elapsed_seconds": 7.843999999924563,
+          "peak_rss_bytes": 655024128,
+          "point_count": 2219762,
+          "ept_seconds": 0.9758370000636205,
+          "pyforestscan_seconds": 3.812805199995637,
+          "output_sha256": "39c13b06da887cf35feb7748322da61498e3b6d73d18112b9fc278680bd50d70",
+          "stderr_tail": ""
+        },
+        {
+          "index": 7,
+          "returncode": 0,
+          "elapsed_seconds": 9.047000000020489,
+          "peak_rss_bytes": 710402048,
+          "point_count": 2887825,
+          "ept_seconds": 1.193545400048606,
+          "pyforestscan_seconds": 4.473088699975051,
+          "output_sha256": "b0fdb4826af70c0b7a34088357a1f01311254332bc10b46a3b690fcfcf9c2921",
+          "stderr_tail": ""
+        }
+      ],
+      "speedup": 1.8932965634275254,
+      "parallel_efficiency": 0.9466482817137627
+    },
+    {
+      "workers": 3,
+      "wall_seconds": 33.31299999996554,
+      "regions_per_minute": 14.408789361525425,
+      "points_per_second": 850813.4361969597,
+      "ept_seconds": 13.492194599937648,
+      "pyforestscan_seconds": 53.481462500058115,
+      "peak_aggregate_rss_upper_bound_bytes": 3743723520,
+      "maximum_worker_rss_bytes": 1332576256,
+      "failures": 0,
+      "outputs_equivalent_to_n1": true,
+      "results": [
+        {
+          "index": 0,
+          "returncode": 0,
+          "elapsed_seconds": 15.469000000040978,
+          "peak_rss_bytes": 1197002752,
+          "point_count": 4393782,
+          "ept_seconds": 2.2391522000543773,
+          "pyforestscan_seconds": 9.001744500012137,
+          "output_sha256": "9c8d9c3ad11cebde5814c5df0222dca63c37326a78617058919d38756dfcdcee",
+          "stderr_tail": ""
+        },
+        {
+          "index": 1,
+          "returncode": 0,
+          "elapsed_seconds": 15.172000000020489,
+          "peak_rss_bytes": 1167896576,
+          "point_count": 4281075,
+          "ept_seconds": 2.1951108999783173,
+          "pyforestscan_seconds": 8.869079699972644,
+          "output_sha256": "5504dda0d3eb63ca6d70c3a185a366687f1b07f55ad3d613a168955c292b81a6",
+          "stderr_tail": ""
+        },
+        {
+          "index": 2,
+          "returncode": 0,
+          "elapsed_seconds": 7.328000000095926,
+          "peak_rss_bytes": 587599872,
+          "point_count": 1566342,
+          "ept_seconds": 0.9545459999935701,
+          "pyforestscan_seconds": 3.1626450000330806,
+          "output_sha256": "47a6e734fdd7593b72e84a82a930120be58bba499c87795adbf956edc26af95e",
+          "stderr_tail": ""
+        },
+        {
+          "index": 3,
+          "returncode": 0,
+          "elapsed_seconds": 15.062000000034459,
+          "peak_rss_bytes": 1214144512,
+          "point_count": 4563281,
+          "ept_seconds": 1.9988671999890357,
+          "pyforestscan_seconds": 9.131922099972144,
+          "output_sha256": "aa8513b9b92c3eacd9b164247775e0ebf3e226b360efb38b476885e1b2a421a9",
+          "stderr_tail": ""
+        },
+        {
+          "index": 4,
+          "returncode": 0,
+          "elapsed_seconds": 18.07799999997951,
+          "peak_rss_bytes": 1332576256,
+          "point_count": 6178111,
+          "ept_seconds": 2.723103199969046,
+          "pyforestscan_seconds": 10.749151700059883,
+          "output_sha256": "594fbd8c6102927c4675f8d0add9d648c484f9719039d3c871d7aa5cbcf9b05e",
+          "stderr_tail": ""
+        },
+        {
+          "index": 5,
+          "returncode": 0,
+          "elapsed_seconds": 8.23499999998603,
+          "peak_rss_bytes": 640966656,
+          "point_count": 2252970,
+          "ept_seconds": 1.127141600009054,
+          "pyforestscan_seconds": 3.9109979000641033,
+          "output_sha256": "d2dc37bea3a3dac947bd36bf82e313e7fe46a6741714b8be5af1719a76e88aa8",
+          "stderr_tail": ""
+        },
+        {
+          "index": 6,
+          "returncode": 0,
+          "elapsed_seconds": 8.327999999979511,
+          "peak_rss_bytes": 647118848,
+          "point_count": 2219762,
+          "ept_seconds": 0.9976733999792486,
+          "pyforestscan_seconds": 3.9916129999328405,
+          "output_sha256": "39c13b06da887cf35feb7748322da61498e3b6d73d18112b9fc278680bd50d70",
+          "stderr_tail": ""
+        },
+        {
+          "index": 7,
+          "returncode": 0,
+          "elapsed_seconds": 9.547000000020489,
+          "peak_rss_bytes": 712949760,
+          "point_count": 2887825,
+          "ept_seconds": 1.2566000999649987,
+          "pyforestscan_seconds": 4.664308600011282,
+          "output_sha256": "b0fdb4826af70c0b7a34088357a1f01311254332bc10b46a3b690fcfcf9c2921",
+          "stderr_tail": ""
+        }
+      ],
+      "speedup": 2.6791342719086337,
+      "parallel_efficiency": 0.8930447573028779
+    }
+  ]
+}

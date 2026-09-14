@@ -1,0 +1,65 @@
+{
+  "schema": "phase32o-sparse-plan-benchmark-v1",
+  "job_id": "2ddc973459416e91a47265d5ea18f313da6640f56dcd6b8f8914312e24d25bb0",
+  "legacy_plan_signature": "e87e474a99e148306c0760f8d67f9ff78ee56293aa07e3648447820539f60fd2",
+  "geometry": {
+    "components": 27,
+    "component_areas_m2": [
+      80095.494140625,
+      150190.25122070312,
+      120151.71170043945,
+      150185.42056274414,
+      180000.0,
+      7711.787872314453,
+      180270.7081604004,
+      175224.94915771484,
+      320419.7692871094,
+      200000.0,
+      153208.95574951172,
+      22530.858978271484,
+      175149.8311767578,
+      120173.5905456543,
+      100118.78521728516,
+      140000.0,
+      210000.00003051758,
+      100108.5309753418,
+      180000.00003051758,
+      100108.60302734375,
+      200000.0,
+      100110.70944213867,
+      100000.0,
+      199999.99996948242,
+      300267.97833251953,
+      280245.5918273926,
+      100086.81442260742
+    ],
+    "total_area_ha": 414.63603418273925,
+    "envelope_width_m": 51297.0,
+    "envelope_height_m": 83136.0
+  },
+  "legacy": {
+    "candidate_objects": 3450,
+    "executable_regions": 42,
+    "skipped_objects": 3408,
+    "plan_bytes": 7801348,
+    "tree": {
+      "files": 6464,
+      "directories": 4203,
+      "bytes": 107550571
+    }
+  },
+  "phase32o": {
+    "candidate_objects": 50,
+    "executable_regions": 50,
+    "skipped_objects": 0,
+    "components": 27,
+    "clusters": 26,
+    "read_blocks": 50,
+    "science_blocks": 50,
+    "checkpoint_tiles": 50,
+    "outside_polygon_count_estimate": 5770,
+    "planning_seconds": 0.00564923300044029,
+    "serialized_plan_bytes": 111325,
+    "projected_status_files": 50
+  }
+}

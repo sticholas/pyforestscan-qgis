@@ -1,5 +1,8 @@
 # Getting Started
 
+For the shortest path from ZIP install to a product, use the
+[Quick Start](QUICK_START.md).
+
 1. Install QGIS and prepare the QGIS Python environment.
 2. Install PyForestScan and required scientific packages into the same QGIS Python environment.
 3. Build or install the plugin ZIP.

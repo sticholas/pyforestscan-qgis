@@ -72,14 +72,28 @@ class BatchExecutorTests(unittest.TestCase):
             self.assertEqual(SEQUENTIAL_MODE, report.effective_mode)
             self.assertFalse(report.is_parallel)
 
-    def test_parallel_large_workload_requires_confirmation(self) -> None:
-        """Parallel mode is blocked for large workloads until confirmed."""
+    def test_parallel_large_workload_is_planner_owned(self) -> None:
+        """Warnings inform but do not require a global acknowledgement."""
         with tempfile.TemporaryDirectory() as tmp:
             request = self._request(Path(tmp), count=10, mode=PARALLEL_SAFE_MODE, workers=2, confirm=False)
             report = BatchExecutor(adapter_factory=FailingAdapter).guardrails(request)  # type: ignore[arg-type]
 
-            self.assertTrue(report.blocked)
-            self.assertIn("requires confirmation", report.reason or "")
+            self.assertFalse(report.blocked)
+            self.assertTrue(report.warnings)
+
+    def test_automatic_single_source_uses_one_worker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            request = self._request(Path(tmp), count=1, mode="automatic", workers=5)
+            report = BatchExecutor(adapter_factory=FailingAdapter).guardrails(request)  # type: ignore[arg-type]
+            self.assertEqual(SEQUENTIAL_MODE, report.effective_mode)
+            self.assertEqual(1, report.max_workers)
+
+    def test_automatic_multiple_sources_parallelize_up_to_five(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            request = self._request(Path(tmp), count=20, mode="automatic", workers=5)
+            report = BatchExecutor(adapter_factory=FailingAdapter).guardrails(request)  # type: ignore[arg-type]
+            self.assertEqual(PARALLEL_SAFE_MODE, report.effective_mode)
+            self.assertEqual(5, report.max_workers)
 
     def test_parallel_mode_records_failed_files_and_writes_summary(self) -> None:
         """Parallel worker failures are isolated per file."""

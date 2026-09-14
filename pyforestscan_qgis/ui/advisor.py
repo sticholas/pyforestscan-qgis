@@ -75,7 +75,7 @@ PRODUCT_EXPLANATIONS: tuple[ProductExplanation, ...] = (
         "A scalar summary of canopy surface roughness/complexity derived from canopy geometry.",
         "Use it as a plot or area-level structural complexity indicator when the analysis extent is scientifically appropriate.",
         "Be cautious for very small extents, low-density data, or uncalibrated grid sizes; Phase 16A intentionally does not assert a universal minimum area threshold.",
-        "Open the Rumple CSV summary and compare it with CHM in QGIS; use QGIS Layout Manager only after scientific QA is complete.",
+        "Load the Rumple GeoTIFF in QGIS with its compatible CHM; use the supporting scalar summary for area-level comparison.",
     ),
 )
 

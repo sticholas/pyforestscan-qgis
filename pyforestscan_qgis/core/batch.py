@@ -34,11 +34,24 @@ class BatchProductSettings:
     chm_interpolate_valid_region: bool = False
     chm_clean_edges: bool = False
     canopy_cover_height_threshold: float = 2.0
+    canopy_cover_max_height: float | None = None
+    canopy_cover_extinction_coefficient: float = 0.5
+    pad_beer_lambert_constant: float = 1.0
+    pad_drop_ground: bool = True
+    pai_min_height: float = 1.0
+    pai_max_height: float | None = None
+    fhd_min_height: float = 0.0
+    fhd_max_height: float | None = None
+    rumple_min_height: float | None = None
+    point_density_per_area: bool = True
+    voxel_stat_dimension: str = "HeightAboveGround"
+    voxel_stat_stat: str = "count"
+    voxel_stat_z_index_range: tuple[int, int] | None = None
     stop_on_error: bool = False
-    load_outputs_into_qgis: bool = False
-    execution_mode: str = "sequential"
-    max_workers: int = 2
-    confirm_large_parallel: bool = False
+    load_outputs_into_qgis: bool = True
+    execution_mode: str = "automatic"
+    max_workers: int = 5
+    confirm_large_parallel: bool = True
     skip_completed: bool = True
     retry_failed_only: bool = False
     overwrite_existing: bool = False
@@ -56,6 +69,21 @@ class BatchRequest:
     settings: BatchProductSettings
     title: str = "PyForestScan Batch"
     batch_folder: Path | None = None
+    processing_spatial_contexts: tuple[tuple[str, dict[str, object]], ...] = ()
+    runtime_token: object | None = None
+    clip_bounds: tuple[tuple[float, float], tuple[float, float]] | None = None
+
+
+@dataclass(frozen=True)
+class ProductExecutionResult:
+    """Terminal scientific outcome for one requested product."""
+
+    product: str
+    status: str
+    message: str
+    outputs: tuple[Path, ...] = ()
+    error_code: str = ""
+    technical_detail: str = ""
 
 
 @dataclass(frozen=True)
@@ -68,6 +96,14 @@ class BatchItemResult:
     message: str
     outputs: tuple[Path, ...]
     bounds_summary: str = "Not inspected"
+    requested_products: tuple[str, ...] = ()
+    product_results: tuple[ProductExecutionResult, ...] = ()
+    completed_work_units: int = 0
+    total_work_units: int = 0
+    latest_completed_work_unit: str = ""
+    failure_stage: str = ""
+    failed_work_unit_id: str = ""
+    work_unit_folder: str = ""
 
 
 @dataclass(frozen=True)
@@ -83,6 +119,12 @@ class BatchResult:
     summary_json: Path
     summary_csv: Path
     summary_html: Path
+    output_registry_path: Path | None = None
+    load_outputs_after_completion: bool = False
+    attempt_id: str = ""
+    job_id: str = ""
+    diagnostics_path: Path | None = None
+    failure_summary_path: Path | None = None
 
     @property
     def success_count(self) -> int:
@@ -100,9 +142,46 @@ class BatchResult:
         return len([item for item in self.items if item.status == "skipped"])
 
     @property
+    def scientific_outcome(self) -> str:
+        """Derive the job outcome from durable product terminal states."""
+        products = tuple(product for item in self.items for product in item.product_results)
+        if products:
+            succeeded = sum(product.status == "SUCCEEDED" for product in products)
+            failed = sum(product.status == "FAILED" for product in products)
+            cancelled = sum(product.status == "CANCELLED" for product in products)
+            if succeeded == len(products):
+                return "SUCCEEDED"
+            if succeeded:
+                return "PARTIAL_SUCCESS"
+            if cancelled and not failed:
+                return "CANCELLED"
+            return "FAILED"
+        cancelled_items = sum(item.status == "cancelled" for item in self.items)
+        if cancelled_items:
+            if self.success_count:
+                return "PARTIAL_SUCCESS"
+            if not self.failure_count:
+                return "CANCELLED"
+        if self.failure_count:
+            return "FAILED"
+        return "SUCCEEDED"
+
+    @property
     def total_output_count(self) -> int:
         """Return the number of output artifacts recorded by all items."""
         return sum(len(item.outputs) for item in self.items)
+
+    @property
+    def product_success_count(self) -> int:
+        return sum(product.status == "SUCCEEDED" for item in self.items for product in item.product_results)
+
+    @property
+    def product_failure_count(self) -> int:
+        return sum(product.status == "FAILED" for item in self.items for product in item.product_results)
+
+    @property
+    def product_skipped_count(self) -> int:
+        return sum(product.status == "SKIPPED_DEPENDENCY_FAILED" for item in self.items for product in item.product_results)
 
     @property
     def total_estimated_output_bytes(self) -> int:

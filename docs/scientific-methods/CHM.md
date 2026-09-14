@@ -1,5 +1,13 @@
 # Canopy Height Model (CHM)
 
+For large local sources without explicit HAG, CHM begins only after one durable source preparation has completed and passed quality checks. Tiled reads use the local prepared source on the existing aligned grid; exact polygon masking remains finalization-only.
+
+Folder and polygon modes use the same HAG preparation and CHM method. Polygon mode adds buffered spatial preparation and an exact final polygon mask while retaining the effective source/output CRS.
+
+When HAG is absent, PBM may prepare it from a compatible DTM, observed class-2 ground, or validated automatic SMRF ground. CHM metadata records HAG method and preparation signature. Vegetation classes 3/4/5 are not required.
+
+For standalone LAS/LAZ without CRS metadata, CHM may run in explicit source-local mode only when PBM verifies an existing normalized-height dimension. Coordinates and resolution remain in source units, no CRS is assigned, and ground normalization is not recalculated or silently substituted. A mismatch between inspected and execution dimensions is reported as `SOURCE_DIMENSION_MISMATCH`.
+
 ## What It Measures
 
 Canopy surface height above ground as a single-band GeoTIFF.
@@ -27,3 +35,10 @@ Check CRS, extent, height range, ground normalization, and interpolation artifac
 ## Reproducibility
 
 Record the input dataset, CRS, grid or voxel resolution, height thresholds, PyForestScan version, QGIS version, and plugin version when using this product in analysis.
+# Source-local CRS behavior
+
+CHM mathematics may run in native source X/Y coordinates when valid `HeightAboveGround` already exists. The output remains unassigned and explicitly tagged source-local. Polygon alignment and new HAG normalization still require resolved spatial context.
+
+With Phase 31B, trusted source units can also authorize automatic Delaunay/SMRF HAG preparation for standalone CHM. A units-only result remains `crs=None`; a user-assigned CRS is propagated without transforming source coordinates.
+
+When neither CRS nor units is encoded, Phase 31C may use the configured standalone fallback. This lowers spatial/unit confidence but does not bypass ground-coverage or HAG quality validation. Record `SOURCE_UNITS_BASIS` when interpreting distances or comparing results.

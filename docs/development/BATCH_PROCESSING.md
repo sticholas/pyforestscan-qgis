@@ -1,6 +1,8 @@
 # Batch Processing v2
 
-Batch Processing adds a folder-to-products workflow for users who need to run the same product plan across multiple lidar datasets without repeating the single-file Mission Control workflow by hand.
+Preparation is planned per source because repositories may mix existing and missing HAG. Method/signature provenance prevents silent mixing; repository-wide consistency is preferred and mixed methods must remain visible in reporting.
+
+Batch Processing adds folder-to-products workflows for users who need to run the same product plan across multiple lidar datasets without repeating the single-file Mission Control workflow by hand. Phase 27F adds a second Batch mode for polygon-driven LiDAR folder processing.
 
 ## Scope
 
@@ -21,6 +23,7 @@ Implemented:
 - Optional output loading into QGIS, disabled by default for batch safety.
 - Result filtering for all, completed, failed, and skipped files.
 - Summary counts for total files, completed, failed, skipped, output count, and observed output storage.
+- Polygon Area Processing mode with explicit LiDAR catalog build/update/resume jobs, indexed catalog query, polygon source selection, clipped-source staging, raster mask handoff, and standard Batch executor handoff.
 
 Not implemented yet:
 
@@ -53,6 +56,18 @@ Core modules:
 - `pyforestscan_qgis/core/batch_results.py`: batch summary JSON, CSV, and HTML writers.
 
 The batch runner does not call PyForestScan directly. It creates normal per-dataset run contexts, writes Dataset Explorer and Product Planner reports, then calls `JobManager.run_pipeline()` for each dataset.
+
+
+## Batch Modes
+
+Batch has two user-facing modes:
+
+- **Standard File Batch**: the default workflow. It discovers supported lidar files, lets users select files, runs shared products/settings for each selected dataset, and writes normal batch summaries.
+- **Polygon Area Processing**: the polygon-driven workflow. It accepts a LiDAR repository/catalog plus a polygon source from selected QGIS features, a full QGIS polygon layer, a vector file, or Advanced WKT. Preflight queries the catalog for sources whose indexed bounds intersect the polygon envelope, writes `polygon_batch_manifest.json`, stages clipped LAZ sources, masks generated rasters outside the exact polygon where supported, then runs the standard Batch executor against the staged inputs.
+
+Polygon Area Processing deliberately lives in Batch rather than Dataset because it is a multi-source workflow. Dataset remains the single-dataset inspection and planning entry point.
+
+Current polygon execution clips point inputs before product generation and applies best-effort raster masking after generation. PBM/PDAL-backed catalog CRS extraction and richer metadata retry tooling remain future improvements.
 
 ## Output Layout
 
@@ -154,3 +169,40 @@ Disk-space estimates are conservative placeholders based on selected file count 
 External worker mode is disabled in normal Mission Control use. Phase 17E proved the basic job-spec/result-file architecture, but manual validation showed that using QGIS GUI Python as the worker launcher can open multiple QGIS application windows instead of running headless jobs. That behavior is unsafe for users and can destabilize a desktop session.
 
 The code is retained only as isolated developer research scaffolding. The executor and preflight layer block external mode unless the `PYFORESTSCAN_QGIS_ENABLE_EXTERNAL_WORKERS` developer flag is set. Do not set that flag for normal processing. QGIS GUI executables must never be used as worker Python. Future work must identify and validate a true headless Python launcher before external workers can return to the UI.
+
+## Adaptive Polygon Repository Indexing
+
+Polygon Area Processing exposes **Detect Best Indexing Strategy**, **Build Relevant Index**, and **Build Complete Repository Index**. Detection is bounded and does not recurse. Relevant indexing can register an existing index or native EPT/COPC source when safe; otherwise the existing durable catalog job runs with Phase 27H safeguards.
+
+Batch execution and scientific processing are unchanged. External Worker mode remains disabled.
+
+## Backend-Aware Polygon Preflight
+
+Polygon Area Processing preflight now checks the PBM backend that will execute the job. Ready can be YES only when the polygon, repository/catalog, products, output, manifest, and managed backend are usable. Missing PyForestScan imports are reported before Run.
+
+EPT and COPC logical sources no longer use the local-file staging model. EPT sends one `ept.json` source plus bounds and exact polygon WKT to PBM.
+
+
+## Phase 27K Polygon Job Workspace
+
+Logical EPT/COPC polygon jobs create a durable  workspace with , , , , and . The backend materializes the clipping polygon under  and named progress stages describe input preparation, spatial read, product generation, masking, metadata, and finalization.
+
+## Polygon EPT diagnostics
+
+Polygon Area Processing writes backend request diagnostics under each logical EPT job workspace. Failed jobs should present the final status first and keep historical progress events as expandable chronology.
+
+## Phase 27M Shared Options
+
+Standard File Batch and Polygon Area Processing now share `BatchExecutionOptions`. Polygon mode also receives `PolygonBatchOptions` for exact raster finalization. Polygon manifests record shared options, polygon-specific options, applicability rows, and requested/effective concurrency.
+
+Polygon raster outputs are masked after product generation and before output registration. The final `generated_outputs.json` registry is the Results source of truth for both manual and automatic QGIS loading.
+
+## Phase 27N Guided Polygon Workflow
+
+Polygon Area Processing now builds a `PolygonExecutionPlan` during preflight and presents a compact guided review before the technical report. Repository identity, source selection, concurrency, exact clipping, and output loading all come from the same plan.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.
+## Internal CHM scheduling
+The outer polygon Batch item remains one logical job. Bounded work-unit concurrency is internal and does not enable External Worker mode.

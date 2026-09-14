@@ -11,6 +11,7 @@ from typing import Callable
 from .adapter import PyForestScanAdapter
 from .batch import BatchItemResult, BatchRequest, BatchResult, batch_run_context, create_batch_folder
 from .batch_results import write_batch_summaries
+from .output_registry import generated_output_for_path, write_output_registry
 from .batch_manifest import MANIFEST_NAME, create_manifest, load_manifest, update_manifest_item, write_manifest
 from .dataset_report import build_dataset_explorer_report, report_to_dict, write_csv_summary, write_html_report, write_json_report
 from .job_manager import JobManager
@@ -96,7 +97,9 @@ class BatchRunner:
             summary_json=batch_folder / "batch_summary.json",
             summary_csv=batch_folder / "batch_summary.csv",
             summary_html=batch_folder / "batch_summary.html",
+            load_outputs_after_completion=request.settings.load_outputs_into_qgis,
         )
+        result = _with_output_registry(result, source_mode="standard_file_batch")
         return write_batch_summaries(result)
 
     def _write_partial_summary(self, batch_id: str, request: BatchRequest, batch_folder: Path, started_at: str, items: list[BatchItemResult]) -> None:
@@ -111,7 +114,9 @@ class BatchRunner:
             summary_json=batch_folder / "batch_summary.json",
             summary_csv=batch_folder / "batch_summary.csv",
             summary_html=batch_folder / "batch_summary.html",
+            load_outputs_after_completion=request.settings.load_outputs_into_qgis,
         )
+        partial = _with_output_registry(partial, source_mode="standard_file_batch")
         write_batch_summaries(partial)
 
     def run_dataset(self, dataset: Path, batch_folder: Path, request: BatchRequest) -> BatchItemResult:
@@ -119,7 +124,8 @@ class BatchRunner:
         context = batch_run_context(dataset, batch_folder, reuse_existing=True).ensure_directories()
         try:
             inspection = self.adapter.inspect_dataset(dataset)
-            report = build_dataset_explorer_report(inspection)
+            frozen_contexts = dict(request.processing_spatial_contexts)
+            report = build_dataset_explorer_report(inspection, requested_products=tuple(item.value for item in request.settings.products), frozen_spatial_context=frozen_contexts.get(str(Path(dataset))))
             write_json_report(report, context.dataset_report_json)
             write_csv_summary(report, context.dataset_summary_csv)
             write_html_report(report, context.dataset_report_html)
@@ -133,28 +139,51 @@ class BatchRunner:
                 chm_interpolate_valid_region=request.settings.chm_interpolate_valid_region,
                 chm_clean_edges=request.settings.chm_clean_edges,
                 canopy_cover_height_threshold=request.settings.canopy_cover_height_threshold,
+                canopy_cover_max_height=request.settings.canopy_cover_max_height,
+                canopy_cover_extinction_coefficient=request.settings.canopy_cover_extinction_coefficient,
+                pad_beer_lambert_constant=request.settings.pad_beer_lambert_constant,
+                pad_drop_ground=request.settings.pad_drop_ground,
+                pai_min_height=request.settings.pai_min_height,
+                pai_max_height=request.settings.pai_max_height,
+                fhd_min_height=request.settings.fhd_min_height,
+                fhd_max_height=request.settings.fhd_max_height,
+                rumple_min_height=request.settings.rumple_min_height,
+                voxel_stat_dimension=request.settings.voxel_stat_dimension,
+                voxel_stat_stat=request.settings.voxel_stat_stat,
+                voxel_stat_z_index_range=request.settings.voxel_stat_z_index_range,
                 title=f"Product Plan - {dataset.name}",
+                bounds=request.clip_bounds,
             )
             plan = build_product_plan(report_to_dict(report), product_request)
             write_plan_json(plan, context.product_plan_json)
             write_plan_csv(plan, context.product_plan_csv)
             write_plan_html(plan, context.product_plan_html)
             manager = self.job_manager_factory(self.job_callback)
+            manager.set_control_callback(self.control_callback)
             job = manager.run_pipeline(
                 context.product_plan_json,
                 context.logs_dir,
                 title=f"PyForestScan Batch - {dataset.name}",
                 summary_path=context.job_summary_json,
+                max_product_workers=(
+                    min(5, request.settings.max_workers, len(request.settings.products))
+                    if len(request.datasets) == 1 else 1
+                ),
             )
-            status = "completed" if job.status.value == "completed" else "failed"
+            status = (
+                "completed" if job.status.value == "completed"
+                else "cancelled" if job.status.value == "cancelled"
+                else "failed"
+            )
             message = job.error_message or job.status.value
             return BatchItemResult(
                 dataset_path=dataset,
                 run_context=context,
                 status=status,
                 message=message,
-                outputs=tuple(result.path for result in job.results),
+                outputs=tuple(result.path for result in job.results if _is_product_output(result.result_type)),
                 bounds_summary=_bounds_summary(report.bounds),
+                requested_products=tuple(product.value for product in request.settings.products),
             )
         except Exception as exc:  # noqa: BLE001 - batch records per-file failures and continues.
             return BatchItemResult(
@@ -164,6 +193,7 @@ class BatchRunner:
                 message=str(exc),
                 outputs=(),
                 bounds_summary="Unavailable",
+                requested_products=tuple(product.value for product in request.settings.products),
             )
 
     def _control_state(self) -> str | None:
@@ -185,6 +215,7 @@ class BatchRunner:
                 message=message,
                 outputs=(),
                 bounds_summary="Not inspected",
+                requested_products=(),
             )
             skipped.append(item)
             if self.item_callback is not None:
@@ -200,3 +231,25 @@ def _bounds_summary(bounds: object) -> str:
     if None in (min_x, max_x, min_y, max_y):
         return "Unavailable"
     return f"X {float(min_x):.3f} to {float(max_x):.3f}; Y {float(min_y):.3f} to {float(max_y):.3f}"
+
+
+def _is_product_output(result_type: str) -> bool:
+    """Exclude plans, reports, and diagnostics from scientific output counts."""
+    return result_type.endswith(("_geotiff", "_csv")) and not result_type.startswith(("job_summary", "dataset_", "product_plan"))
+
+
+
+def _with_output_registry(result: BatchResult, *, source_mode: str) -> BatchResult:
+    outputs = [
+        generated_output_for_path(output, job_id=result.batch_id, source_mode=source_mode)
+        for item in result.items
+        if item.status == "completed"
+        for output in item.outputs
+        if Path(output).exists()
+    ]
+    if not outputs:
+        return result
+    registry_path = write_output_registry(outputs, result.batch_folder)
+    from dataclasses import replace
+
+    return replace(result, output_registry_path=registry_path)

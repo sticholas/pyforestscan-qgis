@@ -6,11 +6,14 @@ from typing import Any
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QAction
-from qgis.core import QgsApplication
 
+from .compat.qt import qt_enum
+from .core.qgis_compat import open_or_raise_mission_control, register_processing_provider, report_message, unregister_processing_provider
 from .processing_provider import PyForestScanProvider
 from .resources import plugin_icon
 from .ui.mission_control import MissionControlDock
+from .core.workspace import WorkspaceManager
+from .core.build_identity import PLUGIN_MIXED_INSTALL, PLUGIN_CORRUPT, session_identity, write_plugin_session_identity
 
 
 class PyForestScanPlugin:
@@ -28,19 +31,37 @@ class PyForestScanPlugin:
         self.provider: PyForestScanProvider | None = None
         self.mission_control: MissionControlDock | None = None
         self.mission_control_action: QAction | None = None
+        try:
+            identity = session_identity()
+            write_plugin_session_identity()
+            if identity.status in {PLUGIN_MIXED_INSTALL, PLUGIN_CORRUPT}:
+                report_message(identity.message, level="CRITICAL")
+        except Exception as exc:  # noqa: BLE001 - identity diagnostics must not prevent plugin loading.
+            report_message(f"PyForestScan could not write plugin session identity: {exc}", level="WARNING")
 
     def initGui(self) -> None:
         """Register Processing provider and open Mission Control."""
         if self.provider is None:
-            self.provider = PyForestScanProvider()
-            QgsApplication.processingRegistry().addProvider(self.provider)
+            provider = PyForestScanProvider()
+            result = register_processing_provider(provider)
+            if result.success:
+                self.provider = provider
+            else:
+                report_message(result.message, level="WARNING")
         self._create_mission_control_action()
-        self._show_mission_control()
+        try:
+            auto_open = WorkspaceManager().load_global_session().open_mission_control_on_startup
+        except Exception:  # noqa: BLE001 - startup preference must never block plugin loading.
+            auto_open = False
+        if auto_open:
+            self._show_mission_control()
 
     def unload(self) -> None:
         """Remove Processing provider, actions, and Mission Control dock."""
         if self.provider is not None:
-            QgsApplication.processingRegistry().removeProvider(self.provider)
+            result = unregister_processing_provider(self.provider)
+            if not result.success:
+                report_message(result.message, level="WARNING")
             self.provider = None
         if self.mission_control_action is not None:
             remove_menu = getattr(self.iface, "removePluginMenu", None)
@@ -51,6 +72,10 @@ class PyForestScanPlugin:
                 remove_toolbar_icon(self.mission_control_action)
             self.mission_control_action = None
         if self.mission_control is not None:
+            self.mission_control.prepare_for_unload()
+            save_session = getattr(self.mission_control, "_save_workspace_session", None)
+            if callable(save_session):
+                save_session()
             remove_dock = getattr(self.iface, "removeDockWidget", None)
             if callable(remove_dock):
                 remove_dock(self.mission_control)
@@ -75,11 +100,9 @@ class PyForestScanPlugin:
         """Create, show, and raise the floating Mission Control window."""
         if self.mission_control is None:
             self.mission_control = MissionControlDock(self.iface, self.iface.mainWindow())
-            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.mission_control)
+            self.iface.addDockWidget(qt_enum(Qt, "RightDockWidgetArea", "DockWidgetArea"), self.mission_control)
             self.mission_control.setFloating(True)
             self.mission_control.resize(1400, 900)
-        self.mission_control.show()
-        self.mission_control.raise_()
-        activate = getattr(self.mission_control, "activateWindow", None)
-        if callable(activate):
-            activate()
+        result = open_or_raise_mission_control(self.mission_control)
+        if not result.success:
+            report_message(result.message, level="WARNING")

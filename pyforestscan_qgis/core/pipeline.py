@@ -11,7 +11,7 @@ from .pipeline_events import PipelineEvent, PipelineEventLevel, pipeline_utc_now
 from .pipeline_results import PipelineResult, PipelineStepResult, PipelineStepStatus
 from .pipeline_steps import PipelineStage, PipelineStep, default_product_steps
 from .product_plan import PRODUCT_LABELS
-from .types import CanopyCoverRequest, ChmRequest, FhdRequest, PadRequest, PaiRequest, RumpleRequest
+from .types import CanopyCoverRequest, ChmRequest, DtmRequest, FhdRequest, PadRequest, PaiRequest, PointDensityRequest, RumpleRequest, VoxelStatRequest
 
 
 @dataclass(frozen=True)
@@ -71,7 +71,22 @@ class Pipeline:
                 generated_outputs = result.artifacts
                 results.append(result)
                 continue
-            if self.product in {"chm", "canopy_cover", "pad", "pai", "fhd", "rumple"} and step.stage is PipelineStage.EXPORT and generated_outputs:
+            if self.product == "dtm" and step.stage is PipelineStage.GENERATE_PRODUCT:
+                result = _execute_dtm_step(context, step, adapter)
+                generated_outputs = result.artifacts
+                results.append(result)
+                continue
+            if self.product == "point_density" and step.stage is PipelineStage.GENERATE_PRODUCT:
+                result = _execute_point_density_step(context, step, adapter)
+                generated_outputs = result.artifacts
+                results.append(result)
+                continue
+            if self.product == "voxel_stat" and step.stage is PipelineStage.GENERATE_PRODUCT:
+                result = _execute_voxel_stat_step(context, step, adapter)
+                generated_outputs = result.artifacts
+                results.append(result)
+                continue
+            if self.product in {"chm", "canopy_cover", "pad", "pai", "fhd", "rumple", "dtm", "point_density", "voxel_stat"} and step.stage is PipelineStage.EXPORT and generated_outputs:
                 output_label = "CSV table" if self.product == "rumple" else "GeoTIFF"
                 results.append(_step_result(step, PipelineStepStatus.PASSED, f"{self.label} {output_label} export is available.", generated_outputs))
                 continue
@@ -121,8 +136,6 @@ def _execute_chm_step(context: PipelineContext, step: PipelineStep, adapter: Any
         return _step_result(step, PipelineStepStatus.FAILED, "CHM execution requires an adapter.")
     if not context.source_dataset:
         return _step_result(step, PipelineStepStatus.FAILED, "CHM execution requires a source dataset.")
-    if not context.crs:
-        return _step_result(step, PipelineStepStatus.FAILED, "CHM execution requires dataset CRS metadata.")
     try:
         output_path = _chm_output_path(context)
         result = adapter.create_chm(
@@ -134,6 +147,17 @@ def _execute_chm_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 interpolation=context.chm_interpolation,
                 interp_valid_region=context.chm_interpolate_valid_region,
                 interp_clean_edges=context.chm_clean_edges,
+                hag_method=context.hag_method,
+                hag_source_dimension=context.point_dimensions.hag_dimension_name or "HeightAboveGround",
+                source_dimensions=context.point_dimensions.names,
+                source_coordinate_units=context.source_coordinate_units,
+                source_units_basis=context.source_units_basis,
+                source_units_authoritative=context.source_units_authoritative,
+                processing_coordinate_mode=context.processing_coordinate_mode,
+                spatial_assignment_scope=context.spatial_assignment_scope,
+                source_crs_status=context.source_crs_status,
+                source_point_count=context.source_point_count,
+                bounds=context.bounds,
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
@@ -141,6 +165,55 @@ def _execute_chm_step(context: PipelineContext, step: PipelineStep, adapter: Any
     if not result.output_path.exists():
         return _step_result(step, PipelineStepStatus.FAILED, f"CHM generation did not produce a GeoTIFF: {result.output_path}")
     return _step_result(step, PipelineStepStatus.PASSED, f"CHM GeoTIFF created: {result.output_path}", (result.output_path,))
+
+
+def _execute_dtm_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:
+    if adapter is None or not context.source_dataset:
+        return _step_result(step, PipelineStepStatus.FAILED, "DTM execution requires an adapter and source dataset.")
+    try:
+        result = adapter.generate_dtm(DtmRequest(context.source_dataset, context.output_folder / "dtm.tif", context.crs, resolution=context.grid_resolution, bounds=context.bounds))
+    except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
+        return _step_result(step, PipelineStepStatus.FAILED, f"DTM generation failed: {exc}")
+    if not result.output_path.exists():
+        return _step_result(step, PipelineStepStatus.FAILED, f"DTM generation did not produce a GeoTIFF: {result.output_path}")
+    return _step_result(step, PipelineStepStatus.PASSED, f"DTM GeoTIFF created: {result.output_path}", (result.output_path,))
+
+
+def _execute_point_density_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:
+    if adapter is None or not context.source_dataset:
+        return _step_result(step, PipelineStepStatus.FAILED, "Point Density execution requires an adapter and source dataset.")
+    try:
+        result = adapter.create_point_density(PointDensityRequest(context.source_dataset, context.output_folder / "point_density.tif", context.grid_resolution, 1.0, context.crs, per_area=True, cell_area=context.grid_resolution ** 2, bounds=context.bounds))
+    except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
+        return _step_result(step, PipelineStepStatus.FAILED, f"Point Density generation failed: {exc}")
+    if not result.output_path.exists():
+        return _step_result(step, PipelineStepStatus.FAILED, f"Point Density generation did not produce a GeoTIFF: {result.output_path}")
+    return _step_result(step, PipelineStepStatus.PASSED, f"Point Density GeoTIFF created: {result.output_path}", (result.output_path,))
+
+
+def _execute_voxel_stat_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:
+    """Create a documented calculate_voxel_stat raster through the adapter."""
+    if adapter is None or not context.source_dataset:
+        return _step_result(step, PipelineStepStatus.FAILED, "Voxel Statistic execution requires an adapter and source dataset.")
+    if not context.crs:
+        return _step_result(step, PipelineStepStatus.FAILED, "Voxel Statistic execution requires dataset CRS metadata.")
+    try:
+        result = adapter.create_voxel_stat(VoxelStatRequest(
+            input_path=context.source_dataset,
+            output_path=context.output_folder / "voxel_statistic.tif",
+            grid_resolution=context.grid_resolution,
+            voxel_height=context.voxel_height,
+            crs=context.crs,
+            dimension=context.voxel_stat_dimension,
+            stat=context.voxel_stat_stat,
+            z_index_range=context.voxel_stat_z_index_range,
+            bounds=context.bounds,
+        ))
+    except Exception as exc:  # noqa: BLE001 - adapter errors are durable pipeline results.
+        return _step_result(step, PipelineStepStatus.FAILED, f"Voxel Statistic generation failed: {exc}")
+    if not result.output_path.exists():
+        return _step_result(step, PipelineStepStatus.FAILED, f"Voxel Statistic generation did not produce a GeoTIFF: {result.output_path}")
+    return _step_result(step, PipelineStepStatus.PASSED, f"Voxel Statistic GeoTIFF created: {result.output_path}", (result.output_path,))
 
 
 def _execute_pad_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:
@@ -158,7 +231,10 @@ def _execute_pad_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 output_path=output_path,
                 grid_resolution=context.grid_resolution,
                 voxel_height=context.voxel_height,
+                beer_lambert_constant=context.pad_beer_lambert_constant,
+                drop_ground=context.pad_drop_ground,
                 crs=context.crs,
+                bounds=context.bounds,
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
@@ -183,7 +259,12 @@ def _execute_pai_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 output_path=output_path,
                 grid_resolution=context.grid_resolution,
                 voxel_height=context.voxel_height,
+                min_height=context.pai_min_height,
+                max_height=context.pai_max_height,
+                beer_lambert_constant=context.pad_beer_lambert_constant,
+                drop_ground=context.pad_drop_ground,
                 crs=context.crs,
+                bounds=context.bounds,
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
@@ -210,7 +291,10 @@ def _execute_fhd_step(context: PipelineContext, step: PipelineStep, adapter: Any
                 output_path=output_path,
                 grid_resolution=context.grid_resolution,
                 voxel_height=context.voxel_height,
+                min_height=context.fhd_min_height,
+                max_height=context.fhd_max_height,
                 crs=context.crs,
+                bounds=context.bounds,
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
@@ -225,8 +309,6 @@ def _execute_rumple_step(context: PipelineContext, step: PipelineStep, adapter: 
         return _step_result(step, PipelineStepStatus.FAILED, "Rumple execution requires an adapter.")
     if not context.source_dataset:
         return _step_result(step, PipelineStepStatus.FAILED, "Rumple execution requires a source dataset.")
-    if not context.crs:
-        return _step_result(step, PipelineStepStatus.FAILED, "Rumple execution requires dataset CRS metadata.")
     try:
         output_path = _rumple_output_path(context)
         result = adapter.create_rumple(
@@ -238,13 +320,26 @@ def _execute_rumple_step(context: PipelineContext, step: PipelineStep, adapter: 
                 interpolation=context.chm_interpolation,
                 interp_valid_region=context.chm_interpolate_valid_region,
                 interp_clean_edges=context.chm_clean_edges,
+                min_height=context.rumple_min_height,
+                hag_method=context.hag_method,
+                hag_source_dimension=context.point_dimensions.hag_dimension_name or "HeightAboveGround",
+                source_dimensions=context.point_dimensions.names,
+                source_coordinate_units=context.source_coordinate_units,
+                source_units_basis=context.source_units_basis,
+                source_units_authoritative=context.source_units_authoritative,
+                processing_coordinate_mode=context.processing_coordinate_mode,
+                spatial_assignment_scope=context.spatial_assignment_scope,
+                source_crs_status=context.source_crs_status,
+                source_point_count=context.source_point_count,
+                bounds=context.bounds,
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.
         return _step_result(step, PipelineStepStatus.FAILED, f"Rumple generation failed: {exc}")
     if not result.output_path.exists():
-        return _step_result(step, PipelineStepStatus.FAILED, f"Rumple generation did not produce a CSV table: {result.output_path}")
-    return _step_result(step, PipelineStepStatus.PASSED, f"Rumple CSV summary created: {result.output_path}", (result.output_path,))
+        return _step_result(step, PipelineStepStatus.FAILED, f"Rumple generation did not produce its requested output: {result.output_path}")
+    label="legacy scalar CSV" if result.output_path.suffix.lower()==".csv" else "spatial GeoTIFF"
+    return _step_result(step, PipelineStepStatus.PASSED, f"Rumple {label} created: {result.output_path}", (result.output_path,))
 
 
 def _fhd_output_path(context: PipelineContext) -> Path:
@@ -254,7 +349,9 @@ def _fhd_output_path(context: PipelineContext) -> Path:
 
 def _rumple_output_path(context: PipelineContext) -> Path:
     """Return the validated rumple output path for a pipeline context."""
-    return _simple_csv_output_path(context.output_folder, context.rumple_output_filename, "Rumple")
+    if Path(context.rumple_output_filename).suffix.lower()==".csv":
+        return _simple_csv_output_path(context.output_folder, context.rumple_output_filename, "Rumple")
+    return _simple_geotiff_output_path(context.output_folder, context.rumple_output_filename, "Rumple")
 
 def _pad_output_path(context: PipelineContext) -> Path:
     """Return the validated PAD output path for a pipeline context."""
@@ -282,7 +379,13 @@ def _execute_canopy_cover_step(context: PipelineContext, step: PipelineStep, ada
                 output_path=output_path,
                 grid_resolution=context.grid_resolution,
                 canopy_height_threshold=context.canopy_cover_height_threshold,
+                max_height=context.canopy_cover_max_height,
+                extinction_coefficient=context.canopy_cover_extinction_coefficient,
+                voxel_height=context.voxel_height,
+                beer_lambert_constant=context.pad_beer_lambert_constant,
+                drop_ground=context.pad_drop_ground,
                 crs=context.crs,
+                bounds=context.bounds,
             )
         )
     except Exception as exc:  # noqa: BLE001 - pipeline captures adapter boundary errors.

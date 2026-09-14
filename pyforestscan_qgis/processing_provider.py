@@ -10,12 +10,14 @@ from .algorithms.advanced import (
     AdvancedChmAlgorithm,
     AdvancedDtmAlgorithm,
     AdvancedFhdAlgorithm,
+    EptSubsetExtractAlgorithm,
     AdvancedPadAlgorithm,
     AdvancedPointDensityAlgorithm,
     AdvancedPaiAlgorithm,
     AdvancedRumpleAlgorithm,
     AdvancedVoxelStatAlgorithm,
     NormalizeHagAlgorithm,
+    PadDerivativeRasterAlgorithm,
     PointCloudPreprocessAlgorithm,
 )
 from .algorithms.placeholder_algorithms import EnvironmentCheckAlgorithm
@@ -49,6 +51,7 @@ class PyForestScanProvider(QgsProcessingProvider):
         self.addAlgorithm(EnvironmentCheckAlgorithm())
         self.addAlgorithm(AdvancedChmAlgorithm())
         self.addAlgorithm(AdvancedPadAlgorithm())
+        self.addAlgorithm(PadDerivativeRasterAlgorithm())
         self.addAlgorithm(AdvancedPaiAlgorithm())
         self.addAlgorithm(AdvancedCanopyCoverAlgorithm())
         self.addAlgorithm(AdvancedFhdAlgorithm())
@@ -56,6 +59,7 @@ class PyForestScanProvider(QgsProcessingProvider):
         self.addAlgorithm(AdvancedPointDensityAlgorithm())
         self.addAlgorithm(AdvancedVoxelStatAlgorithm())
         self.addAlgorithm(NormalizeHagAlgorithm())
+        self.addAlgorithm(EptSubsetExtractAlgorithm())
         self.addAlgorithm(AdvancedDtmAlgorithm())
         self.addAlgorithm(PointCloudPreprocessAlgorithm())
 

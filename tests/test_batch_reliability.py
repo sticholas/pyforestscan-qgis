@@ -6,6 +6,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from pyforestscan_qgis.core.batch import BatchProductSettings, BatchRequest, batch_run_context
 from pyforestscan_qgis.core.batch_manifest import completed_dataset_paths, create_manifest, load_manifest, update_manifest_item, write_manifest
@@ -48,6 +49,17 @@ class FailingInspectionAdapter(ReadyAdapter):
         raise RuntimeError("inspection failed")
 
 
+class BoundsInspectionAdapter(ReadyAdapter):
+    """Adapter exposing deterministic per-source XY bounds."""
+
+    def inspect_dataset(self, path: Path) -> object:
+        if Path(path).stem.endswith("_0"):
+            bounds = SimpleNamespace(min_x=0.0, max_x=10.0, min_y=0.0, max_y=10.0)
+        else:
+            bounds = SimpleNamespace(min_x=100.0, max_x=110.0, min_y=100.0, max_y=110.0)
+        return SimpleNamespace(bounds=bounds)
+
+
 class BatchReliabilityTests(unittest.TestCase):
     """Reliability checks are deterministic and QGIS-free."""
 
@@ -87,6 +99,28 @@ class BatchReliabilityTests(unittest.TestCase):
             self.assertTrue(report.ready)
             self.assertTrue(any("Large batch" in item for item in report.warnings))
             self.assertTrue(any("Parallel safe mode" in item for item in report.warnings))
+
+    def test_folder_clip_bounds_skip_non_intersecting_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            original = self._request(Path(tmp), count=2)
+            request = BatchRequest(
+                input_folder=original.input_folder,
+                output_folder=original.output_folder,
+                recursive=original.recursive,
+                datasets=original.datasets,
+                settings=original.settings,
+                clip_bounds=((1.0, 9.0), (1.0, 9.0)),
+            )
+            report = run_batch_preflight(
+                request,
+                adapter=BoundsInspectionAdapter(),  # type: ignore[arg-type]
+                disk_usage_provider=lambda _path: (1000, 100, 10**12),
+            )
+
+            self.assertTrue(report.ready)
+            self.assertEqual((original.datasets[0],), report.files_to_process)
+            self.assertEqual((original.datasets[1],), report.files_to_skip)
+            self.assertTrue(any("Rectangular bounds exclude 1" in item for item in report.warnings))
 
 
     def test_preflight_blocks_external_worker_mode_by_default(self) -> None:

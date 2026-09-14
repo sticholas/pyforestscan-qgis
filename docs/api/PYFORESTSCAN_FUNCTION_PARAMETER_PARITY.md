@@ -79,6 +79,36 @@ Phase 20D maps each documented public function parameter to the Advanced QGIS Pr
 | filters | `remove_outliers_and_clean` | `multiplier` | float | `3.0` | multiplier | multiplier | number | Yes | Advanced Point Cloud Preprocess | Direct | Yes |
 | filters | `remove_outliers_and_clean` | `remove` | bool | `False` | remove outliers | remove | boolean | Yes | Advanced Point Cloud Preprocess | Direct | Yes |
 
+## PAD and Rumple plugin extensions
+
+### PAD derived visualization parameters
+
+PAD derivative rasters are PyForestScan QGIS derived products from the authoritative PAD volume. They expose derivative type (`slice`, `maximum`, `mean`, `integrated`), voxel height, minimum/maximum height, slice height, band index, and output filename. These are not native replacement outputs for `calculate_pad`; they are visualizations from the returned PAD array.
+
+### Localized Rumple Raster
+
+Localized Rumple Raster is a PyForestScan QGIS extension built from CHM windows. Native `calculate_rumple` remains scalar. The QGIS-free math core is implemented and tested for flat, corrugated, and insufficient-data windows; full QGIS raster execution remains deferred until QA approves window defaults.
+
+### Polygon folder processing
+
+Polygon folder processing currently implements QGIS-free inventory/preflight models for source discovery, EPT metadata bounds, polygon WKT bounds, source intersection, EPT broad bounds, CRS warnings, cache signature checks, and workload warnings. Exact clipped product execution is deferred to PBM/chunked routing.
+
 ## handlers, process, utils, visualize
 
-Detailed status for non-calculate/filter functions is maintained in `PYFORESTSCAN_FULL_API_SURFACE.md` and `PYFORESTSCAN_DEFERRED_FEATURES.md`. In brief: `write_las`, DTM `create_geotiff(nodata)`, HAG read options, and product GeoTIFF creation are implemented; standalone CRS/polygon helpers, `process_with_tiles`, memory tiling utilities, and matplotlib visualization helpers are deferred with reasons.
+### `handlers.read_lidar` EPT subset mapping
+
+| Module | Function | Parameter | Type | Default | QGIS Advanced Toolbox label | QGIS type | Status | Tool / mapping | Test coverage |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| handlers | `read_lidar` | `input_file` | string/path | required | `input_file` | file | Yes | Extract EPT Subset | Yes |
+| handlers | `read_lidar` | `srs` | string | required | `srs` / CRS | string | Yes | Extract EPT Subset | Yes |
+| handlers | `read_lidar` | `bounds` | tuple/list | `None` | `bounds` | string parser | Yes | EPT-only bounds parser maps to `((xmin,xmax),(ymin,ymax)[,(zmin,zmax)])` | Yes |
+| handlers | `read_lidar` | `thin_radius` | float | `None` | `thin_radius` | number optional | Yes | Positive value validation | Yes |
+| handlers | `read_lidar` | `hag` | bool | `False` | `hag` / Delaunay HAG | boolean / enum | Yes | Mutually exclusive with `hag_dtm` | Yes |
+| handlers | `read_lidar` | `hag_dtm` | bool | `False` | `hag_dtm` / DTM-backed HAG | boolean / enum | Yes | Requires `dtm` | Yes |
+| handlers | `read_lidar` | `dtm` | path | `None` | `dtm` | file optional | Yes | Passed when DTM-backed HAG is selected | Yes |
+| handlers | `read_lidar` | `crop_poly` | bool | `False` | `crop_poly` | boolean | Yes | Requires `poly` | Yes |
+| handlers | `read_lidar` | `poly` | WKT/path | `None` | `poly` | string | Yes | Polygon WKT or file path | Yes |
+| handlers | `read_lidar` | `reproject` | bool | `False` | `reproject` | boolean | Yes | Direct | Yes |
+| handlers | `write_las` | output | path | required | `output_las_laz` | file destination | Yes | Writes extracted subset to `.las` or `.laz` | Yes |
+
+Detailed status for non-calculate/filter functions is maintained in `PYFORESTSCAN_FULL_API_SURFACE.md` and `PYFORESTSCAN_DEFERRED_FEATURES.md`. In brief: `write_las`, DTM `create_geotiff(nodata)`, HAG read options, EPT subset extraction, and product GeoTIFF creation are implemented; standalone CRS/polygon helpers, `process_with_tiles`, memory tiling utilities, and matplotlib visualization helpers are deferred with reasons.

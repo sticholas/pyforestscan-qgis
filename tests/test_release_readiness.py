@@ -38,13 +38,13 @@ class ReleaseReadinessTests(unittest.TestCase):
         self.assertEqual("pad.tif", request.pad_output_filename)
         self.assertEqual("pai.tif", request.pai_output_filename)
         self.assertEqual("fhd.tif", request.fhd_output_filename)
-        self.assertEqual("rumple_summary.csv", request.rumple_output_filename)
+        self.assertEqual("rumple.tif", request.rumple_output_filename)
         self.assertEqual("chm.tif", PRODUCT_OUTPUTS[ProductType.CHM][0])
         self.assertEqual("canopy_cover.tif", PRODUCT_OUTPUTS[ProductType.CANOPY_COVER][0])
         self.assertEqual("pad.tif", PRODUCT_OUTPUTS[ProductType.PAD][0])
         self.assertEqual("pai.tif", PRODUCT_OUTPUTS[ProductType.PAI][0])
         self.assertEqual("fhd.tif", PRODUCT_OUTPUTS[ProductType.FHD][0])
-        self.assertEqual("rumple_summary.csv", PRODUCT_OUTPUTS[ProductType.RUMPLE][0])
+        self.assertEqual("rumple.tif", PRODUCT_OUTPUTS[ProductType.RUMPLE][0])
 
     def test_external_worker_mode_remains_blocked_for_release(self) -> None:
         request = BatchRequest(

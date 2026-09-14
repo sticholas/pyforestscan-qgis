@@ -4,8 +4,8 @@
  <widget class="QWidget" name="MissionControlRoot">
   <property name="minimumSize">
    <size>
-    <width>1150</width>
-    <height>760</height>
+    <width>420</width>
+    <height>520</height>
    </size>
   </property>
   <layout class="QVBoxLayout" name="rootLayout">
@@ -17,7 +17,7 @@
    <item>
     <widget class="QFrame" name="headerFrame">
      <property name="frameShape"><enum>QFrame::NoFrame</enum></property>
-     <layout class="QVBoxLayout" name="headerLayout">
+     <layout class="QVBoxLayout" name="headerLayout"><property name="spacing"><number>2</number></property><property name="leftMargin"><number>12</number></property><property name="topMargin"><number>8</number></property><property name="rightMargin"><number>12</number></property><property name="bottomMargin"><number>8</number></property>
       <item><widget class="QLabel" name="titleLabel"><property name="text"><string>PyForestScan</string></property></widget></item>
       <item><widget class="QLabel" name="subtitleLabel"><property name="text"><string>Official LiDAR Processing Environment</string></property></widget></item>
      </layout>
@@ -39,10 +39,10 @@
    </item>
    <item>
     <widget class="QFrame" name="statusFrame">
-     <layout class="QHBoxLayout" name="statusLayout">
-      <item><widget class="QLabel" name="environmentStatusLabel"><property name="text"><string>Environment: Unknown</string></property></widget></item>
-      <item><widget class="QLabel" name="datasetStatusLabel"><property name="text"><string>Dataset: None</string></property></widget></item>
-      <item><widget class="QLabel" name="planningStatusLabel"><property name="text"><string>Planning: Not started</string></property></widget></item>
+     <layout class="QHBoxLayout" name="statusLayout"><property name="spacing"><number>12</number></property><property name="leftMargin"><number>12</number></property><property name="topMargin"><number>6</number></property><property name="rightMargin"><number>12</number></property><property name="bottomMargin"><number>6</number></property>
+      <item><widget class="QLabel" name="environmentStatusLabel"><property name="text"><string>Backend: Unknown</string></property></widget></item>
+      <item><widget class="QLabel" name="datasetStatusLabel"><property name="text"><string>LiDAR: Not selected</string></property></widget></item>
+      <item><widget class="QLabel" name="planningStatusLabel"><property name="text"><string>Area: Not selected</string></property></widget></item>
       <item><widget class="QLabel" name="readyStatusLabel"><property name="text"><string>Ready</string></property></widget></item>
      </layout>
     </widget>

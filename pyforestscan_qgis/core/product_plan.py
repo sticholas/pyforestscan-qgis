@@ -17,15 +17,9 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .types import ProductType
+from .product_registry import MISSION_CONTROL_PRODUCTS
 
-PRODUCT_LABELS = {
-    ProductType.CHM: "Canopy Height Model (CHM)",
-    ProductType.PAI: "Plant Area Index (PAI)",
-    ProductType.PAD: "Plant Area Density (PAD)",
-    ProductType.FHD: "Foliage Height Diversity (FHD)",
-    ProductType.CANOPY_COVER: "Canopy Cover",
-    ProductType.RUMPLE: "Rumple Index",
-}
+PRODUCT_LABELS = {definition.product: definition.display_name for definition in MISSION_CONTROL_PRODUCTS}
 
 PRODUCT_OUTPUTS = {
     ProductType.CHM: ("chm.tif", "GeoTIFF raster", "Canopy height raster."),
@@ -33,7 +27,10 @@ PRODUCT_OUTPUTS = {
     ProductType.PAD: ("pad.tif", "Multi-band GeoTIFF raster", "Height-binned plant area density stack; one band per height bin."),
     ProductType.FHD: ("fhd.tif", "GeoTIFF raster", "Future foliage height diversity raster."),
     ProductType.CANOPY_COVER: ("canopy_cover.tif", "GeoTIFF raster", "Canopy cover raster."),
-    ProductType.RUMPLE: ("rumple_summary.csv", "CSV table", "Scalar rumple index summary table.")
+    ProductType.RUMPLE: ("rumple.tif", "GeoTIFF raster", "Spatial canopy-surface complexity with a supporting scalar summary.")
+    ,ProductType.POINT_DENSITY: ("point_density.tif", "GeoTIFF raster", "Point return density per output cell area.")
+    ,ProductType.DTM: ("dtm.tif", "GeoTIFF raster", "Estimated ground elevation raster.")
+    ,ProductType.VOXEL_STAT: ("voxel_statistic.tif", "GeoTIFF raster", "Selected point-dimension statistic aggregated in a 3D voxel grid.")
 }
 
 
@@ -87,11 +84,24 @@ class ProductPlannerRequest:
     pad_output_filename: str = "pad.tif"
     pai_output_filename: str = "pai.tif"
     fhd_output_filename: str = "fhd.tif"
-    rumple_output_filename: str = "rumple_summary.csv"
+    rumple_output_filename: str = "rumple.tif"
     canopy_cover_height_threshold: float = 2.0
+    canopy_cover_max_height: float | None = None
+    canopy_cover_extinction_coefficient: float = 0.5
+    pad_beer_lambert_constant: float = 1.0
+    pad_drop_ground: bool = True
+    pai_min_height: float = 1.0
+    pai_max_height: float | None = None
+    fhd_min_height: float = 0.0
+    fhd_max_height: float | None = None
+    rumple_min_height: float | None = None
+    voxel_stat_dimension: str = "HeightAboveGround"
+    voxel_stat_stat: str = "count"
+    voxel_stat_z_index_range: tuple[int, int] | None = None
     canopy_cover_output_filename: str = "canopy_cover.tif"
     title: str = "PyForestScan Product Planner"
     notes: str = ""
+    bounds: tuple[tuple[float, float], tuple[float, float]] | None = None
 
 
 @dataclass(frozen=True)
@@ -114,6 +124,18 @@ class ProductPlannerReport:
     fhd_output_filename: str
     rumple_output_filename: str
     canopy_cover_height_threshold: float
+    canopy_cover_max_height: float | None
+    canopy_cover_extinction_coefficient: float
+    pad_beer_lambert_constant: float
+    pad_drop_ground: bool
+    pai_min_height: float
+    pai_max_height: float | None
+    fhd_min_height: float
+    fhd_max_height: float | None
+    rumple_min_height: float | None
+    voxel_stat_dimension: str
+    voxel_stat_stat: str
+    voxel_stat_z_index_range: tuple[int, int] | None
     canopy_cover_output_filename: str
     notes: str
     estimated_columns: int | None
@@ -123,6 +145,7 @@ class ProductPlannerReport:
     products: tuple[ProductPlanItem, ...]
     warnings: tuple[PlannerWarning, ...]
     next_actions: tuple[str, ...]
+    bounds: tuple[tuple[float, float], tuple[float, float]] | None = None
 
 
 class ProductPlanError(ValueError):
@@ -159,10 +182,13 @@ def build_product_plan(
     _validate_canopy_cover_parameters(request)
     _validate_height_binned_parameters(request)
     _validate_metric_output_parameters(request)
+    _validate_voxel_stat_parameters(request)
 
     feasibility = _feasibility_by_product(explorer_report)
     dataset_warnings = _dataset_warnings(explorer_report)
-    columns, rows, cells = _estimate_grid(explorer_report, request.grid_resolution)
+    columns, rows, cells = _estimate_grid(
+        explorer_report, request.grid_resolution, request.bounds
+    )
     height_bins = _estimate_height_bins(explorer_report, request.height_bin_size)
 
     global_warnings = list(dataset_warnings)
@@ -200,6 +226,19 @@ def build_product_plan(
         fhd_output_filename=request.fhd_output_filename,
         rumple_output_filename=request.rumple_output_filename,
         canopy_cover_height_threshold=request.canopy_cover_height_threshold,
+        canopy_cover_max_height=request.canopy_cover_max_height,
+        canopy_cover_extinction_coefficient=request.canopy_cover_extinction_coefficient,
+        pad_beer_lambert_constant=request.pad_beer_lambert_constant,
+        pad_drop_ground=request.pad_drop_ground,
+        pai_min_height=request.pai_min_height,
+        pai_max_height=request.pai_max_height,
+        fhd_min_height=request.fhd_min_height,
+        fhd_max_height=request.fhd_max_height,
+        rumple_min_height=request.rumple_min_height,
+        voxel_stat_dimension=request.voxel_stat_dimension,
+        voxel_stat_stat=request.voxel_stat_stat,
+        voxel_stat_z_index_range=request.voxel_stat_z_index_range,
+        bounds=request.bounds,
         canopy_cover_output_filename=request.canopy_cover_output_filename,
         notes=request.notes,
         estimated_columns=columns,
@@ -232,7 +271,20 @@ def plan_to_dict(report: ProductPlannerReport) -> dict[str, Any]:
             "fhd_output_filename": report.fhd_output_filename,
             "rumple_output_filename": report.rumple_output_filename,
             "canopy_cover_height_threshold": report.canopy_cover_height_threshold,
+            "canopy_cover_max_height": report.canopy_cover_max_height,
+            "canopy_cover_extinction_coefficient": report.canopy_cover_extinction_coefficient,
+            "pad_beer_lambert_constant": report.pad_beer_lambert_constant,
+            "pad_drop_ground": report.pad_drop_ground,
+            "pai_min_height": report.pai_min_height,
+            "pai_max_height": report.pai_max_height,
+            "fhd_min_height": report.fhd_min_height,
+            "fhd_max_height": report.fhd_max_height,
+            "rumple_min_height": report.rumple_min_height,
+            "voxel_stat_dimension": report.voxel_stat_dimension,
+            "voxel_stat_stat": report.voxel_stat_stat,
+            "voxel_stat_z_index_range": list(report.voxel_stat_z_index_range) if report.voxel_stat_z_index_range else None,
             "canopy_cover_output_filename": report.canopy_cover_output_filename,
+            "bounds": [list(axis) for axis in report.bounds] if report.bounds else None,
         },
         "estimates": {
             "columns": report.estimated_columns,
@@ -435,8 +487,22 @@ def _validate_metric_output_parameters(request: ProductPlannerRequest) -> None:
         if output_name.name != filename or output_name.suffix.lower() not in {".tif", ".tiff"}:
             raise ProductPlanError(f"{label} output filename must be a simple .tif or .tiff filename.")
     rumple_name = Path(request.rumple_output_filename)
-    if rumple_name.name != request.rumple_output_filename or rumple_name.suffix.lower() != ".csv":
-        raise ProductPlanError("Rumple output filename must be a simple .csv filename because PyForestScan returns a scalar rumple index.")
+    if rumple_name.name != request.rumple_output_filename or rumple_name.suffix.lower() not in {".tif", ".tiff", ".csv"}:
+        raise ProductPlanError("Rumple output filename must be a simple GeoTIFF filename; CSV is accepted only for legacy scalar plans.")
+
+
+def _validate_voxel_stat_parameters(request: ProductPlannerRequest) -> None:
+    """Validate documented calculate_voxel_stat controls when requested."""
+    if ProductType.VOXEL_STAT not in request.requested_products:
+        return
+    if not request.voxel_stat_dimension.strip():
+        raise ProductPlanError("Voxel Statistic requires a point dimension name.")
+    if request.voxel_stat_stat.lower() not in {"mean", "sum", "count", "min", "max", "median", "std"}:
+        raise ProductPlanError("Voxel Statistic aggregation must be mean, sum, count, min, max, median, or std.")
+    if request.voxel_stat_z_index_range is not None:
+        start, stop = request.voxel_stat_z_index_range
+        if start < 0 or stop <= start:
+            raise ProductPlanError("Voxel Statistic Z-bin range must be increasing non-negative indexes.")
 
 
 def _validate_canopy_cover_parameters(request: ProductPlannerRequest) -> None:
@@ -548,7 +614,23 @@ def _source_dataset(report: Mapping[str, Any]) -> str | None:
     return None
 
 
-def _estimate_grid(report: Mapping[str, Any], resolution: float) -> tuple[int | None, int | None, int | None]:
+def _estimate_grid(
+    report: Mapping[str, Any],
+    resolution: float,
+    clip_bounds: tuple[tuple[float, float], tuple[float, float]] | None = None,
+) -> tuple[int | None, int | None, int | None]:
+    if clip_bounds is not None:
+        try:
+            (min_x, max_x), (min_y, max_y) = clip_bounds
+            width = float(max_x) - float(min_x)
+            height = float(max_y) - float(min_y)
+        except (TypeError, ValueError):
+            return (None, None, None)
+        if width <= 0 or height <= 0:
+            return (None, None, None)
+        columns = max(1, math.ceil(width / resolution))
+        rows = max(1, math.ceil(height / resolution))
+        return (columns, rows, columns * rows)
     geometry = report.get("geometry", {})
     bounds = geometry.get("bounds") if isinstance(geometry, Mapping) else None
     if not isinstance(bounds, Mapping):
@@ -591,7 +673,7 @@ def _build_plan_item(
     pad_output_filename: str = "pad.tif",
     pai_output_filename: str = "pai.tif",
     fhd_output_filename: str = "fhd.tif",
-    rumple_output_filename: str = "rumple_summary.csv",
+    rumple_output_filename: str = "rumple.tif",
 ) -> ProductPlanItem:
     label = PRODUCT_LABELS[product]
     raw = feasibility.get(product.value)
@@ -626,12 +708,14 @@ def _plan_status_from_feasibility(status: str) -> str:
     normalized = status.lower()
     if normalized == "available":
         return "Ready"
+    if normalized == "ready after preparation":
+        return "Ready"
     if normalized == "warning":
         return "Needs review"
     return "Blocked"
 
 
-def _planned_outputs(product: ProductType, output_folder: Path, chm_output_filename: str = "chm.tif", canopy_cover_output_filename: str = "canopy_cover.tif", pad_output_filename: str = "pad.tif", pai_output_filename: str = "pai.tif", fhd_output_filename: str = "fhd.tif", rumple_output_filename: str = "rumple_summary.csv") -> tuple[PlannedOutput, ...]:
+def _planned_outputs(product: ProductType, output_folder: Path, chm_output_filename: str = "chm.tif", canopy_cover_output_filename: str = "canopy_cover.tif", pad_output_filename: str = "pad.tif", pai_output_filename: str = "pai.tif", fhd_output_filename: str = "fhd.tif", rumple_output_filename: str = "rumple.tif") -> tuple[PlannedOutput, ...]:
     filename, output_type, description = PRODUCT_OUTPUTS[product]
     if product is ProductType.CHM:
         filename = chm_output_filename

@@ -1,0 +1,94 @@
+# LiDAR Catalogs
+
+Polygon Area Processing uses a LiDAR catalog so large repositories do not need to be scanned for every polygon.
+
+## When You Need A Catalog
+
+Use a catalog when you want to process a polygon against a folder or repository that contains many LiDAR sources. The catalog stores source footprints and metadata in a small SQLite database with a spatial index.
+
+Normal polygon processing requires a catalog. If no catalog exists, Mission Control shows **No Catalog** and offers **Scan File Headers**.
+
+## Build Or Update
+
+1. Open Mission Control > Batch.
+2. Choose **Polygon Area Processing**.
+3. Choose the **LiDAR Repository**.
+4. Click **Preview Setup Method**, then use **Prepare Repository** when supported or **Scan File Headers** for the durable full catalog.
+5. After the catalog is ready, choose the polygon source, products, and output folder.
+6. Click **Run Preflight Check**.
+
+Use **Update Catalog** when files have been added, modified, or deleted. Unchanged files are skipped during update.
+
+## What The Catalog Reads
+
+The catalog reads headers and metadata only:
+
+- LAS/LAZ/COPC: public header metadata when available.
+- EPT: `ept.json` metadata only.
+
+The catalog does not read full point clouds and does not crawl EPT data nodes.
+
+## Automatic Polygon Bounds
+
+You do not enter xmin/xmax/ymin/ymax manually. Mission Control derives those values from the selected polygon. The broad bounds make catalog and EPT reads fast. The exact polygon geometry is still used for clipping.
+
+## Metadata Errors
+
+Some files may fail metadata inspection. Mission Control records those failures in the catalog instead of ignoring them. If many sources could not be indexed, preflight warns that polygon source selection may be incomplete.
+
+## Very Large Repositories
+
+For repositories with millions of files, the first catalog build can take time. It is a deliberate maintenance step, not something that runs silently before every polygon job. Normal preflight queries the catalog and should remain fast.
+
+## Responsive Large Repository Workflow
+
+Selecting or pasting a LiDAR Repository path is lightweight. Mission Control normalizes the path, checks that it is accessible, and reads catalog status only. It does not recursively count files, inspect headers, calculate folder size, or build a catalog until you explicitly click **Prepare Repository**, **Scan File Headers**, **Update Catalog**, or **Resume Catalog Build**.
+
+Use **Use Path** when a native folder picker is slow on network, removable, or mounted storage. Use **Quick Probe** for a bounded top-level sample: it stops after a small item/time budget and does not recurse. The sample is not a total file count.
+
+Catalog jobs show stages, counters, elapsed time, current rate, and latest source path. Early progress is indeterminate because the total file count is unknown. The plugin does not invent an exact percentage before it has a reliable denominator.
+
+## Pause Resume And Updates
+
+Catalog work is checkpointed after safe chunks. **Pause After Current Chunk** lets the job finish the current chunk, commit records, write state, and mark the job interrupted. **Resume Catalog Build** continues without discarding valid indexed records.
+
+**Update Catalog** skips unchanged files using relative path, size, and modified time. New and modified files are indexed incrementally. Deleted files are reconciled in SQLite rather than with a giant in-memory path set.
+
+## Benchmarking Safely
+
+Use `python3 scripts/benchmark_lidar_catalog.py --synthetic` for a safe SQLite/RTree benchmark. Use `--path <repo> --real-dry-probe` to probe a real repository without recursion. A real build requires `--real-build --confirm-real-build`, and can be bounded with `--max-files` or `--maximum-duration` for controlled testing.
+
+## Adaptive Indexing Strategies
+
+Before building a complete catalog, click **Preview Setup Method**. Mission Control performs a bounded top-level probe and reports whether it can use an existing spatial index, a PDAL tile index, EPT/COPC native registration, an approved filename/grid profile, partitioned lazy indexing, or the full header catalog fallback.
+
+Use **Prepare Repository** when the detected strategy can register an existing index or native EPT/COPC source. Use **Scan File Headers** when no trustworthy shortcut exists.
+
+See [Choosing A LiDAR Index Strategy](choosing-lidar-index-strategy.md) and [Repository Profiles](repository-profiles.md).
+
+## EPT Catalog Repair
+
+If an older catalog indexed internal EPT node files individually, Mission Control shows **Incorrect EPT Catalog Detected**. Use **Repair EPT Catalog** to back up the catalog, remove node-level records, and register the single logical `ept.json` source without rescanning the EPT node tree.
+
+For network or mounted repositories, new catalogs default to user-local PyForestScan catalog storage while retaining the remote repository path in the catalog records. If Mission Control finds an older repository-side catalog on slower storage, use **Move Catalog Local** to copy it into the user-local catalog store while preserving the original catalog file.
+
+
+## Estimate Confidence
+
+For EPT and COPC, root metadata point counts describe the source and are not automatically used as polygon-subset estimates. Mission Control reports estimated points as unavailable when the available metadata cannot support a reliable estimate. This is intentional and avoids misleading high-confidence counts.
+
+## Phase 27O Notes
+
+Repository discovery, catalog identity, catalog integrity, repair, source-view, coverage-model, diagnostic-export, and repository action-state services now back Polygon Area Processing setup. Broken catalogs are reported as catalog repair/readiness issues instead of generic no-coverage results. The RTree contract is `id, xmin, xmax, ymin, ymax`; EPSG:6635 overlap fixtures cover the observed polygon envelope regression.
+
+## Phase 27P Notes
+
+Catalog health now separates embedded CRS from effective CRS. A bounded LAS/LAZ catalog with all source CRS values missing is `CRS Assignment Required`, not healthy, and polygon preflight does not report true no coverage until comparable CRS metadata exists. Repository CRS override metadata is explicit and reversible. Live QGIS coverage/zoom services now require actual layer insertion or canvas extent changes before reporting success.
+
+## Phase 27Q Notes
+
+Polygon Area Processing can now compare the catalog path with Direct Header Scan for ordinary local LAS/LAZ/COPC repositories. Catalogs remain the performance path, but Direct Header Scan is the correctness fallback when catalog selection is missing or inconclusive. EPT keeps native logical-source handling. See [Polygon LiDAR Selection Contract](../development/POLYGON_LIDAR_SELECTION_CONTRACT.md) for the developer contract and [Process LiDAR Folder by Polygon](../user-guide/polygon-folder-processing.md) for user-facing guidance.
+
+## Phase 27R Notes
+
+Phase 27R makes ordinary LAS/LAZ/COPC folder processing use direct header metadata when a verified catalog is unavailable or inconsistent. Catalog tools remain available under Repository Tools, but catalog absence should not block a normal folder run after an explicit CRS assignment. See [Polygon LiDAR Stabilization](../development/POLYGON_LIDAR_STABILIZATION.md).

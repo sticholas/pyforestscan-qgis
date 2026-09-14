@@ -17,6 +17,8 @@ RASTER_RESULT_TYPES = frozenset(
         "dtm_geotiff",
         "point_density_geotiff",
         "voxel_stat_geotiff",
+        "pad_derivative_geotiff",
+        "pad_composite_geotiff",
     }
 )
 
@@ -61,7 +63,9 @@ def layer_display_name(result_type: str, dataset_stem: str | None) -> str:
     product = {
         "chm_geotiff": "CHM",
         "canopy_cover_geotiff": "Canopy Cover",
-        "pad_geotiff": "PAD RGB 5-3-2",
+        "pad_geotiff": "PAD height slice",
+        "pad_composite_geotiff": "PAD height composite 5/3/2",
+        "pad_derivative_geotiff": "PAD visualization",
         "pai_geotiff": "PAI",
         "fhd_geotiff": "FHD",
         "dtm_geotiff": "DTM",
@@ -108,6 +112,13 @@ def qgis_raster_display_range(layer: Any, result_type: str, *, band: int = 1) ->
     return safe_display_range(result_type, None, observed_maximum, band=band)
 
 
+def select_pad_default_slice_band(band_count: int, preferred_band: int = 10) -> int:
+    """Return the representative one-based PAD band used for default grayscale display."""
+    if band_count <= 0:
+        return 1
+    return min(band_count, max(1, preferred_band))
+
+
 def select_pad_rgb_bands(band_count: int) -> PadRgbBands | None:
     """Return the PAD RGB band mapping for an available band count."""
     if band_count >= 5:
@@ -125,20 +136,19 @@ def apply_generated_raster_renderer(layer: Any, result_type: str) -> RasterDispl
 
 
 def apply_pad_renderer(layer: Any) -> RasterDisplayRange | PadRgbDisplay:
-    """Apply the PAD RGB composite when possible, with grayscale fallback."""
+    """Apply an honest PAD grayscale height slice by default."""
     band_count = _band_count(layer)
-    bands = select_pad_rgb_bands(band_count)
-    if bands is None:
-        display_range = apply_grayscale_renderer(layer, "pad_geotiff", band=1)
-        _record_layer_properties(
-            layer,
-            (
-                ("pyforestscan/display_mode", "grayscale"),
-                ("pyforestscan/display_fallback", "pad_has_fewer_than_three_bands"),
-            ),
-        )
-        return display_range
-    return apply_pad_rgb_renderer(layer, bands)
+    band = select_pad_default_slice_band(band_count)
+    display_range = apply_grayscale_renderer(layer, "pad_geotiff", band=band)
+    _record_layer_properties(
+        layer,
+        (
+            ("pyforestscan/display_mode", "grayscale_height_slice"),
+            ("pyforestscan/display_band", band),
+            ("pyforestscan/display_note", "Full PAD remains a multiband height-binned volume."),
+        ),
+    )
+    return display_range
 
 
 def apply_pad_rgb_renderer(layer: Any, bands: PadRgbBands) -> PadRgbDisplay:

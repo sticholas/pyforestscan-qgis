@@ -54,6 +54,6 @@ class AdvancedDtmAlgorithm(AdvancedPyForestScanAlgorithm):
             add_to_project=self.parameterAsBool(parameters, self.ADD_TO_PROJECT, context),
         )
         request = build_dtm_request(params)
-        result = run_adapter_call(feedback, "Generate DTM", lambda: PyForestScanAdapter().generate_dtm(request))
+        result = run_adapter_call(feedback, "Generate DTM", lambda: PyForestScanAdapter(execution_mode="pbm_backend").generate_dtm(request))
         load_raster_if_requested(result.output_path, "dtm_geotiff", context, feedback, params.add_to_project)
         return self.push_result(feedback, result.output_path, "Generate DTM")

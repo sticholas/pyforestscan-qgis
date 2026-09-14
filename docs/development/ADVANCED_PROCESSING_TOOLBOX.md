@@ -21,6 +21,28 @@ Expert algorithms are grouped in QGIS as `Input / I/O`, `Preprocessing / Filters
 
 ## Algorithms
 
+### Extract EPT Subset
+
+Group: `PyForestScan / Input / I/O`.
+
+Parameters map directly to `pyforestscan.handlers.read_lidar(input_file, srs, bounds=None, thin_radius=None, hag=False, hag_dtm=False, dtm=None, crop_poly=False, poly=None, reproject=False)`, followed by `pyforestscan.handlers.write_las` to write `.las` or `.laz` output.
+
+Parameters:
+
+- `input_file` EPT `ept.json` source
+- `srs` / CRS
+- `bounds` as `xmin,xmax,ymin,ymax[,zmin,zmax]`
+- `thin_radius`
+- `hag` / `hag_dtm` with mutual exclusion
+- `dtm` for DTM-backed HAG
+- `crop_poly`
+- `polygon_source` polygon feature source, preferred for QGIS layers and vector files
+- `poly` Advanced WKT or polygon file path fallback; do not use together with `polygon_source`
+- `reproject`
+- `output_las_laz`
+
+Adapter call: `extract_lidar_subset(EptSubsetRequest(...))`. The PBM backend job type is `ept_subset_extract` when PBM is READY; QGIS Python remains the fallback only when PBM is unavailable and dependencies are present. The Processing algorithm dissolves polygon feature-source input to WKT before calling the adapter so users do not need to paste WKT manually.
+
 ## Coverage Notes
 
 Phase 20B added Generate DTM and Preprocess Point Cloud, and expanded HAG/Normalize with read-time bounds, thinning radius, and crop polygon options. Phase 20C added exact `calculate.py` parameter parity for Point Density and Voxel Statistic. Phase 20D added a full documentation/source inventory and closes safe filter-parameter gaps including full SMRF classification parameters, PointSourceId filtering, outlier `remove`, and HAG method `auto`. The full site inventory lives in `docs/api/PYFORESTSCAN_FULL_DOCS_INVENTORY.md`; the detailed parity matrix lives in `docs/api/PYFORESTSCAN_FUNCTION_PARAMETER_PARITY.md`.
@@ -56,7 +78,11 @@ Parameters:
 - Drop ground bin
 - Add output to project
 
-Adapter call: `create_pad(PadRequest(...))`. PAD is written as a multi-band GeoTIFF and uses the existing QGIS PAD RGB 5/3/2 styling when loaded.
+Adapter call: `create_pad(PadRequest(...))`. PAD is written as an authoritative multi-band GeoTIFF with one band per height bin, band descriptions, and dataset metadata. QGIS loads a representative grayscale height slice by default; PAD Derivative Raster creates optional single-band visualizations.
+
+### PAD Derivative Raster
+
+Creates plugin-derived single-band PAD visualizations from the complete PAD volume. Supported derivative types are height slice, maximum projection, mean projection, and integrated PAD over a selected vertical interval. These outputs are grayscale visualization rasters and do not replace the authoritative PAD multiband GeoTIFF.
 
 ### PAI
 
@@ -213,7 +239,7 @@ Adapter call: `normalize_heights(HagNormalizationRequest(...))`. If an output pa
 1. Install the packaged plugin ZIP into QGIS.
 2. Open Processing Toolbox and confirm `PyForestScan / Diagnostics`, `PyForestScan / Input / I/O`, `PyForestScan / Preprocessing / Filters`, `PyForestScan / Terrain`, and `PyForestScan / Metrics` groups appear.
 3. Run CHM on a small known dataset and confirm the GeoTIFF loads with grayscale styling.
-4. Run PAD and confirm the output is a multi-band GeoTIFF loaded as PAD RGB 5/3/2 when enough bands exist.
+4. Run PAD and confirm the output is a metadata-rich multi-band GeoTIFF loaded as a representative grayscale height slice by default.
 5. Run PAI with a minimum height and optional maximum height; confirm a single-band GeoTIFF is written.
 6. Run Canopy Cover with threshold and `k`; confirm values display as grayscale.
 7. Run FHD and confirm output CRS/extent align with the input.
@@ -231,3 +257,6 @@ Adapter call: `normalize_heights(HagNormalizationRequest(...))`. If an output pa
 - HAG point-cloud rewriting depends on PyForestScan/PDAL preserving expected dimensions and metadata.
 - Full SMRF and filter parameters are exposed for experts; users should document scientific rationale for non-default settings in project notes or reports.
 - Advanced algorithms do not provide tiling, multiprocessing, or external workers.
+# Phase 30E CRS behavior
+
+Advanced algorithms should consume `SpatialReferenceResolver` rather than add new blanket CRS assertions. Spatial comparison/reprojection tools remain blocking when source CRS is unknown; standalone source-local enablement is product-specific and must be validated before activation.

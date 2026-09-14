@@ -1,12 +1,22 @@
 # PyForestScan QGIS
 
+Contributor architecture starts at [the Current Architecture Map](docs/development/CURRENT_ARCHITECTURE_MAP.md). The authoritative Phase 33A product map and evidence-based release scorecard record current ownership and open qualification gates.
+
 PyForestScan QGIS is a professional QGIS interface for [PyForestScan](https://pyforestscan.sefa.ai/), an open-source Python library for deriving forest structural products from airborne LiDAR. The plugin provides a guided desktop workflow for GIS users and an expert Processing Toolbox surface for analysts who need direct PyForestScan parameter control.
 
 PyForestScan remains the scientific engine. This repository provides the QGIS application layer: environment diagnostics, dataset inspection, product planning, processing orchestration, output loading, batch execution, workspace history, and documentation.
 
+Current development beta: `0.2.0-beta.1`. Build artifacts are `dist/pyforestscan_qgis-v0.2.0-beta.1.zip` and `dist/pyforestscan_qgis.zip` after running `python3 scripts/package_plugin.py`. This is not RC1: see the [Phase 33A scorecard](docs/release/PHASE_33A_RELEASE_READINESS_SCORECARD.md).
+
+The tested QGIS and operating-system combinations are maintained in the
+[compatibility matrix](docs/COMPATIBILITY.md). The plugin does not claim support
+for every QGIS version merely because the package can be installed.
+
 ## Current Capabilities
 
 - **Mission Control** guided workflow for single datasets and batch runs.
+- **Mission Control UX standard** with primary-action pages, collapsed technical details, compact empty states, and consistent guided workflow terminology.
+- **PyForestScan Design System** for visual language, interaction patterns, status badges, button hierarchy, PBM messaging, and future module UI guidance.
 - **Environment diagnostics** for QGIS Python, PyForestScan, PDAL, GDAL, rasterio, and numpy.
 - **Dataset Explorer** reports with point count, bounds, CRS, density, classifications, warnings, footprint preview, JSON/CSV/HTML outputs.
 - **Scientific Advisor** with deterministic, documented recommendations and QGIS next-step guidance.
@@ -15,6 +25,7 @@ PyForestScan remains the scientific engine. This repository provides the QGIS ap
 - **Batch processing** with preflight checks, manifests, resume/retry, checkpointed summaries, sequential mode, and guarded Parallel Safe mode.
 - **Workspace state** with recent workspaces, notes, timeline, run history, and local `.pyforestscan/` metadata.
 - **Expert Processing Toolbox** grouped by Diagnostics, Input / I/O, Preprocessing / Filters, Terrain, and Metrics.
+- **PyForestScan Backend Manager** for user-local backend management: detection, verification, QGIS compatibility reporting, manifest-driven install previews, repair planning, structured logs, transaction staging, and Windows internal beta backend installation. Linux/macOS install execution remains planned until smoke tested.
 
 External Worker mode is disabled. It is preserved as research code only and is blocked from normal use.
 
@@ -39,12 +50,16 @@ Core logic is kept QGIS-free where practical. QGIS UI and layer-loading behavior
 
 ### Guided Mode: Mission Control
 
-1. Select a LiDAR dataset and output folder.
-2. Run Dataset Explorer.
-3. Review Scientific Advisor recommendations.
-4. Build a Product Plan.
-5. Run selected products.
-6. Review outputs, reports, logs, and workspace history.
+1. Choose Folder or Polygon processing.
+2. Select LiDAR data and, for Polygon mode, the processing area.
+3. Choose products and an output folder.
+4. Run Prerun Check.
+5. Select Process LiDAR.
+6. Review or load the generated outputs.
+
+Repository recognition, spatial normalization, bounded preparation, scheduling,
+checkpointing, and final clipping are automatic unless user input is genuinely
+required. See the [Quick Start](docs/getting-started/QUICK_START.md).
 
 ### Expert Mode: Processing Toolbox
 
@@ -78,9 +93,23 @@ python3 scripts/package_plugin.py
 python3 scripts/validate_plugin_package.py dist/pyforestscan_qgis.zip
 ```
 
-Install `dist/pyforestscan_qgis.zip` in QGIS through **Plugins > Manage and Install Plugins > Install from ZIP**.
+The package script writes both `dist/pyforestscan_qgis-v<version>.zip` and the latest convenience copy `dist/pyforestscan_qgis.zip`. Install either ZIP in QGIS through **Plugins > Manage and Install Plugins > Install from ZIP**.
 
-Before processing, run **PyForestScan / Diagnostics / Environment Check** or the Mission Control Environment page. Windows QGIS dependency guidance is documented in [Windows QGIS Dependencies](docs/development/WINDOWS_QGIS_DEPENDENCIES.md).
+Before processing, run **PyForestScan / Diagnostics / Environment Check** or the Mission Control Environment page. Windows internal beta builds can install the PBM backend into the user-local PyForestScan folder from Mission Control Settings; PBM does not modify QGIS Python or system Python. When PBM is Ready, routed products run in PBM backend Python and QGIS loads the resulting files.
+
+## Internal Release Pipeline
+
+For internal beta distribution, run:
+
+```bash
+python3 scripts/package_plugin.py
+python3 scripts/validate_plugin_package.py dist/pyforestscan_qgis.zip
+python3 scripts/check_docs_links.py
+python3 scripts/validate_release.py
+python3 scripts/prepare_github_release.py --dry-run
+```
+
+Release packaging produces `dist/release_manifest.json` with the plugin version, commit, branch, ZIP SHA-256, package size, PBM manifest version, backend manifest hash, and validation status. Report issues through the repository issue tracker or the internal testing channel selected for the beta.
 
 ## Screenshots
 
@@ -103,22 +132,42 @@ Start with the [Documentation Index](docs/README.md).
 Key entry points:
 
 - [Getting Started](docs/getting-started/README.md)
+- [Quick Start](docs/getting-started/QUICK_START.md)
 - [User Guide](docs/user-guide/README.md)
 - [Scientific Methods](docs/scientific-methods/README.md)
 - [Architecture](docs/architecture/README.md)
 - [Developer Guide](docs/developer/README.md)
 - [PyForestScan API Audit](docs/api/README.md)
+- [PyForestScan Backend Manager](docs/backend/PBM_ARCHITECTURE.md)
+- [PBM Install Plan](docs/backend/PBM_INSTALL_PLAN.md)
+- [PBM Manifest](docs/backend/PBM_MANIFEST.md)
+- [PBM Transaction Model](docs/backend/PBM_TRANSACTION_MODEL.md)
+- [PBM Processing Execution](docs/backend/PBM_PROCESSING_EXECUTION.md)
+- [PBM Runner Protocol](docs/backend/PBM_RUNNER_PROTOCOL.md)
+- [QGIS Compatibility Layer](docs/development/QGIS_COMPATIBILITY_LAYER.md)
+- [Compatibility Matrix](docs/COMPATIBILITY.md)
+- [Mission Control UX Standard](docs/development/MISSION_CONTROL_UX_STANDARD.md)
+- [PyForestScan Design System](docs/development/PYFORESTSCAN_DESIGN_SYSTEM.md)
+- [Release Roadmap](docs/releases/RELEASE_ROADMAP.md)
+- [RC1 Checklist](docs/releases/RC1_CHECKLIST.md)
 - [Release Checklist](docs/releases/INTERNAL_RELEASE_CHECKLIST.md)
+- [PBM Internal Beta Smoke Test](docs/releases/PBM_INTERNAL_BETA_SMOKE_TEST.md)
+- [No-Manual-Setup Beta Smoke Test](docs/releases/NO_MANUAL_SETUP_BETA_SMOKE_TEST.md)
 - [Known Limitations](docs/KNOWN_LIMITATIONS.md)
+- [Release Candidate Feature Matrix](docs/RELEASE_CANDIDATE_FEATURE_MATRIX.md)
+- [Phase 32R Polygon UI Audit](docs/PHASE_32R_POLYGON_UI_AUDIT.md)
+- [Phase 32R Market Comparison](docs/research/PHASE_32R_MARKET_COMPARISON.md)
 
 ## Roadmap
 
+The project is moving from feature-building phases into formal release-candidate management. See the [Release Roadmap](docs/releases/RELEASE_ROADMAP.md), [RC1 Checklist](docs/releases/RC1_CHECKLIST.md), [RC1 Manual QA Script](docs/releases/RC1_MANUAL_QA_SCRIPT.md), and [Release Triage Policy](docs/releases/RELEASE_TRIAGE_POLICY.md).
+
 Near-term release priorities:
 
-- Internal v1.0 QA across QGIS 3.44.x on Windows.
-- Manual screenshots and sample-data validation notes.
-- Product-level crop/bounds workflow design.
-- Safer large EPT tiling workflow design.
+- RC1 clean Windows/QGIS ZIP install and PBM backend acceptance.
+- RC1 smoke coverage for Guided Mode, Batch, Results loading, and Advanced Toolbox.
+- RC2 repeatability, repair/retry validation, and documentation evidence.
+- v1.0 public-quality readiness review after RC blockers and critical issues are resolved.
 - Public QGIS Plugin Repository readiness review.
 
 ## Contributing
