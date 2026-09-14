@@ -9,14 +9,14 @@ PAGES=(ROOT/'pyforestscan_qgis/ui/pages.py').read_text(encoding='utf-8')
 PLUGIN=(ROOT/'pyforestscan_qgis/plugin.py').read_text(encoding='utf-8')
 
 class Phase29BWorkflowTests(unittest.TestCase):
- def test_startup_is_opt_in_and_round_trips(self):
+ def test_startup_ui_is_disabled_and_mission_control_is_explicit(self):
   self.assertFalse(WorkspaceSession().open_mission_control_on_startup)
   session=WorkspaceSession.from_dict({'open_mission_control_on_startup':True})
   self.assertTrue(session.open_mission_control_on_startup)
   self.assertTrue(session.to_dict()['open_mission_control_on_startup'])
-  self.assertIn('if auto_open:',PLUGIN)
+  self.assertNotIn('auto_open',PLUGIN)
   init_body=PLUGIN.split('def initGui',1)[1].split('def unload',1)[0]
-  self.assertIn('if auto_open:',init_body)
+  self.assertIn('always user-launched',PLUGIN)
  def test_duplicate_repository_and_spatial_buttons_removed(self):
   for label in ('QPushButton("Use Path")','QPushButton("Refresh Catalog Status")','QPushButton("Inspect Data Folder")','QPushButton("Re-run Prerun Check")','QPushButton("Zoom to Combined Extent")'):
    self.assertNotIn(label,PAGES)

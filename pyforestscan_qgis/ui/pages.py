@@ -5958,10 +5958,6 @@ class SettingsPage(MissionPage):
         fallback_row.addWidget(self.choose_fallback_crs_button)
         fallback_row.addWidget(self.clear_fallback_crs_button)
         form.addRow("Fallback CRS", fallback_row)
-        self.open_on_startup_check = QCheckBox("Open Mission Control when QGIS starts")
-        self.open_on_startup_check.setChecked(False)
-        self.open_on_startup_check.setProperty("contextHelp", "Open Mission Control automatically after the plugin loads. This does not start processing or install the Processing Engine.")
-        form.addRow("Startup", self.open_on_startup_check)
         defaults.addLayout(form)
         self.fallback_crs_explanation = _details_label(semantic_help("tools.fallback_crs"))
         defaults.addWidget(self.fallback_crs_explanation)
@@ -6129,7 +6125,6 @@ class SettingsPage(MissionPage):
         self.remember_output_folder_check.setChecked(session.remember_last_output_folder)
         self.auto_save_workspace_check.setChecked(session.auto_save_enabled)
         self._maximum_recent_items = session.maximum_recent_items
-        self.open_on_startup_check.setChecked(session.open_mission_control_on_startup)
 
     def recent_item_display_limit(self) -> int:
         """Return the internal recent-workspace display bound, never a job limit."""
@@ -6194,7 +6189,6 @@ class SettingsPage(MissionPage):
             remember_last_output_folder=self.remember_output_folder_check.isChecked(),
             maximum_recent_items=self._maximum_recent_items,
             auto_save_enabled=self.auto_save_workspace_check.isChecked(),
-            open_mission_control_on_startup=self.open_on_startup_check.isChecked(),
         )
 
     def browse_default_output_folder(self) -> None:
