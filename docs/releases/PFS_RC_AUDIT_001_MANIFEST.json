@@ -1,7 +1,7 @@
 {
   "baseline": {
     "branch": "main",
-    "commit": "4bcbaf69ca4b0361a4b22defb02060a45f99a81c"
+    "commit": "d10b31df72e922958955741bccf374e76805fbed"
   },
   "compile": {
     "evidence": {
@@ -19,7 +19,7 @@
     },
     "status": "PASS"
   },
-  "generated_at": "2026-09-14T23:13:07.179882+00:00",
+  "generated_at": "2026-09-14T23:17:52.086838+00:00",
   "gui_products": [
     {
       "evidence": "Mission Control product registry and QGIS-independent contract tests",
@@ -75,8 +75,8 @@
     "has_provider": true,
     "member_count": 258,
     "path": "/home/milo/repos/pyforestscan-qgis/dist/pyforestscan_qgis-v0.1.0.zip",
-    "sha256": "579502c67e55b7ccaf1ceed955cb01a7f3b72d80dbdb4fb5b835a9413c19a7de",
-    "size_bytes": 680753,
+    "sha256": "dd372351fdaf0bfa01f5e5f7fc0f35b68d9f47e5dc90e424dad6add3967c6215",
+    "size_bytes": 680993,
     "status": "PASS"
   },
   "plugin_version": "0.2.0-beta.7",
@@ -323,11 +323,11 @@
         "scripts/check_undefined_names.py",
         "pyforestscan_qgis"
       ],
-      "returncode": 1,
+      "returncode": 0,
       "stderr": "",
-      "stdout": "core/adapter.py:922: undefined name 'source_summary'\ncore/adapter.py:922: undefined name 'extent'\n"
+      "stdout": "Undefined-name validation passed: pyforestscan_qgis\n"
     },
-    "status": "FAIL"
+    "status": "PASS"
   },
   "tests": {
     "command": [
@@ -341,7 +341,7 @@
     ],
     "returncode": 0,
     "status": "PASS",
-    "stderr": "----------------------------------------------------------------------\nRan 1060 tests in 28.096s\n\nOK (skipped=7)\n",
+    "stderr": "----------------------------------------------------------------------\nRan 1061 tests in 28.318s\n\nOK (skipped=7)\n",
     "stdout": ""
   }
 }

@@ -2,6 +2,8 @@
 
 The current accepted baseline is [Pre-point-viewer Release 1](PRE_POINT_VIEWER_RELEASE_1.md).
 
+The current audit evidence is the [feature matrix](PFS_RC_AUDIT_001_MATRIX.md) and [qualification manifest](PFS_RC_AUDIT_001_MANIFEST.json).
+
 ## Package
 
 Build a versioned ZIP, then validate it:

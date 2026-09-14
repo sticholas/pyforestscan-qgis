@@ -29,6 +29,7 @@ Use these pages first. Older phase reports are retained as historical evidence.
 ## Releases
 
 - [Release baseline](releases/PRE_POINT_VIEWER_RELEASE_1.md)
+- [RC audit matrix](releases/PFS_RC_AUDIT_001_MATRIX.md) · [qualification manifest](releases/PFS_RC_AUDIT_001_MANIFEST.json)
 - [Release documentation](releases/README.md)
 - [Packaging](releases/PACKAGING.md)
 - [Release Roadmap](releases/RELEASE_ROADMAP.md) · [RC1 Checklist](releases/RC1_CHECKLIST.md) · [Manual QA](releases/RC1_MANUAL_QA_SCRIPT.md)
