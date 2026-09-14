@@ -2,8 +2,6 @@
 
 PyForestScan QGIS is a QGIS plugin for processing forest structure products from LiDAR with [PyForestScan](https://pyforestscan.sefa.ai/).
 
-Current baseline: **Pre-point-viewer Release 1** (`0.2.0-beta.7`).
-
 ## What it does
 
 - Guided Mission Control workflow for folder and polygon processing.
