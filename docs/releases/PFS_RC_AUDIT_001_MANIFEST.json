@@ -1,7 +1,7 @@
 {
   "baseline": {
     "branch": "main",
-    "commit": "d10b31df72e922958955741bccf374e76805fbed"
+    "commit": "5fdb3480ed4ebb5a3284db09461b96a3679e934a"
   },
   "compile": {
     "evidence": {
@@ -19,7 +19,7 @@
     },
     "status": "PASS"
   },
-  "generated_at": "2026-09-14T23:17:52.086838+00:00",
+  "generated_at": "2026-09-14T23:26:28.798473+00:00",
   "gui_products": [
     {
       "evidence": "Mission Control product registry and QGIS-independent contract tests",
@@ -75,8 +75,8 @@
     "has_provider": true,
     "member_count": 258,
     "path": "/home/milo/repos/pyforestscan-qgis/dist/pyforestscan_qgis-v0.1.0.zip",
-    "sha256": "dd372351fdaf0bfa01f5e5f7fc0f35b68d9f47e5dc90e424dad6add3967c6215",
-    "size_bytes": 680993,
+    "sha256": "4fac7572ad16ec75cea2220d82a27911144ead0b0a98e59d4e8f1ff28e3ca9cd",
+    "size_bytes": 680841,
     "status": "PASS"
   },
   "plugin_version": "0.2.0-beta.7",
@@ -341,7 +341,7 @@
     ],
     "returncode": 0,
     "status": "PASS",
-    "stderr": "----------------------------------------------------------------------\nRan 1061 tests in 28.318s\n\nOK (skipped=7)\n",
+    "stderr": "----------------------------------------------------------------------\nRan 1061 tests in 28.206s\n\nOK (skipped=7)\n",
     "stdout": ""
   }
 }
