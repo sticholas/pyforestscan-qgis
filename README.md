@@ -16,7 +16,7 @@ Point-viewer functionality is not included in this baseline.
 
 ## Install
 
-1. Download `pyforestscan_qgis-v0.1.0.zip` from the published release package.
+1. Download the versioned `pyforestscan_qgis-v0.1.0.zip` package from the release artifacts.
 2. In QGIS, open **Plugins → Manage and Install Plugins → Install from ZIP**.
 3. Run the Environment Check before processing.
 

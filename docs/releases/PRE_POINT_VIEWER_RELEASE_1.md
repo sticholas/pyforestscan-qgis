@@ -22,7 +22,7 @@ This document marks the current `0.2.0-beta.7` processing build as the main work
 - Release ZIP structural validation passed.
 - Packaged import-graph validation passed.
 
-The release ZIP is named `pyforestscan_qgis-v0.1.0.zip`. Future point-viewer work should branch from the tagged baseline rather than rewriting this release history.
+The release ZIP is named `pyforestscan_qgis-v0.1.0.zip`. Future point-viewer work should branch from the `main` baseline commit rather than rewriting this release history.
 
 ## Known scope
 
