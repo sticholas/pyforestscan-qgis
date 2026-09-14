@@ -8,11 +8,11 @@ Build a versioned ZIP, then validate it:
 
 ```bash
 python3 scripts/package_plugin.py --no-latest \
-  --output dist/pyforestscan_qgis-v0.2.0-beta.7-pre-point-viewer-release-1.zip
+  --output dist/pyforestscan_qgis-v0.1.0.zip
 python3 scripts/validate_plugin_package.py \
-  dist/pyforestscan_qgis-v0.2.0-beta.7-pre-point-viewer-release-1.zip
+  dist/pyforestscan_qgis-v0.1.0.zip
 python3 scripts/validate_packaged_import_graph.py \
-  dist/pyforestscan_qgis-v0.2.0-beta.7-pre-point-viewer-release-1.zip
+  dist/pyforestscan_qgis-v0.1.0.zip
 ```
 
 ## Release history

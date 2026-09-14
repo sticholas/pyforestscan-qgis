@@ -16,7 +16,7 @@ Point-viewer functionality is not included in this baseline.
 
 ## Install
 
-1. Download `pyforestscan_qgis-v0.2.0-beta.7-pre-point-viewer-release-1.zip` from the published release package.
+1. Download `pyforestscan_qgis-v0.1.0.zip` from the published release package.
 2. In QGIS, open **Plugins → Manage and Install Plugins → Install from ZIP**.
 3. Run the Environment Check before processing.
 
@@ -24,11 +24,11 @@ Point-viewer functionality is not included in this baseline.
 
 ```bash
 python3 scripts/package_plugin.py --no-latest \
-  --output dist/pyforestscan_qgis-v0.2.0-beta.7-pre-point-viewer-release-1.zip
+  --output dist/pyforestscan_qgis-v0.1.0.zip
 python3 scripts/validate_plugin_package.py \
-  dist/pyforestscan_qgis-v0.2.0-beta.7-pre-point-viewer-release-1.zip
+  dist/pyforestscan_qgis-v0.1.0.zip
 python3 scripts/validate_packaged_import_graph.py \
-  dist/pyforestscan_qgis-v0.2.0-beta.7-pre-point-viewer-release-1.zip
+  dist/pyforestscan_qgis-v0.1.0.zip
 ```
 
 Focused preflight tests:
