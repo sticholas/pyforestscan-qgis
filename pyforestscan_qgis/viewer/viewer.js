@@ -32,6 +32,7 @@ function updateVisualizationMetadata() {
     state.available_modes = ATTRIBUTE_MODES.filter(mode => !!modeAttribute(mode));
     if (!state.available_modes.includes(state.mode)) state.mode = state.available_modes[0] || "Classification";
     updateLegend();
+    updateScales();
 }
 function niceStep(span, target=5) {
     if (!(span > 0)) return 1;
@@ -46,6 +47,21 @@ function niceTicks(minimum, maximum, target=5) {
     for (let value = start; value <= maximum + step * 1e-9 && ticks.length < 12; value += step) ticks.push(Number(value.toPrecision(12)));
     return ticks.length ? ticks : [minimum, maximum];
 }
+function updateScales() {
+    if (!viewer || !cloud) return;
+    const radius = viewer.scene.view.radius;
+    const groundStep = niceStep(Math.max(radius * .22, .001), 4);
+    const vertical = state.display_range || state.z_range;
+    const verticalStep = vertical ? niceStep(Math.max(Number(vertical[1]) - Number(vertical[0]), .001), 5) : null;
+    const scaleText = `Ground scale: ${groundStep < 1 ? groundStep.toFixed(2) : groundStep.toFixed(0)} source units`;
+    const verticalText = verticalStep ? `Vertical scale: ${verticalStep < 1 ? verticalStep.toFixed(2) : verticalStep.toFixed(0)} ${state.mode === "Height Above Ground" ? "HAG" : "elevation"} units` : "Vertical scale unavailable";
+    if (state.scales && state.scales.ground === scaleText && state.scales.vertical === verticalText) return;
+    state.scales = {ground: scaleText, vertical: verticalText};
+    const ground = document.getElementById("spatial-scale"), verticalNode = document.getElementById("vertical-scale");
+    if (ground) ground.textContent = scaleText;
+    if (verticalNode) verticalNode.textContent = verticalText;
+}
+
 function updateLegend() {
     if (!cloud) return;
     const range = state.display_range || state.z_range;
@@ -413,7 +429,7 @@ window.snapshot = function() {
     if (!state.ready) return state;
     if (window.pointCloudEditor) state.editor = window.pointCloudEditor.tick({viewer, cloud});
     inspectVisibleClasses();
-    if (performance.now() - lastAnalytics > 350) { lastAnalytics = performance.now(); updateAnalytics(); }
+    if (performance.now() - lastAnalytics > 350) { lastAnalytics = performance.now(); updateAnalytics(); updateScales(); }
     const view = viewer.scene.view;
     const camera = {position: view.position.toArray(), yaw: view.yaw, pitch: view.pitch, radius: view.radius};
     const key = JSON.stringify(camera);

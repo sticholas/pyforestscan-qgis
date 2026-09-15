@@ -148,6 +148,8 @@ class ViewerRuntimeTests(unittest.TestCase):
         html = (root / "pyforestscan_qgis/viewer/viewer.html").read_text()
         self.assertIn('id="visual-legend"', html)
         self.assertIn('id="visual-analytics"', html)
+        self.assertIn('id="spatial-scale"', html)
+        self.assertIn("updateScales", source)
 
     def test_range_control_is_presentation_only(self):
         source = (Path(__file__).resolve().parents[1] / "pyforestscan_qgis/ui/point_cloud_display_range.py").read_text()
