@@ -103,8 +103,8 @@ from pyforestscan_qgis.core.point_cloud.vertical_selection import (
 )
 
 from pyforestscan_qgis.core.point_cloud.scientific_visualization import (
-    SPECS, VisualizationKind, available_product_visualizations,
-    build_visualization_layer, product_visualization_spec,
+    SPECS, ProductAvailability, VisualizationKind, available_product_visualizations,
+    build_visualization_layer, product_visualization_spec, product_visualization_state,
 )
 
 
@@ -112,6 +112,9 @@ class ScientificVisualizationContractTests(unittest.TestCase):
     def test_product_specs_are_explicit_and_scientific(self):
         self.assertEqual(VisualizationKind.RASTER_SURFACE, product_visualization_spec("CHM").kind)
         self.assertEqual("height above ground", product_visualization_spec("CHM").vertical_semantics)
+        self.assertEqual("fraction 0-1", product_visualization_spec("CANOPY_COVER").value_domain)
+        self.assertEqual("voxel_field", product_visualization_spec("PAD").scientific_support_geometry)
+        self.assertEqual("continuous", product_visualization_spec("RUMPLE").legend_type)
         self.assertEqual(9, len(SPECS))
 
     def test_available_overlays_require_real_outputs(self):
@@ -124,6 +127,14 @@ class ScientificVisualizationContractTests(unittest.TestCase):
             self.assertEqual(("CHM", "PAD"), tuple(item.product_id for item in available))
         finally:
             output.unlink()
+
+    def test_product_availability_states_do_not_trigger_work(self):
+        self.assertEqual(ProductAvailability.AVAILABLE_CAN_CALCULATE,
+                         product_visualization_state("CHM", can_calculate=True).availability)
+        self.assertEqual(ProductAvailability.CALCULATING,
+                         product_visualization_state("CHM", calculating=True).availability)
+        self.assertEqual(ProductAvailability.REVIEW_REQUIRED,
+                         product_visualization_state("CHM", review_required=True).availability)
 
     def test_layer_requires_output_and_carries_provenance(self):
         output = ROOT / "tests" / "_b2s_layer_test.tif"

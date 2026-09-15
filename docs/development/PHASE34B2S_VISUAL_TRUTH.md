@@ -68,3 +68,14 @@ parameters.
 Vertical profiles now expose adaptive distance/elevation ticks and a restrained
 grid based on the profile's authoritative geometry and vertical limits. The
 axis labels distinguish source elevation from Height Above Ground.
+
+
+## Product overlay availability
+
+Product overlays use explicit availability states: `AVAILABLE_CACHED`,
+`AVAILABLE_CAN_CALCULATE`, `CALCULATING`, `REVIEW_REQUIRED`, and
+`NOT_AVAILABLE`. The state contract never starts a calculation on hover or
+because a menu opened. Product descriptors carry support geometry and
+product-specific domains: canopy cover is a fraction from 0 to 1, PAD is a
+height-binned area-per-volume field, Rumple is a surface-area ratio, and Point
+Density is points per output-cell area.
