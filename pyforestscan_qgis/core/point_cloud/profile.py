@@ -94,9 +94,24 @@ def profile_workbench_summary(geometry, query_result=None):
                        classification_counts_summary(counts, limit=6) + ".")
     stats = result.get("vertical_stats") or {}
     if stats.get("count") and all(key in stats for key in ("minimum", "maximum", "mean")):
-        details.append("Authoritative " + axis + " range: " +
+        details.append("AUTHORITATIVE PROFILE CORRIDOR " + axis + " range: " +
                        f"{stats['minimum']:g} to {stats['maximum']:g}; " +
                        f"mean {stats['mean']:g}.")
+        quantiles = stats.get("quantiles") or {}
+        if quantiles:
+            details.append("Percentiles P25/P50/P75/P95: " + "/".join(
+                f"{quantiles.get(str(key), float('nan')):g}" for key in (25, 50, 75, 95)) + ".")
+        if stats.get("histogram"):
+            details.append(f"Stable histogram bins: {len(stats['histogram'])}.")
+    for field, label in (("returns", "Return number distribution"),
+                         ("number_of_returns", "Number-of-returns distribution")):
+        values = result.get(field) or []
+        if values:
+            details.append(label + ": " + ", ".join(
+                f"{item['value']} ({item['percentage']:.1f}%)" for item in values[:6]) + ".")
+    intensity = result.get("intensity_stats") or {}
+    if intensity:
+        details.append(f"Intensity range: {intensity['minimum']:g} to {intensity['maximum']:g}; mean {intensity['mean']:g}.")
     return {"text": text, "details": "\n".join(details), "axis": axis,
             "source_points": count, "display_points": displayed,
             "vertical_stats": stats or None}

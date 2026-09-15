@@ -5,7 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from qgis.core import QgsCoordinateReferenceSystem, QgsUnitTypes
-from qgis.PyQt.QtCore import QObject, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QObject, Qt, QTimer, pyqtSignal
 from qgis.PyQt.QtWidgets import (QToolButton, QMenu, QInputDialog, QCheckBox, QDialog,
     QFormLayout, QDialogButtonBox, QDoubleSpinBox, QComboBox, QStyle, QFileDialog, QLabel,
     QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox)
@@ -14,6 +14,7 @@ from ..core.point_cloud.workspace import ViewType
 from ..core.point_cloud.linked_query import view_ring
 from ..core.point_cloud.linked_selection import linked_constraints, selection_limit_values
 from ..core.point_cloud.profile_editing import normalize_path, insert_midpoint, remove_vertex, replace_path
+from ..core.point_cloud.analytics_scheduler import AnalyticsCoalescer
 from .point_cloud_editor import EditorWorker, _WORKERS
 
 
@@ -67,6 +68,9 @@ class LinkedViews(QObject):
         self.cursor_sequences = {}
         self.cursor_source = None
         self.cursor_commands = {}
+        self.profile_requests = AnalyticsCoalescer()
+        self._profile_dispatch_scheduled = False
+        self._active_profile_request = None
         from .point_cloud_resident_views import ResidentViews
         self.residents = ResidentViews(page)
         from .point_cloud_tools import spatial_button
@@ -895,6 +899,24 @@ class LinkedViews(QObject):
         self.open_active()
 
     def open_active(self):
+        request = self.profile_requests.submit((self.page.workspace.active_view_id,),
+                                                {"view_id": self.page.workspace.active_view_id})
+        self._latest_profile_generation = request.generation
+        # Invalidate an in-flight result immediately; a newer UI event must
+        # never be allowed to paint over the latest profile request.
+        if self.waiting:
+            self.request_id = None
+        if self._profile_dispatch_scheduled:
+            return
+        self._profile_dispatch_scheduled = True
+        QTimer.singleShot(0, self._dispatch_active)
+
+    def _dispatch_active(self):
+        self._profile_dispatch_scheduled = False
+        request = self.profile_requests.take_latest()
+        if request is None or self.closing:
+            return
+        self._active_profile_request = request
         page = self.page
         view = self.active()
         self.refresh_profile_controls()
@@ -936,8 +958,10 @@ class LinkedViews(QObject):
         allocations = page.workspace.resources.allocations(page.workspace.views,view.view_id,
             point_budget=budget.ceiling, available_ram=memory.get("available_bytes",budget.ceiling*128),
             frame_ms=telemetry.get("frame_ms",0))
-        command = {"action":"query","request_id":self.request_id,"source_identity":identity,
-                   "view":asdict(view),"point_budget":max(1,allocations[view.view_id]["points"])}
+        command = {"action":"query","request_id":self.request_id,
+                   "analytics_generation":self._active_profile_request.generation,
+                   "source_identity":identity, "view":asdict(view),
+                   "point_budget":max(1,allocations[view.view_id]["points"])}
         if key in self.cache:
             command["cached"] = self.cache[key]
         command["view_cache_key"] = self.original_info.get("cache_fingerprint")
@@ -968,6 +992,8 @@ class LinkedViews(QObject):
             return
         if value.get("linked_ready"):
             self.waiting = False
+            if self._active_profile_request:
+                self.profile_requests.finish(self._active_profile_request)
             result = value["linked_ready"]
             self.cache[self.request_key] = result
             self.query_results[result["view_id"]] = result
@@ -975,6 +1001,8 @@ class LinkedViews(QObject):
             self.page.start_source(result["path"],render_only=True)
         elif value.get("error"):
             self.waiting = False
+            if self._active_profile_request:
+                self.profile_requests.finish(self._active_profile_request)
             self.page.status.setText("Linked view unavailable: " + value["error"] + " Open Overview to continue.")
 
     def observe(self, telemetry):
@@ -998,6 +1026,7 @@ class LinkedViews(QObject):
         context["display_projection"] = result.get(
             "display_projection", view.geometry.get("display_projection", "SOURCE_XY"))
         context["horizontal_unit"], context["vertical_unit"] = self.source_units()
+        context["profile_analytics"] = result.get("vertical_stats") if view.view_type == ViewType.VERTICAL_SLICE else None
         self.page.send({"action":"linked_view","view":context})
         self.page.send(self.profile_footprints())
         self.page.send({"action":"scene_visibility", "visibility":view.scene_visibility})

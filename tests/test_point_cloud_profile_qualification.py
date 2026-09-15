@@ -16,6 +16,20 @@ class PointCloudProfileQualificationTests(unittest.TestCase):
         for marker in ("classificationColorHex", "viewer.classifications", "state.legend", "replaceChildren", "background:${item.color}"):
             self.assertIn(marker, source)
 
+    def test_authoritative_stats_and_histogram_are_connected_to_profile_view(self):
+        linked_query = (ROOT / "pyforestscan_qgis/core/point_cloud/linked_query.py").read_text()
+        linked_views = (ROOT / "pyforestscan_qgis/ui/point_cloud_linked_views.py").read_text()
+        viewer = (ROOT / "pyforestscan_qgis/viewer/viewer.js").read_text()
+        html = (ROOT / "pyforestscan_qgis/viewer/viewer.html").read_text()
+        for marker in ("vertical_stats", "returns", "intensity_stats", "_profile_statistics"):
+            self.assertIn(marker, linked_query)
+        for marker in ("AnalyticsCoalescer", "profile_requests.submit", "profile_requests.take_latest",
+                       "profile_analytics"):
+            self.assertIn(marker, linked_views)
+        for marker in ("renderProfileHistogram", "analytics_scope", "profile_analytics"):
+            self.assertIn(marker, viewer)
+        self.assertIn("profile-histogram", html)
+
     def test_profile_help_explains_source_units_and_navigation(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_tools.py").read_text()
         self.assertIn("source coordinate", source)

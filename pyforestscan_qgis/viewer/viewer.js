@@ -135,12 +135,28 @@ function updateAnalytics() {
     if (node) node.textContent = values.length ? `VISIBLE VIEW | ${values.length.toLocaleString()} sampled points | ${state.mode}: ${minimum.toFixed(2)}–${maximum.toFixed(2)}` : "VISIBLE VIEW | Waiting for display sample";
 }
 
+function renderProfileHistogram(stats) {
+    const node = document.getElementById("profile-histogram");
+    if (!node) return;
+    node.replaceChildren();
+    const bins = stats && Array.isArray(stats.histogram) ? stats.histogram : [];
+    if (!bins.length) { node.style.display = "none"; return; }
+    node.style.display = "flex";
+    const peak = Math.max(...bins.map(bin => Number(bin.count) || 0), 1);
+    bins.forEach(bin => {
+        const bar = document.createElement("span");
+        bar.style.height = `${Math.max(2, 100 * (Number(bin.count) || 0) / peak)}%`;
+        bar.title = `${bin.minimum}–${bin.maximum}: ${bin.count.toLocaleString()} points`;
+        node.appendChild(bar);
+    });
+}
 function updateProfileAxes() {
     const profile = linkedContext && linkedContext.view_type === "VERTICAL_SLICE" &&
         linkedContext.display_projection === "PROFILE_DISTANCE";
     profileAxes.style.display = profile ? "block" : "none";
     if (!profile || !cloud) {
         state.profile_axes = null;
+        renderProfileHistogram(null);
         return;
     }
     const geometry = linkedContext.geometry || {};
@@ -163,7 +179,9 @@ function updateProfileAxes() {
     document.getElementById("profile-y-max").textContent = Number(verticalTicks[verticalTicks.length - 1]).toFixed(1);
     document.getElementById("profile-y-title").textContent = `${axis} (${verticalUnit})`;
     state.profile_axes = {distance:[0,length],vertical:[Number(vertical[0]),Number(vertical[1])],
-        horizontal_unit:unit,vertical_unit:verticalUnit,vertical_axis:axis};
+        horizontal_unit:unit,vertical_unit:verticalUnit,vertical_axis:axis,
+        analytics_scope: linkedContext.profile_analytics ? "AUTHORITATIVE PROFILE CORRIDOR" : "UNAVAILABLE"};
+    renderProfileHistogram(linkedContext.profile_analytics);
 }
 function syncRenderCameras() {
     const view = viewer.scene.view;

@@ -39,6 +39,20 @@ def area_ring(geometry):
     return ((x-dx,y-dy),(x+dx,y-dy),(x+dx,y+dy),(x-dx,y+dy),(x-dx,y-dy))
 
 
+def _distribution(counts, total):
+    return [{"value": key, "count": int(value),
+             "percentage": (100.0 * value / total) if total else 0.0}
+            for key, value in sorted(counts.items(), key=lambda item: (-item[1], item[0]))]
+
+
+def _profile_statistics(values, count, minimum, maximum, total, np):
+    from .profile_statistics import finalize_numeric_statistics
+    result = finalize_numeric_statistics(values, count=count, minimum=minimum,
+                                         maximum=maximum, total=total, np=np)
+    result["axis"] = "profile_vertical"
+    return result
+
+
 def view_ring(view):
     if view["view_type"] == "AREA_DETAIL":
         return area_ring(view["geometry"])
@@ -95,6 +109,11 @@ def extract_view(source, view, output_dir, *, index_root, point_budget,
     class_counts = {}
     value_count = 0
     value_min = value_max = value_sum = None
+    value_sample = np.empty(0, dtype="f8")
+    return_counts = {}
+    number_return_counts = {}
+    intensity_count = 0
+    intensity_min = intensity_max = intensity_sum = None
     for chunk in chunks:
         if cancelled():
             raise InterruptedError("Linked view query cancelled.")
@@ -117,6 +136,22 @@ def extract_view(source, view, output_dir, *, index_root, point_budget,
             value_max = chunk_max if value_max is None else max(value_max, chunk_max)
             chunk_sum = float(np.sum(values, dtype="f8"))
             value_sum = chunk_sum if value_sum is None else value_sum + chunk_sum
+            value_sample = np.concatenate((value_sample, values.astype("f8", copy=False)))
+            if len(value_sample) > 100000:
+                value_sample = value_sample[:100000]
+            for field, target in (("ReturnNumber", return_counts), ("NumberOfReturns", number_return_counts)):
+                if field in selected.dtype.names:
+                    codes, totals = np.unique(selected[field], return_counts=True)
+                    for code, total in zip(codes, totals):
+                        target[int(code)] = target.get(int(code), 0) + int(total)
+            if "Intensity" in selected.dtype.names:
+                intensity = selected["Intensity"].astype("f8", copy=False)
+                intensity_count += len(intensity)
+                chunk_min, chunk_max = float(np.min(intensity)), float(np.max(intensity))
+                intensity_min = chunk_min if intensity_min is None else min(intensity_min, chunk_min)
+                intensity_max = chunk_max if intensity_max is None else max(intensity_max, chunk_max)
+                chunk_sum = float(np.sum(intensity, dtype="f8"))
+                intensity_sum = chunk_sum if intensity_sum is None else intensity_sum + chunk_sum
         if len(selected):
             if profile and "Classification" in selected.dtype.names:
                 classes, totals = np.unique(selected["Classification"], return_counts=True)
@@ -182,10 +217,14 @@ def extract_view(source, view, output_dir, *, index_root, point_budget,
     return {"path":str(output),"view_id":view["view_id"],"source_fingerprint":source.sha256,
             "source_points":count,"display_points":len(sample),"candidate_points":candidates,
             "classification_counts":sorted(class_counts.items(), key=lambda item:(-item[1],item[0])),
-            "vertical_stats": ({"axis": profile.vertical_axis, "count": value_count,
-                                "minimum": value_min, "maximum": value_max,
-                                "mean": value_sum / value_count}
-                               if profile and value_count else None),
+            "vertical_stats": _profile_statistics(value_sample, value_count, value_min,
+                                                   value_max, value_sum, np)
+                               if profile and value_count else None,
+            "returns": _distribution(return_counts, count),
+            "number_of_returns": _distribution(number_return_counts, count),
+            "intensity_stats": ({"count": intensity_count, "minimum": intensity_min,
+                                 "maximum": intensity_max, "mean": intensity_sum / intensity_count}
+                                if intensity_count else None),
             "point_budget":point_budget,"query_seconds":time.monotonic()-started,
             "geometry":view["geometry"],"view_type":view["view_type"],
             "display_projection":profile.display_projection if profile else "SOURCE_XY",

@@ -33,7 +33,7 @@ class ProfileWorkbenchTests(unittest.TestCase):
             "vertical_stats": {"axis": "Z", "count": 3,
                                 "minimum": 4.0, "maximum": 12.0, "mean": 8.0},
         })
-        self.assertIn("Authoritative elevation range: 4 to 12; mean 8", summary["details"])
+        self.assertIn("AUTHORITATIVE PROFILE CORRIDOR elevation range: 4 to 12; mean 8", summary["details"])
         self.assertEqual(summary["vertical_stats"]["maximum"], 12.0)
 
     def test_hag_and_loading_states_are_explicit(self):

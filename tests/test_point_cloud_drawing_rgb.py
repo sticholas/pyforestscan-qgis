@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class DrawingRGBTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "Node required for production JavaScript contracts")
     def test_production_contracts(self):
-        for name in ("viewer_drawing_rgb_test.cjs", "viewer_gesture_events_test.cjs"):
+        for name in ("viewer_drawing_rgb_test.cjs", "viewer_gesture_events_test.cjs", "viewer_rgb_qualification_test.cjs"):
             result = subprocess.run(["node", str(ROOT / "scripts/testing" / name)],
                                     capture_output=True, text=True, timeout=20)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
