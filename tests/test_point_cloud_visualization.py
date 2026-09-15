@@ -75,6 +75,10 @@ class ViewerColorPipelineContractTests(unittest.TestCase):
         html = (ROOT / "pyforestscan_qgis/viewer/viewer.html").read_text(encoding="utf-8")
         self.assertIn('id="profile-grid"', html)
         self.assertIn('id="profile-x-ticks"', html)
+        slider = (ROOT / "pyforestscan_qgis/ui/point_cloud_range_slider.py").read_text(encoding="utf-8")
+        limits = (ROOT / "pyforestscan_qgis/ui/point_cloud_selection_limits.py").read_text(encoding="utf-8")
+        self.assertIn('rangeCommitted = pyqtSignal(float, float)', slider)
+        self.assertIn('self.range_slider = HeightRangeSlider', limits)
 
     def test_renderer_has_distinct_return_and_continuous_intensity_contracts(self):
         source = (ROOT / "pyforestscan_qgis/viewer/assets/build/potree/potree.js").read_text(encoding="utf-8")

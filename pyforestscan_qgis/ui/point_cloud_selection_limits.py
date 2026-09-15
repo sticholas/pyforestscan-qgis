@@ -1,6 +1,7 @@
 """Shared next-selection limits; the linked controller owns the actual values."""
 from qgis.PyQt.QtWidgets import (
     QWidget, QHBoxLayout, QLabel, QComboBox, QDoubleSpinBox, QToolButton)
+from .point_cloud_range_slider import HeightRangeSlider
 from ..compat.qt import qt_enum
 
 
@@ -23,6 +24,9 @@ class SelectionLimits(QWidget):
                              "Elevation uses original Z; HAG uses stored HeightAboveGround. "
                              "This filter is combined with the drawn rectangle, circle, brush, or polygon.")
         row.addWidget(self.mode)
+        self.range_slider = HeightRangeSlider(self)
+        self.range_slider.setAccessibleName("Next selection vertical range")
+        row.addWidget(self.range_slider)
         self.minimum, self.maximum = QDoubleSpinBox(), QDoubleSpinBox()
         for control, name in ((self.minimum, "Minimum"), (self.maximum, "Maximum")):
             control.setRange(-10000000, 10000000)
@@ -33,7 +37,7 @@ class SelectionLimits(QWidget):
             control.setAccessibleName(name + " selection height")
             control.setToolTip(name + " inclusive height in the source's stored Z or HeightAboveGround units, not camera depth. These limits do not calculate HAG.")
             row.addWidget(control)
-            control.valueChanged.connect(self.changed)
+            control.editingFinished.connect(self.changed)
         self.one_unit = QToolButton()
         self.one_unit.setText("1-unit band")
         self.one_unit.setAccessibleName("Set a one source-height-unit selection band")
@@ -47,6 +51,7 @@ class SelectionLimits(QWidget):
         row.addWidget(self.context)
         row.addStretch(1)
         self.mode.currentIndexChanged.connect(self.mode_changed)
+        self.range_slider.rangeCommitted.connect(self.slider_committed)
         controller.limitsChanged.connect(self.refresh)
         self.refresh()
 
@@ -69,10 +74,14 @@ class SelectionLimits(QWidget):
         index = self.mode.findData(key)
         self.mode.setCurrentIndex(max(0, index))
         limits = controller.depth.get(key, (0, 50))
+        slider_min, slider_max = self._available_range(key, limits)
+        self.range_slider.setRange(slider_min, slider_max)
+        self.range_slider.setValues(limits[0], limits[1], emit=False)
         # Telemetry refresh must not overwrite a partially typed numeric value.
         for control, value in zip((self.minimum, self.maximum), limits):
             if not control.hasFocus():
                 control.setValue(value)
+        self.range_slider.setVisible(bool(key))
         for control in (self.minimum, self.maximum):
             control.setVisible(bool(key))
         self.one_unit.setVisible(bool(key))
@@ -91,11 +100,35 @@ class SelectionLimits(QWidget):
         self.setEnabled(bool(controller.page.editor.state.get("ready")) and not controller.page.editor.busy)
         self.syncing = False
 
+    def _available_range(self, key, fallback):
+        metadata = getattr(self.controller, "original_info", {}).get("metadata", {})
+        if key == "z_filter":
+            bounds = metadata.get("bounds", {})
+            if isinstance(bounds, dict) and bounds.get("minz") is not None and bounds.get("maxz") is not None:
+                return float(bounds["minz"]), float(bounds["maxz"])
+            display = getattr(self.controller.page, "_view_state", {}) or {}
+            if display.get("z_range"):
+                return float(display["z_range"][0]), float(display["z_range"][1])
+        return float(fallback[0]), float(fallback[1])
+
     def changed(self):
         if self.syncing:
             return
         key = self.mode.currentData()
+        self.range_slider.setValues(self.minimum.value(), self.maximum.value(), emit=False)
         self.controller.set_depth({key: [self.minimum.value(), self.maximum.value()]} if key else {})
+
+    def slider_committed(self, low, high):
+        if self.syncing:
+            return
+        self.minimum.blockSignals(True)
+        self.maximum.blockSignals(True)
+        self.minimum.setValue(low)
+        self.maximum.setValue(high)
+        self.minimum.blockSignals(False)
+        self.maximum.blockSignals(False)
+        self.range_slider.setValues(low, high, emit=False)
+        self.changed()
 
     def mode_changed(self):
         if self.syncing:
@@ -123,3 +156,4 @@ class SelectionLimits(QWidget):
 
     def set_one_unit_band(self):
         self.maximum.setValue(self.minimum.value() + 1)
+        self.range_slider.setValues(self.minimum.value(), self.maximum.value(), emit=False)

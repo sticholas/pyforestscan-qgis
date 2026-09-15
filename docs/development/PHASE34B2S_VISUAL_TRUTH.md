@@ -50,9 +50,10 @@ pixel depth. Linked views carry the view identity, slice thickness, axis, and
 range together so a shape remains interpretable when it is mirrored into
 another view.
 
-The current UI still presents numeric bounds rather than a dual-handle slider;
-the QGIS-free contract is in place first so a future slider cannot silently
-change axis or selection scope.
+The selection page now presents a dual-handle range control alongside
+committed numeric bounds. Dragging or keyboard adjustment updates the local
+control, while the authoritative source query is committed on release or
+editing completion rather than for every partially typed character.
 
 
 ## HAG and profile evidence
