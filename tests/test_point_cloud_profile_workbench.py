@@ -27,6 +27,15 @@ class ProfileWorkbenchTests(unittest.TestCase):
         self.assertIn("High vegetation: 9,000", summary["details"])
         self.assertIn("displayed samples are not edit authority", summary["details"])
 
+    def test_summary_exposes_authoritative_vertical_statistics(self):
+        summary = profile_workbench_summary(self.geometry(), {
+            "source_points": 3, "display_points": 3,
+            "vertical_stats": {"axis": "Z", "count": 3,
+                                "minimum": 4.0, "maximum": 12.0, "mean": 8.0},
+        })
+        self.assertIn("Authoritative elevation range: 4 to 12; mean 8", summary["details"])
+        self.assertEqual(summary["vertical_stats"]["maximum"], 12.0)
+
     def test_hag_and_loading_states_are_explicit(self):
         summary = profile_workbench_summary(
             self.geometry(vertical_axis="HeightAboveGround"))

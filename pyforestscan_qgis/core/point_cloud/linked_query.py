@@ -93,6 +93,8 @@ def extract_view(source, view, output_dir, *, index_root, point_budget,
     sample = keys = None
     count = candidates = 0
     class_counts = {}
+    value_count = 0
+    value_min = value_max = value_sum = None
     for chunk in chunks:
         if cancelled():
             raise InterruptedError("Linked view query cancelled.")
@@ -107,6 +109,14 @@ def extract_view(source, view, output_dir, *, index_root, point_budget,
                 mask &= (chunk[profile.vertical_axis] >= low) & (chunk[profile.vertical_axis] <= high)
         selected = chunk[mask]
         count += len(selected)
+        if profile and len(selected):
+            values = selected[profile.vertical_axis]
+            value_count += len(values)
+            chunk_min, chunk_max = float(np.min(values)), float(np.max(values))
+            value_min = chunk_min if value_min is None else min(value_min, chunk_min)
+            value_max = chunk_max if value_max is None else max(value_max, chunk_max)
+            chunk_sum = float(np.sum(values, dtype="f8"))
+            value_sum = chunk_sum if value_sum is None else value_sum + chunk_sum
         if len(selected):
             if profile and "Classification" in selected.dtype.names:
                 classes, totals = np.unique(selected["Classification"], return_counts=True)
@@ -172,6 +182,10 @@ def extract_view(source, view, output_dir, *, index_root, point_budget,
     return {"path":str(output),"view_id":view["view_id"],"source_fingerprint":source.sha256,
             "source_points":count,"display_points":len(sample),"candidate_points":candidates,
             "classification_counts":sorted(class_counts.items(), key=lambda item:(-item[1],item[0])),
+            "vertical_stats": ({"axis": profile.vertical_axis, "count": value_count,
+                                "minimum": value_min, "maximum": value_max,
+                                "mean": value_sum / value_count}
+                               if profile and value_count else None),
             "point_budget":point_budget,"query_seconds":time.monotonic()-started,
             "geometry":view["geometry"],"view_type":view["view_type"],
             "display_projection":profile.display_projection if profile else "SOURCE_XY",

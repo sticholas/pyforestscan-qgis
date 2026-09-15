@@ -92,8 +92,14 @@ def profile_workbench_summary(geometry, query_result=None):
     if counts:
         details.append("Source classification distribution: " +
                        classification_counts_summary(counts, limit=6) + ".")
+    stats = result.get("vertical_stats") or {}
+    if stats.get("count") and all(key in stats for key in ("minimum", "maximum", "mean")):
+        details.append("Authoritative " + axis + " range: " +
+                       f"{stats['minimum']:g} to {stats['maximum']:g}; " +
+                       f"mean {stats['mean']:g}.")
     return {"text": text, "details": "\n".join(details), "axis": axis,
-            "source_points": count, "display_points": displayed}
+            "source_points": count, "display_points": displayed,
+            "vertical_stats": stats or None}
 
 
 def profile_footprint_command(views, *, active_view_id="", limit=100):
