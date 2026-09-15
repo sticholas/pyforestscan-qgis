@@ -17,7 +17,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel, QInputDialog,
     QComboBox, QFileDialog, QMessageBox, QSizePolicy,
     QToolButton, QCheckBox, QDoubleSpinBox, QFormLayout,
-    QStyle, QListWidget, QListWidgetItem, QDialog, QTabWidget, QTabBar,
+    QStyle, QListWidget, QListWidgetItem, QDialog, QTabWidget, QTabBar, QMenu,
 )
 from ..compat.qt import qt_enum
 from ..core.backend.process_env import hidden_subprocess_kwargs
@@ -369,16 +369,19 @@ class PointCloudPage(QWidget):
         display_row.addWidget(self.appearance)
         self.display_range = DisplayRangeControls(self.send, self)
         self.overlay_button = QToolButton()
-        self.overlay_button.setText("Scientific Overlay")
+        self.overlay_button.setText("Overlays")
         self.overlay_button.setToolTip("Choose an existing verified product GeoTIFF and display a bounded spatial overlay in the viewer. This never calculates a product or treats it as a point attribute.")
-        self.overlay_button.clicked.connect(self.choose_scientific_overlay)
-        self.clear_overlay_button = QToolButton()
-        self.clear_overlay_button.setText("Clear Overlay")
-        self.clear_overlay_button.setToolTip("Remove the current scientific surface from the viewer without deleting the cached product.")
-        self.clear_overlay_button.clicked.connect(self.clear_scientific_overlay)
+        self.overlay_button.setToolTip("Open cached scientific product overlay actions. Products remain spatial surfaces and are never treated as point attributes.")
+        self.overlay_menu = QMenu(self.overlay_button)
+        self.load_overlay_action = self.overlay_menu.addAction("Load cached product GeoTIFF...")
+        self.load_overlay_action.triggered.connect(self.choose_scientific_overlay)
+        self.clear_overlay_action = self.overlay_menu.addAction("Clear current overlay")
+        self.clear_overlay_action.triggered.connect(self.clear_scientific_overlay)
+        self.clear_overlay_action.setEnabled(False)
+        self.overlay_button.setMenu(self.overlay_menu)
+        self.overlay_button.setPopupMode(qt_enum(QToolButton, "InstantPopup", "ToolButtonPopupMode"))
         display_row.addWidget(self.display_range)
         display_row.addWidget(self.overlay_button)
-        display_row.addWidget(self.clear_overlay_button)
         layout.addLayout(display_row)
         self.filter_toggle = QToolButton()
         self.filter_toggle.setText("Display filters")
@@ -568,6 +571,7 @@ class PointCloudPage(QWidget):
             output_stat = Path(path).stat()
             payload = ScientificOverlayPayload(product_id, spec.label, spec.kind.value, spec.units, layer.crs().authid(), (extent.xMinimum(), extent.yMinimum(), extent.xMaximum(), extent.yMaximum()), rows, columns, tuple(values), overlay_value_range(values), None, spec.palette, {"source_fingerprint": source_fingerprint, "output_path": str(Path(path).resolve()), "output_identity": f"{output_stat.st_size}:{output_stat.st_mtime_ns}", "crs_alignment": "verified" if source_crs and source_crs.isValid() and overlay_crs.isValid() else "unknown"}, vertical_semantics=spec.vertical_semantics, surface_mode="values" if product_id == "DTM" else "flat", band_index=band_index)
             self._scientific_overlay = payload
+            self.clear_overlay_action.setEnabled(True)
             self.send(payload.as_command())
             band_text = f" | band {band_index}" if layer.bandCount() > 1 else ""
             self.status.setText(f"{spec.label} overlay loaded{band_text} | cached spatial product | {payload.valid_value_count:,} sampled cells")
@@ -576,6 +580,7 @@ class PointCloudPage(QWidget):
 
     def clear_scientific_overlay(self):
         self._scientific_overlay = None
+        self.clear_overlay_action.setEnabled(False)
         self.send({"action": "clear_scientific_overlay"})
         self.status.setText("Scientific overlay cleared | cached product remains unchanged")
 
@@ -745,7 +750,7 @@ class PointCloudPage(QWidget):
         self.appearance.setEnabled(ready)
         self.navigation_mode.setEnabled(ready)
         self.overlay_button.setEnabled(ready)
-        self.clear_overlay_button.setEnabled(ready and self._scientific_overlay is not None)
+        self.clear_overlay_action.setEnabled(ready and self._scientific_overlay is not None)
         self.apply_filters_button.setEnabled(ready)
         self.clear_filters_button.setEnabled(ready)
         self.class_list.setEnabled(ready)
