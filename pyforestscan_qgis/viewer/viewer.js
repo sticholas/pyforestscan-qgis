@@ -190,7 +190,21 @@ function updateLegend() {
         });
         return;
     }
-    node.textContent = state.legend.range ? `${state.mode} | ${state.legend.range[0].toFixed(2)}–${state.legend.range[1].toFixed(2)} ${units}` : state.mode;
+    node.replaceChildren();
+    const title = document.createElement("strong");
+    title.textContent = state.mode + " | " + state.palette + " | ";
+    node.appendChild(title);
+    const swatch = document.createElement("span");
+    const stops = (window.PyForestScanVisualization && window.PyForestScanVisualization.palettes[state.palette]) || [];
+    swatch.style.cssText = "display:inline-block;width:110px;height:9px;margin:0 6px;background:linear-gradient(90deg," +
+        stops.map((color, index) => "rgb(" + color.map(value => Math.round(value * 255)).join(",") + ") " +
+        Math.round(index / Math.max(1, stops.length - 1) * 100) + "%").join(",") +
+        ");border:1px solid rgba(255,255,255,.7);vertical-align:middle";
+    swatch.title = state.palette + ": low to high";
+    node.appendChild(swatch);
+    node.appendChild(document.createTextNode(state.legend.range ?
+        state.legend.range[0].toFixed(2) + "–" + state.legend.range[1].toFixed(2) + " " + units :
+        "waiting for " + state.mode + " range"));
 }
 function updateAnalytics() {
     if (!cloud || !state.ready) return;

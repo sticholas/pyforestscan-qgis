@@ -12,7 +12,7 @@ import time
 
 from qgis.PyQt.QtCore import Qt, QThread, pyqtSignal, QEvent
 from qgis.PyQt.QtCore import QUrl
-from qgis.PyQt.QtGui import QDesktopServices
+from qgis.PyQt.QtGui import QDesktopServices, QColor, QImage, QIcon, QPixmap
 from qgis.PyQt.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel, QInputDialog,
     QComboBox, QFileDialog, QMessageBox, QSizePolicy,
@@ -345,9 +345,29 @@ class PointCloudPage(QWidget):
         self.mode.setToolTip("RGB uses stored Red, Green and Blue attributes. Missing, zero or constant colors are diagnosed separately from rendering failures. Display modes never alter source attributes.")
         self.mode.currentTextChanged.connect(lambda value: self.send({"action": "mode", "mode": value}))
         self.palette = QComboBox()
-        self.palette.addItems(("Viridis", "Turbo", "Terrain", "Grayscale", "Heat", "CoolWarm", "Forest"))
+        palette_stops = {
+            "Viridis": ((68, 1, 84), (33, 145, 140), (253, 231, 37)),
+            "Turbo": ((48, 18, 59), (70, 129, 237), (164, 252, 60), (249, 132, 10), (122, 4, 3)),
+            "Terrain": ((31, 77, 41), (107, 158, 61), (212, 194, 107), (245, 237, 199)),
+            "Grayscale": ((10, 10, 10), (245, 245, 245)),
+            "Heat": ((10, 0, 26), (143, 0, 92), (245, 46, 13), (255, 230, 51)),
+            "CoolWarm": ((20, 51, 179), (191, 219, 240), (245, 240, 194), (184, 31, 26)),
+            "Forest": ((5, 26, 20), (15, 97, 51), (107, 179, 61), (235, 224, 97)),
+        }
+        for name, stops in palette_stops.items():
+            image = QImage(120, 14, QImage.Format_ARGB32)
+            for x in range(image.width()):
+                position = x / max(1, image.width() - 1) * (len(stops) - 1)
+                index = min(len(stops) - 2, int(position))
+                fraction = position - index
+                left, right = stops[index], stops[min(index + 1, len(stops) - 1)]
+                color = QColor(*[round(left[i] + (right[i] - left[i]) * fraction) for i in range(3)])
+                for y in range(image.height()):
+                    image.setPixelColor(x, y, color)
+            self.palette.addItem(QIcon(QPixmap.fromImage(image)), name)
+        self.palette.setIconSize(QPixmap(120, 14).size())
         self.palette.setAccessibleName("Color palette")
-        self.palette.setToolTip("Choose a stable scientific color palette for continuous values. Classification colors remain categorical.")
+        self.palette.setToolTip("Choose a scientific ramp. The swatch shows the low-to-high color direction; the live legend shows the current numeric range. Classification colors remain categorical.")
         self.palette.currentTextChanged.connect(lambda value: self.send({"action": "palette", "palette": value}))
         layout.addLayout(toolbar)
         self.navigation_mode = QComboBox()
