@@ -396,6 +396,11 @@ class LinkedViews(QObject):
                 seen.add(id(worker))
                 yield worker
 
+    def broadcast_viewer_command(self, command):
+        """Send one display-only command to every resident and detached view."""
+        for worker in self.viewer_workers():
+            worker.send(command)
+
     def set_object_focus(self, mode, *, persist=True):
         from ..core.point_cloud.object_focus import object_focus_command, object_focus_summary
         command = object_focus_command(mode, self.page.editor.state.get("active_object"),

@@ -572,7 +572,7 @@ class PointCloudPage(QWidget):
             payload = ScientificOverlayPayload(product_id, spec.label, spec.kind.value, spec.units, layer.crs().authid(), (extent.xMinimum(), extent.yMinimum(), extent.xMaximum(), extent.yMaximum()), rows, columns, tuple(values), overlay_value_range(values), None, spec.palette, {"source_fingerprint": source_fingerprint, "output_path": str(Path(path).resolve()), "output_identity": f"{output_stat.st_size}:{output_stat.st_mtime_ns}", "crs_alignment": "verified" if source_crs and source_crs.isValid() and overlay_crs.isValid() else "unknown"}, vertical_semantics=spec.vertical_semantics, surface_mode="values" if product_id == "DTM" else "flat", band_index=band_index)
             self._scientific_overlay = payload
             self.clear_overlay_action.setEnabled(True)
-            self.send(payload.as_command())
+            self.linked.broadcast_viewer_command(payload.as_command())
             band_text = f" | band {band_index}" if layer.bandCount() > 1 else ""
             self.status.setText(f"{spec.label} overlay loaded{band_text} | cached spatial product | {payload.valid_value_count:,} sampled cells")
         except Exception as error:
@@ -581,7 +581,7 @@ class PointCloudPage(QWidget):
     def clear_scientific_overlay(self):
         self._scientific_overlay = None
         self.clear_overlay_action.setEnabled(False)
-        self.send({"action": "clear_scientific_overlay"})
+        self.linked.broadcast_viewer_command({"action": "clear_scientific_overlay"})
         self.status.setText("Scientific overlay cleared | cached product remains unchanged")
 
     def open_diagnostics(self):
