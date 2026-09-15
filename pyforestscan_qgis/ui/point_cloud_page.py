@@ -14,7 +14,7 @@ from qgis.PyQt.QtCore import Qt, QThread, pyqtSignal, QEvent
 from qgis.PyQt.QtCore import QUrl
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel,
+    QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel, QInputDialog,
     QComboBox, QFileDialog, QMessageBox, QSizePolicy,
     QToolButton, QCheckBox, QDoubleSpinBox, QFormLayout,
     QStyle, QListWidget, QListWidgetItem, QDialog, QTabWidget, QTabBar,
@@ -534,10 +534,15 @@ class PointCloudPage(QWidget):
             if not product_id:
                 raise ValueError("The output name does not identify a registered scientific product.")
             spec = product_visualization_spec(product_id)
+            band_index = 1
+            if product_id in {"PAD", "VOXEL_STATISTIC"} and layer.bandCount() > 1:
+                band_index, accepted = QInputDialog.getInt(self, f"Choose {spec.label} band", "Vertical/support band:", 1, 1, layer.bandCount())
+                if not accepted:
+                    return
             extent = layer.extent()
             columns = min(96, max(2, int(max(layer.width(), layer.height()) ** .5 * 4)))
             rows = min(96, max(2, round(columns * max(extent.height(), .001) / max(extent.width(), .001))))
-            block = layer.dataProvider().block(1, extent, columns, rows)
+            block = layer.dataProvider().block(band_index, extent, columns, rows)
             values = []
             for row in range(rows):
                 for col in range(columns):
@@ -550,10 +555,11 @@ class PointCloudPage(QWidget):
             if not source_fingerprint:
                 raise ValueError("Open the point cloud before loading a scientific overlay so source provenance can be checked.")
             output_stat = Path(path).stat()
-            payload = ScientificOverlayPayload(product_id, spec.label, spec.kind.value, spec.units, layer.crs().authid(), (extent.xMinimum(), extent.yMinimum(), extent.xMaximum(), extent.yMaximum()), rows, columns, tuple(values), overlay_value_range(values), None, spec.palette, {"source_fingerprint": source_fingerprint, "output_path": str(Path(path).resolve()), "output_identity": f"{output_stat.st_size}:{output_stat.st_mtime_ns}"}, vertical_semantics=spec.vertical_semantics, surface_mode="values" if product_id == "DTM" else "flat")
+            payload = ScientificOverlayPayload(product_id, spec.label, spec.kind.value, spec.units, layer.crs().authid(), (extent.xMinimum(), extent.yMinimum(), extent.xMaximum(), extent.yMaximum()), rows, columns, tuple(values), overlay_value_range(values), None, spec.palette, {"source_fingerprint": source_fingerprint, "output_path": str(Path(path).resolve()), "output_identity": f"{output_stat.st_size}:{output_stat.st_mtime_ns}"}, vertical_semantics=spec.vertical_semantics, surface_mode="values" if product_id == "DTM" else "flat", band_index=band_index)
             self._scientific_overlay = payload
             self.send(payload.as_command())
-            self.status.setText(f"{spec.label} overlay loaded | cached spatial product | {payload.valid_value_count:,} sampled cells")
+            band_text = f" | band {band_index}" if layer.bandCount() > 1 else ""
+            self.status.setText(f"{spec.label} overlay loaded{band_text} | cached spatial product | {payload.valid_value_count:,} sampled cells")
         except Exception as error:
             self.status.setText(f"Scientific overlay unavailable: {error}")
 

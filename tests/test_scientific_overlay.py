@@ -4,11 +4,12 @@ from pyforestscan_qgis.core.point_cloud.scientific_overlay import ScientificOver
 
 class ScientificOverlayTests(unittest.TestCase):
     def test_payload_is_bounded_and_carries_truthful_provenance(self):
-        payload = ScientificOverlayPayload("CHM", "Canopy Height Model", "raster_surface", "m", "EPSG:6635", (0.0, 0.0, 2.0, 2.0), 2, 2, (1.0, None, 3.0, 2.0), (1.0, 3.0), -9999.0, "Forest", {"source_fingerprint": "source-sha", "output_path": "chm.tif"}, vertical_semantics="height above ground")
+        payload = ScientificOverlayPayload("CHM", "Canopy Height Model", "raster_surface", "m", "EPSG:6635", (0.0, 0.0, 2.0, 2.0), 2, 2, (1.0, None, 3.0, 2.0), (1.0, 3.0), -9999.0, "Forest", {"source_fingerprint": "source-sha", "output_path": "chm.tif"}, vertical_semantics="height above ground", band_index=2)
         command = payload.as_command()
         self.assertEqual("scientific_overlay", command["action"])
         self.assertEqual("source-sha", command["overlay"]["provenance"]["source_fingerprint"])
         self.assertEqual(3, payload.valid_value_count)
+        self.assertEqual(2, command["overlay"]["band_index"])
 
     def test_invalid_or_oversized_grid_is_rejected(self):
         with self.assertRaises(ValueError):

@@ -24,6 +24,7 @@ class ScientificOverlayPayload:
     provenance: Mapping[str, str]
     vertical_semantics: str = ""
     surface_mode: str = "flat"
+    band_index: int = 1
 
     def __post_init__(self) -> None:
         xmin, ymin, xmax, ymax = self.extent
@@ -35,6 +36,8 @@ class ScientificOverlayPayload:
             raise ValueError("Scientific overlay grid must be between 1 and 128 cells per side.")
         if self.rows * self.columns > MAX_CELLS or len(self.values) != self.rows * self.columns:
             raise ValueError("Scientific overlay grid payload has an invalid size.")
+        if self.band_index < 1:
+            raise ValueError("Scientific overlay band index must be positive.")
         if self.surface_mode not in {"flat", "values"}:
             raise ValueError("Scientific overlay surface mode is unsupported.")
         if self.value_range is not None and (len(self.value_range) != 2 or not all(math.isfinite(float(value)) for value in self.value_range)):
@@ -53,7 +56,7 @@ class ScientificOverlayPayload:
             "rows": self.rows, "columns": self.columns, "values": list(self.values),
             "value_range": list(self.value_range) if self.value_range else None,
             "nodata": self.nodata, "palette": self.palette,
-            "vertical_semantics": self.vertical_semantics, "surface_mode": self.surface_mode,
+            "vertical_semantics": self.vertical_semantics, "surface_mode": self.surface_mode, "band_index": self.band_index,
             "provenance": dict(self.provenance)}}
 
 def overlay_value_range(values: Sequence[float | None]) -> tuple[float, float] | None:

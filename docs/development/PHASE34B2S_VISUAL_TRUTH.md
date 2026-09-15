@@ -97,3 +97,5 @@ other products remain colored spatial surfaces and are never inserted into the
 point attribute list. Outputs whose names do not identify a registered product
 or whose source fingerprint cannot be checked are rejected with a visible
 message.
+
+PAD and Voxel Statistic overlays require an explicit selected raster band when the output is multiband. The band index is retained in the overlay legend and provenance; no multiband product is silently collapsed into an unlabeled scalar.

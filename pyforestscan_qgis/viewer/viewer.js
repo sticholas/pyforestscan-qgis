@@ -479,10 +479,10 @@ function renderScientificOverlay(overlay) {
     geometry.setIndex(indices); geometry.computeVertexNormals();
     const material = new THREE.MeshBasicMaterial({vertexColors:true, transparent:true, opacity:.55, side:THREE.DoubleSide, depthWrite:false});
     scientificOverlay = new THREE.Mesh(geometry, material);
-    scientificOverlay.userData.scientific = {product_id:overlay.product_id, units:overlay.units, value_range:range, provenance:overlay.provenance};
+    scientificOverlay.userData.scientific = {product_id:overlay.product_id, units:overlay.units, value_range:range, band_index:overlay.band_index || 1, provenance:overlay.provenance};
     viewer.scene.scene.add(scientificOverlay);
     const legend = document.getElementById("visual-legend");
-    if (legend) legend.textContent = `${overlay.label} overlay | ${overlay.units} | ${Number(range[0]).toFixed(2)}–${Number(range[1]).toFixed(2)} | cached spatial product`;
+    if (legend) legend.textContent = `${overlay.label}${overlay.band_index > 1 ? ` band ${overlay.band_index}` : ""} overlay | ${overlay.units} | ${Number(range[0]).toFixed(2)}–${Number(range[1]).toFixed(2)} | cached spatial product`;
     state.scientific_overlay = scientificOverlay.userData.scientific;
 }
 function clearHeight() {
