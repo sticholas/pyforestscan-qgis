@@ -372,8 +372,13 @@ class PointCloudPage(QWidget):
         self.overlay_button.setText("Scientific Overlay")
         self.overlay_button.setToolTip("Choose an existing verified product GeoTIFF and display a bounded spatial overlay in the viewer. This never calculates a product or treats it as a point attribute.")
         self.overlay_button.clicked.connect(self.choose_scientific_overlay)
+        self.clear_overlay_button = QToolButton()
+        self.clear_overlay_button.setText("Clear Overlay")
+        self.clear_overlay_button.setToolTip("Remove the current scientific surface from the viewer without deleting the cached product.")
+        self.clear_overlay_button.clicked.connect(self.clear_scientific_overlay)
         display_row.addWidget(self.display_range)
         display_row.addWidget(self.overlay_button)
+        display_row.addWidget(self.clear_overlay_button)
         layout.addLayout(display_row)
         self.filter_toggle = QToolButton()
         self.filter_toggle.setText("Display filters")
@@ -569,6 +574,11 @@ class PointCloudPage(QWidget):
         except Exception as error:
             self.status.setText(f"Scientific overlay unavailable: {error}")
 
+    def clear_scientific_overlay(self):
+        self._scientific_overlay = None
+        self.send({"action": "clear_scientific_overlay"})
+        self.status.setText("Scientific overlay cleared | cached product remains unchanged")
+
     def open_diagnostics(self):
         if self.last_run_folder:
             QDesktopServices.openUrl(QUrl.fromLocalFile(self.last_run_folder))
@@ -735,6 +745,7 @@ class PointCloudPage(QWidget):
         self.appearance.setEnabled(ready)
         self.navigation_mode.setEnabled(ready)
         self.overlay_button.setEnabled(ready)
+        self.clear_overlay_button.setEnabled(ready and self._scientific_overlay is not None)
         self.apply_filters_button.setEnabled(ready)
         self.clear_filters_button.setEnabled(ready)
         self.class_list.setEnabled(ready)
