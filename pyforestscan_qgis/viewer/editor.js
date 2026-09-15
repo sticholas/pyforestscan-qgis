@@ -442,16 +442,60 @@ function profileEditMove(event) {
     event.preventDefault(); event.stopImmediatePropagation();
     return true;
 }
+function profileEditNearestSegment(event) {
+    const camera = context.viewer.scene.getActiveCamera();
+    const points = profileEditPath().map(point => profileEditDisplayPoint(point, camera));
+    let best = -1, distance = 16;
+    for (let index = 0; index < points.length - 1; index++) {
+        const first = points[index], second = points[index + 1];
+        if (!first || !second) continue;
+        const dx = second.x - first.x, dy = second.y - first.y;
+        const length2 = dx * dx + dy * dy;
+        const fraction = length2 ? Math.max(0, Math.min(1,
+            ((event.offsetX - first.x) * dx + (event.offsetY - first.y) * dy) / length2)) : 0;
+        const candidate = Math.hypot(event.offsetX - first.x - fraction * dx,
+            event.offsetY - first.y - fraction * dy);
+        if (candidate <= distance) { distance = candidate; best = index; }
+    }
+    return best;
+}
+function profileEditPublish(path) {
+    const geometry = {...linkedView.geometry, a:path[0], b:path[path.length - 1],
+        path:path.map(value => [...value])};
+    latestEvent = {id:++eventNumber, action:"PROFILE_GEOMETRY_EDIT",
+        view_id:linkedView.view_id, geometry};
+    profileEditDraft = path.map(value => [...value]);
+    renderProfileEditHandles();
+}
+function profileEditInsert(event) {
+    if (!profileEditMode || event.button !== 0) return false;
+    const segment = profileEditNearestSegment(event);
+    if (segment < 0) return false;
+    const path = profileEditDraft || profileEditPath();
+    const point = profileEditSourcePoint(event);
+    if (!point || !point.every(value => Number.isFinite(value))) return false;
+    path.splice(segment + 1, 0, point);
+    profileEditPublish(path);
+    event.preventDefault(); event.stopImmediatePropagation();
+    return true;
+}
+function profileEditRemove(event) {
+    if (!profileEditMode || event.button !== 2) return false;
+    const index = profileEditNearest(event);
+    const path = profileEditDraft || profileEditPath();
+    if (index <= 0 || index >= path.length - 1) return false;
+    path.splice(index, 1);
+    profileEditPublish(path);
+    event.preventDefault(); event.stopImmediatePropagation();
+    return true;
+}
 function profileEditFinish(event) {
     if (!profileEditMoving) return false;
     const point = profileEditSourcePoint(event);
     const path = profileEditDraft || profileEditPath();
     if (point && point.every(value => Number.isFinite(value))) path[profileEditIndex] = point;
-    const geometry = {...linkedView.geometry, a:path[0], b:path[path.length - 1], path};
-    latestEvent = {id:++eventNumber, action:"PROFILE_GEOMETRY_EDIT",
-        view_id:linkedView.view_id, geometry};
+    profileEditPublish(path);
     profileEditMoving = false; profileEditIndex = -1;
-    profileEditDraft = path.map(value => [...value]);
     context.viewer.inputHandler.enabled = true;
     context.viewer.renderer.domElement.style.cursor = "grab";
     renderProfileEditHandles();
@@ -900,7 +944,11 @@ function initialize(value) {
         event.preventDefault(); event.stopImmediatePropagation();
         if (tool === "ProfilePath") completeProfilePath(); else completeDrawing();
     }, true);
+    canvas.addEventListener("dblclick", event => {
+        if (profileEditInsert(event)) return;
+    }, true);
     canvas.addEventListener("contextmenu", event => {
+        if (profileEditRemove(event)) return;
         if (!["Polygon","ProfilePath"].includes(tool)) return;
         event.preventDefault(); event.stopImmediatePropagation();
         if (tool === "ProfilePath") completeProfilePath(); else completeDrawing();

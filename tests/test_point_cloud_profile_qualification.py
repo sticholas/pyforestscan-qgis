@@ -34,7 +34,8 @@ class PointCloudProfileQualificationTests(unittest.TestCase):
         editor = (ROOT / "pyforestscan_qgis/viewer/editor.js").read_text()
         linked = (ROOT / "pyforestscan_qgis/ui/point_cloud_linked_views.py").read_text()
         for marker in ("profileEditStart", "profileEditMove", "profileEditFinish",
-                       "profileEditDraft", "profileSource", "PROFILE_GEOMETRY_EDIT"):
+                       "profileEditDraft", "profileEditInsert", "profileEditRemove",
+                       "profileEditPublish", "profileSource", "PROFILE_GEOMETRY_EDIT"):
             self.assertIn(marker, editor)
         for marker in ("profile_edit_tool", "PROFILE_GEOMETRY_EDIT", "valueChanged.connect",
                        "update_view", "Profile path updated"):
