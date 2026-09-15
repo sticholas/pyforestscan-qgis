@@ -250,6 +250,26 @@ function renderProfileTicks(distanceTicks, verticalTicks, length, vertical) {
         label.style.bottom = y + "%"; yTicks.appendChild(label);
     });
 }
+function updateProfileCrosshair(event) {
+    if (!profileAxes || !linkedContext || linkedContext.view_type !== "VERTICAL_SLICE" || !viewer) {
+        if (profileAxes) profileAxes.classList.remove("profile-crosshair-active");
+        return;
+    }
+    const rect = viewer.renderer.domElement.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
+    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / Math.max(1, rect.height)));
+    const geometry = linkedContext.geometry || {}, length = Number(geometry.length || 0);
+    const vertical = linkedContext.vertical || linkedContext.z_range || [0, 0];
+    const high = Number(vertical[1]), low = Number(vertical[0]);
+    const distance = x * length, value = high - y * (high - low);
+    const axis = linkedContext.vertical_axis === "HeightAboveGround" ? "HAG" : "Elevation";
+    const crossX = document.getElementById("profile-crosshair-x"), crossY = document.getElementById("profile-crosshair-y"), readout = document.getElementById("profile-readout");
+    if (crossX) crossX.style.top = `${y * 100}%`;
+    if (crossY) crossY.style.left = `${x * 100}%`;
+    if (readout) readout.textContent = `Distance: ${distance.toFixed(2)} | ${axis}: ${value.toFixed(2)}`;
+    profileAxes.classList.add("profile-crosshair-active");
+}
+
 function updateProfileAxes() {
     const profile = linkedContext && linkedContext.view_type === "VERTICAL_SLICE" &&
         linkedContext.display_projection === "PROFILE_DISTANCE";
@@ -733,6 +753,7 @@ try {
     }
     state.js_ready = true;
     const gl = viewer.renderer.getContext();
+    viewer.renderer.domElement.addEventListener("mousemove", updateProfileCrosshair);
     viewer.renderer.domElement.addEventListener("webglcontextlost", event => {
         event.preventDefault(); state.context_lost = true;
         message.textContent = "Viewer graphics context was reset. Restoring view...";

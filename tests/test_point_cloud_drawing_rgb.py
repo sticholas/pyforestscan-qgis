@@ -73,6 +73,8 @@ class DrawingRGBTests(unittest.TestCase):
         self.assertIn("Distance along profile", script)
         self.assertIn("Height above ground", script)
         self.assertIn("state.profile_axes", script)
+        self.assertIn("updateProfileCrosshair", script)
+        self.assertIn("profile-readout", html)
         self.assertIn("updateProfileAxes();\n        fitSource", script)
 
     def test_view_status_distinguishes_active_display_sample_from_budget(self):

@@ -7,7 +7,7 @@ html,body,#view{width:100%;height:100%;margin:0;overflow:hidden;background:#2024
 #spatial-scale,#vertical-scale{position:absolute;right:12px;color:#eef4f5;background:rgba(20,24,27,.72);padding:3px 7px;font:11px sans-serif;pointer-events:none;text-shadow:0 1px 2px #111}#spatial-scale{bottom:30px}#vertical-scale{bottom:52px}#visual-legend,#visual-analytics{position:absolute;left:12px;right:12px;color:#eef4f5;background:rgba(20,24,27,.72);padding:4px 8px;font:11px sans-serif;pointer-events:none;text-shadow:0 1px 2px #111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#visual-legend{top:10px;pointer-events:auto}#visual-analytics{top:34px}#profile-axes{display:none;position:absolute;inset:12px 18px 34px 52px;color:#eef4f5;
   font:11px sans-serif;pointer-events:none;text-shadow:0 1px 2px #111}
 #profile-histogram{display:none;position:absolute;right:8px;top:8px;width:120px;height:72px;align-items:flex-end;gap:1px;border-bottom:1px solid rgba(238,244,245,.5);opacity:.85}#profile-histogram span{display:block;flex:1;min-width:1px;background:#65c6d8}#profile-grid{position:absolute;inset:0;overflow:hidden;opacity:.22}#profile-grid span{position:absolute;background:rgba(238,244,245,.75)}#profile-grid .grid-x{top:0;bottom:0;width:1px}#profile-grid .grid-y{left:0;right:0;height:1px}
-#profile-x{position:absolute;left:0;right:0;bottom:0;border-top:1px solid rgba(238,244,245,.8)}
+#profile-crosshair-x,#profile-crosshair-y{position:absolute;background:rgba(255,255,255,.75);display:none;z-index:2}#profile-crosshair-x{height:1px;left:0;right:0}#profile-crosshair-y{width:1px;top:0;bottom:0}#profile-readout{position:absolute;right:4px;top:4px;padding:2px 4px;background:rgba(20,24,27,.82);white-space:nowrap;font-size:10px;display:none;z-index:3}.profile-crosshair-active #profile-crosshair-x,.profile-crosshair-active #profile-crosshair-y,.profile-crosshair-active #profile-readout{display:block}#profile-x{position:absolute;left:0;right:0;bottom:0;border-top:1px solid rgba(238,244,245,.8)}
 #profile-x-ticks,#profile-y-ticks{position:absolute;inset:0}#profile-x-ticks span{position:absolute;top:4px;transform:translateX(-50%);white-space:nowrap}#profile-y-ticks span{position:absolute;right:6px;transform:translateY(50%);white-space:nowrap}
 #profile-x-min{position:absolute;left:0;top:4px}#profile-x-max{position:absolute;right:0;top:4px}
 #profile-x-title{display:block;text-align:center;padding-top:4px;font-weight:600}
@@ -18,7 +18,7 @@ html,body,#view{width:100%;height:100%;margin:0;overflow:hidden;background:#2024
   transform-origin:left top;white-space:nowrap;font-weight:600}
 </style></head>
 <body><div id="view"></div><div id="spatial-scale" aria-live="polite">Ground scale</div><div id="vertical-scale" aria-live="polite">Vertical scale</div><div id="visual-legend" aria-live="polite">Opening visualization</div><div id="visual-analytics" aria-live="polite">VISIBLE VIEW | Waiting for display sample</div>
-<div id="profile-axes" aria-label="Profile axes">
+<div id="profile-axes" aria-label="Profile axes"><div id="profile-crosshair-x"></div><div id="profile-crosshair-y"></div><div id="profile-readout"></div>
   <div id="profile-grid"></div>
   <div id="profile-histogram" aria-label="Authoritative profile vertical histogram"></div>
   <div id="profile-x"><div id="profile-x-ticks"></div><span id="profile-x-min"></span><span id="profile-x-title"></span><span id="profile-x-max"></span></div>
