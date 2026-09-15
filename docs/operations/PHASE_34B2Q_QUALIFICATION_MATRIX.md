@@ -15,7 +15,7 @@ This matrix separates automated evidence from real QGIS, GPU, and human visual e
 | ANA-01 | Visible View bounded analytics | Large sources | Renderer sample cap and telemetry | Overlay packaged | Update cadence | NEEDS_HUMAN_VISUAL | GPU/session soak | 9fa8517 |
 | ANA-02 | Coalescing and bounded cache | Synthetic workload | 100-request, stale-order, eviction tests | Scheduler contract | Large-cloud soak | PASS_AUTOMATED | None | 9fa8517 |
 | LIFE-01 | Detached state protocol | Small/large/EPT | Worker ownership, automatic profile requery/redetach, and cleanup contracts | QGIS tests remain skipped | Detach/redock | NEEDS_HUMAN_VISUAL | QGIS-dependent | 62b5db2 |
-| LIFE-02 | View-switch sizing | Small/large/EPT | No live Qt geometry harness | Needs QGIS capture | 50-cycle stability | BLOCKED_ENVIRONMENT | Live Qt required | -- |
+| LIFE-02 | View-switch sizing | Small/large/EPT | `scripts/qgis_point_cloud_viewer_stress.py` is an executable 50-cycle QGIS harness; contract tests run QGIS-free | Needs QGIS capture | 50-cycle stability | NEEDS_HUMAN_VISUAL | Live QGIS/GPU execution required | 34B2R |
 | PERF-01 | Large-cloud interaction | Olaa-scale | Bounded renderer/cache contracts | No automated GPU test | 10-15 minute soak | BLOCKED_ENVIRONMENT | Real source/GPU required | -- |
 
 ## Required Human Pass
