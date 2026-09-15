@@ -16,6 +16,7 @@ from qgis.PyQt.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox, Q
     QToolButton, QSpinBox, QMenu, QStyle, QFileDialog, QMessageBox, QListWidget,
     QInputDialog)
 from ..compat.qt import qt_enum
+from ..core.point_cloud.hag_availability import has_hag_dimension
 from ..core.backend.process_env import hidden_subprocess_kwargs
 from ..core.point_cloud.runtime import ViewerRuntimeService
 from ..core.point_cloud.selection_impact import selection_impact, selection_impact_suffix
@@ -475,7 +476,7 @@ class EditorPanel(QWidget):
     def refresh_controls(self):
         if hasattr(self.page, "linked"):
             self.tool.setSpherePlacement(self.page.linked.sphere_axis, self.page.linked.sphere_height,
-                "HeightAboveGround" in self.state.get("dimensions", []))
+                has_hag_dimension(self.state.get("dimensions", [])))
             self.tool.setProfileToolsVisible(
                 self.page.linked.active().view_type == "VERTICAL_SLICE")
         ready = bool(self.state.get("ready")) and not self.busy and self.viewer_ready

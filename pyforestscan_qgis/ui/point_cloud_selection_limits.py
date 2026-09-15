@@ -3,6 +3,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget, QHBoxLayout, QLabel, QComboBox, QDoubleSpinBox, QToolButton)
 from .point_cloud_range_slider import HeightRangeSlider
 from ..compat.qt import qt_enum
+from ..core.point_cloud.hag_availability import has_hag_dimension
 
 
 class SelectionLimits(QWidget):
@@ -62,7 +63,7 @@ class SelectionLimits(QWidget):
         is_slice = view is not None and view.view_type == "VERTICAL_SLICE"
         choices = [("All profile heights" if is_slice else "All heights", ""),
                    ("Elevation range (Z)", "z_filter")]
-        if "HeightAboveGround" in controller.page.editor.state.get("dimensions", []):
+        if has_hag_dimension(controller.page.editor.state.get("dimensions", [])):
             choices.append(("Height above ground range (HAG)", "hag_filter"))
         elif "hag_filter" in controller.depth:
             choices.append(("HAG unavailable", "hag_filter"))

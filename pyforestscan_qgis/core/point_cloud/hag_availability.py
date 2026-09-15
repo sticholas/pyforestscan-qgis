@@ -94,3 +94,12 @@ def resolve_hag_availability(
         HagAvailability.HAG_UNAVAILABLE,
         explanation="No native, cached, DTM-backed, or validated terrain preparation path is available.",
     )
+
+
+def has_hag_dimension(dimensions: object) -> bool:
+    """Return true only when the loaded view exposes a real HAG attribute."""
+    for value in dimensions or ():
+        normalized = str(value).lower().replace("_", "").replace("-", "")
+        if normalized in {"heightaboveground", "hag", "pfshag"}:
+            return True
+    return False

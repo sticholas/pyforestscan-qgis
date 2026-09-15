@@ -11,6 +11,7 @@ from qgis.PyQt.QtWidgets import (QToolButton, QMenu, QInputDialog, QCheckBox, QD
     QFormLayout, QDialogButtonBox, QDoubleSpinBox, QComboBox, QStyle, QFileDialog, QLabel,
     QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox)
 from ..compat.qt import qt_enum
+from ..core.point_cloud.hag_availability import has_hag_dimension
 from ..core.point_cloud.workspace import ViewType
 from ..core.point_cloud.linked_query import view_ring
 from ..core.point_cloud.linked_selection import linked_constraints, selection_limit_values
@@ -189,7 +190,7 @@ class LinkedViews(QObject):
         page.editor.tool.brushRadiusChanged.connect(self.set_brush_radius)
         self.brushRadiusChanged.connect(page.editor.tool.setBrushRadius)
         page.editor.tool.setSpherePlacement(self.sphere_axis, self.sphere_height,
-            "HeightAboveGround" in page.editor.state.get("dimensions", []))
+            has_hag_dimension(page.editor.state.get("dimensions", [])))
         page.editor.tool.spherePlacementChanged.connect(self.set_sphere_placement)
         self.spherePlacementChanged.connect(page.editor.tool.setSpherePlacement)
         self.sync_tabs()
@@ -362,7 +363,7 @@ class LinkedViews(QObject):
         if (axis not in ("Z", "HeightAboveGround") or type(height) not in (int, float)
                 or not -10000000 <= height <= 10000000):
             return
-        if axis == "HeightAboveGround" and "HeightAboveGround" not in self.page.editor.state.get("dimensions", []):
+        if axis == "HeightAboveGround" and not has_hag_dimension(self.page.editor.state.get("dimensions", [])):
             return
         self.page.workspace.global_filters.update(sphere_axis=axis, sphere_height=float(height))
         self.spherePlacementChanged.emit(axis, float(height))
@@ -515,7 +516,7 @@ class LinkedViews(QObject):
         for key, limits in self.depth.items():
             if limits[0] > limits[1]:
                 return "Minimum exceeds maximum"
-            elif key == "hag_filter" and "HeightAboveGround" not in self.page.editor.state.get("dimensions", []):
+            elif key == "hag_filter" and not has_hag_dimension(self.page.editor.state.get("dimensions", [])):
                 return "Source has no stored HAG"
         return ""
 
@@ -867,7 +868,7 @@ class LinkedViews(QObject):
             form.addRow("Thickness",thickness)
             axis = QComboBox()
             axis.addItem("Elevation", "Z")
-            if "HeightAboveGround" in self.page.editor.state.get("dimensions", []):
+            if has_hag_dimension(self.page.editor.state.get("dimensions", [])):
                 axis.addItem("Height above ground", "HeightAboveGround")
             axis.setCurrentIndex(max(0,axis.findData(geometry.get("vertical_axis","Z"))))
             axis.setToolTip("Choose the stored source height dimension for the profile's vertical axis. This does not calculate or rewrite height.")

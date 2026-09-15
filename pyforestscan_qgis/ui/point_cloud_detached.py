@@ -5,6 +5,7 @@ from qgis.PyQt.QtGui import QMouseEvent
 from qgis.PyQt.QtWidgets import (QTabBar, QDialog, QVBoxLayout, QHBoxLayout,
                                 QToolButton, QComboBox, QInputDialog, QMenu)
 from ..compat.qt import qt_enum
+from ..core.point_cloud.hag_availability import has_hag_dimension
 from ..core.point_cloud.linked_query import view_ring
 from ..core.point_cloud.selection_impact import selection_impact_suffix
 from .point_cloud_widgets import StableViewerStatus, StableViewerHelp
@@ -132,7 +133,7 @@ class DetachedView(QDialog):
         self.tool.brushRadiusChanged.connect(controller.set_brush_radius)
         controller.brushRadiusChanged.connect(self.tool.setBrushRadius)
         self.tool.setSpherePlacement(controller.sphere_axis, controller.sphere_height,
-            "HeightAboveGround" in controller.page.editor.state.get("dimensions", []))
+            has_hag_dimension(controller.page.editor.state.get("dimensions", [])))
         self.tool.spherePlacementChanged.connect(controller.set_sphere_placement)
         controller.spherePlacementChanged.connect(self.tool.setSpherePlacement)
         if controller.page.workspace.views[view_id].view_type == "VERTICAL_SLICE":

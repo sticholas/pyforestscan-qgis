@@ -95,7 +95,7 @@ class ViewerColorPipelineContractTests(unittest.TestCase):
 
 
 from pyforestscan_qgis.core.point_cloud.hag_availability import (
-    HagAvailability, HagCacheKey, resolve_hag_availability,
+    HagAvailability, HagCacheKey, has_hag_dimension, resolve_hag_availability,
 )
 
 from pyforestscan_qgis.core.point_cloud.vertical_selection import (
@@ -175,11 +175,16 @@ class VerticalSelectionContractTests(unittest.TestCase):
 
 
 from pyforestscan_qgis.core.point_cloud.hag_availability import (
-    HagAvailability, HagCacheKey, resolve_hag_availability,
+    HagAvailability, HagCacheKey, has_hag_dimension, resolve_hag_availability,
 )
 
 
 class HagAvailabilityContractTests(unittest.TestCase):
+    def test_hag_dimension_aliases_are_truthful(self):
+        self.assertTrue(has_hag_dimension(("_pfsHag",)))
+        self.assertTrue(has_hag_dimension(("height-above-ground",)))
+        self.assertFalse(has_hag_dimension(("Z",)))
+
     def test_native_hag_has_precedence(self):
         result = resolve_hag_availability(native_dimension="HeightAboveGround", dtm_available=True)
         self.assertEqual(HagAvailability.NATIVE_HAG, result.status)
