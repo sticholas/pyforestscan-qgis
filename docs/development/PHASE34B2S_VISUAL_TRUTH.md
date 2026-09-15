@@ -53,3 +53,17 @@ another view.
 The current UI still presents numeric bounds rather than a dual-handle slider;
 the QGIS-free contract is in place first so a future slider cannot silently
 change axis or selection scope.
+
+
+## HAG and profile evidence
+
+Stored native or prepared `HeightAboveGround` attributes now use Potree's
+source-attribute path and the attribute's own range. A source without a real
+HAG dimension is not silently colored as HAG. The managed HAG contract
+separates native, compatible cached, derivable, preparation-required, and
+unavailable states, with cache identity tied to source, method, scope, and
+parameters.
+
+Vertical profiles now expose adaptive distance/elevation ticks and a restrained
+grid based on the profile's authoritative geometry and vertical limits. The
+axis labels distinguish source elevation from Height Above Ground.

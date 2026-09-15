@@ -71,6 +71,10 @@ class ViewerColorPipelineContractTests(unittest.TestCase):
                       (ROOT / "pyforestscan_qgis/viewer/viewer.html").read_text(encoding="utf-8"))
         self.assertIn('"Height Above Ground": {aliases:', source)
         self.assertIn('cloud.material.extraRange', source)
+        self.assertIn('function renderProfileTicks(', source)
+        html = (ROOT / "pyforestscan_qgis/viewer/viewer.html").read_text(encoding="utf-8")
+        self.assertIn('id="profile-grid"', html)
+        self.assertIn('id="profile-x-ticks"', html)
 
     def test_renderer_has_distinct_return_and_continuous_intensity_contracts(self):
         source = (ROOT / "pyforestscan_qgis/viewer/assets/build/potree/potree.js").read_text(encoding="utf-8")
@@ -85,6 +89,10 @@ class ViewerColorPipelineContractTests(unittest.TestCase):
         self.assertIn("function fallback(code)", source)
         self.assertIn("function gradient(name, invert)", source)
 
+
+from pyforestscan_qgis.core.point_cloud.hag_availability import (
+    HagAvailability, HagCacheKey, resolve_hag_availability,
+)
 
 from pyforestscan_qgis.core.point_cloud.vertical_selection import (
     HeightRange, VerticalAxis, VerticalSelectionContext,
@@ -149,3 +157,34 @@ class VerticalSelectionContractTests(unittest.TestCase):
     def test_context_makes_slice_depth_view_local(self):
         context = VerticalSelectionContext("slice-1", HeightRange(2, 8), 0.5)
         self.assertIn("slice depth: 0.5 XY units", context.summary)
+
+
+from pyforestscan_qgis.core.point_cloud.hag_availability import (
+    HagAvailability, HagCacheKey, resolve_hag_availability,
+)
+
+
+class HagAvailabilityContractTests(unittest.TestCase):
+    def test_native_hag_has_precedence(self):
+        result = resolve_hag_availability(native_dimension="HeightAboveGround", dtm_available=True)
+        self.assertEqual(HagAvailability.NATIVE_HAG, result.status)
+        self.assertTrue(result.usable_for_viewing)
+
+    def test_compatible_cache_is_reused(self):
+        key = HagCacheKey("a" * 64, "classified_ground_delaunay", "scope-1")
+        result = resolve_hag_availability(cached_key=key, cache_is_compatible=True, dtm_available=True)
+        self.assertEqual(HagAvailability.DERIVED_HAG_CACHED, result.status)
+        self.assertEqual(key.token(), result.cache_key.token())
+
+    def test_terrain_preparation_is_not_claimed_as_ready(self):
+        result = resolve_hag_availability(
+            source_fingerprint="b" * 64, ground_preparation_available=True,
+        )
+        self.assertEqual(HagAvailability.HAG_REQUIRES_TERRAIN_PREPARATION, result.status)
+        self.assertFalse(result.usable_for_viewing)
+        self.assertTrue(result.requires_managed_preparation)
+
+    def test_unavailable_is_explicit(self):
+        result = resolve_hag_availability()
+        self.assertEqual(HagAvailability.HAG_UNAVAILABLE, result.status)
+        self.assertFalse(result.usable_for_viewing)

@@ -225,6 +225,31 @@ function renderProfileHistogram(stats) {
         node.appendChild(bar);
     });
 }
+function renderProfileTicks(distanceTicks, verticalTicks, length, vertical) {
+    const grid = document.getElementById("profile-grid");
+    const xTicks = document.getElementById("profile-x-ticks");
+    const yTicks = document.getElementById("profile-y-ticks");
+    if (!grid || !xTicks || !yTicks) return;
+    grid.replaceChildren(); xTicks.replaceChildren(); yTicks.replaceChildren();
+    const xSpan = Math.max(Number(length), 1e-12);
+    const ySpan = Math.max(Number(vertical[1]) - Number(vertical[0]), 1e-12);
+    distanceTicks.forEach(value => {
+        const x = 100 * Number(value) / xSpan;
+        const line = document.createElement("span");
+        line.className = "grid-x"; line.style.left = x + "%"; grid.appendChild(line);
+        const label = document.createElement("span");
+        label.textContent = Number(value).toFixed(Number(value) < 10 ? 2 : 1);
+        label.style.left = x + "%"; xTicks.appendChild(label);
+    });
+    verticalTicks.forEach(value => {
+        const y = 100 * (Number(value) - Number(vertical[0])) / ySpan;
+        const line = document.createElement("span");
+        line.className = "grid-y"; line.style.top = (100 - y) + "%"; grid.appendChild(line);
+        const label = document.createElement("span");
+        label.textContent = Number(value).toFixed(Number(value) < 10 ? 2 : 1);
+        label.style.bottom = y + "%"; yTicks.appendChild(label);
+    });
+}
 function updateProfileAxes() {
     const profile = linkedContext && linkedContext.view_type === "VERTICAL_SLICE" &&
         linkedContext.display_projection === "PROFILE_DISTANCE";
@@ -250,6 +275,7 @@ function updateProfileAxes() {
     document.getElementById("profile-x-max").textContent = distanceTicks[distanceTicks.length - 1] ?? length.toFixed(1);
     document.getElementById("profile-x-title").textContent = `Distance along profile (${unit})`;
     const verticalTicks = niceTicks(Number(vertical[0]), Number(vertical[1]));
+    renderProfileTicks(distanceTicks, verticalTicks, length, vertical);
     document.getElementById("profile-y-min").textContent = Number(verticalTicks[0]).toFixed(1);
     document.getElementById("profile-y-max").textContent = Number(verticalTicks[verticalTicks.length - 1]).toFixed(1);
     document.getElementById("profile-y-title").textContent = `${axis} (${verticalUnit})`;
