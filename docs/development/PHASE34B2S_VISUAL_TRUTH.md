@@ -99,3 +99,5 @@ or whose source fingerprint cannot be checked are rejected with a visible
 message.
 
 PAD and Voxel Statistic overlays require an explicit selected raster band when the output is multiband. The band index is retained in the overlay legend and provenance; no multiband product is silently collapsed into an unlabeled scalar.
+
+Profile interaction also exposes a restrained cursor crosshair and readout tied to the current profile geometry, reporting distance and the active Elevation or HAG axis without changing the authoritative selection.
