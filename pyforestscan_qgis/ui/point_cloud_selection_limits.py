@@ -1,6 +1,6 @@
 """Shared next-selection limits; the linked controller owns the actual values."""
 from qgis.PyQt.QtWidgets import (
-    QWidget, QHBoxLayout, QLabel, QComboBox, QDoubleSpinBox, QToolButton)
+    QWidget, QHBoxLayout, QLabel, QComboBox, QDoubleSpinBox, QToolButton, QMessageBox)
 from .point_cloud_range_slider import HeightRangeSlider
 from ..compat.qt import qt_enum
 from ..core.point_cloud.hag_availability import has_hag_dimension
@@ -47,6 +47,12 @@ class SelectionLimits(QWidget):
             "creates a one-metre vertical selection band inside the next drawn shape.")
         self.one_unit.clicked.connect(self.set_one_unit_band)
         row.addWidget(self.one_unit)
+        self.prepare_hag_button = QToolButton()
+        self.prepare_hag_button.setText("Prepare HAG")
+        self.prepare_hag_button.setAccessibleName("Prepare Height Above Ground")
+        self.prepare_hag_button.setToolTip("Create a managed source-local Height Above Ground derivative using automatic ground/HAG preparation. The original source is unchanged.")
+        self.prepare_hag_button.clicked.connect(self.prepare_hag)
+        row.addWidget(self.prepare_hag_button)
         self.context = QLabel()
         self.context.setToolTip("Slice width uses dataset XY units. Height limits use stored height units; no unit conversion is implied.")
         row.addWidget(self.context)
@@ -86,6 +92,9 @@ class SelectionLimits(QWidget):
         for control in (self.minimum, self.maximum):
             control.setVisible(bool(key))
         self.one_unit.setVisible(bool(key))
+        hag_available = has_hag_dimension(controller.page.editor.state.get("dimensions", []))
+        self.prepare_hag_button.setVisible(bool(controller.page.editor.state.get("ready")) and not hag_available)
+        self.prepare_hag_button.setEnabled(not controller.page.editor.busy)
         from ..core.point_cloud.selection_presentation import selection_height_summary
         parts = [selection_height_summary(
             key, limits if key else None, view_name=getattr(view, "title", "Active view"))]
@@ -100,6 +109,13 @@ class SelectionLimits(QWidget):
         self.context.setText(" | ".join(parts))
         self.setEnabled(bool(controller.page.editor.state.get("ready")) and not controller.page.editor.busy)
         self.syncing = False
+
+    def prepare_hag(self):
+        if not self.controller.page.editor.state.get("ready"):
+            return
+        answer = QMessageBox.question(self, "Prepare Height Above Ground", "Create a managed source-local HAG derivative for this viewer?\n\nThe original source will remain unchanged. Large sources may take time to prepare.", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if answer == QMessageBox.Yes:
+            self.controller.page.editor.prepare_hag()
 
     def _available_range(self, key, fallback):
         metadata = getattr(self.controller, "original_info", {}).get("metadata", {})

@@ -29,7 +29,7 @@ class PreparedSourceResult:
 
 def prepare_request_source(spec, request, *, progress=None, preparation_bounds=None, normalized_z_candidate=False, runtime_contract=None) -> PreparedSourceResult | None:
     """Create/reuse one prepared LAZ before product arrays enter Python memory."""
-    if spec.product not in {"chm", "rumple"}:
+    if spec.product not in {"chm", "rumple", "viewer_hag"}:
         return None
     if preparation_bounds is None and any(getattr(request, name, None) for name in ("bounds", "crop_polygon", "crop_polygon_path", "polygon_execution_input")):
         return None
@@ -67,7 +67,7 @@ def prepare_request_source(spec, request, *, progress=None, preparation_bounds=N
         dimensions=dimensions.names,
         classification=classification,
         dtm_path=getattr(request, "dtm_path", None),
-        requested_products=(spec.product,),
+        requested_products=tuple(getattr(spec, "requested_products", (spec.product,))),
         point_count=getattr(request, "source_point_count", None),
         normalized_z_validated=bool(normalized_quality and normalized_quality.get("valid") and not normalized_quality.get("existing_hag")),
     )

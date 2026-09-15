@@ -1,7 +1,7 @@
 """Managed editor process: one source/session, durable journal, value-only IPC."""
 from __future__ import annotations
 import argparse
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, replace
 import hashlib
 import json
 import os
@@ -26,6 +26,18 @@ def visual_definition(item):
         "profile_brush_path", "profile_brush_radius", "profile_brush_tolerance",
         "sphere_center", "sphere_radius", "sphere_axis", "invert_result",
         "profile_line", "profile_line_side")}
+
+
+@dataclass(frozen=True)
+class ViewerPreparationRequest:
+    """Minimal request contract for the shared automatic HAG planner."""
+    input_path: Path
+    source_dimensions: tuple[str, ...]
+    crs: str | None = None
+    source_coordinate_units: str = ""
+    source_units_basis: str = "UNRESOLVED"
+    source_point_count: int | None = None
+    dtm_path: Path | None = None
 
 
 def main():
@@ -326,6 +338,34 @@ def main():
                     definitions, result = pending, resolved
                     session.visibility.pop("active_object", None)
                     snapshot()
+                elif action == "prepare_hag":
+                    if "HeightAboveGround" in session.dimensions:
+                        emit({"hag_prepared": session.source.path, "hag_reused": True,
+                              "message": "Height Above Ground is already available."})
+                        continue
+                    from pyforestscan_qgis.backend_runner.pbm_lidar_preparation import prepare_request_source
+                    from pyforestscan_qgis.core.source_coordinate_units import assess_source_coordinate_units
+                    crs_value = None if session.source_crs.startswith("SOURCE_LOCAL:") else session.source_crs
+                    units = assess_source_coordinate_units(crs_value)
+                    request = ViewerPreparationRequest(
+                        input_path=Path(session.source.path), source_dimensions=tuple(session.dimensions),
+                        crs=crs_value, source_coordinate_units=units.units.value,
+                        source_units_basis=units.unit_basis, source_point_count=point_count)
+                    spec = type("ViewerHagSpec", (), {
+                        "product": "viewer_hag", "requested_products": ("chm",),
+                        "run_folder": args.folder / "hag-preparation",
+                        "job_id": "viewer-hag-" + session.source.sha256[:12]})()
+                    progress("Preparing Height Above Ground")
+                    prepared = prepare_request_source(spec, request,
+                        progress=lambda message: progress(str(message)))
+                    if prepared is None:
+                        raise ValueError("Automatic HAG preparation did not produce a derivative.")
+                    artifact = Path(prepared.request.input_path)
+                    if not artifact.is_file():
+                        raise ValueError("Automatic HAG preparation completed without a readable derivative.")
+                    emit({"hag_prepared": str(artifact), "hag_reused": prepared.reused,
+                          "hag_provenance": str(prepared.provenance_path),
+                          "message": "Prepared HAG derivative is ready; original source unchanged."})
                 elif action == "clear":
                     definitions, result = (), None
                     session.visibility.pop("active_object", None)

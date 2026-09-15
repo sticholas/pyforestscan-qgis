@@ -653,6 +653,12 @@ class EditorPanel(QWidget):
                   z_filter=limits.get("z_filter"),
                   hag_filter=limits.get("hag_filter"))
 
+    def prepare_hag(self):
+        """Run automatic source-local HAG preparation in the managed editor child."""
+        if not self.worker or self.busy or not self.state.get("ready"):
+            return
+        self.send("prepare_hag")
+
     def change_tool(self, tool):
         if self.viewer_ready and not self.page.linked.depth_error:
             view = self.page.workspace.views[self.page.workspace.active_view_id]
@@ -1201,6 +1207,10 @@ class EditorPanel(QWidget):
             suffix = (f" | {count:,} source points checked" if count and selection_progress
                       else f" | {count:,}" if count else "")
             self.summary.setText(stage + suffix)
+        if value.get("hag_prepared"):
+            artifact = str(value["hag_prepared"])
+            self.summary.setText(value.get("message") or "Prepared HAG derivative is ready; original source unchanged.")
+            self.attach(artifact)
         if value.get("ready"):
             self.page.send({"action": "selection_resolution"})
             old_export = self.state.get("exported")
