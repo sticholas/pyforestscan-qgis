@@ -69,6 +69,8 @@ class ViewerColorPipelineContractTests(unittest.TestCase):
             self.assertIn(binding, source)
         self.assertIn('script src="visualization_registry.js"',
                       (ROOT / "pyforestscan_qgis/viewer/viewer.html").read_text(encoding="utf-8"))
+        self.assertIn('"Height Above Ground": {aliases:', source)
+        self.assertIn('cloud.material.extraRange', source)
 
     def test_renderer_has_distinct_return_and_continuous_intensity_contracts(self):
         source = (ROOT / "pyforestscan_qgis/viewer/assets/build/potree/potree.js").read_text(encoding="utf-8")

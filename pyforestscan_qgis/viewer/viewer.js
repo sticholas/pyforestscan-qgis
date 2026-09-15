@@ -19,12 +19,14 @@ function sourceDimensions() {
     const attrs = cloud && cloud.pcoGeometry && cloud.pcoGeometry.pointAttributes && cloud.pcoGeometry.pointAttributes.attributes;
     return (attrs || []).map(attribute => attribute.name || attribute).filter(Boolean);
 }
+function normalizeDimension(value) {
+    return String(value).toLowerCase().replace(/[_-]/g, " ").trim();
+}
 const CANONICAL_BINDINGS = {
     "RGB": {aliases:["rgba", "rgb", "red", "green", "blue"], binding:"rgba"},
     "Classification": {aliases:["classification"], binding:"classification"},
     "Elevation": {aliases:["z", "elevation", "position", "position_cartesian"], binding:"elevation"},
-    // HAG is not exposed as a display mode until a derived attribute is
-    // present in the loaded view and bound to a dedicated shader path.
+    "Height Above Ground": {aliases:["heightaboveground", "_pfshag", "hag"], binding:null},
     "Intensity": {aliases:["intensity"], binding:"intensity"},
     "Return Number": {aliases:["returnnumber", "return number", "returns"], binding:"return number"},
     "Number of Returns": {aliases:["numberofreturns", "number of returns"], binding:"number of returns"},
@@ -32,14 +34,19 @@ const CANONICAL_BINDINGS = {
     "GPS Time": {aliases:["gpstime", "gps time", "gps-time"], binding:"gps-time"}
 };
 function modeAttribute(mode) {
-    const names = new Set(sourceDimensions().map(value => String(value).toLowerCase().replace(/[_-]/g, " ")));
+    const raw = sourceDimensions();
+    const names = new Set(raw.map(normalizeDimension));
     const binding = CANONICAL_BINDINGS[mode];
     if (!binding) return null;
+    if (mode === "Height Above Ground") {
+        const match = raw.find(value => binding.aliases.some(alias => normalizeDimension(alias) === normalizeDimension(value)));
+        return match || null;
+    }
     if (mode === "RGB") {
         if (names.has("rgba") || ["red", "green", "blue"].every(name => names.has(name))) return "rgba";
         return null;
     }
-    return binding.aliases.some(alias => names.has(alias.replace(/[_-]/g, " "))) ? binding.binding : null;
+    return binding.aliases.some(alias => names.has(normalizeDimension(alias))) ? binding.binding : null;
 }
 function updateVisualizationMetadata() {
     state.dimensions = sourceDimensions();
@@ -61,11 +68,21 @@ function niceTicks(minimum, maximum, target=5) {
     for (let value = start; value <= maximum + step * 1e-9 && ticks.length < 12; value += step) ticks.push(Number(value.toPrecision(12)));
     return ticks.length ? ticks : [minimum, maximum];
 }
+function activeAttributeRange() {
+    if (!cloud) return null;
+    const name = modeAttribute(state.mode);
+    const attributes = cloud.pcoGeometry && cloud.pcoGeometry.pointAttributes &&
+        cloud.pcoGeometry.pointAttributes.attributes || [];
+    const attribute = attributes.find(item => (item.name || item) === name);
+    const range = attribute && attribute.range;
+    return Array.isArray(range) && range.length >= 2 && Number.isFinite(Number(range[0])) && Number.isFinite(Number(range[1])) ?
+        [Number(range[0]), Number(range[1])] : null;
+}
 function updateScales() {
     if (!viewer || !cloud) return;
     const radius = viewer.scene.view.radius;
     const groundStep = niceStep(Math.max(radius * .22, .001), 4);
-    const vertical = state.display_range || state.z_range;
+    const vertical = state.display_range || activeAttributeRange() || state.z_range;
     const verticalStep = vertical ? niceStep(Math.max(Number(vertical[1]) - Number(vertical[0]), .001), 5) : null;
     const scaleText = `Ground scale: ${groundStep < 1 ? groundStep.toFixed(2) : groundStep.toFixed(0)} source units`;
     const verticalText = verticalStep ? `Vertical scale: ${verticalStep < 1 ? verticalStep.toFixed(2) : verticalStep.toFixed(0)} ${state.mode === "Height Above Ground" ? "HAG" : "elevation"} units` : "Vertical scale unavailable";
@@ -123,7 +140,7 @@ function setPalette(name, invert=false) {
 }
 function updateLegend() {
     if (!cloud) return;
-    const range = state.display_range || state.z_range;
+    const range = state.display_range || activeAttributeRange() || state.z_range;
     const units = state.mode === "Height Above Ground" || state.mode === "Elevation" ? "source height units" : "display values";
     const labels = Object.fromEntries(Object.entries((window.PyForestScanVisualization || {}).classification || {}).map(([code, item]) => [code, item.label]));
     const categories = state.mode === "Classification" ? (state.observed_classes || []).slice(0, 12).map(code => ({
@@ -492,6 +509,7 @@ window.command = function(command) {
             state.display_range = mode === "AUTO" ? null : range;
             if (state.mode === "Elevation" && range) cloud.material.elevationRange = range;
             if (state.mode === "Intensity" && range) cloud.material.intensityRange = range;
+            if (state.mode === "Height Above Ground" && range) cloud.material.extraRange = range;
             updateLegend();
         }
         if (action === "display_range") {
@@ -502,6 +520,7 @@ window.command = function(command) {
             state.analytics_generation++;
             if (state.mode === "Elevation") cloud.material.elevationRange = [low, high];
             if (state.mode === "Intensity") cloud.material.intensityRange = [low, high];
+            if (state.mode === "Height Above Ground") cloud.material.extraRange = [low, high];
             updateLegend();
         }
         if (action === "display_range_clear") {
@@ -509,6 +528,10 @@ window.command = function(command) {
             state.display_range_mode = "AUTO";
             state.analytics_generation++;
             if (state.mode === "Elevation" && state.z_range) cloud.material.elevationRange = state.z_range;
+            if (state.mode === "Height Above Ground") {
+                const range = activeAttributeRange();
+                if (range) cloud.material.extraRange = range;
+            }
             updateLegend();
         }
         if (action === "height") {
