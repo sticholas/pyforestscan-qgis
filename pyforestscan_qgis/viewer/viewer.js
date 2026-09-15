@@ -472,6 +472,12 @@ window.snapshot = function() {
         js_heap_bytes: performance.memory ? performance.memory.usedJSHeapSize : null
     };
     state.render_diagnostics.cache_evictions = evictions;
+    state.render_diagnostics.source_type = state.source_type || "UNKNOWN";
+    state.render_diagnostics.dimensions = state.dimensions.slice();
+    state.render_diagnostics.active_mode = state.mode;
+    state.render_diagnostics.display_range = state.display_range;
+    state.render_diagnostics.analytics_generation = state.analytics_generation;
+    state.render_diagnostics.analytics_updates = state.analytics_updates;
     state.render_diagnostics.resident_limit_points = residentLimit;
     state.render_diagnostics.rendered_points = nodes.reduce((sum, n) => sum + n.geometryNode.numPoints, 0);
     state.render_diagnostics.points_per_megapixel = state.render_diagnostics.rendered_points * 1000000 / Math.max(1, state.render_diagnostics.viewport_pixels);
@@ -536,6 +542,7 @@ try {
     const source = new URLSearchParams(location.search).get("source");
     if (!["source/cloud.copc.laz", "source/ept.json"].includes(source)) throw Error("Invalid source route.");
     state.source_requested = true;
+    state.source_type = source.endsWith("ept.json") ? "EPT" : source.endsWith("cloud.copc.laz") ? "COPC" : "LAS/LAZ";
     Potree.loadPointCloud(source, "Point cloud", event => {
         cloud = event.pointcloud;
         viewer.scene.addPointCloud(cloud);
