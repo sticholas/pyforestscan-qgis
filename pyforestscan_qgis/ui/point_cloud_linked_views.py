@@ -333,6 +333,9 @@ class LinkedViews(QObject):
         self.depth = values
         self.limitsChanged.emit()
         self.page.editor.refresh_controls()
+        # Height controls describe the active selection as well as the next
+        # gesture. Re-resolve it in the managed worker when one exists.
+        self.page.editor.update_selection_filters()
         if persist:
             self.persist()
 

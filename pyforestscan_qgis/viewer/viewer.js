@@ -88,8 +88,16 @@ function updateScales() {
     const verticalText = verticalStep ? `Vertical scale: ${verticalStep < 1 ? verticalStep.toFixed(2) : verticalStep.toFixed(0)} ${state.mode === "Height Above Ground" ? "HAG" : "elevation"} units` : "Vertical scale unavailable";
     if (state.scales && state.scales.ground === scaleText && state.scales.vertical === verticalText) return;
     state.scales = {ground: scaleText, vertical: verticalText};
-    const ground = document.getElementById("spatial-scale"), verticalNode = document.getElementById("vertical-scale");
+    const ground = document.getElementById("scale-label") || document.getElementById("spatial-scale");
+    const scaleBar = document.getElementById("scale-bar");
+    const verticalNode = document.getElementById("vertical-scale");
     if (ground) ground.textContent = scaleText;
+    if (scaleBar) {
+        const visibleSpan = Math.max(radius * 2, groundStep);
+        const pixels = Math.max(44, Math.min(150, 100 * groundStep / visibleSpan));
+        scaleBar.style.width = `${pixels.toFixed(0)}px`;
+        scaleBar.title = `${groundStep} source units`;
+    }
     if (verticalNode) verticalNode.textContent = verticalText;
 }
 
@@ -136,6 +144,9 @@ function setPalette(name, invert=false) {
     if (!registry || !cloud || !registry.palettes[name]) return;
     state.palette = name;
     cloud.material.gradient = registry.gradient(name, invert);
+    // Invalidate Potree's material and texture caches after palette changes.
+    cloud.material.needsUpdate = true;
+    if (cloud.material.gradientTexture) cloud.material.gradientTexture.needsUpdate = true;
     updateLegend();
 }
 function updateLegend() {

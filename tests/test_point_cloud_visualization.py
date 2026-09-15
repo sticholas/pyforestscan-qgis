@@ -87,6 +87,13 @@ class ViewerColorPipelineContractTests(unittest.TestCase):
         self.assertIn('vec3 getNumberOfReturns(){ return returnPalette(numberOfReturns); }', source)
         self.assertNotIn('\n}\n\nvec3 getReturnNumber(){ return returnPalette(returnNumber); }', source)
         self.assertIn('vec3 returnPalette(float value){', source)
+        self.assertIn('cloud.material.needsUpdate = true;',
+                      (ROOT / "pyforestscan_qgis/viewer/viewer.js").read_text(encoding="utf-8"))
+        editor = (ROOT / "pyforestscan_qgis/viewer/editor.js").read_text(encoding="utf-8")
+        self.assertIn('const planeZ = bounds.min.z;', editor)
+        self.assertIn('if (linkedView && linkedView.view_type === "VERTICAL_SLICE")', editor)
+        html = (ROOT / "pyforestscan_qgis/viewer/viewer.html").read_text(encoding="utf-8")
+        self.assertIn('id="scale-bar"', html)
 
     def test_palette_registry_has_scientific_choices_and_stable_unknown_classes(self):
         source = (ROOT / "pyforestscan_qgis/viewer/visualization_registry.js").read_text(encoding="utf-8")
@@ -210,3 +217,17 @@ class HagAvailabilityContractTests(unittest.TestCase):
         result = resolve_hag_availability()
         self.assertEqual(HagAvailability.HAG_UNAVAILABLE, result.status)
         self.assertFalse(result.usable_for_viewing)
+
+
+class DynamicSelectionContractTests(unittest.TestCase):
+    def test_height_changes_re_resolve_current_selection(self):
+        worker = (ROOT / "pyforestscan_qgis/viewer/editor_worker.py").read_text(encoding="utf-8")
+        self.assertIn('elif action == "update_selection_filters":', worker)
+        self.assertIn('replace(item, z_filter=z_filter, hag_filter=hag_filter)', worker)
+        linked = (ROOT / "pyforestscan_qgis/ui/point_cloud_linked_views.py").read_text(encoding="utf-8")
+        self.assertIn('self.page.editor.update_selection_filters()', linked)
+
+    def test_height_controls_expose_hag_and_z_contracts(self):
+        source = (ROOT / "pyforestscan_qgis/ui/point_cloud_selection_limits.py").read_text(encoding="utf-8")
+        self.assertIn('Elevation range (Z)', source)
+        self.assertIn('Height above ground range (HAG)', source)

@@ -311,6 +311,21 @@ def main():
                     definitions, result = pending, resolved
                     session.visibility.pop("active_object", None)
                     snapshot()
+                elif action == "update_selection_filters":
+                    if not definitions:
+                        raise ValueError("There is no current selection to update.")
+                    z_filter = command.get("z_filter")
+                    hag_filter = command.get("hag_filter")
+                    pending = tuple(replace(item, z_filter=z_filter, hag_filter=hag_filter)
+                                    for item in definitions)
+                    pending = validate_sequence(pending)
+                    progress("Updating current selection height range")
+                    resolved = resolver.resolve(
+                        pending, cancelled=cancelled.is_set,
+                        progress=lambda count: progress("Updating current selection height range", count))
+                    definitions, result = pending, resolved
+                    session.visibility.pop("active_object", None)
+                    snapshot()
                 elif action == "clear":
                     definitions, result = (), None
                     session.visibility.pop("active_object", None)

@@ -644,6 +644,15 @@ class EditorPanel(QWidget):
                 self.busy = True
             self.refresh_controls()
 
+    def update_selection_filters(self):
+        """Re-resolve the current authoritative selection after height changes."""
+        if not self.worker or self.busy or not self.state.get("selection_definitions"):
+            return
+        limits = self.page.linked.depth
+        self.send("update_selection_filters",
+                  z_filter=limits.get("z_filter"),
+                  hag_filter=limits.get("hag_filter"))
+
     def change_tool(self, tool):
         if self.viewer_ready and not self.page.linked.depth_error:
             view = self.page.workspace.views[self.page.workspace.active_view_id]

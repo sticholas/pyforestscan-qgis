@@ -686,8 +686,21 @@ function renderLinkedCursor(command) {
 }
 function sourceXY(x, y, camera) {
     const canvas = context.viewer.renderer.domElement;
-    return new THREE.Vector3(x / canvas.clientWidth * 2 - 1, 1 - y / canvas.clientHeight * 2, 0)
-        .unproject(camera);
+    const ndcX = x / Math.max(1, canvas.clientWidth) * 2 - 1;
+    const ndcY = 1 - y / Math.max(1, canvas.clientHeight) * 2;
+    if (linkedView && linkedView.view_type === "VERTICAL_SLICE")
+        return new THREE.Vector3(ndcX, ndcY, 0).unproject(camera);
+    const near = new THREE.Vector3(ndcX, ndcY, -1).unproject(camera);
+    const far = new THREE.Vector3(ndcX, ndcY, 1).unproject(camera);
+    const direction = far.clone().sub(near);
+    const bounds = context.cloud.boundingBox.clone().applyMatrix4(context.cloud.matrixWorld);
+    // Selection is source-XY based; intersect the cursor ray with the cloud plane.
+    const planeZ = bounds.min.z;
+    if (Math.abs(direction.z) > 1e-9) {
+        const factor = (planeZ - near.z) / direction.z;
+        if (Number.isFinite(factor)) return near.add(direction.multiplyScalar(factor));
+    }
+    return near;
 }
 function drawPolygon(cursor) {
     if (!polygonLine) return;
