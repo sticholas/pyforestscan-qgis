@@ -1,4 +1,5 @@
 """One active native renderer, many lightweight source-linked view definitions."""
+from copy import deepcopy
 from dataclasses import asdict
 import json
 from pathlib import Path
@@ -71,6 +72,7 @@ class LinkedViews(QObject):
         self.profile_requests = AnalyticsCoalescer()
         self._profile_dispatch_scheduled = False
         self._active_profile_request = None
+        self._redetach_after_open = None
         from .point_cloud_resident_views import ResidentViews
         self.residents = ResidentViews(page)
         from .point_cloud_tools import spatial_button
@@ -621,21 +623,33 @@ class LinkedViews(QObject):
             return
         self.page.send({"action":"selection_tool","tool":tool,"purpose":purpose})
 
+    def apply_profile_geometry_edit(self, view_id, geometry):
+        view = self.page.workspace.views.get(view_id)
+        if view is None or view.view_type != ViewType.VERTICAL_SLICE:
+            self.page.status.setText("Profile edit belongs to an unavailable linked view.")
+            return False
+        try:
+            self.page.workspace.update_view(view_id, geometry=geometry, camera={})
+        except (KeyError, TypeError, ValueError) as error:
+            self.page.status.setText("Profile edit rejected: " + str(error))
+            return False
+        self.query_results.pop(view_id, None)
+        self.refresh_profile_controls()
+        if view_id in self.detached:
+            self._redetach_after_open = view_id
+            self.dock(view_id)
+        else:
+            self.open_active()
+        self.page.status.setText("Profile path updated; refreshing the authoritative corridor.")
+        return True
+
     def event(self, value):
         if value.get("action") == "PROFILE_GEOMETRY_EDIT":
             view = self.active()
             if value.get("view_id") != view.view_id or view.view_type != ViewType.VERTICAL_SLICE:
                 self.page.status.setText("Profile edit belongs to a different linked view.")
                 return True
-            try:
-                self.page.workspace.update_view(view.view_id, geometry=value["geometry"], camera={})
-            except (KeyError, TypeError, ValueError) as error:
-                self.page.status.setText("Profile edit rejected: " + str(error))
-                return True
-            self.query_results.pop(view.view_id, None)
-            self.refresh_profile_controls()
-            self.open_active()
-            self.page.status.setText("Profile path updated; refreshing the authoritative corridor.")
+            self.apply_profile_geometry_edit(view.view_id, value["geometry"])
             return True
         if value.get("action") not in ("CREATE_AREA","CREATE_SLICE"):
             return False
@@ -1038,6 +1052,10 @@ class LinkedViews(QObject):
         if self.context_sent:
             if telemetry.get("editor",{}).get("view_id") == self.page.workspace.active_view_id:
                 self.rendered_id = self.page.workspace.active_view_id
+                if self._redetach_after_open == self.rendered_id:
+                    view_id = self.rendered_id
+                    self._redetach_after_open = None
+                    QTimer.singleShot(0, lambda: self.detach(view_id))
             return
         # Querying leaves the previous renderer intact but never routes its gestures to a new view.
         if self.rendered_id is None and self.page._render_only is False:
@@ -1185,11 +1203,23 @@ class LinkedViews(QObject):
             if not self.closing:
                 self.open_active()
             return
+        original_geometry = deepcopy(window.resident_state.get("geometry"))
         entry = window.release()
         if entry is None:
             window.status.setText("Finishing the view transfer. Please wait.")
             return
         self.detached.pop(key)
+        geometry_changed = original_geometry != self.page.workspace.views[key].geometry
+        if geometry_changed:
+            entry["worker"].stop("linked_view_geometry_changed")
+            entry["surface"].deleteLater()
+            window.close()
+            self.sync_tabs()
+            if not self.closing:
+                self.page.workspace.activate(key)
+                self.open_active()
+            self.persist()
+            return
         self.residents.receive_window(key,entry,window)
         window.close()
         self.sync_tabs()

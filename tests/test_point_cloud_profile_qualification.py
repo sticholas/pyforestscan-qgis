@@ -47,6 +47,15 @@ class PointCloudProfileQualificationTests(unittest.TestCase):
                        "action === \"classes\"", "updateLegend();"):
             self.assertIn(marker, source)
 
+    def test_detached_profile_edit_routes_through_authoritative_requery(self):
+        linked = (ROOT / "pyforestscan_qgis/ui/point_cloud_linked_views.py").read_text()
+        detached = (ROOT / "pyforestscan_qgis/ui/point_cloud_detached.py").read_text()
+        for marker in ("apply_profile_geometry_edit", "_redetach_after_open",
+                       "linked_view_geometry_changed", "QTimer.singleShot"):
+            self.assertIn(marker, linked)
+        self.assertIn("profile_edit_tool", detached)
+        self.assertIn("apply_profile_geometry_edit", detached)
+
     def test_profile_help_explains_source_units_and_navigation(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_tools.py").read_text()
         self.assertIn("source coordinate", source)

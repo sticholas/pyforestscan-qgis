@@ -130,6 +130,13 @@ class DetachedView(QDialog):
             "HeightAboveGround" in controller.page.editor.state.get("dimensions", []))
         self.tool.spherePlacementChanged.connect(controller.set_sphere_placement)
         controller.spherePlacementChanged.connect(self.tool.setSpherePlacement)
+        if controller.page.workspace.views[view_id].view_type == "VERTICAL_SLICE":
+            profile_edit = QToolButton()
+            profile_edit.setText("Edit Path")
+            profile_edit.setToolTip("Drag profile endpoints or vertices. The view will refresh its authoritative corridor and return to this window.")
+            profile_edit.clicked.connect(lambda: self.send({"action": "profile_edit_tool"}))
+            row.addWidget(profile_edit)
+            self.profile_edit_button = profile_edit
         classify = QToolButton()
         classify.setText("Classify")
         classify.clicked.connect(self.classify)
@@ -296,7 +303,8 @@ class DetachedView(QDialog):
             self.event_id = event["id"]
             self.selection_error = ""
             if event.get("action") == "PROFILE_GEOMETRY_EDIT":
-                self.selection_error = "Profile geometry edits are applied from the docked linked-view editor. Dock this view to edit its path."
+                if not self.controller.apply_profile_geometry_edit(self.view_id, event.get("geometry")):
+                    self.selection_error = "Profile geometry edit was rejected."
             elif event.get("geometry") and not editor.busy:
                 try:
                     constraints = self.controller.selection_values_for(view, event, telemetry)
