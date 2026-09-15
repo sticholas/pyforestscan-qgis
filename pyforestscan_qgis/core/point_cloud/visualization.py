@@ -28,6 +28,7 @@ ATTRIBUTE_DIMENSIONS = {
 class RenderState:
     """Presentation state shared by overview, detail and profile views."""
     color_mode: str = "Classification"
+    palette: str = "Viridis"
     display_range: DisplayRange | None = None
     visible_classes: tuple[int, ...] | None = None
     point_style: str = "Circular"
@@ -37,7 +38,7 @@ class RenderState:
     display_filters: tuple[tuple[str, object], ...] = ()
 
     def identity(self):
-        return (self.color_mode, self.display_range, self.visible_classes,
+        return (self.color_mode, self.palette, self.display_range, self.visible_classes,
                 self.point_style, self.point_size, self.quality,
                 self.vertical_slice, self.display_filters)
 

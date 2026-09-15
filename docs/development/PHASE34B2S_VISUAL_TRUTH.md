@@ -40,3 +40,16 @@ Human qualification still needs varied-RGB, classification, intensity, return
 number, palette, product-overlay, height/elevation selection, profile-axis,
 and large-source evidence. QGIS-free contract tests cover the current
 bindings and output descriptors; they do not replace a real WebGL/QGIS run.
+
+
+## Precision interaction contract
+
+Vertical selection is explicit about its axis: source elevation Z or Height
+Above Ground. A one-unit band is a one-source-unit interval, not a camera
+pixel depth. Linked views carry the view identity, slice thickness, axis, and
+range together so a shape remains interpretable when it is mirrored into
+another view.
+
+The current UI still presents numeric bounds rather than a dual-handle slider;
+the QGIS-free contract is in place first so a future slider cannot silently
+change axis or selection scope.

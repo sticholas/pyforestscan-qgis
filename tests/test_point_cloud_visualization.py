@@ -84,6 +84,10 @@ class ViewerColorPipelineContractTests(unittest.TestCase):
         self.assertIn("function gradient(name, invert)", source)
 
 
+from pyforestscan_qgis.core.point_cloud.vertical_selection import (
+    HeightRange, VerticalAxis, VerticalSelectionContext,
+)
+
 from pyforestscan_qgis.core.point_cloud.scientific_visualization import (
     SPECS, VisualizationKind, available_product_visualizations,
     build_visualization_layer, product_visualization_spec,
@@ -121,3 +125,25 @@ class ScientificVisualizationContractTests(unittest.TestCase):
             self.assertEqual("PBM", layer.provenance["engine"])
         finally:
             output.unlink()
+
+
+from pyforestscan_qgis.core.point_cloud.vertical_selection import (
+    HeightRange, VerticalAxis, VerticalSelectionContext,
+)
+
+
+class VerticalSelectionContractTests(unittest.TestCase):
+    def test_height_range_is_explicit_about_axis_and_units(self):
+        band = HeightRange(12, 13, VerticalAxis.HEIGHT_ABOVE_GROUND)
+        self.assertEqual(1.0, band.width)
+        self.assertTrue(band.contains(12.5))
+        self.assertEqual("height above ground: 12 to 13 source units", band.summary())
+
+    def test_one_unit_band_preserves_axis(self):
+        band = HeightRange(4, 9, VerticalAxis.ELEVATION).one_unit_band()
+        self.assertEqual((4.0, 5.0), (band.minimum, band.maximum))
+        self.assertIs(VerticalAxis.ELEVATION, band.axis)
+
+    def test_context_makes_slice_depth_view_local(self):
+        context = VerticalSelectionContext("slice-1", HeightRange(2, 8), 0.5)
+        self.assertIn("slice depth: 0.5 XY units", context.summary)
