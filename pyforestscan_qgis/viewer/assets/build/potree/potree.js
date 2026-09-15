@@ -57969,19 +57969,6 @@ vec3 getReturns(){ return returnPalette(returnNumber); }
 	// 	}
 	// }
 
-	// if(numberOfReturns == 1.0){
-	// 	return vec3(1.0, 1.0, 0.0);
-	// }else{
-	// 	if(returnNumber == 1.0){
-	// 		return vec3(1.0, 0.0, 0.0);
-	// 	}else if(returnNumber == numberOfReturns){
-	// 		return vec3(0.0, 0.0, 1.0);
-	// 	}else{
-	// 		return vec3(0.0, 1.0, 0.0);
-	// 	}
-	// }
-}
-
 vec3 getReturnNumber(){ return returnPalette(returnNumber); }
 
 vec3 getNumberOfReturns(){ return returnPalette(numberOfReturns); }

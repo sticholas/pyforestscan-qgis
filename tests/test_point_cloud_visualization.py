@@ -85,6 +85,8 @@ class ViewerColorPipelineContractTests(unittest.TestCase):
         self.assertIn('color = texture2D(gradient, vec2(w, 1.0 - w)).rgb;', source)
         self.assertIn('vec3 getReturnNumber(){ return returnPalette(returnNumber); }', source)
         self.assertIn('vec3 getNumberOfReturns(){ return returnPalette(numberOfReturns); }', source)
+        self.assertNotIn('\n}\n\nvec3 getReturnNumber(){ return returnPalette(returnNumber); }', source)
+        self.assertIn('vec3 returnPalette(float value){', source)
 
     def test_palette_registry_has_scientific_choices_and_stable_unknown_classes(self):
         source = (ROOT / "pyforestscan_qgis/viewer/visualization_registry.js").read_text(encoding="utf-8")
