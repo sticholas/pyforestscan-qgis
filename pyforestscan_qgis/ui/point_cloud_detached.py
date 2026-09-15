@@ -284,8 +284,9 @@ class DetachedView(QDialog):
         self.telemetry = telemetry
         self.appearance.sync(telemetry)
         self._sync_available_modes(telemetry.get("available_modes"))
+        self.palette.setEnabled(telemetry.get("mode") != "Classification")
+        # Palette is viewer state; stale telemetry must not reset a live choice.
         self.palette.blockSignals(True)
-        self.palette.setCurrentText(telemetry.get("palette", "Viridis"))
         self.palette.blockSignals(False)
         self.display_range.sync(telemetry)
         self.class_visibility.sync(telemetry)

@@ -920,6 +920,7 @@ class PointCloudPage(QWidget):
                                      point_size=active_view.lod.get("point_size", 0))
             self.appearance.sync(display_state)
             self._sync_available_modes(telemetry.get("available_modes"))
+            self.palette.setEnabled(telemetry.get("mode") != "Classification")
             self.palette.blockSignals(True)
             # Keep the user-selected palette; stale telemetry must not reset it.
             self.palette.blockSignals(False)
