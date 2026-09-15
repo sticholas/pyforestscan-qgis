@@ -79,3 +79,21 @@ because a menu opened. Product descriptors carry support geometry and
 product-specific domains: canopy cover is a fraction from 0 to 1, PAD is a
 height-binned area-per-volume field, Rumple is a surface-area ratio, and Point
 Density is points per output-cell area.
+
+
+## Cached scientific overlay slice
+
+Point Cloud now exposes a **Scientific Overlay** action once a source is open.
+The user chooses an existing registered GeoTIFF; the page samples a bounded grid
+through QGIS's raster provider and sends the grid to the isolated renderer. The
+viewer displays it as a spatial surface with product label, units, value range,
+CRS, and source/output provenance. The sample is capped at 96 by 96 cells so a
+large raster cannot freeze the viewer.
+
+This is intentionally a cached-output path. Opening the control never starts
+CHM, DTM, PAD, PAI, FHD, Rumple, canopy-cover, Point Density, or Voxel
+Statistic calculation. A DTM may use its sampled values as a terrain surface;
+other products remain colored spatial surfaces and are never inserted into the
+point attribute list. Outputs whose names do not identify a registered product
+or whose source fingerprint cannot be checked are rejected with a visible
+message.

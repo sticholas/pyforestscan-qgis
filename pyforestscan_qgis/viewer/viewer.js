@@ -3,7 +3,7 @@
 const message = document.getElementById("message");
 const profileAxes = document.getElementById("profile-axes");
 const state = {ready: false, js_ready: false, source_requested: false, errors: [], mode: "Classification", palette: "Viridis", classes: null, height_filter: null, quality: "Automatic", script_revision: "visualization-analytics-2", available_modes: [], dimensions: [], display_range: null, legend: null, analytics: null, analytics_generation: 0, analytics_updates: 0, analytics_sample_limit: 30000};
-let viewer, cloud, heightVolume, previousCamera = "", lastFrame = performance.now(), frameMs = 16;
+let viewer, cloud, heightVolume, scientificOverlay = null, previousCamera = "", lastFrame = performance.now(), frameMs = 16;
 let linkedContext = null, profileDragInstalled = false;
 let cameraSyncFallbacks = 0;
 const ATTRIBUTE_MODES = ["RGB", "Classification", "Elevation", "Height Above Ground", "Intensity", "Return Number", "Number of Returns", "Scan Angle", "Point Source ID", "GPS Time", "User Data"];
@@ -440,6 +440,51 @@ const renderTimer = setInterval(() => {
         fail(error);
     }
 }, 16);
+function overlayColor(value, minimum, maximum, paletteName) {
+    const registry = window.PyForestScanVisualization;
+    const stops = registry && registry.palettes[paletteName] || registry.palettes.Viridis;
+    const t = maximum > minimum ? Math.max(0, Math.min(1, (value - minimum) / (maximum - minimum))) : .5;
+    const scaled = t * (stops.length - 1), index = Math.min(stops.length - 2, Math.floor(scaled)), fraction = scaled - index;
+    const a = stops[index], b = stops[Math.min(stops.length - 1, index + 1)];
+    return [a[0] + (b[0] - a[0]) * fraction, a[1] + (b[1] - a[1]) * fraction, a[2] + (b[2] - a[2]) * fraction];
+}
+function removeScientificOverlay() {
+    if (scientificOverlay) viewer.scene.scene.remove(scientificOverlay);
+    scientificOverlay = null;
+}
+function renderScientificOverlay(overlay) {
+    if (!overlay || !Array.isArray(overlay.values)) throw Error("Scientific overlay data is unavailable.");
+    const rows = Number(overlay.rows), columns = Number(overlay.columns), extent = overlay.extent;
+    if (!Number.isInteger(rows) || !Number.isInteger(columns) || rows < 1 || columns < 1 || rows * columns > 128 * 128 || extent.length !== 4) throw Error("Scientific overlay grid is invalid.");
+    const valid = overlay.values.filter(value => Number.isFinite(Number(value))).map(Number);
+    if (!valid.length) throw Error("Scientific overlay contains no valid cells.");
+    const range = Array.isArray(overlay.value_range) && overlay.value_range.length === 2 ? overlay.value_range : [Math.min(...valid), Math.max(...valid)];
+    const geometry = new THREE.BufferGeometry(), positions = [], colors = [], indices = [];
+    const [xmin, ymin, xmax, ymax] = extent, zBase = cloud.boundingBox.min.z - .01;
+    for (let row = 0; row < rows; row++) for (let col = 0; col < columns; col++) {
+        const index = row * columns + col, value = Number(overlay.values[index]);
+        const x = xmin + (xmax - xmin) * (columns === 1 ? .5 : col / (columns - 1));
+        const y = ymax - (ymax - ymin) * (rows === 1 ? .5 : row / (rows - 1));
+        const z = overlay.surface_mode === "values" && Number.isFinite(value) ? value : zBase;
+        positions.push(x, y, z);
+        const color = Number.isFinite(value) ? overlayColor(value, Number(range[0]), Number(range[1]), overlay.palette || "Viridis") : [.3, .3, .3];
+        colors.push(...color);
+    }
+    for (let row = 0; row < rows - 1; row++) for (let col = 0; col < columns - 1; col++) {
+        const i = row * columns + col, next = i + 1, below = i + columns;
+        indices.push(i, below, next, next, below, below + 1);
+    }
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setIndex(indices); geometry.computeVertexNormals();
+    const material = new THREE.MeshBasicMaterial({vertexColors:true, transparent:true, opacity:.55, side:THREE.DoubleSide, depthWrite:false});
+    scientificOverlay = new THREE.Mesh(geometry, material);
+    scientificOverlay.userData.scientific = {product_id:overlay.product_id, units:overlay.units, value_range:range, provenance:overlay.provenance};
+    viewer.scene.scene.add(scientificOverlay);
+    const legend = document.getElementById("visual-legend");
+    if (legend) legend.textContent = `${overlay.label} overlay | ${overlay.units} | ${Number(range[0]).toFixed(2)}–${Number(range[1]).toFixed(2)} | cached spatial product`;
+    state.scientific_overlay = scientificOverlay.userData.scientific;
+}
 function clearHeight() {
     if (heightVolume) viewer.scene.removeVolume(heightVolume);
     heightVolume = null;
@@ -459,6 +504,8 @@ window.command = function(command) {
     if (!cloud) return;
     try {
         const action = command.action;
+        if (action === "scientific_overlay") renderScientificOverlay(command.overlay);
+        if (action === "clear_scientific_overlay") { removeScientificOverlay(); state.scientific_overlay = null; updateLegend(); }
         if (action === "point_display") pointDisplay(command.style, command.size);
         if (action === "palette") setPalette(String(command.palette || "Viridis"), !!command.invert);
         if (action === "linked_view") {

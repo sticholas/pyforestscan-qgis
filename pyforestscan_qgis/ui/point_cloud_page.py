@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
 import queue
@@ -24,6 +25,7 @@ from ..core.point_cloud.runtime import ViewerRuntimeService, viewer_environment
 from ..core.point_cloud.run_record import ViewerRunRecord
 from ..core.point_cloud.display_stability import DisplayTelemetryStabilizer
 from .point_cloud_display_range import DisplayRangeControls
+from ..core.point_cloud.scientific_overlay import ScientificOverlayPayload, overlay_value_range
 
 # Workers are not children of disposable widgets. Keep them alive through unload;
 # each exits after its owned subprocess is reaped, then releases this reference.
@@ -151,7 +153,6 @@ class ViewerWorker(QThread):
                 metadata = json.loads(raw)
                 if metadata.get("dataType") not in ("laszip", "binary"):
                     raise RuntimeError("Viewer currently supports LASzip/binary EPT; this EPT encoding is not yet packaged.")
-                import hashlib
                 self.update.emit({"source_info": {"point_count": metadata.get("points"), "metadata": metadata,
                     "source_identity":{"path":str(source),"sha256":hashlib.sha256(raw.encode("utf-8")).hexdigest(),"source_type":"EPT"}}})
             service.root.mkdir(parents=True, exist_ok=True)
@@ -311,6 +312,7 @@ class PointCloudPage(QWidget):
         self._view_state = None
         self._display_stabilizer = DisplayTelemetryStabilizer()
         self._source_info = {}
+        self._scientific_overlay = None
         self._closing = False
         self.last_run_folder = None
         layout = QVBoxLayout(self)
@@ -366,7 +368,12 @@ class PointCloudPage(QWidget):
         self.appearance = PointAppearance(self._send_point_display, self)
         display_row.addWidget(self.appearance)
         self.display_range = DisplayRangeControls(self.send, self)
+        self.overlay_button = QToolButton()
+        self.overlay_button.setText("Scientific Overlay")
+        self.overlay_button.setToolTip("Choose an existing verified product GeoTIFF and display a bounded spatial overlay in the viewer. This never calculates a product or treats it as a point attribute.")
+        self.overlay_button.clicked.connect(self.choose_scientific_overlay)
         display_row.addWidget(self.display_range)
+        display_row.addWidget(self.overlay_button)
         layout.addLayout(display_row)
         self.filter_toggle = QToolButton()
         self.filter_toggle.setText("Display filters")
@@ -511,6 +518,44 @@ class PointCloudPage(QWidget):
         elif not self._closing:
             self.filter_toggle.setFocus()
         self.filter_toggle.setArrowType(qt_enum(Qt, "DownArrow" if opened else "RightArrow", "ArrowType"))
+
+    def choose_scientific_overlay(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Choose cached scientific raster", "", "GeoTIFF (*.tif *.tiff)")
+        if not path:
+            return
+        try:
+            from qgis.core import QgsRasterLayer
+            from ..core.point_cloud.scientific_visualization import product_visualization_spec
+            layer = QgsRasterLayer(path, Path(path).stem)
+            if not layer.isValid():
+                raise ValueError("The selected raster could not be opened by QGIS.")
+            stem = Path(path).stem.upper().replace("-", "_").replace(" ", "_")
+            product_id = next((key for key in ("CANOPY_COVER", "POINT_DENSITY", "VOXEL_STATISTIC", "CHM", "DTM", "PAD", "PAI", "FHD", "RUMPLE") if key in stem), None)
+            if not product_id:
+                raise ValueError("The output name does not identify a registered scientific product.")
+            spec = product_visualization_spec(product_id)
+            extent = layer.extent()
+            columns = min(96, max(2, int(max(layer.width(), layer.height()) ** .5 * 4)))
+            rows = min(96, max(2, round(columns * max(extent.height(), .001) / max(extent.width(), .001))))
+            block = layer.dataProvider().block(1, extent, columns, rows)
+            values = []
+            for row in range(rows):
+                for col in range(columns):
+                    if block.isNoData(row, col):
+                        values.append(None)
+                    else:
+                        value = float(block.value(row, col))
+                        values.append(value if value == value else None)
+            source_fingerprint = str(self._source_info.get("sha256") or (self._source_info.get("source_identity") or {}).get("sha256") or "")
+            if not source_fingerprint:
+                raise ValueError("Open the point cloud before loading a scientific overlay so source provenance can be checked.")
+            output_stat = Path(path).stat()
+            payload = ScientificOverlayPayload(product_id, spec.label, spec.kind.value, spec.units, layer.crs().authid(), (extent.xMinimum(), extent.yMinimum(), extent.xMaximum(), extent.yMaximum()), rows, columns, tuple(values), overlay_value_range(values), None, spec.palette, {"source_fingerprint": source_fingerprint, "output_path": str(Path(path).resolve()), "output_identity": f"{output_stat.st_size}:{output_stat.st_mtime_ns}"}, vertical_semantics=spec.vertical_semantics, surface_mode="values" if product_id == "DTM" else "flat")
+            self._scientific_overlay = payload
+            self.send(payload.as_command())
+            self.status.setText(f"{spec.label} overlay loaded | cached spatial product | {payload.valid_value_count:,} sampled cells")
+        except Exception as error:
+            self.status.setText(f"Scientific overlay unavailable: {error}")
 
     def open_diagnostics(self):
         if self.last_run_folder:
@@ -677,6 +722,7 @@ class PointCloudPage(QWidget):
         self.palette.setEnabled(ready)
         self.appearance.setEnabled(ready)
         self.navigation_mode.setEnabled(ready)
+        self.overlay_button.setEnabled(ready)
         self.apply_filters_button.setEnabled(ready)
         self.clear_filters_button.setEnabled(ready)
         self.class_list.setEnabled(ready)
@@ -755,6 +801,7 @@ class PointCloudPage(QWidget):
         self._display_stabilizer.reset()
         self._pending_save = None
         self._source_info = {}
+        self._scientific_overlay = None
         self.class_list.clear()
         self._edit_session = self._session_to_open
         self._restore_expected = None

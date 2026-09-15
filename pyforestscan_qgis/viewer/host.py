@@ -295,6 +295,13 @@ def main():
                 capture(command["name"])
             elif action == "session_ready":
                 stage_once("SESSION_READY")
+            elif action == "scientific_overlay":
+                overlay = command.get("overlay")
+                if not isinstance(overlay, dict) or len(json.dumps(overlay, separators=(",", ":"))) > 4 * 1024 * 1024:
+                    raise ValueError("Invalid or oversized scientific overlay.")
+                if overlay.get("rows", 0) * overlay.get("columns", 0) > 128 * 128:
+                    raise ValueError("Scientific overlay exceeds the viewer cell limit.")
+                bridge.command.emit(json.dumps(command, allow_nan=False))
             elif action == "editor_overlay":
                 from pyforestscan_qgis.core.point_cloud.runtime import ViewerRuntimeService
                 path = Path(command["path"]).resolve(strict=True)
