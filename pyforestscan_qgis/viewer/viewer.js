@@ -20,12 +20,17 @@ function sourceDimensions() {
     return (attrs || []).map(attribute => attribute.name || attribute).filter(Boolean);
 }
 function modeAttribute(mode) {
-    const names = new Set(sourceDimensions().map(String));
+    const names = new Set(sourceDimensions().map(value => String(value).toLowerCase()));
     const aliases = ATTRIBUTE_ALIASES[mode] || [];
-    if (mode === "RGB" && !aliases.every(name => names.has(name))) return null;
-    const candidate = aliases.find(name => names.has(name));
-    const builtins = {"Classification":"classification", "Elevation":"elevation", "RGB":"rgba", "Intensity":"intensity"};
-    return candidate || builtins[mode] || null;
+    if (mode === "RGB") {
+        if (names.has("rgba") || aliases.every(name => names.has(name.toLowerCase()))) return "rgba";
+        return null;
+    }
+    const candidate = aliases.find(name => names.has(name.toLowerCase()));
+    if (candidate) return candidate;
+    if (mode === "Elevation" && (names.has("z") || names.has("position_cartesian") || names.has("position"))) return "elevation";
+    const builtins = {"Classification":"classification", "Intensity":"intensity"};
+    return builtins[mode] && names.has(builtins[mode]) ? builtins[mode] : null;
 }
 function updateVisualizationMetadata() {
     state.dimensions = sourceDimensions();
