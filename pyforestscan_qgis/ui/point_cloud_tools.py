@@ -34,9 +34,9 @@ class SelectionTools(QWidget):
             ("Pointer", "Navigate", "mActionPan.svg",
              "Navigate: orbit, pan and zoom without selecting or editing. In a Slice, pan and zoom keep the profile orientation."),
             ("Polygon", "Polygon Select", "mActionSelectPolygon.svg",
-             "Polygon Select: click vertices, then double-click, Enter or right-click to finish; Escape cancels. Selects original points within the active depth limits, not just displayed points. 3D views temporarily use top view; Slice stays in profile."),
+             "Polygon Select: click vertices, then double-click, Enter or right-click to finish; Escape cancels. Selects original points within the active depth limits, not just displayed points. The active camera is preserved; wheel zoom remains available. Hold Space to orbit or pan without leaving the tool; Slice stays in profile."),
             ("Rectangle", "Rectangle Select", "mActionSelectRectangle.svg",
-             "Rectangle Select: drag a rectangle; Escape cancels. Selects original points within the active depth limits. 3D views temporarily use top view; Slice stays in profile. Staged edits are unchanged until you apply an edit."),
+             "Rectangle Select: drag a rectangle; Escape cancels. Selects original points within the active depth limits. The active camera is preserved; wheel zoom remains available. Hold Space to orbit or pan without leaving the tool; Slice stays in profile. Staged edits are unchanged until you apply an edit."),
             ("Box", "Box Select", "mActionSelectRectangle.svg",
              "Box Select: in Overview or Area Detail, first choose explicit Elevation or HAG limits, then drag the XY footprint. In Vertical Slice, drag a profile rectangle; slice thickness supplies depth. The full-resolution source query uses those exact bounds."),
             ("Circle", "Circle Select", "mActionSelectRadius.svg",
@@ -44,11 +44,11 @@ class SelectionTools(QWidget):
             ("Sphere", "Sphere Select", "mIconPointCloudLayer.svg",
              "Sphere Select: choose an explicit source Z or stored HAG center, then drag center-to-edge for radius in source coordinate units. Exact 3D membership resolves against original points. Camera depth and displayed samples are never selection authority. Vertical Slice support is not enabled."),
             ("Brush", "Brush Select", "mActionSelectFreehand.svg",
-             "Brush Select: drag a continuous round stroke. In 3D views, radius uses dataset XY units and optional height limits control depth. In Profile, radius uses distance/elevation or HAG units inside the source corridor. Shift adds and Alt subtracts. Original points are resolved in the background; screen pixels are never edit addresses."),
+             "Brush Select: drag a continuous round stroke. In 3D views, radius uses dataset XY units and optional height limits control depth. In Profile, radius uses distance/elevation or HAG units inside the source corridor. Shift adds and Alt subtracts; Space temporarily navigates while the tool remains armed. Original points are resolved in the background; screen pixels are never edit addresses."),
             ("AboveLine", "Select Above Line", "mActionArrowUp.svg",
-             "Select Above Line: in Vertical Slice, draw two points across the profile. Selects original points above the exact source-coordinate line, within its horizontal span and the slice corridor."),
+             "Select Above Line: in Vertical Slice, draw two points across the profile. Hold Space to reposition without leaving the tool. Selects original points above the exact source-coordinate line, within its horizontal span and the slice corridor."),
             ("BelowLine", "Select Below Line", "mActionArrowDown.svg",
-             "Select Below Line: in Vertical Slice, draw two points across the profile. Selects original points below the exact source-coordinate line, within its horizontal span and the slice corridor."),
+             "Select Below Line: in Vertical Slice, draw two points across the profile. Hold Space to reposition without leaving the tool. Selects original points below the exact source-coordinate line, within its horizontal span and the slice corridor."),
         )
         for value, label, icon, help_text in specs:
             button = spatial_button(label, icon, help_text, self)

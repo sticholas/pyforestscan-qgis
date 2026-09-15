@@ -67,15 +67,44 @@ function updateScales() {
     if (verticalNode) verticalNode.textContent = verticalText;
 }
 
+function classificationColorHex(code) {
+    const entry = viewer && viewer.classifications &&
+        (viewer.classifications[code] || viewer.classifications.DEFAULT);
+    const color = entry && entry.color;
+    if (!color) return "#aab4bb";
+    const values = Array.isArray(color) ? color : [color.r, color.g, color.b];
+    const scale = values.some(value => Number(value) > 1) ? 1 : 255;
+    return "#" + values.slice(0, 3).map(value =>
+        Math.max(0, Math.min(255, Math.round(Number(value || 0) * scale))).toString(16).padStart(2, "0")).join("");
+}
 function updateLegend() {
     if (!cloud) return;
     const range = state.display_range || state.z_range;
     const units = state.mode === "Height Above Ground" || state.mode === "Elevation" ? "source height units" : "display values";
     const labels = {2:"Ground", 3:"Low vegetation", 4:"Medium vegetation", 5:"High vegetation", 6:"Building", 7:"Low noise", 18:"High noise"};
-    const categories = state.mode === "Classification" ? (state.observed_classes || []).slice(0, 12).map(code => ({code, label: labels[code] || `Class ${code}`, visible: !state.classes || state.classes.includes(code)})) : [];
+    const categories = state.mode === "Classification" ? (state.observed_classes || []).slice(0, 12).map(code => ({
+        code, label: labels[code] || (viewer.classifications[code] && viewer.classifications[code].name) || `Class ${code}`,
+        color: classificationColorHex(code), visible: !state.classes || state.classes.includes(code)
+    })) : [];
     state.legend = {title: state.mode, units, range: range || null, ticks: range ? niceTicks(Number(range[0]), Number(range[1])) : [], categories, available: state.available_modes};
     const node = document.getElementById("visual-legend");
-    if (node) node.textContent = state.mode === "Classification" && categories.length ? `Classification | ${categories.map(item => `${item.label} ${item.visible ? "shown" : "hidden"}`).join(" · ")}` : state.legend.range ? `${state.mode} | ${state.legend.range[0].toFixed(2)}–${state.legend.range[1].toFixed(2)} ${units}` : state.mode;
+    if (!node) return;
+    if (state.mode === "Classification" && categories.length) {
+        node.replaceChildren();
+        const title = document.createElement("strong");
+        title.textContent = "Classification | ";
+        node.appendChild(title);
+        categories.forEach((item, index) => {
+            if (index) node.appendChild(document.createTextNode(" · "));
+            const swatch = document.createElement("span");
+            swatch.style.cssText = `display:inline-block;width:9px;height:9px;margin-right:3px;background:${item.color};border:1px solid rgba(255,255,255,.65);opacity:${item.visible ? 1 : .35}`;
+            swatch.setAttribute("aria-label", `${item.label} color`);
+            node.appendChild(swatch);
+            node.appendChild(document.createTextNode(`${item.label} ${item.visible ? "shown" : "hidden"}`));
+        });
+        return;
+    }
+    node.textContent = state.legend.range ? `${state.mode} | ${state.legend.range[0].toFixed(2)}–${state.legend.range[1].toFixed(2)} ${units}` : state.mode;
 }
 function updateAnalytics() {
     if (!cloud || !state.ready) return;

@@ -7,12 +7,39 @@ from uuid import uuid4
 from qgis.core import QgsCoordinateReferenceSystem, QgsUnitTypes
 from qgis.PyQt.QtCore import QObject, Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (QToolButton, QMenu, QInputDialog, QCheckBox, QDialog,
-    QFormLayout, QDialogButtonBox, QDoubleSpinBox, QComboBox, QStyle, QFileDialog, QLabel)
+    QFormLayout, QDialogButtonBox, QDoubleSpinBox, QComboBox, QStyle, QFileDialog, QLabel,
+    QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox)
 from ..compat.qt import qt_enum
 from ..core.point_cloud.workspace import ViewType
 from ..core.point_cloud.linked_query import view_ring
 from ..core.point_cloud.linked_selection import linked_constraints, selection_limit_values
+from ..core.point_cloud.profile_editing import normalize_path, insert_midpoint, remove_vertex, replace_path
 from .point_cloud_editor import EditorWorker, _WORKERS
+
+
+def _table_profile_points(table):
+    values = []
+    for row in range(table.rowCount()):
+        values.append((float(table.item(row, 1).text()), float(table.item(row, 2).text())))
+    return normalize_path(values)
+
+
+def _insert_profile_midpoint(table, populate):
+    try:
+        current = list(_table_profile_points(table))
+        row = table.currentRow()
+        segment = max(0, min(row, len(current) - 2))
+        populate(insert_midpoint(current, segment))
+    except (TypeError, ValueError, IndexError):
+        return
+
+
+def _remove_profile_vertex(table, populate):
+    try:
+        current = list(_table_profile_points(table))
+        populate(remove_vertex(current, table.currentRow()))
+    except (TypeError, ValueError, IndexError):
+        return
 
 
 class LinkedViews(QObject):
@@ -66,6 +93,10 @@ class LinkedViews(QObject):
             "Reverse Profile: swap profile start and end so distance runs in the opposite direction. The same source corridor and edits remain authoritative.")
         self.profile_reverse.clicked.connect(self.reverse_profile)
         toolbar.addWidget(self.profile_reverse)
+        self.profile_edit = spatial_button("Edit Path", "mActionEdit.svg",
+            "Edit Path: adjust profile endpoints and intermediate vertices in source coordinates. Changes are validated before the linked view refreshes.")
+        self.profile_edit.clicked.connect(self.edit_profile_path)
+        toolbar.addWidget(self.profile_edit)
         self.profile_width = QDoubleSpinBox()
         self.profile_width.setRange(.001, 1000000)
         self.profile_width.setDecimals(3)
@@ -160,7 +191,7 @@ class LinkedViews(QObject):
         view = self.active()
         visible = view.view_type == ViewType.VERTICAL_SLICE
         for widget in (self.profile_summary, self.profile_fit, self.profile_reverse,
-                       self.profile_width):
+                       self.profile_edit, self.profile_width):
             widget.setVisible(visible)
         if not visible:
             return
@@ -199,6 +230,66 @@ class LinkedViews(QObject):
         self.query_results.pop(view.view_id, None)
         self.refresh_profile_controls()
         self.open_active()
+
+    def edit_profile_path(self):
+        view = self.active()
+        if view.view_type != ViewType.VERTICAL_SLICE:
+            self.page.status.setText("Open a Vertical Slice to edit its profile path.")
+            return
+        geometry = dict(view.geometry)
+        points = list(geometry.get("path") or (geometry["a"], geometry["b"]))
+        dialog = QDialog(self.page)
+        dialog.setWindowTitle("Edit Profile Path")
+        dialog.setMinimumWidth(390)
+        layout = QVBoxLayout(dialog)
+        hint = QLabel("Edit source XY coordinates. Endpoints define the profile extent; intermediate vertices shape the path.")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        table = QTableWidget(dialog)
+        table.setColumnCount(3)
+        table.setHorizontalHeaderLabels(("Vertex", "X", "Y"))
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setMinimumHeight(150)
+        layout.addWidget(table)
+        row_tools = QHBoxLayout()
+        insert = QPushButton("Insert midpoint")
+        remove = QPushButton("Remove vertex")
+        row_tools.addWidget(insert)
+        row_tools.addWidget(remove)
+        layout.addLayout(row_tools)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        layout.addWidget(buttons)
+
+        def populate(values):
+            table.setRowCount(len(values))
+            for row, point in enumerate(values):
+                table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
+                table.setItem(row, 1, QTableWidgetItem(f"{point[0]:.6f}"))
+                table.setItem(row, 2, QTableWidgetItem(f"{point[1]:.6f}"))
+            table.resizeColumnsToContents()
+            table.selectRow(0)
+            remove.setEnabled(len(values) > 2)
+
+        populate(points)
+        insert.clicked.connect(lambda: _insert_profile_midpoint(table, populate))
+        remove.clicked.connect(lambda: _remove_profile_vertex(table, populate))
+        buttons.rejected.connect(dialog.reject)
+        buttons.accepted.connect(dialog.accept)
+        if not (dialog.exec() if hasattr(dialog, "exec") else dialog.exec_()):
+            return
+        try:
+            edited = []
+            for row in range(table.rowCount()):
+                edited.append((float(table.item(row, 1).text()), float(table.item(row, 2).text())))
+            geometry = replace_path(geometry, edited)
+            self.page.workspace.update_view(view.view_id, geometry=geometry, camera={})
+        except (TypeError, ValueError, IndexError) as error:
+            QMessageBox.warning(self.page, "Invalid profile path", str(error))
+            return
+        self.query_results.pop(view.view_id, None)
+        self.refresh_profile_controls()
+        self.open_active()
+        self.page.status.setText("Profile path updated; refreshing the linked view.")
 
     def set_profile_width(self):
         view = self.active()

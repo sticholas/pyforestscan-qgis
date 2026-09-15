@@ -4,6 +4,7 @@ let context, tool = "Pointer", rectangleStart = null, rectangleBox = null;
 const drawing = new DrawingTool();
 let drawingCamera = null, polygonOverlay = null, polygonLine = null;
 let savedNavigation = null;
+let navigationOverride = false;
 let linkedView = null, drawingPurpose = "EDIT";
 let mode = "REPLACE", eventNumber = 0, latestEvent = null, revision = 0, edits = [], selection = [];
 const originals = new WeakMap(), records = new Map();
@@ -358,14 +359,10 @@ function leaveTool() {
     if (context && context.viewer && context.viewer.renderer)
         context.viewer.renderer.domElement.style.cursor = "";
     viewer.inputHandler.enabled = true;
-    if (savedNavigation) {
-        const view = viewer.scene.view;
-        view.position.copy(savedNavigation.position);
-        view.yaw = savedNavigation.yaw; view.pitch = savedNavigation.pitch;
-        view.radius = savedNavigation.radius;
-        viewer.setCameraMode(savedNavigation.cameraMode);
-        savedNavigation = null;
-    }
+    navigationOverride = false;
+    // Selection activation never owns the camera. Any navigation performed
+    // while a tool was armed remains the user current view.
+    savedNavigation = null;
     gestureMode = null;
     tool = "Pointer";
 }
@@ -577,6 +574,9 @@ function initialize(value) {
     context = value;
     const canvas = context.viewer.renderer.domElement;
     canvas.addEventListener("pointerdown", event => {
+        if (navigationOverride) return;
+        if (tool !== "Pointer" && !drawingCamera)
+            drawingCamera = context.viewer.scene.getActiveCamera().clone();
         if (tool === "Pointer") clearHoverCursor();
         if (tool !== "Pointer" && gestureMode === null)
             gestureMode = event.altKey ? "SUBTRACT" : event.shiftKey ? "ADD" : mode;
@@ -603,6 +603,7 @@ function initialize(value) {
         event.stopPropagation();
     }, true);
     canvas.addEventListener("pointermove", event => {
+        if (navigationOverride) return;
         if (tool === "Pointer" && event.buttons === 0) scheduleHoverCursor(event);
         else if (hoverCursor.active) clearHoverCursor();
         if (tool === "Brush" && brushPointer === event.pointerId) {
@@ -627,6 +628,7 @@ function initialize(value) {
     }, true);
     canvas.addEventListener("pointerleave", clearHoverCursor, true);
     canvas.addEventListener("pointerup", event => {
+        if (navigationOverride) return;
         if (tool === "MeasureDistance" || tool === "AddAnnotation") {
             event.preventDefault(); event.stopImmediatePropagation();
             if (event.button !== 0) return;
@@ -785,10 +787,26 @@ function initialize(value) {
         if (tool === "ProfilePath") completeProfilePath(); else completeDrawing();
     }, true);
     canvas.addEventListener("pointercancel", () => {
-        if (tool === "Pointer") return;
+        if (navigationOverride || tool === "Pointer") return;
         drawing.cancel(); leaveTool(); latestEvent = {id: ++eventNumber, action: "pointer"};
     }, true);
     document.addEventListener("keydown", event => {
+        if (event.code === "Space" && tool !== "Pointer" && !navigationOverride) {
+            navigationOverride = true;
+            // A partial screen-space gesture cannot be safely reprojected after
+            // a camera move. Cancel only that unfinished gesture, keep the tool armed.
+            if (drawing.vertices.length) {
+                drawing.cancel();
+                if (polygonOverlay) polygonOverlay.remove();
+                polygonOverlay = null; polygonLine = null;
+                drawing.arm(["ProfilePath", "Line", "Brush", "AboveLine", "BelowLine"].includes(tool) ? "Polygon" :
+                    tool === "Circle" || tool === "Sphere" || tool === "Box" ? "Rectangle" : tool, mode);
+            }
+            drawingCamera = null;
+            context.viewer.inputHandler.enabled = true;
+            event.preventDefault();
+            return;
+        }
         if (event.key === "Enter" && ["Polygon","ProfilePath"].includes(tool)) {
             event.preventDefault();
             if (tool === "ProfilePath") completeProfilePath(); else completeDrawing();
@@ -801,6 +819,13 @@ function initialize(value) {
             latestEvent = {id: ++eventNumber, action: event.shiftKey ? "redo" : "undo"};
             event.preventDefault();
         }
+    });
+    document.addEventListener("keyup", event => {
+        if (event.code !== "Space" || !navigationOverride) return;
+        navigationOverride = false;
+        drawingCamera = null;
+        context.viewer.inputHandler.enabled = true;
+        event.preventDefault();
     });
     requestAnimationFrame(paint);
 }
@@ -1005,8 +1030,8 @@ window.pointCloudEditor = {
             if (view) savedNavigation = {position: view.position.clone(), yaw: view.yaw,
                 pitch: view.pitch, radius: view.radius,
                 cameraMode: context.viewer.scene.cameraMode || Potree.CameraMode.PERSPECTIVE};
-            context.viewer.setCameraMode(Potree.CameraMode.ORTHOGRAPHIC);
-            // Keep the user's current camera. Selection is a screen-space
+            // Keep the user's current camera and projection; selection is
+            // projected against the camera active when each gesture begins. Selection is a screen-space
             // interaction and must not unexpectedly move a zoomed-in scene.
             const epoch = toolEpoch;
             insertionPending = true;
@@ -1016,8 +1041,8 @@ window.pointCloudEditor = {
                 tool = command.tool;
                 drawing.arm(["ProfilePath", "Line", "Brush", "AboveLine", "BelowLine"].includes(tool) ? "Polygon" :
                     tool === "Circle" || tool === "Sphere" || tool === "Box" ? "Rectangle" : tool, mode);
-                drawingCamera = context.viewer.scene.getActiveCamera().clone();
-                context.viewer.inputHandler.enabled = false;
+                drawingCamera = null;
+                context.viewer.inputHandler.enabled = true;
                 if (["Polygon", "ProfilePath", "Line", "Brush", "AboveLine", "BelowLine"].includes(tool)) {
                     polygonOverlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
                     polygonOverlay.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
@@ -1026,7 +1051,8 @@ window.pointCloudEditor = {
                     polygonLine.setAttribute("stroke", "#5be4eb");
                     polygonLine.setAttribute("stroke-width", "2");
                     if (tool === "Brush") {
-                        const a=sourceXY(0,0,drawingCamera), b=sourceXY(1,0,drawingCamera);
+                        const overlayCamera=context.viewer.scene.getActiveCamera().clone();
+                        const a=sourceXY(0,0,overlayCamera), b=sourceXY(1,0,overlayCamera);
                         const unitsPerPixel=linkedView&&linkedView.view_type==="VERTICAL_SLICE" ?
                             Math.hypot(b.x-a.x,b.z-a.z) : Math.hypot(b.x-a.x,b.y-a.y);
                         const width=Number.isFinite(unitsPerPixel) && unitsPerPixel > 0
