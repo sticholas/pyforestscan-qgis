@@ -40,6 +40,12 @@ class PointCloudProfileQualificationTests(unittest.TestCase):
                        "update_view", "Profile path updated"):
             self.assertIn(marker, linked)
 
+    def test_rendered_legend_can_toggle_renderer_visibility(self):
+        source = (ROOT / "pyforestscan_qgis/viewer/viewer.js").read_text()
+        for marker in ("role", "button", "setClassVisibility(item.code", "addEventListener",
+                       "action === \"classes\"", "updateLegend();"):
+            self.assertIn(marker, source)
+
     def test_profile_help_explains_source_units_and_navigation(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_tools.py").read_text()
         self.assertIn("source coordinate", source)

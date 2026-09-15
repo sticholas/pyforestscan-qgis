@@ -84,7 +84,7 @@ function updateLegend() {
     const labels = {2:"Ground", 3:"Low vegetation", 4:"Medium vegetation", 5:"High vegetation", 6:"Building", 7:"Low noise", 18:"High noise"};
     const categories = state.mode === "Classification" ? (state.observed_classes || []).slice(0, 12).map(code => ({
         code, label: labels[code] || (viewer.classifications[code] && viewer.classifications[code].name) || `Class ${code}`,
-        color: classificationColorHex(code), visible: !state.classes || state.classes.includes(code)
+        color: classificationColorHex(code), visible: viewer.classifications[code] ? viewer.classifications[code].visible !== false : (!state.classes || state.classes.includes(code))
     })) : [];
     state.legend = {title: state.mode, units, range: range || null, ticks: range ? niceTicks(Number(range[0]), Number(range[1])) : [], categories, available: state.available_modes};
     const node = document.getElementById("visual-legend");
@@ -98,7 +98,21 @@ function updateLegend() {
             if (index) node.appendChild(document.createTextNode(" · "));
             const swatch = document.createElement("span");
             swatch.style.cssText = `display:inline-block;width:9px;height:9px;margin-right:3px;background:${item.color};border:1px solid rgba(255,255,255,.65);opacity:${item.visible ? 1 : .35}`;
-            swatch.setAttribute("aria-label", `${item.label} color`);
+            swatch.setAttribute("aria-label", `${item.label} visibility`);
+            swatch.setAttribute("role", "button");
+            swatch.tabIndex = 0;
+            const toggle = () => {
+                const visible = viewer.classifications[item.code] ? viewer.classifications[item.code].visible !== false : item.visible;
+                setClassVisibility(item.code, !visible);
+                if (!state.classes) state.classes = Array.from({length: 256}, (_, code) => code);
+                if (!visible && !state.classes.includes(item.code)) state.classes.push(item.code);
+                if (visible) state.classes = state.classes.filter(code => code !== item.code);
+                updateLegend();
+            };
+            swatch.addEventListener("click", toggle);
+            swatch.addEventListener("keydown", event => {
+                if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggle(); }
+            });
             node.appendChild(swatch);
             node.appendChild(document.createTextNode(`${item.label} ${item.visible ? "shown" : "hidden"}`));
         });
@@ -420,6 +434,7 @@ window.command = function(command) {
         if (action === "classes") {
             state.classes = command.classes.slice();
             for (let i = 0; i < 256; i++) setClassVisibility(i, command.classes.includes(i));
+            updateLegend();
         }
         if (action === "display_range_mode") {
             const mode = String(command.mode || "AUTO").toUpperCase();
@@ -473,6 +488,7 @@ window.command = function(command) {
             state.classes = null;
             clearHeight();
             for (let i = 0; i < 256; i++) setClassVisibility(i, true);
+            updateLegend();
         }
         if (action === "camera") {
             const camera = command.camera;

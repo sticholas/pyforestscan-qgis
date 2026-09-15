@@ -295,7 +295,9 @@ class DetachedView(QDialog):
         if acknowledged and event and event["id"] != self.event_id:
             self.event_id = event["id"]
             self.selection_error = ""
-            if event.get("geometry") and not editor.busy:
+            if event.get("action") == "PROFILE_GEOMETRY_EDIT":
+                self.selection_error = "Profile geometry edits are applied from the docked linked-view editor. Dock this view to edit its path."
+            elif event.get("geometry") and not editor.busy:
                 try:
                     constraints = self.controller.selection_values_for(view, event, telemetry)
                     values = {key: event[key] for key in (
