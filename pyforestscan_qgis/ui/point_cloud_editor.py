@@ -653,11 +653,12 @@ class EditorPanel(QWidget):
                   z_filter=limits.get("z_filter"),
                   hag_filter=limits.get("hag_filter"))
 
-    def prepare_hag(self):
+    def prepare_hag(self, *, source_coordinate_units="", source_units_basis=""):
         """Run automatic source-local HAG preparation in the managed editor child."""
         if not self.worker or self.busy or not self.state.get("ready"):
             return
-        self.send("prepare_hag")
+        self.send("prepare_hag", source_coordinate_units=source_coordinate_units,
+                  source_units_basis=source_units_basis)
 
     def change_tool(self, tool):
         if self.viewer_ready and not self.page.linked.depth_error:

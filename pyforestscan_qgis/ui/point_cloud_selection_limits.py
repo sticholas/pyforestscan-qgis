@@ -1,6 +1,6 @@
 """Shared next-selection limits; the linked controller owns the actual values."""
 from qgis.PyQt.QtWidgets import (
-    QWidget, QHBoxLayout, QLabel, QComboBox, QDoubleSpinBox, QToolButton, QMessageBox)
+    QWidget, QHBoxLayout, QLabel, QComboBox, QDoubleSpinBox, QToolButton, QMessageBox, QInputDialog)
 from .point_cloud_range_slider import HeightRangeSlider
 from ..compat.qt import qt_enum
 from ..core.point_cloud.hag_availability import has_hag_dimension
@@ -114,7 +114,21 @@ class SelectionLimits(QWidget):
         if not self.controller.page.editor.state.get("ready"):
             return
         answer = QMessageBox.question(self, "Prepare Height Above Ground", "Create a managed source-local HAG derivative for this viewer?\n\nThe original source will remain unchanged. Large sources may take time to prepare.", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-        if answer == QMessageBox.Yes:
+        if answer != QMessageBox.Yes:
+            return
+        state = self.controller.page.editor.state
+        source_crs = str(state.get("source_crs") or "")
+        if source_crs.startswith("SOURCE_LOCAL:"):
+            unit, accepted = QInputDialog.getItem(
+                self, "Source coordinate units", "Choose the source linear units for automatic HAG:",
+                ["Meters", "International feet", "US survey feet"], 0, False)
+            if not accepted:
+                return
+            units = {"Meters": "METERS", "International feet": "INTERNATIONAL_FEET",
+                     "US survey feet": "US_SURVEY_FEET"}[unit]
+            self.controller.page.editor.prepare_hag(
+                source_coordinate_units=units, source_units_basis="ASSUMED_SOURCE_LOCAL")
+        else:
             self.controller.page.editor.prepare_hag()
 
     def _available_range(self, key, fallback):

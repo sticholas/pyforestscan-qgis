@@ -346,11 +346,13 @@ def main():
                     from pyforestscan_qgis.backend_runner.pbm_lidar_preparation import prepare_request_source
                     from pyforestscan_qgis.core.source_coordinate_units import assess_source_coordinate_units
                     crs_value = None if session.source_crs.startswith("SOURCE_LOCAL:") else session.source_crs
-                    units = assess_source_coordinate_units(crs_value)
+                    units = assess_source_coordinate_units(
+                        crs_value, command.get("source_coordinate_units"))
+                    unit_basis = command.get("source_units_basis") or units.unit_basis
                     request = ViewerPreparationRequest(
                         input_path=Path(session.source.path), source_dimensions=tuple(session.dimensions),
                         crs=crs_value, source_coordinate_units=units.units.value,
-                        source_units_basis=units.unit_basis, source_point_count=point_count)
+                        source_units_basis=unit_basis, source_point_count=point_count)
                     spec = type("ViewerHagSpec", (), {
                         "product": "viewer_hag", "requested_products": ("chm",),
                         "run_folder": args.folder / "hag-preparation",
