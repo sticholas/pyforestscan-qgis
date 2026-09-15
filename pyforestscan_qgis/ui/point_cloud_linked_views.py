@@ -99,7 +99,7 @@ class LinkedViews(QObject):
         toolbar.addWidget(self.profile_reverse)
         self.profile_edit = spatial_button("Edit Path", "mActionEdit.svg",
             "Edit Path: adjust profile endpoints and intermediate vertices in source coordinates. Changes are validated before the linked view refreshes.")
-        self.profile_edit.clicked.connect(self.edit_profile_path)
+        self.profile_edit.clicked.connect(self.arm_profile_edit)
         toolbar.addWidget(self.profile_edit)
         self.profile_width = QDoubleSpinBox()
         self.profile_width.setRange(.001, 1000000)
@@ -112,6 +112,7 @@ class LinkedViews(QObject):
         self.profile_width.setToolTip(
             "Total source-coordinate corridor width. Changing it reruns the bounded display query; selections and edits stay source-resolved.")
         self.profile_width.editingFinished.connect(self.set_profile_width)
+        self.profile_width.valueChanged.connect(lambda _value: self.set_profile_width())
         toolbar.addWidget(self.profile_width)
         self.create = QToolButton()
         self.create.setText("View options")
@@ -147,6 +148,7 @@ class LinkedViews(QObject):
             lambda _checked=False: self.draw("ProfilePath", "CREATE_SLICE"))
         create_menu.addAction("Area Detail from Current Selection", self.from_selection)
         current_menu = menu.addMenu("Current view")
+        current_menu.addAction("Edit Profile Coordinates...", self.edit_profile_path)
         current_menu.addAction("Adjust Region or Profile...", self.adjust)
         self.rename_view_action = current_menu.addAction("Rename...", self.rename_active_view)
         current_menu.addAction("Selection Height...", self.adjust_depth)
@@ -234,6 +236,13 @@ class LinkedViews(QObject):
         self.query_results.pop(view.view_id, None)
         self.refresh_profile_controls()
         self.open_active()
+
+    def arm_profile_edit(self):
+        if self.active().view_type != ViewType.VERTICAL_SLICE:
+            self.page.status.setText("Open a Vertical Slice to edit its profile path.")
+            return
+        self.page.send({"action": "profile_edit_tool"})
+        self.page.status.setText("Profile edit armed: drag an endpoint or intermediate vertex.")
 
     def edit_profile_path(self):
         view = self.active()
@@ -613,6 +622,21 @@ class LinkedViews(QObject):
         self.page.send({"action":"selection_tool","tool":tool,"purpose":purpose})
 
     def event(self, value):
+        if value.get("action") == "PROFILE_GEOMETRY_EDIT":
+            view = self.active()
+            if value.get("view_id") != view.view_id or view.view_type != ViewType.VERTICAL_SLICE:
+                self.page.status.setText("Profile edit belongs to a different linked view.")
+                return True
+            try:
+                self.page.workspace.update_view(view.view_id, geometry=value["geometry"], camera={})
+            except (KeyError, TypeError, ValueError) as error:
+                self.page.status.setText("Profile edit rejected: " + str(error))
+                return True
+            self.query_results.pop(view.view_id, None)
+            self.refresh_profile_controls()
+            self.open_active()
+            self.page.status.setText("Profile path updated; refreshing the authoritative corridor.")
+            return True
         if value.get("action") not in ("CREATE_AREA","CREATE_SLICE"):
             return False
         if value["id"] == self.event_id:

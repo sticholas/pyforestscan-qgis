@@ -6,6 +6,8 @@ let drawingCamera = null, polygonOverlay = null, polygonLine = null;
 let savedNavigation = null;
 let navigationOverride = false;
 let linkedView = null, drawingPurpose = "EDIT";
+let profileEditMode = false, profileEditMoving = false, profileEditIndex = -1;
+let profileEditOverlay = null, profileEditDraft = null;
 let mode = "REPLACE", eventNumber = 0, latestEvent = null, revision = 0, edits = [], selection = [];
 const originals = new WeakMap(), records = new Map();
 const point = new THREE.Vector3(), sourcePointValue = new THREE.Vector3(), flat = new THREE.Vector3();
@@ -345,6 +347,117 @@ function applyObjectFocus() {
         context.cloud.material.opacity = focus.opacity;
     return focus;
 }
+function profileEditPath() {
+    if (!linkedView || linkedView.view_type !== "VERTICAL_SLICE" || !linkedView.geometry) return [];
+    const geometry = linkedView.geometry;
+    return Array.isArray(geometry.path) && geometry.path.length > 1 ?
+        geometry.path.map(point => [Number(point[0]), Number(point[1])]) :
+        [[...geometry.a], [...geometry.b]];
+}
+function profileEditDisplayPoint(sourcePoint, camera) {
+    const geometry = linkedView && linkedView.geometry;
+    let point = null;
+    if (profileProjected()) {
+        const local = profileLocal(geometry, sourcePoint[0], sourcePoint[1]);
+        if (!local) return null;
+        point = new THREE.Vector3(local.along, local.cross, 0);
+    } else {
+        point = new THREE.Vector3(sourcePoint[0], sourcePoint[1], 0);
+    }
+    if (cloud && cloud.boundingBox) point.z = (cloud.boundingBox.min.z + cloud.boundingBox.max.z) / 2;
+    const canvas = context.viewer.renderer.domElement;
+    const projected = point.project(camera);
+    return {x:(projected.x + 1) * canvas.clientWidth / 2,
+            y:(1 - projected.y) * canvas.clientHeight / 2};
+}
+function profileEditOverlayRemove() {
+    if (profileEditOverlay) profileEditOverlay.remove();
+    profileEditOverlay = null;
+}
+function renderProfileEditHandles() {
+    if (!profileEditMode || !linkedView || linkedView.view_type !== "VERTICAL_SLICE") return;
+    const canvas = context.viewer.renderer.domElement;
+    if (!profileEditOverlay) {
+        profileEditOverlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        profileEditOverlay.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
+        canvas.parentElement.appendChild(profileEditOverlay);
+    }
+    profileEditOverlay.replaceChildren();
+    const camera = context.viewer.scene.getActiveCamera();
+    const points = (profileEditDraft || profileEditPath()).map(point => profileEditDisplayPoint(point, camera));
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    line.setAttribute("points", points.filter(Boolean).map(point => point.x + "," + point.y).join(" "));
+    line.setAttribute("fill", "none");
+    line.setAttribute("stroke", "#ffd166");
+    line.setAttribute("stroke-width", "2");
+    line.setAttribute("stroke-dasharray", "5 3");
+    profileEditOverlay.appendChild(line);
+    points.forEach((point, index) => {
+        if (!point) return;
+        const handle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        handle.setAttribute("cx", point.x); handle.setAttribute("cy", point.y);
+        handle.setAttribute("r", index === 0 || index === points.length - 1 ? "7" : "5");
+        handle.setAttribute("fill", index === 0 || index === points.length - 1 ? "#5be4eb" : "#ffd166");
+        handle.setAttribute("stroke", "#202427"); handle.setAttribute("stroke-width", "2");
+        profileEditOverlay.appendChild(handle);
+    });
+}
+function profileEditSourcePoint(event) {
+    const camera = context.viewer.scene.getActiveCamera();
+    const display = sourceXY(event.offsetX, event.offsetY, camera);
+    if (profileProjected()) return profileSource(display.x, display.y);
+    return [display.x, display.y];
+}
+function profileEditNearest(event) {
+    const camera = context.viewer.scene.getActiveCamera();
+    const points = profileEditPath().map(point => profileEditDisplayPoint(point, camera));
+    let best = -1, distance = 14;
+    points.forEach((point, index) => {
+        if (!point) return;
+        const candidate = Math.hypot(point.x - event.offsetX, point.y - event.offsetY);
+        if (candidate <= distance) { distance = candidate; best = index; }
+    });
+    return best;
+}
+function profileEditStart(event) {
+    if (!profileEditMode || event.button !== 0) return false;
+    const index = profileEditNearest(event);
+    if (index < 0) return false;
+    profileEditIndex = index; profileEditMoving = true;
+    profileEditDraft = profileEditPath().map(point => [...point]);
+    context.viewer.inputHandler.enabled = false;
+    context.viewer.renderer.domElement.style.cursor = "grabbing";
+    event.preventDefault(); event.stopImmediatePropagation();
+    return true;
+}
+function profileEditMove(event) {
+    if (!profileEditMoving) return false;
+    const point = profileEditSourcePoint(event);
+    if (point && point.every(value => Number.isFinite(value))) {
+        const path = profileEditDraft || profileEditPath();
+        path[profileEditIndex] = point;
+        profileEditDraft = path;
+        renderProfileEditHandles();
+    }
+    event.preventDefault(); event.stopImmediatePropagation();
+    return true;
+}
+function profileEditFinish(event) {
+    if (!profileEditMoving) return false;
+    const point = profileEditSourcePoint(event);
+    const path = profileEditDraft || profileEditPath();
+    if (point && point.every(value => Number.isFinite(value))) path[profileEditIndex] = point;
+    const geometry = {...linkedView.geometry, a:path[0], b:path[path.length - 1], path};
+    latestEvent = {id:++eventNumber, action:"PROFILE_GEOMETRY_EDIT",
+        view_id:linkedView.view_id, geometry};
+    profileEditMoving = false; profileEditIndex = -1;
+    profileEditDraft = path.map(value => [...value]);
+    context.viewer.inputHandler.enabled = true;
+    context.viewer.renderer.domElement.style.cursor = "grab";
+    renderProfileEditHandles();
+    event.preventDefault(); event.stopImmediatePropagation();
+    return true;
+}
 function leaveTool() {
     toolEpoch++;
     insertionPending = false;
@@ -363,6 +476,9 @@ function leaveTool() {
     // Selection activation never owns the camera. Any navigation performed
     // while a tool was armed remains the user current view.
     savedNavigation = null;
+    profileEditMode = false; profileEditMoving = false; profileEditIndex = -1;
+    profileEditDraft = null;
+    profileEditOverlayRemove();
     gestureMode = null;
     tool = "Pointer";
 }
@@ -575,6 +691,7 @@ function initialize(value) {
     const canvas = context.viewer.renderer.domElement;
     canvas.addEventListener("pointerdown", event => {
         if (navigationOverride) return;
+        if (profileEditStart(event)) return;
         if (tool !== "Pointer" && !drawingCamera)
             drawingCamera = context.viewer.scene.getActiveCamera().clone();
         if (tool === "Pointer") clearHoverCursor();
@@ -604,6 +721,7 @@ function initialize(value) {
     }, true);
     canvas.addEventListener("pointermove", event => {
         if (navigationOverride) return;
+        if (profileEditMove(event)) return;
         if (tool === "Pointer" && event.buttons === 0) scheduleHoverCursor(event);
         else if (hoverCursor.active) clearHoverCursor();
         if (tool === "Brush" && brushPointer === event.pointerId) {
@@ -629,6 +747,7 @@ function initialize(value) {
     canvas.addEventListener("pointerleave", clearHoverCursor, true);
     canvas.addEventListener("pointerup", event => {
         if (navigationOverride) return;
+        if (profileEditFinish(event)) return;
         if (tool === "MeasureDistance" || tool === "AddAnnotation") {
             event.preventDefault(); event.stopImmediatePropagation();
             if (event.button !== 0) return;
@@ -787,10 +906,26 @@ function initialize(value) {
         if (tool === "ProfilePath") completeProfilePath(); else completeDrawing();
     }, true);
     canvas.addEventListener("pointercancel", () => {
-        if (navigationOverride || tool === "Pointer") return;
+        if (navigationOverride) return;
+        if (profileEditMoving) {
+            profileEditMoving = false; profileEditIndex = -1; profileEditDraft = null;
+            context.viewer.inputHandler.enabled = true;
+            context.viewer.renderer.domElement.style.cursor = "grab";
+            renderProfileEditHandles();
+            return;
+        }
+        if (tool === "Pointer") return;
         drawing.cancel(); leaveTool(); latestEvent = {id: ++eventNumber, action: "pointer"};
     }, true);
     document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && profileEditMoving) {
+            profileEditMoving = false; profileEditIndex = -1; profileEditDraft = null;
+            context.viewer.inputHandler.enabled = true;
+            context.viewer.renderer.domElement.style.cursor = "grab";
+            renderProfileEditHandles();
+            event.preventDefault();
+            return;
+        }
         if (event.code === "Space" && tool !== "Pointer" && !navigationOverride) {
             navigationOverride = true;
             // A partial screen-space gesture cannot be safely reprojected after
@@ -958,6 +1093,8 @@ window.pointCloudEditor = {
     command(command) {
         if (command.action === "linked_view") {
             linkedView = command.view || null;
+            profileEditDraft = null;
+            renderProfileEditHandles();
             if (context && measurementGroup) renderMeasurements(measurementItems);
             if (context && annotationGroup) renderAnnotations(annotationItems);
             if (context && workspaceGroup) renderWorkspaceViews(workspaceItems);
@@ -1007,6 +1144,15 @@ window.pointCloudEditor = {
         }
         if (command.action === "linked_cursor") {
             renderLinkedCursor(command);
+            return;
+        }
+        if (command.action === "profile_edit_tool") {
+            leaveTool();
+            if (!linkedView || linkedView.view_type !== "VERTICAL_SLICE") return;
+            profileEditMode = true;
+            context.viewer.inputHandler.enabled = true;
+            context.viewer.renderer.domElement.style.cursor = "grab";
+            renderProfileEditHandles();
             return;
         }
         if (command.action === "selection_tool") {

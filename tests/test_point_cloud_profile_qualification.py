@@ -30,6 +30,16 @@ class PointCloudProfileQualificationTests(unittest.TestCase):
             self.assertIn(marker, viewer)
         self.assertIn("profile-histogram", html)
 
+    def test_profile_edit_drag_round_trip_is_source_authoritative(self):
+        editor = (ROOT / "pyforestscan_qgis/viewer/editor.js").read_text()
+        linked = (ROOT / "pyforestscan_qgis/ui/point_cloud_linked_views.py").read_text()
+        for marker in ("profileEditStart", "profileEditMove", "profileEditFinish",
+                       "profileEditDraft", "profileSource", "PROFILE_GEOMETRY_EDIT"):
+            self.assertIn(marker, editor)
+        for marker in ("profile_edit_tool", "PROFILE_GEOMETRY_EDIT", "valueChanged.connect",
+                       "update_view", "Profile path updated"):
+            self.assertIn(marker, linked)
+
     def test_profile_help_explains_source_units_and_navigation(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_tools.py").read_text()
         self.assertIn("source coordinate", source)
