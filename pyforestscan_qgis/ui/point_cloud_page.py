@@ -921,7 +921,7 @@ class PointCloudPage(QWidget):
             self.appearance.sync(display_state)
             self._sync_available_modes(telemetry.get("available_modes"))
             self.palette.blockSignals(True)
-            self.palette.setCurrentText(telemetry.get("palette", "Viridis"))
+            # Keep the user-selected palette; stale telemetry must not reset it.
             self.palette.blockSignals(False)
             self.display_range.sync(telemetry)
             self.linked.observe(telemetry)
