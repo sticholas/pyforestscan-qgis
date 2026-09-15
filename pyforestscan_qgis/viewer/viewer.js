@@ -2,7 +2,7 @@
 "use strict";
 const message = document.getElementById("message");
 const profileAxes = document.getElementById("profile-axes");
-const state = {ready: false, js_ready: false, source_requested: false, errors: [], mode: "Classification", classes: null, height_filter: null, quality: "Automatic", script_revision: "visualization-analytics-1", available_modes: [], dimensions: [], display_range: null, legend: null, analytics: null, analytics_generation: 0, analytics_updates: 0, analytics_sample_limit: 30000};
+const state = {ready: false, js_ready: false, source_requested: false, errors: [], mode: "Classification", palette: "Viridis", classes: null, height_filter: null, quality: "Automatic", script_revision: "visualization-analytics-2", available_modes: [], dimensions: [], display_range: null, legend: null, analytics: null, analytics_generation: 0, analytics_updates: 0, analytics_sample_limit: 30000};
 let viewer, cloud, heightVolume, previousCamera = "", lastFrame = performance.now(), frameMs = 16;
 let linkedContext = null, profileDragInstalled = false;
 let cameraSyncFallbacks = 0;
@@ -19,18 +19,27 @@ function sourceDimensions() {
     const attrs = cloud && cloud.pcoGeometry && cloud.pcoGeometry.pointAttributes && cloud.pcoGeometry.pointAttributes.attributes;
     return (attrs || []).map(attribute => attribute.name || attribute).filter(Boolean);
 }
+const CANONICAL_BINDINGS = {
+    "RGB": {aliases:["rgba", "rgb", "red", "green", "blue"], binding:"rgba"},
+    "Classification": {aliases:["classification"], binding:"classification"},
+    "Elevation": {aliases:["z", "elevation", "position", "position_cartesian"], binding:"elevation"},
+    // HAG is not exposed as a display mode until a derived attribute is
+    // present in the loaded view and bound to a dedicated shader path.
+    "Intensity": {aliases:["intensity"], binding:"intensity"},
+    "Return Number": {aliases:["returnnumber", "return number", "returns"], binding:"return number"},
+    "Number of Returns": {aliases:["numberofreturns", "number of returns"], binding:"number of returns"},
+    "Point Source ID": {aliases:["pointsourceid", "point source id", "source id"], binding:"point source id"},
+    "GPS Time": {aliases:["gpstime", "gps time", "gps-time"], binding:"gps-time"}
+};
 function modeAttribute(mode) {
-    const names = new Set(sourceDimensions().map(value => String(value).toLowerCase()));
-    const aliases = ATTRIBUTE_ALIASES[mode] || [];
+    const names = new Set(sourceDimensions().map(value => String(value).toLowerCase().replace(/[_-]/g, " ")));
+    const binding = CANONICAL_BINDINGS[mode];
+    if (!binding) return null;
     if (mode === "RGB") {
-        if (names.has("rgba") || aliases.every(name => names.has(name.toLowerCase()))) return "rgba";
+        if (names.has("rgba") || ["red", "green", "blue"].every(name => names.has(name))) return "rgba";
         return null;
     }
-    const candidate = aliases.find(name => names.has(name.toLowerCase()));
-    if (candidate) return candidate;
-    if (mode === "Elevation" && (names.has("z") || names.has("position_cartesian") || names.has("position"))) return "elevation";
-    const builtins = {"Classification":"classification", "Intensity":"intensity"};
-    return builtins[mode] && names.has(builtins[mode]) ? builtins[mode] : null;
+    return binding.aliases.some(alias => names.has(alias.replace(/[_-]/g, " "))) ? binding.binding : null;
 }
 function updateVisualizationMetadata() {
     state.dimensions = sourceDimensions();
@@ -68,20 +77,55 @@ function updateScales() {
 }
 
 function classificationColorHex(code) {
-    const entry = viewer && viewer.classifications &&
+    const registry = window.PyForestScanVisualization;
+    const registered = registry && registry.entry(code);
+    const existing = viewer && viewer.classifications &&
         (viewer.classifications[code] || viewer.classifications.DEFAULT);
-    const color = entry && entry.color;
+    const color = registered && registered.color ? registered.color : existing && existing.color;
     if (!color) return "#aab4bb";
     const values = Array.isArray(color) ? color : [color.r, color.g, color.b];
     const scale = values.some(value => Number(value) > 1) ? 1 : 255;
     return "#" + values.slice(0, 3).map(value =>
         Math.max(0, Math.min(255, Math.round(Number(value || 0) * scale))).toString(16).padStart(2, "0")).join("");
 }
+function applyClassificationRegistry() {
+    const registry = window.PyForestScanVisualization;
+    if (!registry || !viewer || !cloud) return;
+    const current = viewer.classifications || {};
+    for (const [code, item] of Object.entries(registry.classification)) {
+        current[code] = {...(current[code] || {}), name:item.label,
+            color:[...item.color, 1],
+            visible:current[code] ? current[code].visible !== false : true};
+    }
+    current.DEFAULT = {...(current.DEFAULT || {}), name:"Unknown class",
+        color:[0.42,0.42,0.46,1],
+        visible:current.DEFAULT ? current.DEFAULT.visible !== false : true};
+    viewer.classifications = current;
+    cloud.material.classification = current;
+    cloud.material.recomputeClassification();
+}
+function ensureClassification(code) {
+    const registry = window.PyForestScanVisualization;
+    if (!registry || !viewer || !cloud) return;
+    viewer.classifications = viewer.classifications || {};
+    if (viewer.classifications[code]) return;
+    const item = registry.entry(code);
+    viewer.classifications[code] = {name:item.label, color:[...item.color, 1], visible:true};
+    cloud.material.classification = viewer.classifications;
+    cloud.material.recomputeClassification();
+}
+function setPalette(name, invert=false) {
+    const registry = window.PyForestScanVisualization;
+    if (!registry || !cloud || !registry.palettes[name]) return;
+    state.palette = name;
+    cloud.material.gradient = registry.gradient(name, invert);
+    updateLegend();
+}
 function updateLegend() {
     if (!cloud) return;
     const range = state.display_range || state.z_range;
     const units = state.mode === "Height Above Ground" || state.mode === "Elevation" ? "source height units" : "display values";
-    const labels = {2:"Ground", 3:"Low vegetation", 4:"Medium vegetation", 5:"High vegetation", 6:"Building", 7:"Low noise", 18:"High noise"};
+    const labels = Object.fromEntries(Object.entries((window.PyForestScanVisualization || {}).classification || {}).map(([code, item]) => [code, item.label]));
     const categories = state.mode === "Classification" ? (state.observed_classes || []).slice(0, 12).map(code => ({
         code, label: labels[code] || (viewer.classifications[code] && viewer.classifications[code].name) || `Class ${code}`,
         color: classificationColorHex(code), visible: viewer.classifications[code] ? viewer.classifications[code].visible !== false : (!state.classes || state.classes.includes(code))
@@ -287,6 +331,7 @@ function inspectVisibleClasses() {
         const colors = geometry.getAttribute("rgba");
         for (; offset < end; offset++) {
             observedClasses.add(values[offset]);
+            ensureClassification(values[offset]);
             if (colors && offset < colors.count) {
                 const i = offset * colors.itemSize;
                 rgbNonzero = rgbNonzero || colors.array[i] > 0 || colors.array[i + 1] > 0 || colors.array[i + 2] > 0;
@@ -372,6 +417,7 @@ window.command = function(command) {
     try {
         const action = command.action;
         if (action === "point_display") pointDisplay(command.style, command.size);
+        if (action === "palette") setPalette(String(command.palette || "Viridis"), !!command.invert);
         if (action === "linked_view") {
             linkedContext = command.view || null;
             updateProfileAxes();
@@ -612,6 +658,8 @@ try {
         cloud.minimumNodePixelSize = viewer.minNodeSize;
         cloud.material.activeAttributeName = "classification";
         updateVisualizationMetadata();
+        applyClassificationRegistry();
+        setPalette(state.palette);
         pointDisplay(state.point_style, state.point_size);
         cloud.updateMatrixWorld(true);
         const bounds = cloud.boundingBox.clone().applyMatrix4(cloud.matrixWorld);

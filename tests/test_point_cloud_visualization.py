@@ -1,4 +1,7 @@
 import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
 
 from pyforestscan_qgis.core.point_cloud.visualization import (
     DisplayRange, LegendModel, RenderState, available_attribute_modes,
@@ -55,3 +58,66 @@ class PointCloudVisualizationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ViewerColorPipelineContractTests(unittest.TestCase):
+    def test_viewer_uses_canonical_potree_bindings(self):
+        source = (ROOT / "pyforestscan_qgis/viewer/viewer.js").read_text(encoding="utf-8")
+        for binding in ('binding:"classification"', 'binding:"intensity"',
+                        'binding:"return number"', 'binding:"number of returns"',
+                        'binding:"point source id"'):
+            self.assertIn(binding, source)
+        self.assertIn('script src="visualization_registry.js"',
+                      (ROOT / "pyforestscan_qgis/viewer/viewer.html").read_text(encoding="utf-8"))
+
+    def test_renderer_has_distinct_return_and_continuous_intensity_contracts(self):
+        source = (ROOT / "pyforestscan_qgis/viewer/assets/build/potree/potree.js").read_text(encoding="utf-8")
+        self.assertIn('color = texture2D(gradient, vec2(w, 1.0 - w)).rgb;', source)
+        self.assertIn('vec3 getReturnNumber(){ return returnPalette(returnNumber); }', source)
+        self.assertIn('vec3 getNumberOfReturns(){ return returnPalette(numberOfReturns); }', source)
+
+    def test_palette_registry_has_scientific_choices_and_stable_unknown_classes(self):
+        source = (ROOT / "pyforestscan_qgis/viewer/visualization_registry.js").read_text(encoding="utf-8")
+        for name in ("Viridis", "Turbo", "Terrain", "Grayscale", "Heat", "CoolWarm", "Forest"):
+            self.assertIn(name, source)
+        self.assertIn("function fallback(code)", source)
+        self.assertIn("function gradient(name, invert)", source)
+
+
+from pyforestscan_qgis.core.point_cloud.scientific_visualization import (
+    SPECS, VisualizationKind, available_product_visualizations,
+    build_visualization_layer, product_visualization_spec,
+)
+
+
+class ScientificVisualizationContractTests(unittest.TestCase):
+    def test_product_specs_are_explicit_and_scientific(self):
+        self.assertEqual(VisualizationKind.RASTER_SURFACE, product_visualization_spec("CHM").kind)
+        self.assertEqual("height above ground", product_visualization_spec("CHM").vertical_semantics)
+        self.assertEqual(9, len(SPECS))
+
+    def test_available_overlays_require_real_outputs(self):
+        with self.subTest("missing"):
+            self.assertEqual((), available_product_visualizations({"CHM": ROOT / "missing.tif"}))
+        output = ROOT / "tests" / "_b2s_chm_test.tif"
+        output.write_bytes(b"test")
+        try:
+            available = available_product_visualizations({"CHM": output, "PAD": output})
+            self.assertEqual(("CHM", "PAD"), tuple(item.product_id for item in available))
+        finally:
+            output.unlink()
+
+    def test_layer_requires_output_and_carries_provenance(self):
+        output = ROOT / "tests" / "_b2s_layer_test.tif"
+        output.write_bytes(b"test")
+        try:
+            layer = build_visualization_layer(
+                "CHM", output_path=output, source_path="source.laz",
+                source_fingerprint="sha256:test", crs="EPSG:32604",
+                value_range=(0.0, 42.0), provenance={"engine": "PBM"},
+            )
+            self.assertEqual("sha256:test", layer.source_fingerprint)
+            self.assertEqual("EPSG:32604", layer.crs)
+            self.assertEqual("PBM", layer.provenance["engine"])
+        finally:
+            output.unlink()

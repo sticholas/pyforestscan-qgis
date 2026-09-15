@@ -1,3 +1,14 @@
+## Unreleased
+
+### Phase 34B2S in progress
+
+- Added canonical point-attribute binding and stable scientific palette
+  contracts for the point-cloud viewer.
+- Added a provenance-aware product visualization registry that only exposes
+  overlays for real existing outputs.
+- Reduced viewer control churn by preserving Color By options across telemetry
+  refreshes.
+
 # Changelog
 
 - Added a pure scoped CHM preflight and promotion gate covering PBM readiness, source format, CRS, geometry, selection count, and scientific review. UI promotion remains disabled until the real bounded PBM path is validated.

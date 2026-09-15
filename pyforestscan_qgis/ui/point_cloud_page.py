@@ -342,6 +342,11 @@ class PointCloudPage(QWidget):
         self.mode.setAccessibleName("Color By")
         self.mode.setToolTip("RGB uses stored Red, Green and Blue attributes. Missing, zero or constant colors are diagnosed separately from rendering failures. Display modes never alter source attributes.")
         self.mode.currentTextChanged.connect(lambda value: self.send({"action": "mode", "mode": value}))
+        self.palette = QComboBox()
+        self.palette.addItems(("Viridis", "Turbo", "Terrain", "Grayscale", "Heat", "CoolWarm", "Forest"))
+        self.palette.setAccessibleName("Color palette")
+        self.palette.setToolTip("Choose a stable scientific color palette for continuous values. Classification colors remain categorical.")
+        self.palette.currentTextChanged.connect(lambda value: self.send({"action": "palette", "palette": value}))
         layout.addLayout(toolbar)
         self.navigation_mode = QComboBox()
         self.navigation_mode.addItems(("Orbit", "Pan"))
@@ -353,6 +358,10 @@ class PointCloudPage(QWidget):
         color_label.setBuddy(self.mode)
         display_row.addWidget(color_label)
         display_row.addWidget(self.mode, 1)
+        palette_label = QLabel("Palette")
+        palette_label.setBuddy(self.palette)
+        display_row.addWidget(palette_label)
+        display_row.addWidget(self.palette)
         from .point_cloud_appearance import PointAppearance
         self.appearance = PointAppearance(self._send_point_display, self)
         display_row.addWidget(self.appearance)
@@ -665,6 +674,7 @@ class PointCloudPage(QWidget):
         for button in self.view_buttons:
             button.setEnabled(ready)
         self.mode.setEnabled(ready)
+        self.palette.setEnabled(ready)
         self.appearance.setEnabled(ready)
         self.navigation_mode.setEnabled(ready)
         self.apply_filters_button.setEnabled(ready)
@@ -748,7 +758,7 @@ class PointCloudPage(QWidget):
         self.class_list.clear()
         self._edit_session = self._session_to_open
         self._restore_expected = None
-        for combo, value in ((self.mode, "Classification"), (self.navigation_mode, "Orbit"), (self.quality, "Automatic")):
+        for combo, value in ((self.mode, "Classification"), (self.palette, "Viridis"), (self.navigation_mode, "Orbit"), (self.quality, "Automatic")):
             combo.blockSignals(True)
             combo.setCurrentText(value)
             combo.blockSignals(False)
@@ -775,12 +785,15 @@ class PointCloudPage(QWidget):
             self._start(ViewerWorker(setup=True))
 
     def _sync_available_modes(self, modes):
+        modes = tuple(modes or ())
         if not modes:
             return
         current = self.mode.currentText()
+        existing = tuple(self.mode.itemText(index) for index in range(self.mode.count()))
         self.mode.blockSignals(True)
-        self.mode.clear()
-        self.mode.addItems(tuple(modes))
+        if existing != modes:
+            self.mode.clear()
+            self.mode.addItems(modes)
         self.mode.setCurrentText(current if current in modes else modes[0])
         self.mode.blockSignals(False)
 
@@ -812,6 +825,9 @@ class PointCloudPage(QWidget):
                                      point_size=active_view.lod.get("point_size", 0))
             self.appearance.sync(display_state)
             self._sync_available_modes(telemetry.get("available_modes"))
+            self.palette.blockSignals(True)
+            self.palette.setCurrentText(telemetry.get("palette", "Viridis"))
+            self.palette.blockSignals(False)
             self.display_range.sync(telemetry)
             self.linked.observe(telemetry)
             self.editor.observe(telemetry)
@@ -848,6 +864,8 @@ class PointCloudPage(QWidget):
                 self.send({"action": "quality", "quality": restored.get("quality", "Automatic")})
                 self.mode.setCurrentText(restored["mode"])
                 self.send({"action": "mode", "mode": restored["mode"]})
+                self.palette.setCurrentText(restored.get("palette", "Viridis"))
+                self.send({"action": "palette", "palette": restored.get("palette", "Viridis")})
                 self.appearance.sync(restored)
                 self.send({"action": "point_display",
                            "style": restored.get("point_style", "Circular"),

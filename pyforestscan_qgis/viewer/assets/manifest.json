@@ -17,8 +17,8 @@
       "bytes": 1328
     },
     "build/potree/potree.js": {
-      "sha256": "4740fef003428ade8fc89a6fe1278e9e40b6c8427700425464a15e1c40525684",
-      "bytes": 2370527
+      "sha256": "8c2b4bf7f52c4cc91c10f442a4aff9c2cc913ce11064cce7a6485616e9f43915",
+      "bytes": 2370492
     },
     "build/potree/workers/EptLaszipDecoderWorker.js": {
       "sha256": "5de17bcb0a1d96142ff61fdd54eb1255d3c49ca1f0b4cc0b443500887ec0fa1d",

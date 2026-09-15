@@ -57942,18 +57942,18 @@ vec4 getClassification(){
 	return classColor;
 }
 
-vec3 getReturns(){
-
-	// 0b 00_000_111
-	float rn = mod(returnNumber, 8.0);
-	// 0b 00_111_000
-	float nr = mod(returnNumber / 8.0, 8.0);
-
-	if(nr <= 1.0){
-		return vec3(1.0, 0.0, 0.0);
-	}else{
-		return vec3(0.0, 1.0, 0.0);
-	}
+vec3 returnPalette(float value){
+	float key = mod(floor(value), 8.0);
+	if(key < 0.5) return vec3(0.12, 0.47, 0.71);
+	if(key < 1.5) return vec3(0.84, 0.37, 0.16);
+	if(key < 2.5) return vec3(0.39, 0.64, 0.18);
+	if(key < 3.5) return vec3(0.63, 0.34, 0.70);
+	if(key < 4.5) return vec3(0.10, 0.68, 0.62);
+	if(key < 5.5) return vec3(0.90, 0.60, 0.12);
+	if(key < 6.5) return vec3(0.35, 0.35, 0.80);
+	return vec3(0.75, 0.25, 0.30);
+}
+vec3 getReturns(){ return returnPalette(returnNumber); }
 
 	// return vec3(nr / 4.0, 0.0, 0.0);
 
@@ -57982,29 +57982,9 @@ vec3 getReturns(){
 	// }
 }
 
-vec3 getReturnNumber(){
-	if(numberOfReturns == 1.0){
-		return vec3(1.0, 1.0, 0.0);
-	}else{
-		if(returnNumber == 1.0){
-			return vec3(1.0, 0.0, 0.0);
-		}else if(returnNumber == numberOfReturns){
-			return vec3(0.0, 0.0, 1.0);
-		}else{
-			return vec3(0.0, 1.0, 0.0);
-		}
-	}
-}
+vec3 getReturnNumber(){ return returnPalette(returnNumber); }
 
-vec3 getNumberOfReturns(){
-	float value = numberOfReturns;
-
-	float w = value / 6.0;
-
-	vec3 color = texture2D(gradient, vec2(w, 1.0 - w)).rgb;
-
-	return color;
-}
+vec3 getNumberOfReturns(){ return returnPalette(numberOfReturns); }
 
 vec3 getSourceID(){
 	float w = mod(pointSourceID, 10.0) / 10.0;
@@ -58113,7 +58093,7 @@ vec3 getColor(){
 		//color = vec3(1.0, 0.5, 0.3);
 	#elif defined color_type_intensity
 		float w = getIntensity();
-		color = vec3(w, w, w);
+		color = texture2D(gradient, vec2(w, 1.0 - w)).rgb;
 	#elif defined color_type_gps_time
 		color = getGpsTime();
 	#elif defined color_type_intensity_gradient

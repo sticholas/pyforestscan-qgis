@@ -98,7 +98,12 @@ class DetachedView(QDialog):
         self.mode = QComboBox()
         self.mode.addItems(("Classification","Elevation","RGB","Intensity"))
         self.mode.currentTextChanged.connect(lambda value:self.send({"action":"mode","mode":value}))
-        row.addWidget(self.mode)
+        self.palette = QComboBox()
+        self.palette.addItems(("Viridis", "Turbo", "Terrain", "Grayscale", "Heat", "CoolWarm", "Forest"))
+        self.palette.setAccessibleName("Color palette")
+        self.palette.setToolTip("Palette for continuous values; classification remains categorical.")
+        self.palette.currentTextChanged.connect(lambda value:self.send({"action":"palette","palette":value}))
+        row.addWidget(self.palette)
         from .point_cloud_appearance import PointAppearance
         self.appearance = PointAppearance(self._send_point_display, self)
         row.addWidget(self.appearance)
@@ -188,12 +193,15 @@ class DetachedView(QDialog):
         )
 
     def _sync_available_modes(self, modes):
+        modes = tuple(modes or ())
         if not modes:
             return
         current = self.mode.currentText()
+        existing = tuple(self.mode.itemText(index) for index in range(self.mode.count()))
         self.mode.blockSignals(True)
-        self.mode.clear()
-        self.mode.addItems(tuple(modes))
+        if existing != modes:
+            self.mode.clear()
+            self.mode.addItems(modes)
         self.mode.setCurrentText(current if current in modes else modes[0])
         self.mode.blockSignals(False)
 
@@ -245,6 +253,8 @@ class DetachedView(QDialog):
         self.action_buttons["redo"].setEnabled(ready and bool(editor.state.get("can_redo")))
         self.action_buttons["invert"].setEnabled(ready and bool(editor.state.get("selection")))
         self.resize_button.setEnabled(ready and bool(editor.state.get("selection")))
+        self.mode.setEnabled(ready)
+        self.palette.setEnabled(ready)
 
     def action(self, action):
         if action in ("undo","redo","invert"):
@@ -273,6 +283,9 @@ class DetachedView(QDialog):
         self.telemetry = telemetry
         self.appearance.sync(telemetry)
         self._sync_available_modes(telemetry.get("available_modes"))
+        self.palette.blockSignals(True)
+        self.palette.setCurrentText(telemetry.get("palette", "Viridis"))
+        self.palette.blockSignals(False)
         self.display_range.sync(telemetry)
         self.class_visibility.sync(telemetry)
         view = self.controller.page.workspace.views.get(self.view_id)
