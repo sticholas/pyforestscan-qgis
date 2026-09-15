@@ -4,7 +4,7 @@
 <style>
 html,body,#view{width:100%;height:100%;margin:0;overflow:hidden;background:#202427}
 #message{position:absolute;bottom:8px;left:8px;right:8px;color:white;font:12px sans-serif;pointer-events:none}
-#profile-axes{display:none;position:absolute;inset:12px 18px 34px 52px;color:#eef4f5;
+#visual-legend,#visual-analytics{position:absolute;left:12px;right:12px;color:#eef4f5;background:rgba(20,24,27,.72);padding:4px 8px;font:11px sans-serif;pointer-events:none;text-shadow:0 1px 2px #111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#visual-legend{top:10px}#visual-analytics{top:34px}#profile-axes{display:none;position:absolute;inset:12px 18px 34px 52px;color:#eef4f5;
   font:11px sans-serif;pointer-events:none;text-shadow:0 1px 2px #111}
 #profile-x{position:absolute;left:0;right:0;bottom:0;border-top:1px solid rgba(238,244,245,.8)}
 #profile-x-min{position:absolute;left:0;top:4px}#profile-x-max{position:absolute;right:0;top:4px}
@@ -15,7 +15,7 @@ html,body,#view{width:100%;height:100%;margin:0;overflow:hidden;background:#2024
 #profile-y-title{position:absolute;left:-42px;top:50%;transform:rotate(-90deg) translateX(-50%);
   transform-origin:left top;white-space:nowrap;font-weight:600}
 </style></head>
-<body><div id="view"></div>
+<body><div id="view"></div><div id="visual-legend" aria-live="polite">Opening visualization</div><div id="visual-analytics" aria-live="polite">VISIBLE VIEW | Waiting for display sample</div>
 <div id="profile-axes" aria-label="Profile axes">
   <div id="profile-x"><span id="profile-x-min"></span><span id="profile-x-title"></span><span id="profile-x-max"></span></div>
   <div id="profile-y"><span id="profile-y-min"></span><span id="profile-y-title"></span><span id="profile-y-max"></span></div>

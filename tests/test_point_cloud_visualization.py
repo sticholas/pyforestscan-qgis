@@ -1,8 +1,9 @@
 import unittest
 
 from pyforestscan_qgis.core.point_cloud.visualization import (
-    DisplayRange, LegendModel, available_attribute_modes, display_range,
-    nice_tick_step, nice_ticks,
+    DisplayRange, LegendModel, RenderState, available_attribute_modes,
+    display_range, histogram, nice_tick_step, nice_ticks, numeric_summary,
+    resolve_attribute,
 )
 
 
@@ -19,6 +20,19 @@ class PointCloudVisualizationTests(unittest.TestCase):
         modes = available_attribute_modes(("X", "Y", "Z", "ScanAngleRank", "PointSourceID"))
         self.assertIn("Scan Angle", modes)
         self.assertIn("Point Source ID", modes)
+
+    def test_alias_resolution_and_render_state_identity(self):
+        self.assertEqual("ScanAngleRank", resolve_attribute("Scan Angle", ("ScanAngleRank",)))
+        self.assertIsNone(resolve_attribute("RGB", ("Red", "Green")))
+        state = RenderState(color_mode="Elevation", point_size=2)
+        self.assertEqual(state.identity(), state.identity())
+
+    def test_bounded_histogram_and_numeric_summary(self):
+        result = histogram([0, 1, 2, 3, 4], bins=3)
+        self.assertEqual(5, sum(result["bins"]))
+        summary = numeric_summary([0, 1, 2, 3, 4])
+        self.assertEqual(2.0, summary["median"])
+        self.assertEqual(3, summary["p75"])
 
     def test_nice_ticks_use_readable_intervals(self):
         self.assertIn(nice_tick_step(35), (5.0, 10.0))

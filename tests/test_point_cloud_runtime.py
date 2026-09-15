@@ -140,6 +140,21 @@ class ViewerRuntimeTests(unittest.TestCase):
         self.assertIn("cloud.minimumNodePixelSize = threshold", source)
         self.assertIn('fitSource("source_open")', source)
 
+    def test_visualization_protocol_reports_modes_legend_analytics_and_ranges(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "pyforestscan_qgis/viewer/viewer.js").read_text()
+        for marker in ("available_modes", "updateLegend", "updateAnalytics", "display_range_mode"):
+            self.assertIn(marker, source)
+        html = (root / "pyforestscan_qgis/viewer/viewer.html").read_text()
+        self.assertIn('id="visual-legend"', html)
+        self.assertIn('id="visual-analytics"', html)
+
+    def test_range_control_is_presentation_only(self):
+        source = (Path(__file__).resolve().parents[1] / "pyforestscan_qgis/ui/point_cloud_display_range.py").read_text()
+        self.assertIn('"action": "display_range"', source)
+        self.assertIn("does not hide points", source)
+
+
 
 if __name__ == "__main__":
     unittest.main()

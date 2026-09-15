@@ -102,6 +102,9 @@ class DetachedView(QDialog):
         from .point_cloud_appearance import PointAppearance
         self.appearance = PointAppearance(self._send_point_display, self)
         row.addWidget(self.appearance)
+        from .point_cloud_display_range import DisplayRangeControls
+        self.display_range = DisplayRangeControls(self.send, self)
+        row.addWidget(self.display_range)
         from .point_cloud_class_visibility import ClassVisibilityMenu
         self.class_visibility = ClassVisibilityMenu(self.send, self)
         row.addWidget(self.class_visibility)
@@ -176,6 +179,16 @@ class DetachedView(QDialog):
             value.get("style", "Circular"),
             value.get("size", 0),
         )
+
+    def _sync_available_modes(self, modes):
+        if not modes:
+            return
+        current = self.mode.currentText()
+        self.mode.blockSignals(True)
+        self.mode.clear()
+        self.mode.addItems(tuple(modes))
+        self.mode.setCurrentText(current if current in modes else modes[0])
+        self.mode.blockSignals(False)
 
     def clear_selection_error(self):
         self.selection_error = ""
@@ -252,6 +265,8 @@ class DetachedView(QDialog):
             return
         self.telemetry = telemetry
         self.appearance.sync(telemetry)
+        self._sync_available_modes(telemetry.get("available_modes"))
+        self.display_range.sync(telemetry)
         self.class_visibility.sync(telemetry)
         view = self.controller.page.workspace.views.get(self.view_id)
         if view is None:

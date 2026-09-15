@@ -23,6 +23,7 @@ from ..core.backend.process_env import hidden_subprocess_kwargs
 from ..core.point_cloud.runtime import ViewerRuntimeService, viewer_environment
 from ..core.point_cloud.run_record import ViewerRunRecord
 from ..core.point_cloud.display_stability import DisplayTelemetryStabilizer
+from .point_cloud_display_range import DisplayRangeControls
 
 # Workers are not children of disposable widgets. Keep them alive through unload;
 # each exits after its owned subprocess is reaped, then releases this reference.
@@ -355,6 +356,8 @@ class PointCloudPage(QWidget):
         from .point_cloud_appearance import PointAppearance
         self.appearance = PointAppearance(self._send_point_display, self)
         display_row.addWidget(self.appearance)
+        self.display_range = DisplayRangeControls(self.send, self)
+        display_row.addWidget(self.display_range)
         layout.addLayout(display_row)
         self.filter_toggle = QToolButton()
         self.filter_toggle.setText("Display filters")
@@ -771,6 +774,16 @@ class PointCloudPage(QWidget):
         if answer == qt_enum(QMessageBox, "Yes", "StandardButton"):
             self._start(ViewerWorker(setup=True))
 
+    def _sync_available_modes(self, modes):
+        if not modes:
+            return
+        current = self.mode.currentText()
+        self.mode.blockSignals(True)
+        self.mode.clear()
+        self.mode.addItems(tuple(modes))
+        self.mode.setCurrentText(current if current in modes else modes[0])
+        self.mode.blockSignals(False)
+
     def _update(self, value):
         if self._closing or self._pending_source:
             return
@@ -798,6 +811,8 @@ class PointCloudPage(QWidget):
                 display_state.update(point_style=active_view.lod.get("point_style", "Circular"),
                                      point_size=active_view.lod.get("point_size", 0))
             self.appearance.sync(display_state)
+            self._sync_available_modes(telemetry.get("available_modes"))
+            self.display_range.sync(telemetry)
             self.linked.observe(telemetry)
             self.editor.observe(telemetry)
             self.linked.coordinate_resources()

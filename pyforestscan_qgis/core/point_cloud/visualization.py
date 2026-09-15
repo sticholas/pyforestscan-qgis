@@ -25,6 +25,65 @@ ATTRIBUTE_DIMENSIONS = {
 }
 
 @dataclass(frozen=True)
+class RenderState:
+    """Presentation state shared by overview, detail and profile views."""
+    color_mode: str = "Classification"
+    display_range: DisplayRange | None = None
+    visible_classes: tuple[int, ...] | None = None
+    point_style: str = "Circular"
+    point_size: int = 0
+    quality: str = "Automatic"
+    vertical_slice: tuple[float, float] | None = None
+    display_filters: tuple[tuple[str, object], ...] = ()
+
+    def identity(self):
+        return (self.color_mode, self.display_range, self.visible_classes,
+                self.point_style, self.point_size, self.quality,
+                self.vertical_slice, self.display_filters)
+
+def attribute_aliases(mode):
+    """Return canonical source dimensions for one display mode."""
+    return ATTRIBUTE_DIMENSIONS.get(mode, ())
+
+def resolve_attribute(mode, dimensions):
+    """Resolve a display mode to the first matching source dimension."""
+    names = {str(value) for value in dimensions}
+    aliases = attribute_aliases(mode)
+    if mode == "RGB" and not all(name in names for name in aliases):
+        return None
+    return next((name for name in aliases if name in names), None)
+
+def histogram(values, *, bins=16, minimum=None, maximum=None):
+    """Create a bounded display-sample histogram with explicit endpoints."""
+    numbers = [float(value) for value in values if math.isfinite(float(value))]
+    if not numbers:
+        return {"minimum": None, "maximum": None, "bins": ()}
+    bins = max(1, min(128, int(bins)))
+    low = min(numbers) if minimum is None else float(minimum)
+    high = max(numbers) if maximum is None else float(maximum)
+    if not math.isfinite(low) or not math.isfinite(high) or low > high:
+        raise ValueError("Histogram extent must be finite and ascending.")
+    if low == high:
+        return {"minimum": low, "maximum": high, "bins": (len(numbers),)}
+    counts = [0] * bins
+    width = (high - low) / bins
+    for value in numbers:
+        index = int((value - low) / width)
+        counts[max(0, min(bins - 1, index))] += 1
+    return {"minimum": low, "maximum": high, "bins": tuple(counts)}
+
+def numeric_summary(values):
+    """Return cheap, sample-labelled descriptive values for analytics."""
+    numbers = sorted(float(value) for value in values if math.isfinite(float(value)))
+    if not numbers:
+        return {"count": 0, "minimum": None, "maximum": None, "p25": None, "median": None, "p75": None, "p95": None}
+    def percentile(percent):
+        position = (len(numbers) - 1) * percent / 100.0
+        lower, upper = math.floor(position), math.ceil(position)
+        return numbers[lower] if lower == upper else numbers[lower] + (numbers[upper] - numbers[lower]) * (position - lower)
+    return {"count": len(numbers), "minimum": numbers[0], "maximum": numbers[-1], "p25": percentile(25), "median": percentile(50), "p75": percentile(75), "p95": percentile(95)}
+
+@dataclass(frozen=True)
 class DisplayRange:
     minimum: float
     maximum: float

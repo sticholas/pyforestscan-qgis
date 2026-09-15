@@ -2,10 +2,86 @@
 "use strict";
 const message = document.getElementById("message");
 const profileAxes = document.getElementById("profile-axes");
-const state = {ready: false, js_ready: false, source_requested: false, errors: [], mode: "Classification", classes: null, height_filter: null, quality: "Automatic", script_revision: "framing-guard-1"};
+const state = {ready: false, js_ready: false, source_requested: false, errors: [], mode: "Classification", classes: null, height_filter: null, quality: "Automatic", script_revision: "visualization-analytics-1", available_modes: [], dimensions: [], display_range: null, legend: null, analytics: null};
 let viewer, cloud, heightVolume, previousCamera = "", lastFrame = performance.now(), frameMs = 16;
 let linkedContext = null, profileDragInstalled = false;
 let cameraSyncFallbacks = 0;
+const ATTRIBUTE_MODES = ["RGB", "Classification", "Elevation", "Height Above Ground", "Intensity", "Return Number", "Number of Returns", "Scan Angle", "Point Source ID", "GPS Time", "User Data"];
+const ATTRIBUTE_ALIASES = {
+    "RGB": ["Red", "Green", "Blue"], "Classification": ["Classification"],
+    "Elevation": ["Z"], "Height Above Ground": ["HeightAboveGround", "_pfsHag"],
+    "Intensity": ["Intensity"], "Return Number": ["ReturnNumber"],
+    "Number of Returns": ["NumberOfReturns"], "Scan Angle": ["ScanAngleRank", "ScanAngle"],
+    "Point Source ID": ["PointSourceId", "PointSourceID"], "GPS Time": ["GpsTime", "GPSTime"],
+    "User Data": ["UserData"]
+};
+function sourceDimensions() {
+    const attrs = cloud && cloud.pcoGeometry && cloud.pcoGeometry.pointAttributes && cloud.pcoGeometry.pointAttributes.attributes;
+    return (attrs || []).map(attribute => attribute.name || attribute).filter(Boolean);
+}
+function modeAttribute(mode) {
+    const names = new Set(sourceDimensions().map(String));
+    const aliases = ATTRIBUTE_ALIASES[mode] || [];
+    if (mode === "RGB" && !aliases.every(name => names.has(name))) return null;
+    const candidate = aliases.find(name => names.has(name));
+    const builtins = {"Classification":"classification", "Elevation":"elevation", "RGB":"rgba", "Intensity":"intensity"};
+    return candidate || builtins[mode] || null;
+}
+function updateVisualizationMetadata() {
+    state.dimensions = sourceDimensions();
+    state.available_modes = ATTRIBUTE_MODES.filter(mode => !!modeAttribute(mode));
+    if (!state.available_modes.includes(state.mode)) state.mode = state.available_modes[0] || "Classification";
+    updateLegend();
+}
+function niceStep(span, target=5) {
+    if (!(span > 0)) return 1;
+    const raw = span / target, exponent = Math.floor(Math.log10(raw)), scale = 10 ** exponent;
+    const normalized = raw / scale;
+    return (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * scale;
+}
+function niceTicks(minimum, maximum, target=5) {
+    if (!Number.isFinite(minimum) || !Number.isFinite(maximum) || minimum >= maximum) return [minimum, maximum];
+    const step = niceStep(maximum - minimum, target), start = Math.ceil(minimum / step - 1e-9) * step;
+    const ticks = [];
+    for (let value = start; value <= maximum + step * 1e-9 && ticks.length < 12; value += step) ticks.push(Number(value.toPrecision(12)));
+    return ticks.length ? ticks : [minimum, maximum];
+}
+function updateLegend() {
+    if (!cloud) return;
+    const range = state.display_range || state.z_range;
+    const units = state.mode === "Height Above Ground" || state.mode === "Elevation" ? "source height units" : "display values";
+    state.legend = {title: state.mode, units, range: range || null, ticks: range ? niceTicks(Number(range[0]), Number(range[1])) : [], available: state.available_modes};
+    const node = document.getElementById("visual-legend");
+    if (node) node.textContent = state.legend.range ? `${state.mode} | ${state.legend.range[0].toFixed(2)}–${state.legend.range[1].toFixed(2)} ${units}` : state.mode;
+}
+function updateAnalytics() {
+    if (!cloud || !state.ready) return;
+    const values = [], classes = {}, limit = 30000;
+    for (const node of cloud.visibleNodes || []) {
+        const geometry = node.geometryNode && node.geometryNode.geometry;
+        if (!geometry) continue;
+        const attributeName = modeAttribute(state.mode);
+        const attribute = geometry.getAttribute(attributeName === "elevation" ? "position" : attributeName) ||
+            geometry.getAttribute(attributeName ? attributeName.toLowerCase() : "");
+        const classification = geometry.getAttribute("classification");
+        const count = Math.min(attribute ? attribute.count : 0, limit - values.length);
+        for (let index = 0; index < count; index++) {
+            const value = attribute.itemSize === 1 ? attribute.array[index] : attribute.array[index * attribute.itemSize + 2];
+            if (Number.isFinite(value)) values.push(value);
+            if (classification && index < classification.count) {
+                const code = classification.array[index]; classes[code] = (classes[code] || 0) + 1;
+            }
+        }
+        if (values.length >= limit) break;
+    }
+    values.sort((a, b) => a - b);
+    const minimum = values.length ? values[0] : null, maximum = values.length ? values[values.length - 1] : null;
+    const percentile = p => values.length ? values[Math.min(values.length - 1, Math.floor((values.length - 1) * p))] : null;
+    state.analytics = {scope: "VISIBLE VIEW", sample_points: values.length, minimum, maximum, robust_range: [percentile(.02), percentile(.98)], classes, bounded: true, mode: state.mode};
+    const node = document.getElementById("visual-analytics");
+    if (node) node.textContent = values.length ? `VISIBLE VIEW | ${values.length.toLocaleString()} sampled points | ${state.mode}: ${minimum.toFixed(2)}–${maximum.toFixed(2)}` : "VISIBLE VIEW | Waiting for display sample";
+}
+
 function updateProfileAxes() {
     const profile = linkedContext && linkedContext.view_type === "VERTICAL_SLICE" &&
         linkedContext.display_projection === "PROFILE_DISTANCE";
@@ -25,11 +101,13 @@ function updateProfileAxes() {
     const unit = linkedContext.horizontal_unit || "source units";
     const verticalUnit = linkedContext.vertical_unit || "source height units";
     const axis = geometry.vertical_axis === "HeightAboveGround" ? "Height above ground" : "Elevation";
-    document.getElementById("profile-x-min").textContent = "0";
-    document.getElementById("profile-x-max").textContent = length.toFixed(1);
+    const distanceTicks = niceTicks(0, length);
+    document.getElementById("profile-x-min").textContent = distanceTicks[0] ?? "0";
+    document.getElementById("profile-x-max").textContent = distanceTicks[distanceTicks.length - 1] ?? length.toFixed(1);
     document.getElementById("profile-x-title").textContent = `Distance along profile (${unit})`;
-    document.getElementById("profile-y-min").textContent = Number(vertical[0]).toFixed(1);
-    document.getElementById("profile-y-max").textContent = Number(vertical[1]).toFixed(1);
+    const verticalTicks = niceTicks(Number(vertical[0]), Number(vertical[1]));
+    document.getElementById("profile-y-min").textContent = Number(verticalTicks[0]).toFixed(1);
+    document.getElementById("profile-y-max").textContent = Number(verticalTicks[verticalTicks.length - 1]).toFixed(1);
     document.getElementById("profile-y-title").textContent = `${axis} (${verticalUnit})`;
     state.profile_axes = {distance:[0,length],vertical:[Number(vertical[0]),Number(vertical[1])],
         horizontal_unit:unit,vertical_unit:verticalUnit,vertical_axis:axis};
@@ -102,7 +180,7 @@ function pointDisplay(style, manual) {
 }
 let residentLimit = 2000000;
 const observedClasses = new Set(), scannedClasses = new WeakMap();
-let rgbChecked = 0, rgbNonzero = false;
+let rgbChecked = 0, rgbNonzero = false, lastAnalytics = 0;
 const rawRGB = new RGBStats(), decodedRGB = new RGBStats(), rgbNodes = new WeakSet();
 let rgbRenderError = "";
 window.editorSelectionFilters = () => ({classes: state.classes, height_filter: state.height_filter});
@@ -259,15 +337,42 @@ window.command = function(command) {
             state.source_class = command.source_class;
         }
         if (action === "mode") {
-            const names = {Classification: "classification", Elevation: "elevation", RGB: "rgba", Intensity: "intensity"};
-            if (!names[command.mode]) throw Error("Unsupported render mode.");
-            cloud.material.activeAttributeName = names[command.mode];
+            const attribute = modeAttribute(command.mode);
+            if (!attribute || !state.available_modes.includes(command.mode)) throw Error(`Display mode unavailable: ${command.mode}.`);
+            cloud.material.activeAttributeName = attribute;
             state.mode = command.mode;
+            updateLegend();
             if (command.mode === "RGB") rgbRenderError = "";
         }
         if (action === "classes") {
             state.classes = command.classes.slice();
             for (let i = 0; i < 256; i++) setClassVisibility(i, command.classes.includes(i));
+        }
+        if (action === "display_range_mode") {
+            const mode = String(command.mode || "AUTO").toUpperCase();
+            if (!["AUTO", "ROBUST"].includes(mode)) throw Error("Unsupported display range mode.");
+            state.display_range_mode = mode;
+            const range = mode === "ROBUST" && state.analytics && state.analytics.robust_range && state.analytics.robust_range[0] !== null ?
+                state.analytics.robust_range : state.z_range;
+            state.display_range = mode === "AUTO" ? null : range;
+            if (state.mode === "Elevation" && range) cloud.material.elevationRange = range;
+            if (state.mode === "Intensity" && range) cloud.material.intensityRange = range;
+            updateLegend();
+        }
+        if (action === "display_range") {
+            const low = Number(command.minimum), high = Number(command.maximum);
+            if (!Number.isFinite(low) || !Number.isFinite(high) || low >= high) throw Error("Display range minimum must be below maximum.");
+            state.display_range = [low, high];
+            state.display_range_mode = String(command.mode || "MANUAL").toUpperCase();
+            if (state.mode === "Elevation") cloud.material.elevationRange = [low, high];
+            if (state.mode === "Intensity") cloud.material.intensityRange = [low, high];
+            updateLegend();
+        }
+        if (action === "display_range_clear") {
+            state.display_range = null;
+            state.display_range_mode = "AUTO";
+            if (state.mode === "Elevation" && state.z_range) cloud.material.elevationRange = state.z_range;
+            updateLegend();
         }
         if (action === "height") {
             const low = Number(command.minimum), high = Number(command.maximum);
@@ -308,6 +413,7 @@ window.snapshot = function() {
     if (!state.ready) return state;
     if (window.pointCloudEditor) state.editor = window.pointCloudEditor.tick({viewer, cloud});
     inspectVisibleClasses();
+    if (performance.now() - lastAnalytics > 350) { lastAnalytics = performance.now(); updateAnalytics(); }
     const view = viewer.scene.view;
     const camera = {position: view.position.toArray(), yaw: view.yaw, pitch: view.pitch, radius: view.radius};
     const key = JSON.stringify(camera);
@@ -406,6 +512,7 @@ try {
         viewer.scene.addPointCloud(cloud);
         cloud.minimumNodePixelSize = viewer.minNodeSize;
         cloud.material.activeAttributeName = "classification";
+        updateVisualizationMetadata();
         pointDisplay(state.point_style, state.point_size);
         cloud.updateMatrixWorld(true);
         const bounds = cloud.boundingBox.clone().applyMatrix4(cloud.matrixWorld);
