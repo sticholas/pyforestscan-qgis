@@ -311,6 +311,8 @@ def main():
                 server.assets["editor-overlay.json"] = path
                 bridge.command.emit(json.dumps({"action": "editor_overlay", "selection_color": command.get("selection_color")}))
             elif action in ("fit", "top", "front", "mode", "palette", "classes", "height", "clear_height", "clear_filters", "camera", "navigation", "orbit", "pan", "zoom", "snapshot", "selection_tool", "selection_test", "selection_resolution", "linked_view", "workspace_views", "quality", "point_display"):
+                if action == "palette":
+                    emit({"viewer_command_sent": "palette", "requested_palette": command.get("palette")})
                 bridge.command.emit(json.dumps(command, allow_nan=False))
         except (ValueError, KeyError, TypeError, OverflowError, OSError):
             emit({"error": "Invalid viewer command."})

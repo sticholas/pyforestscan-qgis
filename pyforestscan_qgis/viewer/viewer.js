@@ -686,6 +686,7 @@ window.command = function(command) {
             viewer.scene.view.pitch = camera.pitch;
             viewer.scene.view.radius = camera.radius;
         }
+        return {viewer_command: action, palette: state.palette, mode: state.mode};
     } catch (error) { fail(error); }
 };
 window.snapshot = function() {

@@ -907,6 +907,8 @@ class PointCloudPage(QWidget):
             self.send({"action": "resize", "width": self.surface.width(), "height": self.surface.height()})
         if value.get("status"):
             self.status.setText(value["status"])
+        if value.get("viewer_command") == "palette":
+            self.status.setText("Palette applied in renderer: " + str(value.get("palette", "unknown")))
         if value.get("error"):
             self.status.setText(value["error"])
             self._controls(False)

@@ -31,7 +31,8 @@ Rectangle {
                                   function(data) { bridge.captured(command.name, data || ""); });
                 return;
             }
-            web.runJavaScript("window.command && window.command(" + payload + ")");
+            web.runJavaScript("JSON.stringify(window.command ? (window.command(" + payload + ") || {}) : {})",
+                              function(value) { if (value) bridge.diagnostic(value || "{}"); });
         }
     }
     Timer {
