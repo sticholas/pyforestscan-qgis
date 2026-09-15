@@ -1,12 +1,16 @@
 """Authoritative selection scopes prepared for product processing."""
 from __future__ import annotations
 from dataclasses import dataclass
+import hashlib
 import math
 from pathlib import Path
 from typing import Any, Mapping
 
-from ..product_registry import MISSION_CONTROL_PRODUCTS
 from ..types import ProductType
+from .selection_product_capabilities import (
+    AVAILABLE, NOT_YET_AVAILABLE, REVIEW_REQUIRED, product_scope_status,
+    registered_scope_products,
+)
 
 _SCOPE_KINDS = {"AREA", "COLUMN", "PROFILE"}
 _AXES = {"Z", "HeightAboveGround"}
@@ -124,22 +128,39 @@ class SelectionProductOption:
 
 
 def selection_product_options(scope: SelectionProcessingScope) -> tuple[SelectionProductOption, ...]:
-    """Return truthful product choices without hiding scope-specific caveats.
-
-    All currently registered Mission Control products can consume a bounded
-    source-space polygon once their request adapter is wired. Profile scopes
-    are marked for review because a narrow corridor can be scientifically
-    unsuitable for some raster products; density/voxel products remain the
-    natural first choices. No option implies that execution is already wired.
-    """
+    """Return truthful product choices for one authoritative scope."""
     options = []
-    for definition in MISSION_CONTROL_PRODUCTS:
-        if scope.scope_kind == "PROFILE" and definition.product not in {
-                ProductType.POINT_DENSITY, ProductType.VOXEL_STAT}:
-            status = "REVIEW"
-            reason = "Profile corridor is bounded; confirm raster extent and sampling before running."
-        else:
-            status = "AVAILABLE"
+    for product in registered_scope_products():
+        status = product_scope_status(product, scope.scope_kind)
+        if status == AVAILABLE:
             reason = "Uses the authoritative bounded source-space selection."
-        options.append(SelectionProductOption(definition.product, status, reason))
+        elif status == REVIEW_REQUIRED:
+            reason = "confirm raster extent and sampling for this profile corridor before running."
+        else:
+            reason = "Selection processing is not yet available for this product; use its Advanced Toolbox workflow."
+        options.append(SelectionProductOption(product, status, reason))
     return tuple(options)
+
+
+def selection_source_fingerprint(path: Path | str) -> str:
+    """Compute the same content identity used by the viewer source contract."""
+    source = Path(path).resolve(strict=True)
+    metadata = source / "ept.json" if source.is_dir() else source
+    if source.is_dir() and not metadata.is_file():
+        raise ValueError("Selection source directory has no ept.json identity file.")
+    if source.is_dir():
+        raw = metadata.read_bytes()
+        if len(raw) > 2 * 1024 * 1024:
+            raise ValueError("EPT identity metadata exceeds the verification limit.")
+        return hashlib.sha256(raw).hexdigest()
+    digest = hashlib.sha256()
+    with metadata.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+def verify_selection_source_fingerprint(path: Path | str, expected: str) -> None:
+    """Fail closed if a selected source was replaced after selection."""
+    actual = selection_source_fingerprint(path)
+    if actual.lower() != str(expected).lower():
+        raise ValueError("Selected source fingerprint changed; reopen the point cloud before processing.")

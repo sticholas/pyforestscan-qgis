@@ -1,6 +1,10 @@
 import unittest
 from pathlib import Path
-from pyforestscan_qgis.core.point_cloud.selection_processing import (SelectionProcessingScope, selection_scope_from_definition, selection_product_options)
+import tempfile
+from pyforestscan_qgis.core.point_cloud.selection_processing import (
+    SelectionProcessingScope, selection_scope_from_definition, selection_product_options,
+    selection_source_fingerprint, verify_selection_source_fingerprint,
+)
 
 class SelectionProcessingScopeTests(unittest.TestCase):
     def scope(self, **changes):
@@ -38,6 +42,32 @@ class SelectionProcessingScopeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.scope(scope_kind="UNKNOWN")
 
+
+    def test_product_options_distinguish_unavailable_products(self):
+        scope = self.scope(scope_kind="COLUMN")
+        statuses = {item.product.value: item.status for item in selection_product_options(scope)}
+        self.assertEqual("AVAILABLE", statuses["chm"])
+        self.assertEqual("NOT_YET_AVAILABLE", statuses["voxel_stat"])
+
+    def test_source_fingerprint_revalidation_fails_after_replacement(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "forest.laz"
+            path.write_bytes(b"original")
+            fingerprint = selection_source_fingerprint(path)
+            verify_selection_source_fingerprint(path, fingerprint)
+            path.write_bytes(b"replacement")
+            with self.assertRaisesRegex(ValueError, "fingerprint changed"):
+                verify_selection_source_fingerprint(path, fingerprint)
+
+    def test_ept_fingerprint_uses_metadata_identity(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder) / "ept"
+            root.mkdir()
+            (root / "ept.json").write_text("{\"srs\":{}}", encoding="utf-8")
+            fingerprint = selection_source_fingerprint(root)
+            verify_selection_source_fingerprint(root, fingerprint)
+            self.assertEqual(64, len(fingerprint))
+
     def test_definition_factory_preserves_view_context(self):
         scope = selection_scope_from_definition({
             "selection_id": "selection-2",
@@ -57,5 +87,5 @@ class SelectionProcessingScopeTests(unittest.TestCase):
         options = selection_product_options(scope)
         statuses = {item.product.value: item.status for item in options}
         self.assertEqual("AVAILABLE", statuses["point_density"])
-        self.assertEqual("REVIEW", statuses["chm"])
+        self.assertEqual("REVIEW_REQUIRED", statuses["chm"])
         self.assertTrue(any("bounded source-space selection" in item.reason for item in options))

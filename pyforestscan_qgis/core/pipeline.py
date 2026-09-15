@@ -140,6 +140,7 @@ def _selection_request_kwargs(context: PipelineContext) -> dict[str, object]:
         "polygon_execution_input": context.selection_polygon_execution_input,
         "selection_vertical_axis": context.selection_vertical_axis,
         "selection_height_range": context.selection_height_range,
+        "source_fingerprint": context.selection_scope.source_fingerprint,
     }
 
 def _execute_chm_step(context: PipelineContext, step: PipelineStep, adapter: Any | None) -> PipelineStepResult:

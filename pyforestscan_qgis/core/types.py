@@ -158,6 +158,7 @@ class ChmRequest:
     polygon_execution_input: PolygonExecutionInput | None = None
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
     work_unit_id: str = ""
     attempt_id: str = ""
     completed_count: int = 0
@@ -211,6 +212,7 @@ class CanopyCoverRequest:
     polygon_execution_input: PolygonExecutionInput | None = None
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
 
 
 @dataclass(frozen=True)
@@ -242,6 +244,7 @@ class PadRequest:
     polygon_execution_input: PolygonExecutionInput | None = None
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
 
 
 @dataclass(frozen=True)
@@ -276,6 +279,7 @@ class PaiRequest:
     polygon_execution_input: PolygonExecutionInput | None = None
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
 
 
 @dataclass(frozen=True)
@@ -307,6 +311,7 @@ class FhdRequest:
     polygon_execution_input: PolygonExecutionInput | None = None
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
 
 
 @dataclass(frozen=True)
@@ -339,6 +344,7 @@ class RumpleRequest:
     polygon_execution_input: PolygonExecutionInput | None = None
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
     hag_method: str = "automatic"
     hag_source_dimension: str = "HeightAboveGround"
     hag_method_signature: str = ""
@@ -386,6 +392,7 @@ class HagNormalizationRequest:
     polygon_execution_input: PolygonExecutionInput | None = None
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
 
 
 @dataclass(frozen=True)
@@ -415,6 +422,7 @@ class DtmRequest:
     polygon_execution_input: PolygonExecutionInput | None = None
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
 
 
 @dataclass(frozen=True)
@@ -445,6 +453,7 @@ class PointDensityRequest:
     polygon_execution_input: PolygonExecutionInput | None = None
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
 
 
 @dataclass(frozen=True)
@@ -477,6 +486,7 @@ class VoxelStatRequest:
     polygon_execution_input: PolygonExecutionInput | None = None
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
 
 
 @dataclass(frozen=True)

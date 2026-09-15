@@ -12,17 +12,7 @@ from pathlib import Path
 
 from ..types import ProductType
 from .selection_product_request import SelectionProductRequest
-
-SCOPED_EXECUTABLE_PRODUCTS = frozenset({
-    ProductType.CHM,
-    ProductType.CANOPY_COVER,
-    ProductType.PAD,
-    ProductType.PAI,
-    ProductType.FHD,
-    ProductType.RUMPLE,
-    ProductType.DTM,
-    ProductType.POINT_DENSITY,
-})
+from .selection_product_capabilities import SCOPED_EXECUTABLE_PRODUCTS
 _SUPPORTED_SUFFIXES = (".las", ".laz", ".copc", ".copc.laz")
 
 

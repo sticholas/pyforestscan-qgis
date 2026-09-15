@@ -217,6 +217,10 @@ def _request_from_spec(spec: BackendJobSpec) -> Any:
         prepared = materialize_polygon_input(params["polygon_execution_input"], spec.run_folder)
         params["crop_polygon_path"] = prepared.temporary_vector_path
         params["polygon_vector_format"] = prepared.temporary_vector_format
+    expected_fingerprint = params.get("source_fingerprint")
+    if expected_fingerprint:
+        from pyforestscan_qgis.core.point_cloud.selection_processing import verify_selection_source_fingerprint
+        verify_selection_source_fingerprint(input_path, expected_fingerprint)
     field_names = set(request_class.__dataclass_fields__)
     clean = {key: _coerce_value(key, value) for key, value in params.items() if key in field_names}
     return request_class(**clean)

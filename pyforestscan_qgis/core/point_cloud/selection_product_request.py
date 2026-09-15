@@ -118,6 +118,6 @@ def build_selection_product_request(
         hag_range=scope.hag_range,
         point_count=scope.point_count,
         output_folder=Path(output_folder),
-        review_required=option.status == "REVIEW",
+        review_required=option.status != "AVAILABLE",
         review_reason=option.reason,
     )
