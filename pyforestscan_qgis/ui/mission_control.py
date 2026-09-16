@@ -230,8 +230,8 @@ class MissionControlDock(QDockWidget):
             }
             context.product_plan_json.write_text(json.dumps(base_plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         except (KeyError, OSError, TypeError, ValueError) as error:
-            self.batch_page.preflight_text.setPlainText("Selected-point setup could not start: " + str(error))
-            self.batch_page.preflight_summary_label.setText("Needs attention: selected-point setup failed.")
+            self.batch_page.set_selected_points_processing_state(
+                False, "Selected-point setup could not start: " + str(error))
             return
         self.processing_page.set_run_context(context)
         self.processing_page.set_selection_scope(scope)
@@ -343,6 +343,8 @@ class MissionControlDock(QDockWidget):
         self.dataset_page.datasetExplored.connect(self._set_dataset_report)
         self.planning_page.planningChanged.connect(self._set_planning_status)
         self.processing_page.jobUpdated.connect(self._set_job_status)
+        self.processing_page.selectedPointsProcessingStateChanged.connect(
+            self.batch_page.set_selected_points_processing_state)
         self.batch_page.jobUpdatedForJob.connect(self._set_job_status_for_job)
         self.batch_page.batchCompletedForJob.connect(self._set_batch_status_for_job)
         self.batch_page.loadCurrentOutputsRequested.connect(self.results_page.load_outputs_to_qgis)

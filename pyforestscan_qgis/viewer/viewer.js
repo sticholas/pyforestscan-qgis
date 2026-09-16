@@ -609,12 +609,21 @@ function renderScientificOverlay(overlay, Three) {
     if (!valid.length) throw Error("Scientific overlay contains no valid cells.");
     const range = Array.isArray(overlay.value_range) && overlay.value_range.length === 2 ? overlay.value_range : [Math.min(...valid), Math.max(...valid)];
     const geometry = new Three.BufferGeometry(), positions = [], colors = [], indices = [];
-    const [xmin, ymin, xmax, ymax] = extent, zBase = cloud.boundingBox.min.z - .01;
+    // Scientific results are a readable display layer, not terrain to hide beneath
+    // the source cloud. Lift the mesh just above the cloud and ignore cloud depth.
+    const [xmin, ymin, xmax, ymax] = extent;
+    const cloudHeight = Math.max(.001, cloud.boundingBox.max.z - cloud.boundingBox.min.z);
+    const zBase = cloud.boundingBox.max.z + Math.max(.25, cloudHeight * .003);
+    const valueMinimum = Number(range[0]), valueMaximum = Number(range[1]);
+    const relief = Math.min(Math.max(.05, cloudHeight * .03), Math.max(.05, cloudHeight * .15));
     for (let row = 0; row < rows; row++) for (let col = 0; col < columns; col++) {
         const index = row * columns + col, value = Number(overlay.values[index]);
         const x = xmin + (xmax - xmin) * (columns === 1 ? .5 : col / (columns - 1));
         const y = ymax - (ymax - ymin) * (rows === 1 ? .5 : row / (rows - 1));
-        const z = overlay.surface_mode === "values" && Number.isFinite(value) ? value : zBase;
+        const normalized = Number.isFinite(value) && valueMaximum > valueMinimum
+            ? (value - valueMinimum) / (valueMaximum - valueMinimum) : .5;
+        const z = overlay.surface_mode === "values" && Number.isFinite(value)
+            ? zBase + Math.max(0, Math.min(1, normalized)) * relief : zBase;
         positions.push(x, y, z);
         const color = Number.isFinite(value) ? overlayColor(value, Number(range[0]), Number(range[1]), overlay.palette || "Viridis") : [.3, .3, .3];
         colors.push(...color);
@@ -626,9 +635,18 @@ function renderScientificOverlay(overlay, Three) {
     geometry.setAttribute("position", new Three.Float32BufferAttribute(positions, 3));
     geometry.setAttribute("color", new Three.Float32BufferAttribute(colors, 3));
     geometry.setIndex(indices); geometry.computeVertexNormals();
-    const material = new Three.MeshBasicMaterial({vertexColors:true, transparent:true, opacity:.55, side:Three.DoubleSide, depthWrite:false});
+    const material = new Three.MeshBasicMaterial({
+        vertexColors:true, transparent:true, opacity:.72, side:Three.DoubleSide,
+        depthTest:false, depthWrite:false,
+    });
     scientificOverlay = new Three.Mesh(geometry, material);
-    scientificOverlay.userData.scientific = {product_id:overlay.product_id, units:overlay.units, value_range:range, band_index:overlay.band_index || 1, provenance:overlay.provenance};
+    scientificOverlay.renderOrder = 10000;
+    scientificOverlay.frustumCulled = false;
+    scientificOverlay.userData.scientific = {
+        product_id:overlay.product_id, units:overlay.units, value_range:range,
+        band_index:overlay.band_index || 1, provenance:overlay.provenance,
+        display_layer:"above_cloud",
+    };
     viewer.scene.scene.add(scientificOverlay);
     const legend = document.getElementById("visual-legend");
     if (legend) legend.textContent = `${overlay.label}${overlay.band_index > 1 ? ` band ${overlay.band_index}` : ""} overlay | ${overlay.units} | ${Number(range[0]).toFixed(2)}–${Number(range[1]).toFixed(2)} | cached spatial product`;

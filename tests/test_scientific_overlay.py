@@ -29,3 +29,10 @@ class ScientificOverlayTests(unittest.TestCase):
         self.assertIn('if (action === "scientific_overlay") applyScientificOverlay(command.overlay);', javascript)
         self.assertIn("overlayWarning(error)", javascript)
         self.assertNotIn("new THREE.", javascript)
+
+    def test_viewer_overlay_is_a_visible_layer_above_the_cloud(self):
+        javascript = (Path(__file__).parents[1] / "pyforestscan_qgis" / "viewer" / "viewer.js").read_text(encoding="utf-8")
+        self.assertIn("cloud.boundingBox.max.z + Math.max(.25, cloudHeight * .003)", javascript)
+        self.assertIn("depthTest:false", javascript)
+        self.assertIn("scientificOverlay.renderOrder = 10000", javascript)
+        self.assertIn('display_layer:"above_cloud"', javascript)

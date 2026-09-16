@@ -1780,6 +1780,7 @@ class ProcessingPage(MissionPage):
     """Pipeline execution page using the active product plan."""
 
     jobUpdated = pyqtSignal(object)
+    selectedPointsProcessingStateChanged = pyqtSignal(bool, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create the processing page."""
@@ -2042,6 +2043,8 @@ class ProcessingPage(MissionPage):
             return
         self.prepare_selected_product()
         if self.selection_request_model is None:
+            self.selectedPointsProcessingStateChanged.emit(
+                False, "Selected-point setup needs attention before processing.")
             return
         self.validate_selected_product()
         report = self.selection_preflight_report
@@ -2053,6 +2056,8 @@ class ProcessingPage(MissionPage):
                 + blockers
                 + "\nThe original point cloud and existing Product Plan were not modified."
             )
+            self.selectedPointsProcessingStateChanged.emit(
+                False, "Selected points need attention before processing.")
             return
         self.promote_selected_product()
         if self.selection_promoted_plan_path is not None:
@@ -2269,6 +2274,9 @@ class ProcessingPage(MissionPage):
         self._processing_started_at = time.monotonic()
         self._update_processing_elapsed()
         self._processing_elapsed_timer.start()
+        if self.selection_scope:
+            self.selectedPointsProcessingStateChanged.emit(
+                True, "Preparing the selected-point request...")
         self.processing_thread = QThread(self)
         self.processing_worker = _ProcessingJobWorker(
             Path(plan_path), Path(output_folder),
@@ -2316,6 +2324,8 @@ class ProcessingPage(MissionPage):
         self.processing_activity_label.setText(
             "Current activity: processing could not start. Open Technical Details for diagnostics.")
         self.log_text.setPlainText(f"Processing job could not start: {message}")
+        if self.selection_scope:
+            self.selectedPointsProcessingStateChanged.emit(False, "Selected-point processing could not start.")
 
     def _clear_background_job_worker(self) -> None:
         self.processing_worker = None
@@ -2327,6 +2337,8 @@ class ProcessingPage(MissionPage):
         self.cancel_button.setVisible(False)
         if self.selection_scope:
             self.prepare_selection_product_button.setEnabled(True)
+            self.selectedPointsProcessingStateChanged.emit(
+                False, "Selected points are ready for another product.")
 
     def _on_job_update(self, job: JobRecord) -> None:
         """Bridge core job progress into Qt widgets."""
@@ -2335,6 +2347,12 @@ class ProcessingPage(MissionPage):
         self.progress_bar.setValue(int(job.progress.percent))
         self.processing_stage_label.setText(f"Stage: {_processing_lifecycle_stage(job)}")
         self.processing_activity_label.setText(f"Current activity: {job.progress.message}")
+        if self.selection_scope:
+            active = job.status in {
+                JobStatus.PENDING, JobStatus.VALIDATING, JobStatus.RUNNING, JobStatus.CANCELLING,
+            }
+            self.selectedPointsProcessingStateChanged.emit(
+                active, f"{status_display_word(job.status.value)}: {job.progress.message}")
         self.execution_backend_label.setText(f"Execution backend: {self.job_manager.execution_backend().replace('_', ' ')}")
         self.log_text.setPlainText("\n".join(f"{entry.level}: {entry.message}" for entry in job.logs))
         self.cancel_button.setEnabled(job.status in {JobStatus.PENDING, JobStatus.VALIDATING, JobStatus.RUNNING, JobStatus.CANCELLING})
@@ -2662,6 +2680,7 @@ class BatchPage(MissionPage):
         self.batch_mode_summary_label.setVisible(False)
         self.smart_status_label.setVisible(False)
 
+        self._selected_points_processing_active = False
         self.selected_points_section, selected_points_layout = self.create_section("Selected Points")
         self.selected_points_source_label = _body_label("Point cloud: select points in Point Cloud to begin.")
         self.selected_points_scope_label = _body_label("Selection: no resolved source selection.")
@@ -3423,6 +3442,15 @@ class BatchPage(MissionPage):
         prerun_layout.addWidget(self.cancel_preflight_button)
         self.preflight_summary_label = _body_label("Needs attention: choose data, products, and an output folder.")
         prerun_layout.addWidget(self.preflight_summary_label)
+        self.selected_points_progress = QProgressBar()
+        self.selected_points_progress.setRange(0, 0)
+        self.selected_points_progress.setTextVisible(False)
+        self.selected_points_progress.setVisible(False)
+        prerun_layout.addWidget(self.selected_points_progress)
+        self.selected_points_activity_label = _details_label("")
+        self.selected_points_activity_label.setWordWrap(True)
+        self.selected_points_activity_label.setVisible(False)
+        prerun_layout.addWidget(self.selected_points_activity_label)
         self.next_action_label = _details_label("Next action: check the Processing Engine.")
         self.next_action_label.setProperty("workflowGuidance", True)
         prerun_layout.addWidget(self.next_action_label)
@@ -3632,14 +3660,17 @@ class BatchPage(MissionPage):
         mode = "wide" if columns == 4 else "narrow"
         _take_layout_widget(self.workflow_action_row, self.preflight_button)
         _take_layout_widget(self.workflow_action_row, self.run_button)
-        if width < 420:
+        selected_points = self._current_batch_mode() == "selected_points"
+        if selected_points:
+            self.workflow_action_row.addWidget(self.preflight_button, 0, 0, 1, 2)
+        elif width < 420:
             self.workflow_action_row.addWidget(self.preflight_button, 0, 0)
             self.workflow_action_row.addWidget(self.run_button, 1, 0)
         else:
             self.workflow_action_row.addWidget(self.preflight_button, 0, 0)
             self.workflow_action_row.addWidget(self.run_button, 0, 1)
         self.workflow_action_row.setColumnStretch(0, 1)
-        self.workflow_action_row.setColumnStretch(1, 1 if width >= 420 else 0)
+        self.workflow_action_row.setColumnStretch(1, 1 if width >= 420 and not selected_points else 0)
         _take_layout_widget(self.qgis_layer_row, self.polygon_layer_combo)
         _take_layout_widget(self.qgis_layer_row, self.polygon_layer_mode_combo)
         if width < 480:
@@ -4139,6 +4170,9 @@ class BatchPage(MissionPage):
         self.process_section.setVisible(not selected_points)
         self.preflight_summary_label.setVisible(not selected_points)
         self.next_action_label.setVisible(not selected_points)
+        self.selected_points_progress.setVisible(selected_points and self._selected_points_processing_active)
+        self.selected_points_activity_label.setVisible(
+            selected_points and bool(self.selected_points_activity_label.text()))
         if selected_points:
             summary = "Choose one product and process the locked point selection."
             prerun = "Process Selected Points runs the required bounded safety checks automatically."
@@ -4154,15 +4188,35 @@ class BatchPage(MissionPage):
         self.run_button.setText("Process LiDAR")
         self.run_button.setVisible(not selected_points)
         self.prerun_section.setTitle("Process Selected Points" if selected_points else "Readiness")
-        self.preflight_button.setText("Process Selected Points" if selected_points else "Run Prerun Check")
+        self.preflight_button.setText(
+            "Processing Selected Points..." if selected_points and self._selected_points_processing_active
+            else ("Process Selected Points" if selected_points else "Run Prerun Check"))
         if selected_points:
             self._refresh_selected_points_details()
+        self._apply_process_layout(self.scroll_area.viewport().width())
+        _refresh_layout_geometry(self.process_workspace)
         self.resume_button.setVisible(not polygon and not selected_points)
         self.retry_failed_button.setText("Retry Failed" if polygon else "Retry Failed Files")
         self.summary_label.setText("Review selected-point outputs after execution." if selected_points else ("Review Polygon Batch outputs after execution." if polygon else "4. Review Results after the batch completes."))
         self._update_polygon_source_visibility()
         self._update_adaptive_visibility()
         self._update_run_button_enabled()
+
+    def set_selected_points_processing_state(self, active: bool, message: str) -> None:
+        """Keep the single selected-points action honest during handoff and execution."""
+        self._selected_points_processing_active = bool(active)
+        self.selected_points_activity_label.setText(message)
+        selected_points = self._current_batch_mode() == "selected_points"
+        self.selected_points_progress.setVisible(selected_points and active)
+        self.selected_points_activity_label.setVisible(selected_points and bool(message))
+        self.preflight_button.setText(
+            "Processing Selected Points..." if active else "Process Selected Points")
+        if active:
+            self.preflight_button.setEnabled(False)
+        else:
+            self._update_run_button_enabled()
+        _refresh_layout_geometry(self.prerun_section)
+        _refresh_layout_geometry(self.process_workspace)
 
     def _on_execution_mode_changed(self, *_args: object) -> None:
         self._refresh_batch_option_visibility()
@@ -5133,8 +5187,8 @@ class BatchPage(MissionPage):
     def run_preflight(self) -> None:
         """Run batch preflight and update readiness display."""
         if self._current_batch_mode() == "selected_points":
-            self.preflight_text.setPlainText("Creating the bounded selected-point run and checking readiness...")
-            self.preflight_summary_label.setText("Selected point safety checks start immediately.")
+            self.set_selected_points_processing_state(
+                True, "Preparing the bounded selected-point request...")
             self._open_selected_points_workflow()
             return
         self.preflight_button.setEnabled(False)

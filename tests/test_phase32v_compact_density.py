@@ -38,7 +38,9 @@ class Phase32VCompactDensityTests(unittest.TestCase):
         self.assertIn("self.run_button.setFixedHeight(equal_height)", install)
         self.assertNotIn("self.run_button.setMaximumWidth", PAGES)
         self.assertIn("setColumnStretch(0, 1)", responsive)
-        self.assertIn("setColumnStretch(1, 1 if width >= 420 else 0)", responsive)
+        self.assertIn("selected_points = self._current_batch_mode() == \"selected_points\"", responsive)
+        self.assertIn("self.workflow_action_row.addWidget(self.preflight_button, 0, 0, 1, 2)", responsive)
+        self.assertIn("setColumnStretch(1, 1 if width >= 420 and not selected_points else 0)", responsive)
 
     def test_compact_headings_do_not_depend_on_groupbox_title_margins(self) -> None:
         install = PAGES[PAGES.index("def _install_process_workspace"):PAGES.index("def _apply_process_layout")]
