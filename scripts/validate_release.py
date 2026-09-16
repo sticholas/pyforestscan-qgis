@@ -236,7 +236,9 @@ def _validate_pbm_internal_beta_guard() -> list[str]:
 
 
 def _run_docs_link_check() -> str:
-    completed = subprocess.run((sys.executable, "scripts/check_docs_links.py"), cwd=REPOSITORY_ROOT, check=False, capture_output=True, text=True, timeout=60)
+    # Network-mounted and Windows-hosted WSL worktrees can require more than a
+    # minute to traverse the documentation tree even when every link is valid.
+    completed = subprocess.run((sys.executable, "scripts/check_docs_links.py"), cwd=REPOSITORY_ROOT, check=False, capture_output=True, text=True, timeout=180)
     return "passed" if completed.returncode == 0 else "failed"
 
 

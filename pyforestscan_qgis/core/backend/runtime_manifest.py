@@ -31,7 +31,7 @@ class DependencyContract:
     products: tuple[str, ...]
 
 
-ALL_PRODUCTS = ("chm", "rumple", "pad", "pai", "fhd", "canopy_cover", "dtm", "point_density", "voxel_stat")
+ALL_PRODUCTS = ("chm", "rumple", "pad", "pad_derivative", "pai", "fhd", "canopy_cover", "dtm", "point_density", "voxel_stat", "normalize_hag", "point_cloud_preprocess")
 PROCESSING_ENGINE_DEPENDENCIES = (
     DependencyContract("PyForestScan", "pyforestscan", "==0.4.1", ALL_PRODUCTS),
     DependencyContract("PDAL Python", "pdal", ">=3.4,<4", ALL_PRODUCTS),
@@ -48,10 +48,13 @@ PRODUCT_CAPABILITIES = {
     "chm": ("calculate_chm", "read_lidar", "create_geotiff"),
     "rumple": ("calculate_chm", "calculate_rumple", "read_lidar", "create_geotiff"),
     "pad": ("assign_voxels", "calculate_pad", "read_lidar", "create_geotiff"),
+    "pad_derivative": (),
     "pai": ("assign_voxels", "calculate_pad", "calculate_pai", "read_lidar", "create_geotiff"),
     "fhd": ("assign_voxels", "calculate_fhd", "read_lidar", "create_geotiff"),
     "canopy_cover": ("assign_voxels", "calculate_pad", "calculate_canopy_cover", "read_lidar", "create_geotiff"),
     "dtm": ("generate_dtm", "read_lidar", "create_geotiff", "filter_select_ground"),
     "point_density": ("assign_voxels", "calculate_point_density", "read_lidar", "create_geotiff"),
     "voxel_stat": ("calculate_voxel_stat", "read_lidar", "create_geotiff"),
+    "normalize_hag": ("read_lidar", "write_las"),
+    "point_cloud_preprocess": ("read_lidar", "write_las", "remove_outliers_and_clean"),
 }

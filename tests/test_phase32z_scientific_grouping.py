@@ -19,7 +19,7 @@ class Phase32ZScientificGroupingTests(unittest.TestCase):
         return QgisCompatibilityReport(version, int(version.split(".")[0]), "3.12", "6.0", platform, True, True, True, True, True)
 
     def test_groups_are_stacked_in_stable_scientific_order(self) -> None:
-        expected = '("Shared Settings", "CHM", "DTM", "PAD", "PAI", "FHD", "Canopy Cover", "Rumple", "Point Density")'
+        expected = '("Shared Settings", "CHM", "DTM", "PAD", "PAI", "FHD", "Canopy Cover", "Rumple", "Point Density", "Voxel Statistic")'
         self.assertIn(expected, PAGES)
         self.assertNotIn("scientific_form_columns", PAGES)
         self.assertNotIn("min(range(2), key=lambda index: loads[index])", PAGES)

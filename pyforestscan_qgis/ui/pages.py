@@ -2996,7 +2996,7 @@ class BatchPage(MissionPage):
             ("rumple.min_height", "Rumple", "Minimum height", self.rumple_min_height_spin),
             ("point_density.per_area", "Point Density", "", self.point_density_per_area_check),
         )
-        self.scientific_group_order = ("Shared Settings", "CHM", "DTM", "PAD", "PAI", "FHD", "Canopy Cover", "Rumple", "Point Density")
+        self.scientific_group_order = ("Shared Settings", "CHM", "DTM", "PAD", "PAI", "FHD", "Canopy Cover", "Rumple", "Point Density", "Voxel Statistic")
         self.scientific_groups: dict[str, tuple[QWidget, tuple[QFormLayout, QFormLayout], tuple[QWidget, QWidget]]] = {}
         for group_name in self.scientific_group_order:
             group_widget = QWidget()
@@ -6031,10 +6031,6 @@ class SettingsPage(MissionPage):
         fallback_row.addWidget(self.choose_fallback_crs_button)
         fallback_row.addWidget(self.clear_fallback_crs_button)
         form.addRow("Fallback CRS", fallback_row)
-        self.open_on_startup_check = QCheckBox("Open Mission Control when QGIS starts")
-        self.open_on_startup_check.setChecked(False)
-        self.open_on_startup_check.setProperty("contextHelp", "Open Mission Control automatically after the plugin loads. This does not start processing or install the Processing Engine.")
-        form.addRow("Startup", self.open_on_startup_check)
         defaults.addLayout(form)
         self.fallback_crs_explanation = _details_label(semantic_help("tools.fallback_crs"))
         defaults.addWidget(self.fallback_crs_explanation)
@@ -6202,7 +6198,6 @@ class SettingsPage(MissionPage):
         self.remember_output_folder_check.setChecked(session.remember_last_output_folder)
         self.auto_save_workspace_check.setChecked(session.auto_save_enabled)
         self._maximum_recent_items = session.maximum_recent_items
-        self.open_on_startup_check.setChecked(session.open_mission_control_on_startup)
 
     def recent_item_display_limit(self) -> int:
         """Return the internal recent-workspace display bound, never a job limit."""

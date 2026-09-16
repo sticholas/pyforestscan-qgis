@@ -17,10 +17,10 @@ class Phase32TRegistryTests(unittest.TestCase):
     def test_release_product_surface_is_explicit(self) -> None:
         self.assertEqual(
             (ProductType.CHM, ProductType.DTM, ProductType.PAD, ProductType.PAI, ProductType.FHD,
-             ProductType.CANOPY_COVER, ProductType.RUMPLE, ProductType.POINT_DENSITY),
+             ProductType.CANOPY_COVER, ProductType.RUMPLE, ProductType.POINT_DENSITY, ProductType.VOXEL_STAT),
             tuple(item.product for item in MISSION_CONTROL_PRODUCTS),
         )
-        self.assertEqual("advanced_operation", PRODUCT_BY_TYPE[ProductType.VOXEL_STAT].classification)
+        self.assertEqual("product", PRODUCT_BY_TYPE[ProductType.VOXEL_STAT].classification)
 
     def test_official_defaults_are_release_pinned(self) -> None:
         fhd = {item.key: item.default for item in PRODUCT_BY_TYPE[ProductType.FHD].parameters}
@@ -36,7 +36,7 @@ class Phase32TRegistryTests(unittest.TestCase):
     def test_official_calculate_inventory_is_classified(self) -> None:
         self.assertEqual(10, len(CALCULATE_FUNCTION_CLASSIFICATIONS))
         self.assertEqual("internal_primitive", CALCULATE_FUNCTION_CLASSIFICATIONS["assign_voxels"])
-        self.assertEqual("advanced_operation", CALCULATE_FUNCTION_CLASSIFICATIONS["calculate_voxel_stat"])
+        self.assertEqual("product", CALCULATE_FUNCTION_CLASSIFICATIONS["calculate_voxel_stat"])
 
     def test_product_toggle_path_never_normalizes_polygon(self) -> None:
         callback = PAGES[PAGES.index("def _on_product_selection_changed"):PAGES.index("def _publish_session_state")]
@@ -71,6 +71,7 @@ class Phase32TRegistryTests(unittest.TestCase):
             pad_beer_lambert_constant=1.2, pad_drop_ground=False,
             pai_min_height=1.5, pai_max_height=35.0,
             fhd_min_height=0.5, fhd_max_height=38.0, rumple_min_height=2.0,
+            voxel_stat_dimension="Intensity", voxel_stat_stat="mean", voxel_stat_z_index_range=(0, 5),
             canopy_cover_output_filename="cover.tif", notes="", estimated_columns=None,
             estimated_rows=None, estimated_cells=None, estimated_height_bins=None,
             products=(), warnings=(), next_actions=(),
@@ -82,6 +83,9 @@ class Phase32TRegistryTests(unittest.TestCase):
         self.assertEqual(1.2, context.pad_beer_lambert_constant)
         self.assertEqual(0.6, context.canopy_cover_extinction_coefficient)
         self.assertEqual(2.0, context.rumple_min_height)
+        self.assertEqual("Intensity", context.voxel_stat_dimension)
+        self.assertEqual("mean", context.voxel_stat_stat)
+        self.assertEqual((0, 5), context.voxel_stat_z_index_range)
 
 
 if __name__ == "__main__":

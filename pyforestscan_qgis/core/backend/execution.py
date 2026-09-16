@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+import threading
 import time
 import json
 import os
@@ -27,6 +28,62 @@ from ..coordinator_lifecycle import CoordinatorLaunchResult, build_coordinator_h
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
+_ACTIVE_PROCESS_LOCK = threading.Lock()
+_ACTIVE_PROCESSING_PROCESSES: set[subprocess.Popen[str]] = set()
+
+
+def matching_heartbeat_age(path: Path, job_id: str) -> float | None:
+    """Return heartbeat age only when it belongs to the current job.
+
+    Run folders can retain a heartbeat from an earlier job.  Treating that
+    file as current can make a newly launched worker look stalled before it
+    has had a chance to publish its first heartbeat.
+    """
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if str(payload.get("job_id", "")) != job_id:
+            return None
+        return max(0.0, time.time() - path.stat().st_mtime)
+    except (OSError, TypeError, ValueError):
+        return None
+
+
+def matching_progress_age(run_folder: Path, job_id: str, elapsed: float = 0.0) -> float | None:
+    """Return age of the authoritative append-only progress stream."""
+    path = Path(run_folder) / "progress" / "progress_events.jsonl"
+    try:
+        if not path.is_file() or path.stat().st_size == 0:
+            return max(0.0, float(elapsed))  # startup/no-progress budget applies
+        last = ""
+        with path.open("rb") as stream:
+            stream.seek(max(0, path.stat().st_size - 8192))
+            last = stream.read().decode("utf-8", "replace").strip().splitlines()[-1]
+        payload = json.loads(last)
+        if str(payload.get("job_id", "")) != job_id:
+            return max(0.0, float(elapsed))
+        return max(0.0, time.time() - path.stat().st_mtime)
+    except (OSError, ValueError, IndexError):
+        return max(0.0, float(elapsed))
+
+
+def cancel_active_processing_jobs() -> int:
+    """Terminate PBM child processes owned by this plugin process."""
+    with _ACTIVE_PROCESS_LOCK:
+        processes = tuple(_ACTIVE_PROCESSING_PROCESSES)
+    cancelled = 0
+    for process in processes:
+        if process.poll() is not None:
+            continue
+        cancelled += 1
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                check=False, capture_output=True, **hidden_subprocess_kwargs(),
+            )
+        else:
+            process.terminate()
+    return cancelled
+
 class ProcessingMonitorError(RuntimeError):
     def __init__(self, status: str, reason: str):
         super().__init__(reason); self.status=status; self.reason=reason
@@ -37,7 +94,8 @@ class NativeBackendCrash(RuntimeError):
     def __init__(self,message,details=None):super().__init__(message);self.details=details or {}
 
 class BackendJobFailure(RuntimeError):
-    def __init__(self,message,code="EXECUTION_FAILED",retryable=False):super().__init__(message);self.code=code;self.retryable=retryable
+    def __init__(self,message,code="EXECUTION_FAILED",retryable=False,details=None):
+        super().__init__(message);self.code=code;self.retryable=retryable;self.details=details or {}
 
 
 GUI_EXECUTABLE_MARKERS = (
@@ -234,6 +292,16 @@ class BackendExecutionService:
             traceback=result.traceback,
             error_code=result.error_code,
             retryable=result.retryable,
+            root_exception_type=result.root_exception_type,
+            root_exception_message=result.root_exception_message,
+            root_errno=result.root_errno,
+            root_winerror=result.root_winerror,
+            root_filename=result.root_filename,
+            root_filename2=result.root_filename2,
+            root_module=result.root_module,
+            root_function=result.root_function,
+            root_line=result.root_line,
+            wrapper_chain=result.wrapper_chain,
         )
         level = "INFO" if result.success and completed.returncode == 0 else "ERROR"
         write_backend_log_entry(
@@ -245,7 +313,7 @@ class BackendExecutionService:
             details={"returncode": completed.returncode, "result": str(spec.result_path), "backend_python": str(self.paths.python_executable)},
         )
         if completed.returncode != 0 or not result.success:
-            raise BackendJobFailure("; ".join(result.errors) or summarize_subprocess_output(completed.stderr, completed.stdout) or "PBM backend job failed.",result.error_code or "EXECUTION_FAILED",bool(result.retryable))
+            raise BackendJobFailure("; ".join(result.errors) or summarize_subprocess_output(completed.stderr, completed.stdout) or "PBM backend job failed.",result.error_code or "EXECUTION_FAILED",bool(result.retryable), details=result.to_dict())
         return result
 
     def verify_runtime_contract(self, *, refresh: bool = False) -> dict[str, Any]:
@@ -273,14 +341,21 @@ class BackendExecutionService:
         heartbeat = heartbeat_path(spec.run_folder)
         with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stdout_file, tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr_file:
             process = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file, text=True, **kwargs)
-            while process.poll() is None:
-                time.sleep(1)
-                elapsed = time.monotonic() - started
-                age = max(0.0, time.time() - heartbeat.stat().st_mtime) if heartbeat.exists() else None
-                decision = evaluate_liveness(self.timeout_policy, elapsed=elapsed, heartbeat_age=age, progress_age=None, started=True, product=spec.product)
-                if decision.status in {"stalled", "timed_out"}:
-                    self._terminate_process_tree(process)
-                    raise ProcessingMonitorError(decision.status, decision.reason)
+            with _ACTIVE_PROCESS_LOCK:
+                _ACTIVE_PROCESSING_PROCESSES.add(process)
+            try:
+                while process.poll() is None:
+                    time.sleep(0.1)
+                    elapsed = time.monotonic() - started
+                    age = matching_heartbeat_age(heartbeat, spec.job_id)
+                    progress_age = matching_progress_age(spec.run_folder, spec.job_id, elapsed)
+                    decision = evaluate_liveness(self.timeout_policy, elapsed=elapsed, heartbeat_age=age, progress_age=progress_age, started=True, product=spec.product)
+                    if decision.status in {"stalled", "timed_out"}:
+                        self._terminate_process_tree(process)
+                        raise ProcessingMonitorError(decision.status, decision.reason)
+            finally:
+                with _ACTIVE_PROCESS_LOCK:
+                    _ACTIVE_PROCESSING_PROCESSES.discard(process)
             stdout_file.seek(0); stderr_file.seek(0)
             completed=subprocess.CompletedProcess(command,process.returncode,stdout_file.read(),stderr_file.read());completed.pid=process.pid
             return completed

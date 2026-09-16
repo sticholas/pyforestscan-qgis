@@ -105,6 +105,24 @@ class ProductPlannerTests(unittest.TestCase):
         with self.assertRaises(ProductPlanError):
             build_product_plan(explorer_payload(), request)
 
+    def test_clip_bounds_drive_grid_estimate_and_are_serialized(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            request = ProductPlannerRequest(
+                explorer_report_path=Path(directory) / "dataset_explorer.json",
+                requested_products=(ProductType.CHM,),
+                output_folder=Path(directory) / "products",
+                grid_resolution=2.0,
+                bounds=((10.0, 30.0), (5.0, 15.0)),
+            )
+
+            report = build_product_plan(explorer_payload(), request)
+            payload = json.loads(render_plan_json(report))
+
+        self.assertEqual(10, report.estimated_columns)
+        self.assertEqual(5, report.estimated_rows)
+        self.assertEqual(50, report.estimated_cells)
+        self.assertEqual([[10.0, 30.0], [5.0, 15.0]], payload["parameters"]["bounds"])
+
 
     def test_chm_parameters_are_serialized_and_drive_output_name(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

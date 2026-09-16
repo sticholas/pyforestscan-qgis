@@ -159,6 +159,9 @@ class ChmRequest:
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
     source_fingerprint: str = ""
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
     work_unit_id: str = ""
     attempt_id: str = ""
     completed_count: int = 0
@@ -213,6 +216,9 @@ class CanopyCoverRequest:
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
     source_fingerprint: str = ""
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
 
 
 @dataclass(frozen=True)
@@ -245,6 +251,9 @@ class PadRequest:
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
     source_fingerprint: str = ""
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
 
 
 @dataclass(frozen=True)
@@ -257,6 +266,30 @@ class PadResult:
     voxel_height: float
     band_count: int
     crs: str
+
+
+@dataclass(frozen=True)
+class PadDerivativeRequest:
+    """Managed request for a single-band derivative of a PAD volume."""
+
+    input_path: Path | str
+    output_path: Path
+    derivative_type: str
+    voxel_height: float
+    min_height: float | None = None
+    max_height: float | None = None
+    slice_height: float | None = None
+    band_index: int | None = None
+    crs: str | None = None
+
+
+@dataclass(frozen=True)
+class PadDerivativeResult:
+    """Result for a managed PAD derivative raster."""
+
+    output_path: Path
+    derivative_type: str
+    band_count: int = 1
 
 
 @dataclass(frozen=True)
@@ -277,6 +310,9 @@ class PaiRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
     source_fingerprint: str = ""
@@ -312,6 +348,9 @@ class FhdRequest:
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
     source_fingerprint: str = ""
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
 
 
 @dataclass(frozen=True)
@@ -342,6 +381,9 @@ class RumpleRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
     source_fingerprint: str = ""
@@ -393,6 +435,9 @@ class HagNormalizationRequest:
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
     source_fingerprint: str = ""
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
 
 
 @dataclass(frozen=True)
@@ -423,6 +468,10 @@ class DtmRequest:
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
     source_fingerprint: str = ""
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
+    diagnostics_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -451,6 +500,9 @@ class PointDensityRequest:
     crop_polygon: str | None = None
     crop_polygon_path: Path | None = None
     polygon_execution_input: PolygonExecutionInput | None = None
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
     source_fingerprint: str = ""
@@ -487,6 +539,14 @@ class VoxelStatRequest:
     selection_vertical_axis: str = ""
     selection_height_range: tuple[float, float] | None = None
     source_fingerprint: str = ""
+    selection_vertical_axis: str = ""
+    selection_height_range: tuple[float, float] | None = None
+    source_fingerprint: str = ""
+    work_unit_id: str = ""
+    attempt_id: str = ""
+    diagnostics_path: Path | None = None
+    source_dimensions: tuple[str, ...] = ()
+    source_coverage_expectation: str = "unknown"
 
 
 @dataclass(frozen=True)

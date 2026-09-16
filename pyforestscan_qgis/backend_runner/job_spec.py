@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import uuid
 from dataclasses import asdict, dataclass, fields, is_dataclass
 from pathlib import Path
@@ -105,7 +106,8 @@ def build_job_spec_from_request(product: str, request: Any, run_folder: Path | N
     params = _json_ready(asdict(request))
     _normalize_ept_bounds_parameters(params)
     input_path = Path(str(params.get("input_path", "")))
-    output_path = Path(str(params.get("output_path", "")))
+    raw_output_path = params.get("output_path")
+    output_path = Path(str(raw_output_path)) if raw_output_path else None
     crs = _optional_crs(params.get("crs"))
     spatial_reference = SpatialReferenceContract.from_crs(crs)
     dimensions = PointDimensionCapabilities.from_names(params.get("source_dimensions", ()))
@@ -113,7 +115,7 @@ def build_job_spec_from_request(product: str, request: Any, run_folder: Path | N
     folder = Path(run_folder) if run_folder is not None else _default_run_folder_for_request(params, output_path)
     identifier = job_id or f"pbm-{product}-{uuid.uuid4().hex[:12]}"
     result_path = folder / ".pbm_jobs" / f"{identifier}.result.json"
-    output_paths = {"primary": output_path}
+    output_paths = {"primary": output_path} if output_path is not None else {}
     if params.get("dtm_path"):
         dtm_path = Path(str(params["dtm_path"]))
     else:
@@ -162,8 +164,10 @@ def _normalize_ept_bounds_parameters(params: dict[str, Any]) -> None:
     params["pdal_bounds_expression"] = model.to_pdal_range_string()
 
 
-def _default_run_folder_for_request(params: dict[str, Any], output_path: Path) -> Path:
+def _default_run_folder_for_request(params: dict[str, Any], output_path: Path | None) -> Path:
     """Return the durable PBM job workspace for a request."""
+    if output_path is None:
+        return Path(tempfile.gettempdir()) / "pyforestscan_qgis" / "jobs"
     parent = output_path.parent
     if params.get("polygon_execution_input") and parent.name == "outputs":
         return parent.parent

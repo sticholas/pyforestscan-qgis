@@ -12,7 +12,6 @@ from .core.qgis_compat import open_or_raise_mission_control, register_processing
 from .processing_provider import PyForestScanProvider
 from .resources import plugin_icon
 from .ui.mission_control import MissionControlDock
-from .core.workspace import WorkspaceManager
 from .core.build_identity import PLUGIN_MIXED_INSTALL, PLUGIN_CORRUPT, session_identity, write_plugin_session_identity
 
 
@@ -49,12 +48,9 @@ class PyForestScanPlugin:
             else:
                 report_message(result.message, level="WARNING")
         self._create_mission_control_action()
-        try:
-            auto_open = WorkspaceManager().load_global_session().open_mission_control_on_startup
-        except Exception:  # noqa: BLE001 - startup preference must never block plugin loading.
-            auto_open = False
-        if auto_open:
-            self._show_mission_control()
+        # Mission Control is always user-launched from the PyForestScan menu or
+        # toolbar. Do not open a window or run an engine check when QGIS starts
+        # or when a project is opened.
 
     def unload(self) -> None:
         """Remove Processing provider, actions, and Mission Control dock."""

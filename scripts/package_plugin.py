@@ -348,7 +348,7 @@ def assert_clean_repository() -> None:
 
 
 def _git_status() -> str:
-    try:return subprocess.run(("git","status","--porcelain"),cwd=REPOSITORY_ROOT,check=False,capture_output=True,text=True,timeout=10).stdout.strip()
+    try:return subprocess.run(("git","status","--porcelain"),cwd=REPOSITORY_ROOT,check=False,capture_output=True,text=True,timeout=60).stdout.strip()
     except (OSError,subprocess.SubprocessError):return "unknown"
 
 
@@ -411,7 +411,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _git_value(*args: str) -> str:
     try:
-        completed = subprocess.run(("git", *args), cwd=REPOSITORY_ROOT, check=False, capture_output=True, text=True, timeout=10)
+        completed = subprocess.run(("git", *args), cwd=REPOSITORY_ROOT, check=False, capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return "unknown"
     value = completed.stdout.strip()

@@ -1,0 +1,347 @@
+{
+  "baseline": {
+    "branch": "main",
+    "commit": "5fdb3480ed4ebb5a3284db09461b96a3679e934a"
+  },
+  "compile": {
+    "evidence": {
+      "command": [
+        "/usr/bin/python3",
+        "-m",
+        "compileall",
+        "-q",
+        "pyforestscan_qgis",
+        "scripts"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    "status": "PASS"
+  },
+  "generated_at": "2026-09-14T23:26:28.798473+00:00",
+  "gui_products": [
+    {
+      "evidence": "Mission Control product registry and QGIS-independent contract tests",
+      "feature": "CHM",
+      "status": "PASS"
+    },
+    {
+      "evidence": "Mission Control product registry and QGIS-independent contract tests",
+      "feature": "DTM",
+      "status": "PASS"
+    },
+    {
+      "evidence": "Mission Control product registry and QGIS-independent contract tests",
+      "feature": "PAD",
+      "status": "PASS"
+    },
+    {
+      "evidence": "Mission Control product registry and QGIS-independent contract tests",
+      "feature": "PAI",
+      "status": "PASS"
+    },
+    {
+      "evidence": "Mission Control product registry and QGIS-independent contract tests",
+      "feature": "FHD",
+      "status": "PASS"
+    },
+    {
+      "evidence": "Mission Control product registry and QGIS-independent contract tests",
+      "feature": "Canopy Cover",
+      "status": "PASS"
+    },
+    {
+      "evidence": "Mission Control product registry and QGIS-independent contract tests",
+      "feature": "Rumple",
+      "status": "PASS"
+    },
+    {
+      "evidence": "Mission Control product registry and QGIS-independent contract tests",
+      "feature": "Point Density",
+      "status": "PASS"
+    },
+    {
+      "evidence": "Mission Control product registry and QGIS-independent contract tests",
+      "feature": "Voxel Statistic",
+      "status": "PASS"
+    }
+  ],
+  "known_external_blockers": [
+    "QGIS Python unavailable: ModuleNotFoundError: No module named 'qgis'"
+  ],
+  "package": {
+    "has_metadata": true,
+    "has_provider": true,
+    "member_count": 258,
+    "path": "/home/milo/repos/pyforestscan-qgis/dist/pyforestscan_qgis-v0.1.0.zip",
+    "sha256": "4fac7572ad16ec75cea2220d82a27911144ead0b0a98e59d4e8f1ff28e3ca9cd",
+    "size_bytes": 680841,
+    "status": "PASS"
+  },
+  "plugin_version": "0.2.0-beta.7",
+  "provider": {
+    "algorithms": [
+      {
+        "backend_route": "Managed Processing Engine or lightweight diagnostic route",
+        "dependencies": "Algorithm-specific; see module",
+        "display_name": "EnvironmentCheckAlgorithm",
+        "entry_point": "EnvironmentCheckAlgorithm()",
+        "existing_tests": "Repository unittest coverage",
+        "feature_id": "environment_check",
+        "module": "pyforestscan_qgis/algorithms/placeholder_algorithms.py",
+        "output_type": "Algorithm-defined",
+        "parameters": "Declared by initAlgorithm",
+        "public_surface": "QGIS Processing provider",
+        "qgis_runtime_status": "UNQUALIFIED_QGIS_RUNTIME",
+        "status": "PASS",
+        "supported_source_types": "Algorithm-defined",
+        "tiled_support": "Mission Control contract where applicable"
+      },
+      {
+        "backend_route": "Managed Processing Engine or lightweight diagnostic route",
+        "dependencies": "Algorithm-specific; see module",
+        "display_name": "AdvancedChmAlgorithm",
+        "entry_point": "AdvancedChmAlgorithm()",
+        "existing_tests": "Repository unittest coverage",
+        "feature_id": "advanced_chm",
+        "module": "pyforestscan_qgis/algorithms/advanced/advanced_chm.py",
+        "output_type": "Algorithm-defined",
+        "parameters": "Declared by initAlgorithm",
+        "public_surface": "QGIS Processing provider",
+        "qgis_runtime_status": "UNQUALIFIED_QGIS_RUNTIME",
+        "status": "PASS",
+        "supported_source_types": "Algorithm-defined",
+        "tiled_support": "Mission Control contract where applicable"
+      },
+      {
+        "backend_route": "Managed Processing Engine or lightweight diagnostic route",
+        "dependencies": "Algorithm-specific; see module",
+        "display_name": "AdvancedPadAlgorithm",
+        "entry_point": "AdvancedPadAlgorithm()",
+        "existing_tests": "Repository unittest coverage",
+        "feature_id": "advanced_pad",
+        "module": "pyforestscan_qgis/algorithms/advanced/advanced_pad.py",
+        "output_type": "Algorithm-defined",
+        "parameters": "Declared by initAlgorithm",
+        "public_surface": "QGIS Processing provider",
+        "qgis_runtime_status": "UNQUALIFIED_QGIS_RUNTIME",
+        "status": "PASS",
+        "supported_source_types": "Algorithm-defined",
+        "tiled_support": "Mission Control contract where applicable"
+      },
+      {
+        "backend_route": "Managed Processing Engine or lightweight diagnostic route",
+        "dependencies": "Algorithm-specific; see module",
+        "display_name": "PadDerivativeRasterAlgorithm",
+        "entry_point": "PadDerivativeRasterAlgorithm()",
+        "existing_tests": "Repository unittest coverage",
+        "feature_id": "pad_derivative_raster",
+        "module": "pyforestscan_qgis/algorithms/advanced/pad_derivative.py",
+        "output_type": "Algorithm-defined",
+        "parameters": "Declared by initAlgorithm",
+        "public_surface": "QGIS Processing provider",
+        "qgis_runtime_status": "UNQUALIFIED_QGIS_RUNTIME",
+        "status": "PASS",
+        "supported_source_types": "Algorithm-defined",
+        "tiled_support": "Mission Control contract where applicable"
+      },
+      {
+        "backend_route": "Managed Processing Engine or lightweight diagnostic route",
+        "dependencies": "Algorithm-specific; see module",
+        "display_name": "AdvancedPaiAlgorithm",
+        "entry_point": "AdvancedPaiAlgorithm()",
+        "existing_tests": "Repository unittest coverage",
+        "feature_id": "advanced_pai",
+        "module": "pyforestscan_qgis/algorithms/advanced/advanced_pai.py",
+        "output_type": "Algorithm-defined",
+        "parameters": "Declared by initAlgorithm",
+        "public_surface": "QGIS Processing provider",
+        "qgis_runtime_status": "UNQUALIFIED_QGIS_RUNTIME",
+        "status": "PASS",
+        "supported_source_types": "Algorithm-defined",
+        "tiled_support": "Mission Control contract where applicable"
+      },
+      {
+        "backend_route": "Managed Processing Engine or lightweight diagnostic route",
+        "dependencies": "Algorithm-specific; see module",
+        "display_name": "AdvancedCanopyCoverAlgorithm",
+        "entry_point": "AdvancedCanopyCoverAlgorithm()",
+        "existing_tests": "Repository unittest coverage",
+        "feature_id": "advanced_canopy_cover",
+        "module": "pyforestscan_qgis/algorithms/advanced/advanced_canopy_cover.py",
+        "output_type": "Algorithm-defined",
+        "parameters": "Declared by initAlgorithm",
+        "public_surface": "QGIS Processing provider",
+        "qgis_runtime_status": "UNQUALIFIED_QGIS_RUNTIME",
+        "status": "PASS",
+        "supported_source_types": "Algorithm-defined",
+        "tiled_support": "Mission Control contract where applicable"
+      },
+      {
+        "backend_route": "Managed Processing Engine or lightweight diagnostic route",
+        "dependencies": "Algorithm-specific; see module",
+        "display_name": "AdvancedFhdAlgorithm",
+        "entry_point": "AdvancedFhdAlgorithm()",
+        "existing_tests": "Repository unittest coverage",
+        "feature_id": "advanced_fhd",
+        "module": "pyforestscan_qgis/algorithms/advanced/advanced_fhd.py",
+        "output_type": "Algorithm-defined",
+        "parameters": "Declared by initAlgorithm",
+        "public_surface": "QGIS Processing provider",
+        "qgis_runtime_status": "UNQUALIFIED_QGIS_RUNTIME",
+        "status": "PASS",
+        "supported_source_types": "Algorithm-defined",
+        "tiled_support": "Mission Control contract where applicable"
+      },
+      {
+        "backend_route": "Managed Processing Engine or lightweight diagnostic route",
+        "dependencies": "Algorithm-specific; see module",
+        "display_name": "AdvancedRumpleAlgorithm",
+        "entry_point": "AdvancedRumpleAlgorithm()",
+        "existing_tests": "Repository unittest coverage",
+        "feature_id": "advanced_rumple",
+        "module": "pyforestscan_qgis/algorithms/advanced/advanced_rumple.py",
+        "output_type": "Algorithm-defined",
+        "parameters": "Declared by initAlgorithm",
+        "public_surface": "QGIS Processing provider",
+        "qgis_runtime_status": "UNQUALIFIED_QGIS_RUNTIME",
+        "status": "PASS",
+        "supported_source_types": "Algorithm-defined",
+        "tiled_support": "Mission Control contract where applicable"
+      },
+      {
+        "backend_route": "Managed Processing Engine or lightweight diagnostic route",
+        "dependencies": "Algorithm-specific; see module",
+        "display_name": "AdvancedPointDensityAlgorithm",
+        "entry_point": "AdvancedPointDensityAlgorithm()",
+        "existing_tests": "Repository unittest coverage",
+        "feature_id": "advanced_point_density",
+        "module": "pyforestscan_qgis/algorithms/advanced/advanced_point_density.py",
+        "output_type": "Algorithm-defined",
+        "parameters": "Declared by initAlgorithm",
+        "public_surface": "QGIS Processing provider",
+        "qgis_runtime_status": "UNQUALIFIED_QGIS_RUNTIME",
+        "status": "PASS",
+        "supported_source_types": "Algorithm-defined",
+        "tiled_support": "Mission Control contract where applicable"
+      },
+      {
+        "backend_route": "Managed Processing Engine or lightweight diagnostic route",
+        "dependencies": "Algorithm-specific; see module",
+        "display_name": "AdvancedVoxelStatAlgorithm",
+        "entry_point": "AdvancedVoxelStatAlgorithm()",
+        "existing_tests": "Repository unittest coverage",
+        "feature_id": "advanced_voxel_statistic",
+        "module": "pyforestscan_qgis/algorithms/advanced/advanced_voxel_stat.py",
+        "output_type": "Algorithm-defined",
+        "parameters": "Declared by initAlgorithm",
+        "public_surface": "QGIS Processing provider",
+        "qgis_runtime_status": "UNQUALIFIED_QGIS_RUNTIME",
+        "status": "PASS",
+        "supported_source_types": "Algorithm-defined",
+        "tiled_support": "Mission Control contract where applicable"
+      },
+      {
+        "backend_route": "Managed Processing Engine or lightweight diagnostic route",
+        "dependencies": "Algorithm-specific; see module",
+        "display_name": "NormalizeHagAlgorithm",
+        "entry_point": "NormalizeHagAlgorithm()",
+        "existing_tests": "Repository unittest coverage",
+        "feature_id": "normalize_height_above_ground",
+        "module": "pyforestscan_qgis/algorithms/advanced/normalize_hag.py",
+        "output_type": "Algorithm-defined",
+        "parameters": "Declared by initAlgorithm",
+        "public_surface": "QGIS Processing provider",
+        "qgis_runtime_status": "UNQUALIFIED_QGIS_RUNTIME",
+        "status": "PASS",
+        "supported_source_types": "Algorithm-defined",
+        "tiled_support": "Mission Control contract where applicable"
+      },
+      {
+        "backend_route": "Managed Processing Engine or lightweight diagnostic route",
+        "dependencies": "Algorithm-specific; see module",
+        "display_name": "EptSubsetExtractAlgorithm",
+        "entry_point": "EptSubsetExtractAlgorithm()",
+        "existing_tests": "Repository unittest coverage",
+        "feature_id": "extract_ept_subset",
+        "module": "pyforestscan_qgis/algorithms/advanced/ept_subset.py",
+        "output_type": "Algorithm-defined",
+        "parameters": "Declared by initAlgorithm",
+        "public_surface": "QGIS Processing provider",
+        "qgis_runtime_status": "UNQUALIFIED_QGIS_RUNTIME",
+        "status": "PASS",
+        "supported_source_types": "Algorithm-defined",
+        "tiled_support": "Mission Control contract where applicable"
+      },
+      {
+        "backend_route": "Managed Processing Engine or lightweight diagnostic route",
+        "dependencies": "Algorithm-specific; see module",
+        "display_name": "AdvancedDtmAlgorithm",
+        "entry_point": "AdvancedDtmAlgorithm()",
+        "existing_tests": "Repository unittest coverage",
+        "feature_id": "advanced_dtm",
+        "module": "pyforestscan_qgis/algorithms/advanced/advanced_dtm.py",
+        "output_type": "Algorithm-defined",
+        "parameters": "Declared by initAlgorithm",
+        "public_surface": "QGIS Processing provider",
+        "qgis_runtime_status": "UNQUALIFIED_QGIS_RUNTIME",
+        "status": "PASS",
+        "supported_source_types": "Algorithm-defined",
+        "tiled_support": "Mission Control contract where applicable"
+      },
+      {
+        "backend_route": "Managed Processing Engine or lightweight diagnostic route",
+        "dependencies": "Algorithm-specific; see module",
+        "display_name": "PointCloudPreprocessAlgorithm",
+        "entry_point": "PointCloudPreprocessAlgorithm()",
+        "existing_tests": "Repository unittest coverage",
+        "feature_id": "advanced_point_cloud_preprocess",
+        "module": "pyforestscan_qgis/algorithms/advanced/point_cloud_preprocess.py",
+        "output_type": "Algorithm-defined",
+        "parameters": "Declared by initAlgorithm",
+        "public_surface": "QGIS Processing provider",
+        "qgis_runtime_status": "UNQUALIFIED_QGIS_RUNTIME",
+        "status": "PASS",
+        "supported_source_types": "Algorithm-defined",
+        "tiled_support": "Mission Control contract where applicable"
+      }
+    ],
+    "provider_id": "pyforestscan",
+    "registered_algorithm_count": 14,
+    "runtime": {
+      "reason": "QGIS Python unavailable: ModuleNotFoundError: No module named 'qgis'",
+      "status": "BLOCKED"
+    }
+  },
+  "recommendation": "NOT READY FOR RELEASE",
+  "schema": "pyforestscan-rc-qualification-v1",
+  "static_undefined_names": {
+    "evidence": {
+      "command": [
+        "/usr/bin/python3",
+        "scripts/check_undefined_names.py",
+        "pyforestscan_qgis"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "Undefined-name validation passed: pyforestscan_qgis\n"
+    },
+    "status": "PASS"
+  },
+  "tests": {
+    "command": [
+      "/usr/bin/python3",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tests",
+      "-q"
+    ],
+    "returncode": 0,
+    "status": "PASS",
+    "stderr": "----------------------------------------------------------------------\nRan 1061 tests in 28.206s\n\nOK (skipped=7)\n",
+    "stdout": ""
+  }
+}

@@ -264,13 +264,16 @@ class BatchExecutor:
                         if item_callback is not None:
                             item_callback(item)
                     queued = []
-                while queued and not stop_queue and len(running) < guardrail.max_workers:
+                while queued and not stop_queue and control != "pause" and len(running) < guardrail.max_workers:
                     dataset = Path(queued.pop(0))
-                    future = pool.submit(self._run_one_dataset, dataset, batch_folder, request, job_callback)
+                    future = pool.submit(self._run_one_dataset, dataset, batch_folder, request, job_callback, control_callback)
                     running[future] = dataset
                 if not running:
+                    if control == "pause" and queued:
+                        time.sleep(0.05)
+                        continue
                     break
-                done, _pending = wait(tuple(running.keys()), return_when=FIRST_COMPLETED)
+                done, _pending = wait(tuple(running.keys()), timeout=0.1, return_when=FIRST_COMPLETED)
                 for future in done:
                     dataset = running.pop(future)
                     try:
@@ -316,8 +319,12 @@ class BatchExecutor:
         batch_folder: Path,
         request: BatchRequest,
         job_callback: BatchJobCallback | None,
+        control_callback: BatchControlCallback | None,
     ) -> BatchItemResult:
-        runner = BatchRunner(adapter=self.adapter_factory(), job_callback=job_callback)
+        runner = BatchRunner(
+            adapter=self.adapter_factory(), job_callback=job_callback,
+            control_callback=control_callback,
+        )
         return runner.run_dataset(dataset, batch_folder, request)
 
     def _write_partial_summary(self, batch_id: str, request: BatchRequest, batch_folder: Path, started_at: str, items: list[BatchItemResult]) -> None:

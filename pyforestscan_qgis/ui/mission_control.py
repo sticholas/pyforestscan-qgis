@@ -596,7 +596,11 @@ class MissionControlDock(QDockWidget):
         state = self.state.with_activity("Processing job", f"{job.title}: {job.status.value}")
         for result in job.results:
             state = state.with_report_path(result.path)
-        self._load_job_outputs(job)
+        # Batch output loading is performed once, from the terminal batch result.
+        # Loading here as well can re-enter QGIS while progress signals are still
+        # being delivered and used to duplicate layer creation.
+        if not job.title.startswith("PyForestScan Batch - "):
+            self._load_job_outputs(job)
         self.advisor_page.set_completed_products(completed_products_from_job(job))
         if self.state.active_run is not None:
             self.results_page.set_run_context(self.state.active_run)
@@ -653,6 +657,7 @@ class MissionControlDock(QDockWidget):
         if isinstance(registry_path, Path):
             self.results_page.set_report_paths((registry_path,))
         if getattr(result, "load_outputs_after_completion", False) and output_paths:
+            self._adopt_output_crs_for_empty_project(output_paths)
             self.results_page.load_outputs_to_qgis(primary_only=True)
         self._save_workspace_session()
         self._refresh_home()
@@ -809,7 +814,6 @@ class MissionControlDock(QDockWidget):
                     remember_last_output_folder=self.settings_page.remember_output_folder_check.isChecked(),
                     maximum_recent_items=self.settings_page.recent_item_display_limit(),
                     auto_save_enabled=self.settings_page.auto_save_workspace_check.isChecked(),
-                    open_mission_control_on_startup=self.settings_page.open_on_startup_check.isChecked(),
                 )
             )
             if self.workspace_manager.auto_save:
@@ -899,7 +903,6 @@ class MissionControlDock(QDockWidget):
             remember_last_output_folder=self.settings_page.remember_output_folder_check.isChecked(),
             maximum_recent_items=self.settings_page.recent_item_display_limit(),
             auto_save_enabled=self.settings_page.auto_save_workspace_check.isChecked(),
-            open_mission_control_on_startup=self.settings_page.open_on_startup_check.isChecked(),
         )
         self.workspace_session = session
         try:
@@ -1026,6 +1029,25 @@ class MissionControlDock(QDockWidget):
             if layer is not None:
                 self._polish_raster_layer(layer, result.result_type)
                 self.loaded_result_paths.add(result.path)
+
+    def _adopt_output_crs_for_empty_project(self, output_paths: tuple[Path, ...]) -> None:
+        """Use the first raster CRS for a new project without prompting the user."""
+        try:
+            from qgis.core import QgsProject, QgsRasterLayer  # type: ignore
+
+            project = QgsProject.instance()
+            if project.mapLayers():
+                return
+            for path in output_paths:
+                if path.suffix.lower() not in {".tif", ".tiff"}:
+                    continue
+                probe = QgsRasterLayer(str(path), "PyForestScan CRS probe")
+                if not probe.isValid() or not probe.crs().isValid():
+                    continue
+                project.setCrs(probe.crs())
+                return
+        except Exception:  # noqa: BLE001 - CRS adoption is a convenience, never a science failure.
+            return
 
     def _layer_name(self, path: Path, result_type: str) -> str:
         """Return a friendly layer name for generated rasters."""

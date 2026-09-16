@@ -17,8 +17,9 @@ from qgis.core import (
 )
 
 from ...core.advanced_processing import GEOTIFF_FILTER
-from ...core.pad_products import PadDerivativeSpec, calculate_pad_derivative
-from .common import AdvancedPyForestScanAlgorithm
+from ...core.adapter import PyForestScanAdapter
+from ...core.types import PadDerivativeRequest
+from .common import AdvancedPyForestScanAlgorithm, run_adapter_call
 
 
 class PadDerivativeRasterAlgorithm(AdvancedPyForestScanAlgorithm):
@@ -67,7 +68,8 @@ class PadDerivativeRasterAlgorithm(AdvancedPyForestScanAlgorithm):
         if not input_pad or not output:
             raise QgsProcessingException(self.tr("Input PAD and output GeoTIFF are required."))
         derivative_type = self.TYPES[self.parameterAsEnum(parameters, self.DERIVATIVE_TYPE, context)]
-        spec = PadDerivativeSpec(
+        request = PadDerivativeRequest(
+            input_path=Path(input_pad),
             derivative_type=derivative_type,  # type: ignore[arg-type]
             output_path=Path(output),
             voxel_height=self.parameterAsDouble(parameters, self.VOXEL_HEIGHT, context),
@@ -76,23 +78,12 @@ class PadDerivativeRasterAlgorithm(AdvancedPyForestScanAlgorithm):
             slice_height=self.optional_double(parameters, self.SLICE_HEIGHT, context),
             band_index=int(self.parameterAsInt(parameters, self.BAND_INDEX, context)) if parameters.get(self.BAND_INDEX) not in (None, "") else None,
         )
-        try:
-            import rasterio
-        except Exception as exc:  # noqa: BLE001
-            raise QgsProcessingException(self.tr(f"PAD derivative requires rasterio: {exc}")) from exc
-        try:
-            with rasterio.open(input_pad) as src:
-                volume = src.read().transpose(2, 1, 0)
-                profile = src.profile.copy()
-                derivative = calculate_pad_derivative(volume, spec)
-                profile.update(count=1, dtype=derivative.dtype.name)
-                Path(output).parent.mkdir(parents=True, exist_ok=True)
-                with rasterio.open(output, "w", **profile) as dst:
-                    dst.write(derivative.T, 1)
-                    dst.update_tags(pyforestscan_product="PAD derivative visualization", derivative_type=derivative_type, source_pad=str(input_pad))
-        except Exception as exc:  # noqa: BLE001
-            raise QgsProcessingException(self.tr(f"PAD derivative generation failed: {exc}")) from exc
-        message = self.tr(f"PAD {derivative_type} derivative created: {output}")
+        result = run_adapter_call(
+            feedback,
+            "PAD Derivative",
+            lambda: PyForestScanAdapter(execution_mode="pbm_backend").create_pad_derivative(request),
+        )
+        message = self.tr(f"PAD {result.derivative_type} derivative created: {result.output_path}")
         feedback.pushInfo(message)
         feedback.setProgress(100)
-        return {self.OUTPUT_MESSAGE: message, self.OUTPUT_DERIVATIVE: str(output)}
+        return {self.OUTPUT_MESSAGE: message, self.OUTPUT_DERIVATIVE: str(result.output_path)}

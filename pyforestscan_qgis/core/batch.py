@@ -44,6 +44,9 @@ class BatchProductSettings:
     fhd_max_height: float | None = None
     rumple_min_height: float | None = None
     point_density_per_area: bool = True
+    voxel_stat_dimension: str = "HeightAboveGround"
+    voxel_stat_stat: str = "count"
+    voxel_stat_z_index_range: tuple[int, int] | None = None
     stop_on_error: bool = False
     load_outputs_into_qgis: bool = True
     execution_mode: str = "automatic"
@@ -68,6 +71,7 @@ class BatchRequest:
     batch_folder: Path | None = None
     processing_spatial_contexts: tuple[tuple[str, dict[str, object]], ...] = ()
     runtime_token: object | None = None
+    clip_bounds: tuple[tuple[float, float], tuple[float, float]] | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +98,12 @@ class BatchItemResult:
     bounds_summary: str = "Not inspected"
     requested_products: tuple[str, ...] = ()
     product_results: tuple[ProductExecutionResult, ...] = ()
+    completed_work_units: int = 0
+    total_work_units: int = 0
+    latest_completed_work_unit: str = ""
+    failure_stage: str = ""
+    failed_work_unit_id: str = ""
+    work_unit_folder: str = ""
 
 
 @dataclass(frozen=True)
@@ -111,6 +121,10 @@ class BatchResult:
     summary_html: Path
     output_registry_path: Path | None = None
     load_outputs_after_completion: bool = False
+    attempt_id: str = ""
+    job_id: str = ""
+    diagnostics_path: Path | None = None
+    failure_summary_path: Path | None = None
 
     @property
     def success_count(self) -> int:
@@ -142,6 +156,12 @@ class BatchResult:
             if cancelled and not failed:
                 return "CANCELLED"
             return "FAILED"
+        cancelled_items = sum(item.status == "cancelled" for item in self.items)
+        if cancelled_items:
+            if self.success_count:
+                return "PARTIAL_SUCCESS"
+            if not self.failure_count:
+                return "CANCELLED"
         if self.failure_count:
             return "FAILED"
         return "SUCCEEDED"

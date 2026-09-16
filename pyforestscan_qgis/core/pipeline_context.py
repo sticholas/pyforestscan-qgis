@@ -101,6 +101,19 @@ class PipelineContext:
             value = 1.0
         return float(value)
 
+    @property
+    def bounds(self) -> tuple[tuple[float, float], tuple[float, float]] | None:
+        """Return an optional validated XY processing window."""
+        value = self._parameter("bounds", None)
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            return None
+        try:
+            x = (float(value[0][0]), float(value[0][1]))
+            y = (float(value[1][0]), float(value[1][1]))
+        except (TypeError, ValueError, IndexError):
+            return None
+        return (x, y) if x[0] < x[1] and y[0] < y[1] else None
+
 
     @property
     def chm_interpolation(self) -> str:
@@ -130,6 +143,28 @@ class PipelineContext:
         """Return the planned voxel height / height bin size."""
         value = self._parameter("height_bin_size", 1.0)
         return float(value) if value is not None else 1.0
+
+    @property
+    def voxel_stat_dimension(self) -> str:
+        """Return the source field selected for voxel aggregation."""
+        return str(self._parameter("voxel_stat_dimension", "HeightAboveGround")).strip()
+
+    @property
+    def voxel_stat_stat(self) -> str:
+        """Return the requested voxel aggregation statistic."""
+        return str(self._parameter("voxel_stat_stat", "count")).lower()
+
+    @property
+    def voxel_stat_z_index_range(self) -> tuple[int, int] | None:
+        """Return an optional inclusive/exclusive vertical-bin range."""
+        value = self._parameter("voxel_stat_z_index_range", None)
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            return None
+        try:
+            start, stop = int(value[0]), int(value[1])
+        except (TypeError, ValueError):
+            return None
+        return (start, stop) if start >= 0 and stop > start else None
 
     @property
     def pad_output_filename(self) -> str:

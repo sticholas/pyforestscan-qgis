@@ -52,18 +52,23 @@ def derive_polygon_query_geometry(
 
 
 def transform_wkt_coordinates(wkt: str, transformer: CoordinateTransformer) -> str:
-    """Transform numeric XY pairs in simple Polygon/MultiPolygon WKT."""
-    numbers = list(re.finditer(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", wkt))
-    if len(numbers) % 2 != 0:
+    """Transform XY in every polygon coordinate tuple, preserving Z/M.
+
+    A flat numeric-token pass is incorrect for ``POLYGON Z``/``ZM`` because
+    the third/fourth ordinate changes tuple parity.  This tuple-aware parser
+    leaves WKT type text, nesting, rings, and extra ordinates untouched.
+    """
+    number = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
+    pair = re.compile(rf"(?P<x>{number})(?P<gap>\s+)(?P<y>{number})(?P<rest>(?:\s+{number})*)")
+    seen = 0
+    def replace(match):
+        nonlocal seen
+        x, y = transformer(float(match.group("x")), float(match.group("y")))
+        seen += 1
+        return f"{x:.12g}{match.group('gap')}{y:.12g}{match.group('rest')}"
+    out = pair.sub(replace, wkt)
+    if seen == 0:
         raise ValueError("Polygon WKT must contain XY coordinate pairs for CRS transformation.")
-    replacements: list[tuple[int, int, str]] = []
-    for x_match, y_match in zip(numbers[0::2], numbers[1::2]):
-        x, y = transformer(float(x_match.group(0)), float(y_match.group(0)))
-        replacements.append((x_match.start(), x_match.end(), f"{x:.12g}"))
-        replacements.append((y_match.start(), y_match.end(), f"{y:.12g}"))
-    out = wkt
-    for start, end, value in sorted(replacements, reverse=True):
-        out = out[:start] + value + out[end:]
     return out
 
 

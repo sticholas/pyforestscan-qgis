@@ -9,6 +9,7 @@ import threading
 import time
 import traceback
 import uuid
+import json
 from pathlib import Path
 
 from pyforestscan_qgis.core.adapter import PyForestScanAdapter
@@ -23,6 +24,15 @@ def _atomic_pickle(path: Path, value: object) -> None:
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(temporary, path)
+
+def _append_progress_event(job_dir: Path, payload: dict, job_id: str = "") -> None:
+    path = job_dir / "progress" / "progress_events.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {"schema": "pyforestscan-progress-v1", "timestamp": time.time(), "job_id": job_id, **payload}
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, sort_keys=True, default=str) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
 
 
 def run_payload(payload_path: Path) -> int:
@@ -50,12 +60,14 @@ def run_payload(payload_path: Path) -> int:
     })
 
     def write_snapshot(event_type: str) -> None:
-        atomic_write_json(job_dir / "progress_snapshot.json", {
+        snapshot = {
             **state, "event_type": event_type, "active_stage": state["stage"],
             "heartbeat_sequence": heartbeat_sequence, "pid": os.getpid(),
             "elapsed_seconds": int(time.monotonic() - started),
             "last_heartbeat_at": time.time(),
-        })
+        }
+        atomic_write_json(job_dir / "progress_snapshot.json", snapshot)
+        _append_progress_event(job_dir, snapshot, str(payload["job_id"]))
 
     def heartbeat() -> None:
         nonlocal heartbeat_sequence

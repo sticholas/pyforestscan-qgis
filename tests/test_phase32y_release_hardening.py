@@ -52,12 +52,11 @@ class Phase32YReleaseHardeningTests(unittest.TestCase):
         self.assertEqual((True, "Repair Processing Engine"), processing_engine_setup_action("REPAIR_REQUIRED"))
         self.assertEqual((True, "Update Processing Engine"), processing_engine_setup_action("INCOMPATIBLE"))
 
-    def test_fallback_crs_precedes_startup(self) -> None:
+    def test_fallback_crs_is_present_without_startup_autolaunch(self) -> None:
         output = PAGES.index('form.addRow("Default output folder"')
         fallback = PAGES.index('form.addRow("Fallback CRS"')
-        startup = PAGES.index('form.addRow("Startup"')
         self.assertLess(output, fallback)
-        self.assertLess(fallback, startup)
+        self.assertNotIn('form.addRow("Startup"', PAGES)
 
 
 if __name__ == "__main__":

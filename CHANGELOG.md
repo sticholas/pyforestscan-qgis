@@ -11,6 +11,10 @@
 
 # Changelog
 
+## 0.2.0-beta.7
+
+- Integrated processing reliability, release qualification, and clean-profile fixes from the pre-point-viewer release line while preserving the current point-cloud viewer.
+
 - Added a pure scoped CHM preflight and promotion gate covering PBM readiness, source format, CRS, geometry, selection count, and scientific review. UI promotion remains disabled until the real bounded PBM path is validated.
 
 - Added the first guarded scoped-product consumer boundary for CHM. Validated plans pass the existing bounded envelope and polygon transport; review-only plans fail closed, and whole-dataset processing is unchanged.

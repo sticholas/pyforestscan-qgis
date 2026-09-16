@@ -8,6 +8,7 @@ import json
 import os
 import threading
 import time
+import inspect
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,8 +35,11 @@ from pyforestscan_qgis.core.types import (
     ChmRequest,
     DtmRequest,
     FhdRequest,
+    HagNormalizationRequest,
+    PadDerivativeRequest,
     PadRequest,
     PaiRequest,
+    PointCloudPreprocessRequest,
     PointDensityRequest,
     RumpleRequest,
     VoxelStatRequest,
@@ -47,6 +51,7 @@ PRODUCT_REQUESTS = {
     "chm": (ChmRequest, "create_chm"),
     "canopy_cover": (CanopyCoverRequest, "create_canopy_cover"),
     "pad": (PadRequest, "create_pad"),
+    "pad_derivative": (PadDerivativeRequest, "create_pad_derivative"),
     "pai": (PaiRequest, "create_pai"),
     "fhd": (FhdRequest, "create_fhd"),
     "rumple": (RumpleRequest, "create_rumple"),
@@ -54,6 +59,8 @@ PRODUCT_REQUESTS = {
     "point_density": (PointDensityRequest, "create_point_density"),
     "voxel_stat": (VoxelStatRequest, "create_voxel_stat"),
     "ept_subset_extract": (EptSubsetRequest, "extract_lidar_subset"),
+    "normalize_hag": (HagNormalizationRequest, "normalize_heights"),
+    "point_cloud_preprocess": (PointCloudPreprocessRequest, "preprocess_point_cloud"),
 }
 
 
@@ -109,7 +116,8 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
             if preparation is not None:
                 metrics["preparation"] = {"mode": preparation.plan.height_mode.value, "signature": preparation.plan.signature, "provenance": str(preparation.provenance_path), "reused": preparation.reused}
                 _tag_preparation_output(Path(metrics.get("output_path", "")), preparation)
-            outputs = {"primary": Path(metrics.get("output_path", spec.output_paths.get("primary", "")))}
+            raw_primary = metrics.get("output_path") or spec.output_paths.get("primary")
+            outputs = {"primary": Path(raw_primary)} if raw_primary else {}
         heartbeat_state.update(stage="Finalizing Output", activity="Product calculation completed.", completed_count=heartbeat_state["total_count"])
         _write_heartbeat(spec, heartbeat_state, heartbeat_started)
         _update_source_local_trace(spec, "terminal", {"status": "success", "outputs": {key: str(value) for key, value in outputs.items()}})
@@ -124,6 +132,9 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
             product_metrics=metrics,
         )
     except Exception as exc:  # noqa: BLE001 - backend runner must serialize failures.
+        # Capture the original exception before any diagnostic/reporting
+        # conversion can itself fail.  This must never execute on success.
+        exception_details = _exception_structure(exc)
         diagnostics_dir = create_diagnostics_dir(spec.run_folder)
         structured_error = classify_exception(exc, stage="Request Validation" if isinstance(exc, RequestValidationError) else "Processing")
         _update_source_local_trace(spec, "terminal", {"status": "failed", "error_code": structured_error.code, "message": structured_error.user_message})
@@ -157,7 +168,36 @@ def run_spec(spec: BackendJobSpec) -> BackendJobResult:
             traceback=traceback_module.format_exc(),
             error_code=structured_error.code,
             retryable=structured_error.retryable,
+            **exception_details,
         )
+
+
+def _exception_structure(exc: BaseException) -> dict[str, Any]:
+    """Serialize the innermost filesystem exception without parsing traceback text."""
+    chain: list[str] = []
+    current: BaseException | None = exc
+    root = exc
+    while current is not None:
+        chain.append(type(current).__name__)
+        root = current
+        current = current.__cause__ or current.__context__
+    tb = root.__traceback__
+    while tb is not None and tb.tb_next is not None:
+        tb = tb.tb_next
+    frame = tb.tb_frame if tb is not None else None
+    line = tb.tb_lineno if tb is not None else None
+    return {
+        "root_exception_type": type(root).__name__,
+        "root_exception_message": str(root),
+        "root_errno": getattr(root, "errno", None),
+        "root_winerror": getattr(root, "winerror", None),
+        "root_filename": getattr(root, "filename", None),
+        "root_filename2": getattr(root, "filename2", None),
+        "root_module": str(frame.f_globals.get("__name__", "")) if frame else "",
+        "root_function": str(frame.f_code.co_name) if frame else "",
+        "root_line": line,
+        "wrapper_chain": tuple(chain),
+    }
 
 
 def _write_heartbeat(spec: BackendJobSpec, state: dict[str, Any], started: float) -> None:
@@ -165,6 +205,18 @@ def _write_heartbeat(spec: BackendJobSpec, state: dict[str, Any], started: float
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"job_id": spec.job_id, "attempt_id": str(spec.product_parameters.get("attempt_id", "attempt-1")), "timestamp": _utc_now(), "process_id": os.getpid(), "current_stage": state["stage"], "current_product": spec.product, "latest_activity": state["activity"], "elapsed_seconds": round(time.monotonic() - started, 3), "current_work_unit_id": state.get("current_work_unit_id", ""), "latest_completed_unit": state.get("latest_completed_unit", ""), "completed_count": state.get("completed_count", 0), "total_count": state.get("total_count", 1), "retry_count": state.get("retry_count", 0), "points_processed": state.get("points_processed"), "bytes_processed": state.get("bytes_processed"), "process_alive": True}
     atomic_write_json(path,payload)
+    _append_progress_event(spec, {"event_type": "HEARTBEAT", **payload})
+
+def _append_progress_event(spec: BackendJobSpec, payload: dict[str, Any]) -> None:
+    """Append the single authoritative progress stream consumed by UI/watchdog."""
+    path = spec.run_folder / "progress" / "progress_events.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {"schema": "pyforestscan-progress-v1", "job_id": spec.job_id,
+              "timestamp": _utc_now(), **_json_ready(payload)}
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, sort_keys=True) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
 
 def _heartbeat_loop(spec: BackendJobSpec, stop: threading.Event, state: dict[str, Any], started: float) -> None:
     while not stop.wait(15):

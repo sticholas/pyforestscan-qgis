@@ -28,6 +28,8 @@ CRITICAL_MODULES = (
     "core/polygon_transport.py",
     "core/backend/processing_engine.py",
     "core/adapter.py",
+    "core/tile_diagnostics.py",
+    "core/atomic_state.py",
     "core/backend/execution.py",
     "backend_runner/api_contract.py",
     "backend_runner/ept_chm_subread.py",

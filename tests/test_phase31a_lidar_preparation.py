@@ -14,8 +14,8 @@ from pyforestscan_qgis.backend_runner.job_spec import build_job_spec_from_reques
 from pyforestscan_qgis.backend_runner.pbm_lidar_preparation import _pipeline
 from pyforestscan_qgis.core.classification_inspection import ClassificationAssessment, ClassificationInspectionService, assessment_from_array
 from pyforestscan_qgis.core.dataset_report import build_dataset_explorer_report, report_to_dict
-from pyforestscan_qgis.core.lidar_preparation import HeightNormalizationPlanMode, HeightNormalizationPlanner, PreparationReadiness, build_preparation_assessment, preparation_recommendations
-from pyforestscan_qgis.core.lidar_preparation_execution import checkpoint_is_compatible, execute_preparation, validate_hag_quality
+from pyforestscan_qgis.core.lidar_preparation import HeightNormalizationPlanMode, HeightNormalizationPlanner, PreparationReadiness, build_preparation_assessment, preparation_recommendations, resolve_hag
+from pyforestscan_qgis.core.lidar_preparation_execution import _write_prepared_checkpoint, checkpoint_is_compatible, execute_preparation, validate_hag_quality
 from pyforestscan_qgis.core.source_coordinate_units import SourceCoordinateUnits, assess_source_coordinate_units
 from pyforestscan_qgis.core.types import Bounds3D, ChmRequest, DatasetFormat, DatasetInspection, DatasetSource, RumpleRequest
 
@@ -43,6 +43,12 @@ class PreparationPlannerTests(unittest.TestCase):
         self.assertEqual(plan.readiness, PreparationReadiness.READY)
         self.assertEqual(plan.height_mode, HeightNormalizationPlanMode.USE_EXISTING_HAG)
         self.assertFalse(plan.steps)
+
+    def test_resolver_prefers_existing_hag_without_dtm_or_chm(self):
+        resolution = resolve_hag(self.assessment(("X", "Y", "Z", "HeightAboveGround")))
+        self.assertEqual(resolution.source, "existing_dimension")
+        self.assertTrue(resolution.reused)
+        self.assertNotIn("CHM", resolution.method)
 
     def test_existing_ground_selects_delaunay(self):
         plan = HeightNormalizationPlanner().plan(self.assessment(("X", "Y", "Z", "Classification"), ground=True))
@@ -174,6 +180,24 @@ class PreparationExecutionTests(unittest.TestCase):
             path.with_suffix(".checkpoint.json").write_text(json.dumps({"complete": True, "signature": "abc"}), encoding="utf-8")
             self.assertTrue(checkpoint_is_compatible(path, "abc"))
             self.assertFalse(checkpoint_is_compatible(path, "other"))
+
+    def test_checkpoint_writer_passes_a_list_to_pyforestscan(self):
+        received = []
+
+        class Handlers:
+            @staticmethod
+            def write_las(arrays, output_file, srs=None, compress=True):
+                received.append(arrays)
+                Path(output_file).write_bytes(b"prepared")
+
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "prepared.laz"
+            assessment = type("Assessment", (), {"crs": "EPSG:32605"})()
+            _write_prepared_checkpoint((self.array,), output, assessment, Handlers)
+            self.assertTrue(output.is_file())
+
+        self.assertIsInstance(received[0], list)
+        self.assertIs(received[0][0], self.array)
 
 
 class DatasetSemanticsTests(unittest.TestCase):

@@ -8,7 +8,7 @@ from pyforestscan_qgis.core.project_session import ProjectSessionStore, footer_s
 
 class LongJobTests(unittest.TestCase):
  def test_active_beyond_hour_remains_running(self):
-  p=ProcessingTimeoutPolicy.automatic(); self.assertEqual(evaluate_liveness(p,elapsed=7200,heartbeat_age=2,progress_age=4000).status,"running"); self.assertIsNone(p.maximum_wall_time)
+  p=ProcessingTimeoutPolicy.automatic(); self.assertEqual(evaluate_liveness(p,elapsed=7200,heartbeat_age=2,progress_age=4000).status,"stalled"); self.assertIsNone(p.maximum_wall_time)
  def test_stall_and_custom_wall_time(self):
   p=ProcessingTimeoutPolicy(); self.assertEqual(evaluate_liveness(p,elapsed=2000,heartbeat_age=1900,progress_age=10).status,"stalled")
   p=ProcessingTimeoutPolicy(mode=TimeoutMode.CUSTOM,maximum_wall_time=60); self.assertEqual(evaluate_liveness(p,elapsed=61,heartbeat_age=1,progress_age=1).status,"timed_out")

@@ -54,7 +54,7 @@ class ProductPartitionPolicy:
 PRODUCT_POLICIES={
  "chm":ProductPartitionPolicy("chm",True,50.0,"discard buffered pixels; retain globally aligned core","deterministic first-valid core cells","Tiled/reference equivalence requires live measurement.",True,"provisional",True),
  "rumple":ProductPartitionPolicy("rumple",True,1.0,"retain globally aligned patch core after one-cell CHM halo","deterministic non-overlapping patch ownership",("Every Rumple patch uses a 2x2 CHM neighborhood; core ownership excludes duplicate halo patches.",),True,"synthetic-and-coordinator-equivalence",True),
- **{p:ProductPartitionPolicy(p,False,0.0,"monolithic","not reviewed",("Partition merge behavior is not validated.",),False,"not reviewed",False) for p in ("pad","pai","fhd","canopy_cover","dtm","point_density","voxel_stat")}
+ **{p:ProductPartitionPolicy(p,True,1.0,"retain globally aligned core cells after buffered bounded read","deterministic first-valid core cells",("Each tile is read with a one-cell halo and only its non-overlapping core is mosaicked.",),True,"generic-tiled-core-v1",False) for p in ("pad","pai","fhd","canopy_cover","dtm","point_density","voxel_stat")}
 }
 
 @dataclass(frozen=True)
@@ -118,6 +118,10 @@ class SourceAwareWorkPlanner:
     def plan(self,*,repository_kind,sources,polygon_envelope,processing_crs,product,resolution,available_memory_bytes=8*1024**3,cpu_count=2,profile='recommended',polygon_wkt=None,normalized_polygon=None,cancel_callback=None,progress_callback=None):
         policy=PRODUCT_POLICIES.get(product)
         if policy is None or not policy.partitionable: raise ValueError(f"{product} does not have a validated partition policy.")
+        if repository_kind == "ept" and product != "chm" and any(str(source.source_type).lower() not in {"ept", "ept.json"} for source in sources):
+            raise ValueError("EPT planning requires EPT source records.")
+        if repository_kind == "copc" and product != "chm" and any(str(source.source_type).lower() not in {"copc", "copc.laz"} for source in sources):
+            raise ValueError("COPC planning requires COPC source records.")
         grid=AlignedRasterGrid.from_extent(polygon_envelope,resolution,processing_crs)
         paths=tuple(sources); location=source_location(paths[0].path) if paths else 'local'; network=location in {'network','remote_url'}
         polygon = normalized_polygon
