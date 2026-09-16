@@ -75,3 +75,6 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("original source unchanged", pages)
         self.assertIn("Point cloud: {model.source_path}", pages)
         self.assertIn("selection_product_options(model)", pages)
+        self.assertIn('option.status == "AVAILABLE"', pages)
+        self.assertNotIn("selected_points_product_combo", pages)
+        self.assertIn("Choose one available product below", pages)

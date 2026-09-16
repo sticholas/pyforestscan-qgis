@@ -2507,6 +2507,7 @@ class BatchPage(MissionPage):
         self.iface = iface
         self._adopted_polygon_selection = None
         self.selected_points_scope: dict[str, object] | None = None
+        self._syncing_selected_points_products = False
         self._engine_ready = False
         self.discovered_paths: list[Path] = []
         self.latest_result: object | None = None
@@ -2569,20 +2570,8 @@ class BatchPage(MissionPage):
         self.selected_points_scope_label.setWordWrap(True)
         selected_points_layout.addWidget(self.selected_points_source_label)
         selected_points_layout.addWidget(self.selected_points_scope_label)
-        selected_product_row = QHBoxLayout()
-        self.selected_points_product_combo = QComboBox()
-        self.selected_points_product_combo.setEnabled(False)
-        self.selected_points_product_combo.setToolTip("Choose one scientifically supported product for the authoritative viewer selection.")
-        self.selected_points_product_combo.currentIndexChanged.connect(self._sync_selected_points_product)
-        self.open_selected_points_workflow_button = QPushButton("Continue to Selected Point Prerun")
-        self.open_selected_points_workflow_button.setEnabled(False)
-        self.open_selected_points_workflow_button.clicked.connect(self._open_selected_points_workflow)
-        _apply_button_role(self.open_selected_points_workflow_button, "primary")
-        selected_product_row.addWidget(self.selected_points_product_combo, 1)
-        selected_product_row.addWidget(self.open_selected_points_workflow_button, 0)
-        selected_points_layout.addLayout(selected_product_row)
         selected_points_layout.addWidget(_details_label(
-            "Source and selection are locked here. Product settings remain below; bounded preflight and execution continue in Processing."))
+            "Source and selection are locked here. Choose one available product below, then run the selected-point prerun."))
         self.selected_points_section.setVisible(False)
 
         self.repository_section, repository_layout = self.create_section("LiDAR Data")
@@ -3787,6 +3776,17 @@ class BatchPage(MissionPage):
 
     def _on_product_selection_changed(self, *_args: object) -> None:
         """Invalidate the plan without inspecting source, polygon, or backend state."""
+        if (self._current_batch_mode() == "selected_points"
+                and not self._syncing_selected_points_products):
+            selected = self.sender()
+            if selected is not None and getattr(selected, "isChecked", lambda: False)():
+                self._syncing_selected_points_products = True
+                try:
+                    for check in self.product_checks.values():
+                        if check is not selected:
+                            check.setChecked(False)
+                finally:
+                    self._syncing_selected_points_products = False
         self.preflight_report = None
         self._refresh_batch_option_visibility()
         self._update_run_button_enabled()
@@ -3858,54 +3858,55 @@ class BatchPage(MissionPage):
         self.sessionStateChanged.emit(state)
 
     def set_selected_points_scope(self, scope: dict[str, object] | None) -> None:
-        """Adopt one authoritative viewer selection without exposing editable source inputs."""
+        """Adopt an authoritative viewer selection and expose valid scoped products."""
         self.selected_points_scope = dict(scope) if scope else None
-        self.selected_points_product_combo.blockSignals(True)
-        self.selected_points_product_combo.clear()
         if not self.selected_points_scope:
             self.selected_points_source_label.setText("Point cloud: select and resolve points in Point Cloud to begin.")
             self.selected_points_scope_label.setText("Selection: no resolved source selection.")
-            self.selected_points_product_combo.setEnabled(False)
-            self.open_selected_points_workflow_button.setEnabled(False)
-            self.selected_points_product_combo.blockSignals(False)
+            for check in self.product_checks.values():
+                check.setEnabled(False)
+                check.setChecked(False)
             self._update_run_button_enabled()
             return
         try:
             model = selection_scope_from_context(self.selected_points_scope)
-            options = selection_product_options(model)
+            available = {option.product for option in selection_product_options(model)
+                         if option.status == "AVAILABLE"}
         except (TypeError, ValueError, KeyError) as error:
             self.selected_points_source_label.setText("Point cloud: selection could not be adopted.")
             self.selected_points_scope_label.setText(f"Selection: {error}")
-            self.selected_points_product_combo.setEnabled(False)
-            self.open_selected_points_workflow_button.setEnabled(False)
-            self.selected_points_product_combo.blockSignals(False)
-            self._update_run_button_enabled()
-            return
-        self.selected_points_source_label.setText(f"Point cloud: {model.source_path}")
-        self.selected_points_scope_label.setText(f"Selection: {model.summary} | original source unchanged")
-        for option in options:
-            if option.status == "Available":
-                label = PRODUCT_LABELS.get(option.product, option.product.value)
-                self.selected_points_product_combo.addItem(label, option.product.value)
-        self.selected_points_product_combo.setEnabled(self.selected_points_product_combo.count() > 0)
-        self.open_selected_points_workflow_button.setEnabled(self.selected_points_product_combo.count() > 0)
-        self.selected_points_product_combo.blockSignals(False)
-        self._sync_selected_points_product()
+            available = set()
+        else:
+            self.selected_points_source_label.setText(f"Point cloud: {model.source_path}")
+            self.selected_points_scope_label.setText(
+                f"Selection: {model.summary} | original source unchanged")
+        self._syncing_selected_points_products = True
+        try:
+            for product, check in self.product_checks.items():
+                enabled = product in available
+                check.setEnabled(enabled)
+                check.setToolTip("Available for this bounded point selection." if enabled else
+                                 "Not yet available for selected-point processing.")
+                check.setChecked(enabled and product is ProductType.CHM)
+        finally:
+            self._syncing_selected_points_products = False
+        self._refresh_batch_option_visibility()
         self._update_run_button_enabled()
 
-    def _sync_selected_points_product(self, *_args: object) -> None:
-        product_id = str(self.selected_points_product_combo.currentData() or "")
-        if not product_id:
-            return
-        for product, check in self.product_checks.items():
-            check.setChecked(product.value == product_id)
-        self._refresh_batch_option_visibility()
+    def _selected_points_product_id(self) -> str:
+        """Return one explicit scoped product, never an accidental multi-product run."""
+        selected = [product.value for product, check in self.product_checks.items()
+                    if check.isEnabled() and check.isChecked()]
+        return selected[0] if len(selected) == 1 else ""
 
     def _open_selected_points_workflow(self) -> None:
         if not self.selected_points_scope:
             return
-        product_id = str(self.selected_points_product_combo.currentData() or "")
+        product_id = self._selected_points_product_id()
         if not product_id:
+            self.preflight_text.setPlainText(
+                "Choose exactly one available product for this point selection.")
+            self.preflight_summary_label.setText("Needs attention: choose one selected-point product.")
             return
         self.selectedPointsProcessingRequested.emit(dict(self.selected_points_scope), product_id)
 
@@ -5370,7 +5371,7 @@ class BatchPage(MissionPage):
         """Enable Process from continuous basic readiness; click performs final validation."""
         mode = self._current_batch_mode()
         if mode == "selected_points":
-            ready = bool(self._engine_ready and self.selected_points_scope and self.selected_points_product_combo.currentData())
+            ready = bool(self._engine_ready and self.selected_points_scope and self._selected_points_product_id())
             self.preflight_button.setEnabled(ready)
             self.run_button.setEnabled(ready)
             self.resume_button.setEnabled(False)

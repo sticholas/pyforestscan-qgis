@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from pyforestscan_qgis.core.point_cloud.selection import (
-    SelectionDefinition, SelectionResolver, reader_spec, reader_specs, validate_sequence,
+    SelectionDefinition, SelectionResolver, reader_spec, reader_specs, selection_mask, validate_sequence,
 )
 from pyforestscan_qgis.core.point_cloud.session import SourceIdentity
 
@@ -39,6 +39,17 @@ class SelectionTests(unittest.TestCase):
         self.assertNotIn("bounds", reader_specs(self.source, [self.definition, subtract_inverted])[0])
         with self.assertRaisesRegex(ValueError, "boolean"):
             replace(self.definition, invert_result=1)
+
+    @unittest.skipUnless(importlib.util.find_spec("shapely"),
+                         "Managed geometry tier requires Shapely")
+    def test_clipped_inversion_selects_only_inside_the_active_area_detail(self):
+        import numpy as np
+        clip = ((0, 0), (2, 0), (2, 2), (0, 2), (0, 0))
+        inverted = replace(self.definition, invert_result=True, clip_geometry=clip)
+        points = np.array([(0.5, 0.5), (1.5, 0.25), (1.5, 1.5), (3.0, 3.0)],
+            dtype=[("X", "f8"), ("Y", "f8")])
+        self.assertEqual(selection_mask(points, [inverted]).tolist(), [False, False, True, False])
+        self.assertEqual(reader_spec(self.source, [inverted])["bounds"], "([0,2],[0,2])")
 
     def test_lod_and_ept_identity_rejected(self):
         for field, value in (("addressing", "LOD_SAMPLE"), ("source_type", "EPT")):

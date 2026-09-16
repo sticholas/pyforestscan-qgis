@@ -79,7 +79,7 @@ class DetachedView(QDialog):
             button = QToolButton()
             button.setText(text)
             if action == "invert":
-                button.setToolTip("Select every original source point not currently selected. Runs a cancellable full-source query.")
+                button.setToolTip("Select points not currently selected inside this Area Detail. Overview may use the full source.")
                 button.setAccessibleName("Invert Selection")
             button.clicked.connect(lambda _=False,a=action:self.action(a))
             row.addWidget(button)
@@ -258,7 +258,9 @@ class DetachedView(QDialog):
         self.palette.setEnabled(ready)
 
     def action(self, action):
-        if action in ("undo","redo","invert"):
+        if action == "invert":
+            self.controller.page.editor.invert_selection(self.view_id)
+        elif action in ("undo", "redo"):
             self.controller.page.editor.send(action)
         else:
             self.send({"action":action})

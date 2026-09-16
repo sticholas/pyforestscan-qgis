@@ -246,8 +246,10 @@ def reader_spec(source, definitions):
         raise ValueError("Selection does not belong to this original source.")
     reader = {"type": "readers.copc" if source.source_type == "COPC" else "readers.las",
               "filename": source.path}
-    if source.source_type == "COPC" and not any(item.invert_result for item in items):
-        points = [p for item in items if item.selection_mode != "SUBTRACT" for p in item.geometry]
+    inverted_without_clip = any(item.invert_result and item.clip_geometry is None for item in items)
+    if source.source_type == "COPC" and not inverted_without_clip:
+        points = [p for item in items if item.selection_mode != "SUBTRACT"
+                  for p in (item.clip_geometry if item.invert_result and item.clip_geometry else item.geometry)]
         xmin, xmax = min(p[0] for p in points), max(p[0] for p in points)
         ymin, ymax = min(p[1] for p in points), max(p[1] for p in points)
         reader["bounds"] = f"([{xmin},{xmax}],[{ymin},{ymax}])"
@@ -330,11 +332,13 @@ def selection_mask(chunk, definitions, shapes=None, *, cancelled=lambda: False):
             mask &= (((chunk["X"]-cx)/item.sphere_radius)**2 +
                      ((chunk["Y"]-cy)/item.sphere_radius)**2 +
                      ((chunk[item.sphere_axis]-cz)/item.sphere_radius)**2 <= 1.0)
+        clip_mask = None
         if item.clip_geometry is not None:
             clip = shapely.Polygon(item.clip_geometry)
             if not clip.is_valid or clip.is_empty or clip.area <= 0:
                 raise ValueError("Area intersection polygon is invalid.")
-            mask &= shapely.intersects_xy(clip, chunk["X"], chunk["Y"])
+            clip_mask = shapely.intersects_xy(clip, chunk["X"], chunk["Y"])
+            mask &= clip_mask
         if item.profile_a is not None:
             from .profile import profile_coordinates, profile_membership
             from .workspace import SliceGeometry
@@ -385,7 +389,8 @@ def selection_mask(chunk, definitions, shapes=None, *, cancelled=lambda: False):
         else:
             selected &= ~mask
         if item.invert_result:
-            selected = ~selected
+            selected = ((clip_mask if clip_mask is not None else np.ones(len(selected), dtype=bool))
+                        & ~selected)
     return selected
 
 

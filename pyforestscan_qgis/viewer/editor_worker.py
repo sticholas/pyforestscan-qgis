@@ -92,6 +92,41 @@ def _active_view_preparation_bounds(view: object) -> dict[str, float] | None:
     return None
 
 
+def _active_view_clip_geometry(view: object) -> tuple[tuple[float, float], ...] | None:
+    """Return a closed Area Detail boundary for scene-bounded selection inversion."""
+    if not isinstance(view, dict) or str(view.get("view_type") or "") != "AREA_DETAIL":
+        return None
+    geometry = view.get("geometry")
+    if not isinstance(geometry, dict):
+        return None
+    try:
+        shape = str(geometry.get("shape") or "")
+        if shape == "POLYGON":
+            ring = tuple(tuple(map(float, point)) for point in geometry.get("vertices", ()))
+        else:
+            center = tuple(map(float, geometry.get("center", ())))
+            if len(center) != 2:
+                return None
+            if shape == "CIRCLE":
+                radius = float(geometry.get("radius"))
+                ring = tuple((center[0] + radius * math.cos(2 * math.pi * index / 48),
+                              center[1] + radius * math.sin(2 * math.pi * index / 48))
+                             for index in range(49))
+            else:
+                half_width = float(geometry.get("width")) / 2
+                half_height = float(geometry.get("height")) / 2
+                ring = ((center[0] - half_width, center[1] - half_height),
+                        (center[0] + half_width, center[1] - half_height),
+                        (center[0] + half_width, center[1] + half_height),
+                        (center[0] - half_width, center[1] + half_height),
+                        (center[0] - half_width, center[1] - half_height))
+        if len(ring) < 4 or ring[0] != ring[-1] or not all(math.isfinite(value) for point in ring for value in point):
+            return None
+        return ring
+    except (TypeError, ValueError):
+        return None
+
+
 def _preparation_envelope(xmin: object, ymin: object, xmax: object, ymax: object) -> dict[str, float] | None:
     """Validate one bounded XY envelope without accepting camera-space values."""
     values = tuple(float(value) for value in (xmin, ymin, xmax, ymax))
@@ -443,9 +478,12 @@ def main():
                 elif action == "invert":
                     if not definitions:
                         raise ValueError("Resolve a source selection before inverting it.")
+                    clip_geometry = _active_view_clip_geometry(command.get("active_view"))
                     pending = (*definitions[:-1], replace(definitions[-1],
-                        invert_result=not definitions[-1].invert_result))
-                    progress("Resolving inverted original-source selection")
+                        invert_result=not definitions[-1].invert_result,
+                        clip_geometry=clip_geometry or definitions[-1].clip_geometry))
+                    progress("Resolving inverted selection inside active view" if clip_geometry else
+                             "Resolving inverted original-source selection")
                     resolved = resolver.resolve(pending, cancelled=cancelled.is_set,
                         progress=lambda count: progress("Resolving inverted original-source selection", count))
                     definitions, result = pending, resolved

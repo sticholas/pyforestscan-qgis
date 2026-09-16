@@ -53,6 +53,16 @@ class DrawingRGBTests(unittest.TestCase):
         self.assertIn('authority:"TRANSIENT_LINKED_CURSOR"', source)
         self.assertIn("linked_cursor_markers", source)
 
+    def test_inversion_uses_the_active_area_detail_when_available(self):
+        editor = (ROOT / "pyforestscan_qgis/ui/point_cloud_editor.py").read_text()
+        worker = (ROOT / "pyforestscan_qgis/viewer/editor_worker.py").read_text()
+        selection = (ROOT / "pyforestscan_qgis/core/point_cloud/selection.py").read_text()
+        self.assertIn("def invert_selection", editor)
+        self.assertIn('self.send("invert", active_view=view_scope)', editor)
+        self.assertIn("def _active_view_clip_geometry", worker)
+        self.assertIn("clip_geometry=clip_geometry or definitions[-1].clip_geometry", worker)
+        self.assertIn("clip_mask if clip_mask is not None", selection)
+
     def test_potree_pick_exposes_cpu_metadata_without_gpu_attributes(self):
         source = (ROOT / "pyforestscan_qgis/viewer/assets/build/potree/potree.js").read_text()
         self.assertGreaterEqual(source.count('Object.defineProperty(point, "_pfsPick"'), 2)
@@ -100,7 +110,7 @@ class DrawingRGBTests(unittest.TestCase):
                         "profile_line_side"):
                 self.assertIn(f'"{key}"', source)
             self.assertIn("constraints=constraints, **values", source)
-        self.assertIn('lambda: self.send("invert")',
+        self.assertIn("self.invert.clicked.connect(self.invert_selection)",
                       (ROOT / "pyforestscan_qgis/ui/point_cloud_editor.py").read_text())
 
 

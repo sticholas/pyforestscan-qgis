@@ -170,8 +170,8 @@ class EditorPanel(QWidget):
                                  "Clear only the current selection. Staged edits and history remain.")
         row.addWidget(self.clear)
         self.invert = spatial_button("Invert Selection", "mActionInvertSelection.svg",
-            "Invert Selection: select every original source point not currently selected. This runs a full-source background query and may be large; the existing selection remains if cancelled.", self)
-        self.invert.clicked.connect(lambda: self.send("invert"))
+            "Invert Selection: select points not currently selected inside the active Area Detail. In 3D Overview it uses the full source. The existing selection remains if cancelled.", self)
+        self.invert.clicked.connect(self.invert_selection)
         row.addWidget(self.invert)
         self.resize_selection_button = QToolButton(self)
         self.resize_selection_button.setIcon(QgsApplication.getThemeIcon("/mActionOffsetCurve.svg"))
@@ -666,6 +666,15 @@ class EditorPanel(QWidget):
         self.send("update_selection_filters",
                   z_filter=limits.get("z_filter"),
                   hag_filter=limits.get("hag_filter"))
+
+    def invert_selection(self, active_view_id=None):
+        """Invert only inside the active Area Detail, never a later whole-source fallback."""
+        active_view = self.page.workspace.views.get(active_view_id or self.page.workspace.active_view_id)
+        view_scope = None
+        if active_view is not None:
+            view_scope = {"view_type": getattr(active_view.view_type, "value", active_view.view_type),
+                          "title": active_view.title, "geometry": dict(active_view.geometry)}
+        self.send("invert", active_view=view_scope)
 
     def prepare_hag(self, *, source_coordinate_units="", source_units_basis=""):
         """Run automatic HAG preparation inside the current selection or linked view."""
