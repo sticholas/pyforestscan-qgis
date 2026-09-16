@@ -1593,7 +1593,9 @@ def _read_bounded_local_lidar(request: object) -> object:
     every area.  This adapter-owned pipeline enforces the frozen work-unit bounds.
     """
     path = Path(getattr(request, "input_path"))
-    bounds = prepare_ept_bounds(getattr(request, "bounds"), crs=str(getattr(request, "crs", "")))
+    viewer_selection = _source_local_viewer_selection(request)
+    bounds_crs = str(getattr(request, "crs", "") or (viewer_selection.processing_crs_authid if viewer_selection is not None else ""))
+    bounds = prepare_ept_bounds(getattr(request, "bounds"), crs=bounds_crs)
     expression = bounds.to_pdal_range_string()
     lowered = str(path).lower()
     reader_type = "readers.copc" if lowered.endswith((".copc", ".copc.laz")) else "readers.las"
@@ -1603,11 +1605,19 @@ def _read_bounded_local_lidar(request: object) -> object:
         reader["bounds"] = expression
     else:
         stages.append({"type": "filters.crop", "bounds": expression})
+    viewer_selection = _source_local_viewer_selection(request)
+    if viewer_selection is not None:
+        # The geometry was drawn against this exact source.  Crop in native
+        # coordinates after the cheap envelope filter so circles/lassos retain
+        # their true footprint without requiring a CRS transform.
+        polygon_wkt = str(viewer_selection.transformed_geometry_wkt or viewer_selection.geometry_wkt or "")
+        if polygon_wkt:
+            stages.append({"type": "filters.crop", "polygon": polygon_wkt})
     pdal = _import_required("pdal", ProcessingError)
     pipeline = pdal.Pipeline(json.dumps({"pipeline": stages}))
     count = pipeline.execute()
     arrays = tuple(pipeline.arrays or ())
-    _write_source_local_adapter_trace(request, "bounded_pdal_read", {"reader": reader_type, "bounds": expression, "points_read": count, "source_size_bytes": path.stat().st_size if path.is_file() else None})
+    _write_source_local_adapter_trace(request, "bounded_pdal_read", {"reader": reader_type, "bounds": expression, "exact_viewer_selection": viewer_selection is not None, "points_read": count, "source_size_bytes": path.stat().st_size if path.is_file() else None})
     if not arrays:
         raise ProcessingError("PDAL returned no points for the required bounded local read.")
     return arrays
@@ -1785,14 +1795,33 @@ def _write_rumple_geotiff(output_path, values, crs, extent, request, surface, up
     temporary.replace(output_path)
 
 
+def _source_local_viewer_selection(request: object) -> object | None:
+    """Return the one trusted source-coordinate selection transport, if present.
+
+    A viewer selection is created from the current source's coordinates and carries
+    a matching ``SOURCE_LOCAL:`` identity on both sides of the transport.  It is
+    not an external polygon and therefore needs no CRS transformation.  Every
+    other polygon continues through the normal spatial-alignment safety gate.
+    """
+    polygon = polygon_execution_input_from_mapping(getattr(request, "polygon_execution_input", None))
+    if polygon is None or polygon.source_kind != "viewer_selection":
+        return None
+    source_crs = str(polygon.source_crs_authid or "")
+    processing_crs = str(polygon.processing_crs_authid or "")
+    if not source_crs.startswith("SOURCE_LOCAL:") or processing_crs != source_crs:
+        return None
+    return polygon
+
+
 def _resolve_product_spatial_reference(request: object, *, source_local_allowed: bool):
-    """Resolve request CRS and block source-local use for spatial comparisons."""
+    """Resolve request CRS and block unsafe external spatial comparisons."""
+    viewer_selection = _source_local_viewer_selection(request)
     polygon_required = bool(
         getattr(request, "crop_polygon", None)
         or getattr(request, "crop_polygon_path", None)
         or getattr(request, "polygon_execution_input", None)
         or getattr(request, "reproject", False)
-    )
+    ) and viewer_selection is None
     resolution = SpatialReferenceResolver().resolve(
         Path(getattr(request, "input_path")),
         embedded_crs=str(getattr(request, "crs", "") or ""),
@@ -1811,7 +1840,8 @@ def _resolve_product_spatial_reference(request: object, *, source_local_allowed:
 
 def _read_source_local_lidar(request: object) -> object:
     """Read LAS/LAZ/COPC coordinates without injecting a false spatial reference."""
-    if any(getattr(request, name, None) for name in ("bounds", "crop_polygon", "crop_polygon_path", "polygon_execution_input")):
+    viewer_selection = _source_local_viewer_selection(request)
+    if any(getattr(request, name, None) for name in ("bounds", "crop_polygon", "crop_polygon_path", "polygon_execution_input")) and viewer_selection is None:
         raise ProcessingError("Source-local reads cannot perform polygon alignment or transformed bounded selection.")
     path = Path(getattr(request, "input_path"))
     lowered = str(path).lower()

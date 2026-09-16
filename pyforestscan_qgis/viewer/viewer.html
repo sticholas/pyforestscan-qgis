@@ -3,7 +3,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <style>
 html,body,#view{width:100%;height:100%;margin:0;overflow:hidden;background:#202427}
-#message{position:absolute;bottom:8px;left:8px;right:8px;color:white;font:12px sans-serif;pointer-events:none}
+#message{position:absolute;bottom:8px;left:30px;right:8px;color:white;font:12px sans-serif;pointer-events:none}#viewer-busy{display:none;position:absolute;bottom:9px;left:9px;width:12px;height:12px;border:2px solid rgba(238,244,245,.35);border-top-color:#65c6d8;border-radius:50%;animation:pfs-spin .8s linear infinite;pointer-events:none}#viewer-busy.active{display:block}@keyframes pfs-spin{to{transform:rotate(360deg)}}
 #spatial-scale,#vertical-scale{position:absolute;right:12px;color:#eef4f5;background:rgba(20,24,27,.78);padding:3px 7px;font:11px sans-serif;pointer-events:none;text-shadow:0 1px 2px #111}#spatial-scale{bottom:30px;display:flex;align-items:center;gap:6px}#scale-bar{display:inline-block;height:4px;min-width:44px;max-width:150px;background:#eef4f5;border:1px solid rgba(0,0,0,.8)}#vertical-scale{bottom:52px}#visual-legend,#visual-analytics{position:absolute;left:12px;right:12px;color:#eef4f5;background:rgba(20,24,27,.72);padding:4px 8px;font:11px sans-serif;pointer-events:none;text-shadow:0 1px 2px #111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#visual-legend{top:10px;pointer-events:auto}#visual-analytics{top:34px}#profile-axes{display:none;position:absolute;inset:12px 18px 34px 52px;color:#eef4f5;
   font:11px sans-serif;pointer-events:none;text-shadow:0 1px 2px #111}
 #profile-histogram{display:none;position:absolute;right:8px;top:8px;width:120px;height:72px;align-items:flex-end;gap:1px;border-bottom:1px solid rgba(238,244,245,.5);opacity:.85}#profile-histogram span{display:block;flex:1;min-width:1px;background:#65c6d8}#profile-grid{position:absolute;inset:0;overflow:hidden;opacity:.22}#profile-grid span{position:absolute;background:rgba(238,244,245,.75)}#profile-grid .grid-x{top:0;bottom:0;width:1px}#profile-grid .grid-y{left:0;right:0;height:1px}
@@ -24,7 +24,7 @@ html,body,#view{width:100%;height:100%;margin:0;overflow:hidden;background:#2024
   <div id="profile-x"><div id="profile-x-ticks"></div><span id="profile-x-min"></span><span id="profile-x-title"></span><span id="profile-x-max"></span></div>
   <div id="profile-y"><div id="profile-y-ticks"></div><span id="profile-y-min"></span><span id="profile-y-title"></span><span id="profile-y-max"></span></div>
 </div>
-<div id="message">Opening point cloud</div>
+<div id="viewer-busy" class="active" role="status" aria-label="Viewer is working"></div><div id="message">Opening point cloud</div>
 <script src="assets/libs/jquery/jquery-3.1.1.min.js"></script>
 <script src="assets/libs/jquery-ui/jquery-ui.min.js"></script>
 <script src="assets/libs/other/BinaryHeap.js"></script>

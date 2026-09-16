@@ -613,6 +613,7 @@ class EditorPanel(QWidget):
             self.pending_initial = initial
             self.busy = True
             self.state["ready"] = False
+            self.summary.setBusy(True)
             self.summary.setText("Editor: Closing previous session")
             self.refresh_controls()
             self.worker.stop()
@@ -620,6 +621,7 @@ class EditorPanel(QWidget):
         self.state = {}
         self.busy = True
         self.cancel_requested = False
+        self.summary.setBusy(True)
         self.summary.setText("Editor: Verifying source")
         worker = EditorWorker(initial)
         self.worker = worker
@@ -656,6 +658,10 @@ class EditorPanel(QWidget):
                 self.pending_action = action
                 self.cancel_requested = False
                 self.busy = True
+                self.summary.setBusy(True)
+                if action in ("select", "invert", "resize_selection", "update_selection_filters"):
+                    self.page.send({"action": "viewer_busy", "busy": True,
+                                    "message": "Resolving selected source points"})
             self.refresh_controls()
 
     def update_selection_filters(self):
@@ -1244,6 +1250,7 @@ class EditorPanel(QWidget):
             self.summary.setText(value.get("message") or "Prepared HAG derivative is ready; original source unchanged.")
             self.attach(artifact)
         if value.get("ready"):
+            self.page.send({"action": "viewer_busy", "busy": False})
             self.page.send({"action": "selection_resolution"})
             old_export = self.state.get("exported")
             self.state = value
@@ -1261,6 +1268,7 @@ class EditorPanel(QWidget):
             self.page.linked.sync_tabs()
             self.busy = False
             self.cancel_requested = False
+            self.summary.setBusy(False)
             self.source = value["source"]
             selection = value.get("selection") or {}
             count = selection.get("resolved_point_count", 0)
@@ -1360,6 +1368,8 @@ class EditorPanel(QWidget):
             self.busy = False
             self.cancel_requested = False
         if value.get("error"):
+            self.summary.setBusy(False)
+            self.page.send({"action": "viewer_busy", "busy": False})
             self.page.send({"action": "selection_resolution", "error": str(value["error"])})
             suffix = (" Previous authoritative selection retained."
                       if self.pending_action in ("select", "invert", "resize_selection") else "")
@@ -1486,9 +1496,11 @@ class EditorPanel(QWidget):
             self.summary.setText("Session closed. The saved session file remains available.")
 
     def finished(self):
+        self.page.send({"action": "viewer_busy", "busy": False})
         self.worker = None
         self.busy = False
         self.cancel_requested = False
+        self.summary.setBusy(False)
         self.state["ready"] = False
         self.refresh_controls()
         if self.pending_initial:

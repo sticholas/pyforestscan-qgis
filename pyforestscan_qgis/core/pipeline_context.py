@@ -59,7 +59,7 @@ class PipelineContext:
         if scope is None:
             return None
         min_x, min_y, max_x, max_y = scope.bounds
-        return ((min_x, min_y), (max_x, max_y))
+        return ((min_x, max_x), (min_y, max_y))
 
     @property
     def selection_polygon_execution_input(self):

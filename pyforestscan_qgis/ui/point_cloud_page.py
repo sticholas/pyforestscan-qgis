@@ -391,11 +391,9 @@ class PointCloudPage(QWidget):
         self.palette.setToolTip("Choose a scientific ramp. The swatch shows the low-to-high color direction; the live legend shows the current numeric range. Classification colors remain categorical.")
         self.palette.currentTextChanged.connect(lambda value: self.send({"action": "palette", "palette": value}))
         layout.addLayout(toolbar)
-        self.navigation_mode = QComboBox()
-        self.navigation_mode.addItems(("Orbit", "Pan"))
-        self.navigation_mode.setToolTip("Orbit turns around the cloud. Pan moves over a picked source surface without rotating it.")
-        self.navigation_mode.currentTextChanged.connect(lambda value: self.send({"action": "navigation", "mode": value}))
-        toolbar.addWidget(self.navigation_mode, 1)
+        self.navigation_hint = QLabel("Mouse: left drag orbit | wheel zoom to cursor | middle drag pan")
+        self.navigation_hint.setToolTip("Navigation stays available without switching tools: left drag orbits, the wheel zooms toward its cursor point, and holding the middle button pans.")
+        toolbar.addWidget(self.navigation_hint, 1)
         display_row = QHBoxLayout()
         color_label = QLabel("Color By")
         color_label.setBuddy(self.mode)
@@ -826,7 +824,6 @@ class PointCloudPage(QWidget):
         self.mode.setEnabled(ready)
         self.palette.setEnabled(ready)
         self.appearance.setEnabled(ready)
-        self.navigation_mode.setEnabled(ready)
         self.overlay_button.setEnabled(ready)
         self.clear_overlay_action.setEnabled(ready and self._scientific_overlay is not None)
         self.apply_filters_button.setEnabled(ready)
@@ -836,7 +833,6 @@ class PointCloudPage(QWidget):
         self.show_classes_button.setEnabled(ready)
         self.save_session_button.setEnabled(ready and self._session_worker is None and self._pending_save is None)
         if hasattr(self,"linked") and self.linked.active().view_type == "VERTICAL_SLICE":
-            self.navigation_mode.setEnabled(False)
             for button in self.view_buttons[1:]:
                 button.setEnabled(False)
 
@@ -859,6 +855,7 @@ class PointCloudPage(QWidget):
             self.status.setText("Close the current viewer before starting another operation.")
             return
         self.worker = worker
+        self.status.setBusy(True)
         self.linked.residents.started()
         from .point_cloud_resident_views import bind_surface
         bind_surface(worker, self.surface)
@@ -911,7 +908,7 @@ class PointCloudPage(QWidget):
         self.class_list.clear()
         self._edit_session = self._session_to_open
         self._restore_expected = None
-        for combo, value in ((self.mode, "Classification"), (self.palette, "Viridis"), (self.navigation_mode, "Orbit"), (self.quality, "Automatic")):
+        for combo, value in ((self.mode, "Classification"), (self.palette, "Viridis"), (self.quality, "Automatic")):
             combo.blockSignals(True)
             combo.setCurrentText(value)
             combo.blockSignals(False)
@@ -968,10 +965,12 @@ class PointCloudPage(QWidget):
         if value.get("viewer_command") == "palette":
             self.status.setText("Palette applied in renderer: " + str(value.get("palette", "unknown")))
         if value.get("error"):
+            self.status.setBusy(False)
             self.status.setText(value["error"])
             self._controls(False)
         telemetry = value.get("telemetry", {})
         if telemetry.get("ready"):
+            self.status.setBusy(False)
             self._view_state = telemetry
             display_state = dict(telemetry)
             active_view = self.workspace.views.get(self.workspace.active_view_id)
@@ -1054,6 +1053,7 @@ class PointCloudPage(QWidget):
             self._controls(False)
 
     def _finished(self):
+        self.status.setBusy(False)
         self.worker = None
         self.editor.observe({})
         self._view_state = None

@@ -12,9 +12,10 @@ from unittest.mock import patch
 
 import numpy as np
 
-from pyforestscan_qgis.core.adapter import PyForestScanAdapter
+from pyforestscan_qgis.core.adapter import PyForestScanAdapter, _read_bounded_local_lidar, _resolve_product_spatial_reference, _source_local_viewer_selection
 from pyforestscan_qgis.core.adapter import _write_source_local_geotiff
 from pyforestscan_qgis.core.exceptions import ProcessingError
+from pyforestscan_qgis.core.polygon_transport import PolygonExecutionInput
 from pyforestscan_qgis.core.spatial_reference_resolver import (
     SpatialReferenceAssignmentStore,
     SpatialReferenceConfidence,
@@ -134,6 +135,57 @@ class SourceLocalAdapterTests(unittest.TestCase):
             self.assertEqual("", result.crs)
             with self.assertRaisesRegex(ProcessingError, "cannot align"):
                 PyForestScanAdapter(execution_mode="qgis_python").create_chm(ChmRequest("plot.las", Path(folder) / "blocked.tif", 1.0, "", hag_method="existing_normalized_height", crop_polygon="POLYGON ((0 0, 1 0, 1 1, 0 0))"))
+
+    def test_source_local_viewer_selection_bypasses_external_polygon_crs_gate(self):
+        selection = PolygonExecutionInput(
+            source_kind="viewer_selection",
+            geometry_wkt="POLYGON ((0 0, 4 0, 4 4, 0 0))",
+            source_crs_authid="SOURCE_LOCAL:source-fingerprint",
+            processing_crs_authid="SOURCE_LOCAL:source-fingerprint",
+            envelope=(0.0, 0.0, 4.0, 4.0),
+        )
+        request = ChmRequest("unknown.las", Path("selected.tif"), 1.0, "", bounds=((0.0, 4.0), (0.0, 4.0)), polygon_execution_input=selection)
+        self.assertIs(_source_local_viewer_selection(request), selection)
+        self.assertEqual(SpatialReferenceStatus.SOURCE_LOCAL_ONLY, _resolve_product_spatial_reference(request, source_local_allowed=True).status)
+
+    def test_external_source_local_polygon_still_requires_crs_alignment(self):
+        polygon = PolygonExecutionInput(
+            source_kind="selected_features",
+            geometry_wkt="POLYGON ((0 0, 4 0, 4 4, 0 0))",
+            source_crs_authid="SOURCE_LOCAL:source-fingerprint",
+            processing_crs_authid="SOURCE_LOCAL:source-fingerprint",
+        )
+        request = ChmRequest("unknown.las", Path("external.tif"), 1.0, "", polygon_execution_input=polygon)
+        with self.assertRaisesRegex(ProcessingError, "cannot align"):
+            _resolve_product_spatial_reference(request, source_local_allowed=True)
+
+    def test_source_local_viewer_selection_keeps_exact_polygon_after_bounds_crop(self):
+        captured = {}
+        class Pipeline:
+            def __init__(self, payload):
+                captured["payload"] = payload
+                self.arrays = (self_points,)
+            def execute(self):
+                return len(self.arrays[0])
+        self_points = self.points
+        selection = PolygonExecutionInput(
+            source_kind="viewer_selection",
+            geometry_wkt="POLYGON ((0 0, 4 0, 4 4, 0 0))",
+            source_crs_authid="SOURCE_LOCAL:source-fingerprint",
+            processing_crs_authid="SOURCE_LOCAL:source-fingerprint",
+            envelope=(0.0, 0.0, 4.0, 4.0),
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "selected.las"
+            source.write_bytes(b"fixture")
+            request = ChmRequest(source, Path(folder) / "result.tif", 1.0, "", bounds=((0.0, 4.0), (0.0, 4.0)), polygon_execution_input=selection)
+            fake_pdal = types.ModuleType("pdal")
+            fake_pdal.Pipeline = Pipeline
+            with patch.dict(sys.modules, {"pdal": fake_pdal}):
+                arrays = _read_bounded_local_lidar(request)
+        stages = __import__("json").loads(captured["payload"])["pipeline"]
+        self.assertEqual(self.points.dtype, arrays[0].dtype)
+        self.assertTrue(any(stage.get("polygon") == selection.geometry_wkt for stage in stages))
 
     def test_source_local_geotiff_has_no_crs_and_explicit_provenance(self):
         try:

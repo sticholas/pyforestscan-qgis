@@ -1,6 +1,12 @@
 /* Local renderer commands contain values only, never executable user scripts. */
 "use strict";
 const message = document.getElementById("message");
+const busyIndicator = document.getElementById("viewer-busy");
+function setViewerBusy(busy, text = "") {
+    state.viewer_busy = !!busy;
+    if (busyIndicator) busyIndicator.classList.toggle("active", !!busy);
+    if (text) message.textContent = text;
+}
 const profileAxes = document.getElementById("profile-axes");
 const state = {ready: false, js_ready: false, source_requested: false, errors: [], mode: "Classification", palette: "Viridis", classes: null, height_filter: null, quality: "Automatic", script_revision: "visualization-analytics-2", available_modes: [], dimensions: [], display_range: null, legend: null, analytics: null, analytics_generation: 0, analytics_updates: 0, analytics_sample_limit: 30000};
 // Keep the renderer loadable even when an installed plugin has a stale or
@@ -504,6 +510,7 @@ function fail(error) {
     state.errors = state.errors.slice(-7).concat(text);
     state.error_details = (state.error_details || []).slice(-7).concat(String(error.stack || error).slice(0, 4000));
     console.error(error.stack || text);
+    setViewerBusy(false);
     message.textContent = text;
 }
 window.addEventListener("error", event => fail(event.error || event.message));
@@ -601,6 +608,7 @@ window.command = function(command) {
     if (!cloud) return;
     try {
         const action = command.action;
+        if (action === "viewer_busy") setViewerBusy(!!command.busy, String(command.message || ""));
         if (action === "scientific_overlay") renderScientificOverlay(command.overlay);
         if (action === "clear_scientific_overlay") { removeScientificOverlay(); state.scientific_overlay = null; updateLegend(); }
         if (action === "point_display") pointDisplay(command.style, command.size);
@@ -832,13 +840,51 @@ try {
     }
     state.js_ready = true;
     const gl = viewer.renderer.getContext();
-    viewer.renderer.domElement.addEventListener("mousemove", updateProfileCrosshair);
+    let cursorPosition = {x: 0, y: 0};
+    const canvas = viewer.renderer.domElement;
+    canvas.addEventListener("mousemove", event => {
+        cursorPosition = {x: event.offsetX, y: event.offsetY};
+        updateProfileCrosshair(event);
+    });
+    // Potree's stock OrbitControls uses left drag for orbit and right drag for
+    // pan. Keep left orbit, add middle-button pan, and own the wheel so zoom
+    // converges toward the hovered point rather than the viewport centre.
+    viewer.setControls(viewer.orbitControls);
+    viewer.orbitControls.addEventListener("drag", event => {
+        if (event.drag.object !== null || event.drag.mouse !== Potree.MOUSE.MIDDLE) return;
+        viewer.orbitControls.panDelta.x += event.drag.lastDrag.x / Math.max(1, canvas.clientWidth);
+        viewer.orbitControls.panDelta.y += event.drag.lastDrag.y / Math.max(1, canvas.clientHeight);
+        viewer.orbitControls.stopTweens();
+    });
+    canvas.addEventListener("mousewheel", event => {
+        if (!cloud || (linkedContext && linkedContext.view_type === "VERTICAL_SLICE")) return;
+        const delta = Number(event.wheelDelta || -event.deltaY || 0);
+        if (!delta) return;
+        const hit = Potree.Utils && Potree.Utils.getMousePointCloudIntersection(
+            cursorPosition, viewer.scene.getActiveCamera(), viewer, [cloud], {pickClipped: true});
+        if (!hit || !hit.location) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const view = viewer.scene.view;
+        const factor = delta > 0 ? .86 : 1.16;
+        const pivot = view.getPivot();
+        const target = hit.location.clone ? hit.location.clone() : new THREE.Vector3(hit.location.x, hit.location.y, hit.location.z);
+        const nextPivot = pivot.clone().lerp(target, .18);
+        const direction = view.position.clone().sub(pivot).normalize();
+        const nextRadius = Math.max(.05, Math.min(1e9, view.radius * factor));
+        view.position.copy(nextPivot.clone().add(direction.multiplyScalar(nextRadius)));
+        view.lookAt(nextPivot);
+        viewer.orbitControls.radiusDelta = 0;
+        viewer.orbitControls.stopTweens();
+        state.navigation = "CURSOR_ORBIT";
+    }, true);
     viewer.renderer.domElement.addEventListener("webglcontextlost", event => {
         event.preventDefault(); state.context_lost = true;
-        message.textContent = "Viewer graphics context was reset. Restoring view...";
+        setViewerBusy(true, "Viewer graphics context was reset. Restoring view...");
     });
     viewer.renderer.domElement.addEventListener("webglcontextrestored", () => {
         state.context_lost = false; state.context_restores = (state.context_restores || 0) + 1;
+        setViewerBusy(false);
         message.textContent = "";
     });
     state.webgl_information = {vendor: gl.getParameter(gl.VENDOR), renderer: gl.getParameter(gl.RENDERER), version: gl.getParameter(gl.VERSION)};
@@ -863,6 +909,7 @@ try {
         updateProfileAxes();
         fitSource("source_open");
         state.ready = true;
+        setViewerBusy(false);
         message.textContent = "";
     });
 } catch (error) { fail(error); }
