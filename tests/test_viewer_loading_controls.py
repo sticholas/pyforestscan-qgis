@@ -26,6 +26,10 @@ class ViewerLoadingAndNavigationTests(unittest.TestCase):
         self.assertIn("Potree.MOUSE.MIDDLE", javascript)
         self.assertIn("getMousePointCloudIntersection", javascript)
         self.assertIn('state.navigation = "CURSOR_ORBIT"', javascript)
+        ui_sources = "\n".join(item.read_text(encoding="utf-8") for item in
+                               (ROOT / "pyforestscan_qgis" / "ui").glob("*.py"))
+        self.assertNotIn(".navigation_mode", ui_sources)
+        self.assertIn("navigation_hint", ui_sources)
 
     def test_qt_status_supports_non_blocking_busy_animation(self):
         widgets = (ROOT / "pyforestscan_qgis" / "ui" / "point_cloud_widgets.py").read_text(encoding="utf-8")

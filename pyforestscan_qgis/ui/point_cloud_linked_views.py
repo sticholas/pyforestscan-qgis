@@ -1105,7 +1105,13 @@ class LinkedViews(QObject):
 
     def apply_navigation(self, view):
         profile = view.view_type == ViewType.VERTICAL_SLICE
-        self.page.navigation_mode.setEnabled(not profile)
+        hint = getattr(self.page, "navigation_hint", None)
+        if hint is not None:
+            hint.setText(
+                "Mouse: left drag pan profile | wheel zoom to cursor"
+                if profile else
+                "Mouse: left drag orbit | wheel zoom to cursor | middle drag pan"
+            )
         for button in self.page.view_buttons[1:]:
             button.setEnabled(not profile)
 
