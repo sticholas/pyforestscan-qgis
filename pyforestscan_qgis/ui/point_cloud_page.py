@@ -6,6 +6,7 @@ import hashlib
 import os
 from pathlib import Path
 import queue
+from collections import deque
 import subprocess
 import threading
 import time
@@ -40,7 +41,10 @@ class ViewerWorker(QThread):
         self.source = source
         self.parent_handle = parent_handle
         self.setup = setup
-        self.commands = queue.Queue(maxsize=32)
+        # Display controls can generate bursts while the renderer is loading.
+        # Keep enough room for normal interaction, and coalesce palette changes
+        # rather than silently dropping the user's final choice.
+        self.commands = queue.Queue(maxsize=128)
         self.stop_event = threading.Event()
         self.stopped_event = threading.Event()
         self.shutdown_origin = "user_request"
@@ -50,7 +54,24 @@ class ViewerWorker(QThread):
         try:
             self.commands.put_nowait(command)
         except queue.Full:
-            pass
+            if command.get("action") != "palette":
+                return
+            with self.commands.mutex:
+                retained = deque(
+                    item for item in self.commands.queue
+                    if item.get("action") != "palette"
+                )
+                removed = len(self.commands.queue) - len(retained)
+                self.commands.queue = retained
+                self.commands.unfinished_tasks = max(
+                    0, self.commands.unfinished_tasks - removed
+                )
+                try:
+                    self.commands.queue.append(command)
+                    self.commands.unfinished_tasks += 1
+                    self.commands.not_empty.notify()
+                except (AttributeError, RuntimeError):
+                    return
 
     def stop(self, origin="user_request"):
         self.shutdown_origin = origin

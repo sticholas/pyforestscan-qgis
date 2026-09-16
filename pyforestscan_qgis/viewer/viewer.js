@@ -141,12 +141,25 @@ function ensureClassification(code) {
 }
 function setPalette(name, invert=false) {
     const registry = window.PyForestScanVisualization;
-    if (!registry || !cloud || !registry.palettes[name]) return;
+    if (!registry || !cloud || !registry.palettes[name]) throw Error("Palette unavailable: " + name);
     state.palette = name;
-    cloud.material.gradient = registry.gradient(name, invert);
-    // Invalidate Potree's material and texture caches after palette changes.
+    const material = cloud.material;
+    const gradient = registry.gradient(name, invert);
+    // Potree's setter replaces the texture, but older embedded builds can
+    // retain the previous uniform binding. Update both paths explicitly.
+    material.gradient = gradient;
+    const texture = material.gradientTexture;
+    if (texture) {
+        texture.needsUpdate = true;
+        if (material.uniforms && material.uniforms.gradient) {
+            material.uniforms.gradient.value = texture;
+            material.uniforms.gradient.needsUpdate = true;
+        }
+    }
+    material.needsUpdate = true;
     cloud.material.needsUpdate = true;
-    if (cloud.material.gradientTexture) cloud.material.gradientTexture.needsUpdate = true;
+    state.palette_signature = name + ":" + gradient.map(step =>
+        step[1] && step[1].getHexString ? step[1].getHexString() : String(step[1])).join(",");
     updateLegend();
 }
 function updateLegend() {
@@ -686,7 +699,8 @@ window.command = function(command) {
             viewer.scene.view.pitch = camera.pitch;
             viewer.scene.view.radius = camera.radius;
         }
-        return {viewer_command: action, palette: state.palette, mode: state.mode};
+        return {viewer_command: action, palette: state.palette, mode: state.mode,
+            palette_signature: state.palette_signature || null};
     } catch (error) { fail(error); }
 };
 window.snapshot = function() {
