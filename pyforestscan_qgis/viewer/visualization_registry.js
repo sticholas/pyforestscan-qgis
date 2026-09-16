@@ -21,10 +21,19 @@
     const categoricalFallback = [[0.12,0.47,0.71],[0.84,0.37,0.16],[0.39,0.64,0.18],[0.63,0.34,0.70],[0.10,0.68,0.62],[0.90,0.60,0.12],[0.35,0.35,0.80],[0.75,0.25,0.30]];
     function fallback(code) { return categoricalFallback[Math.abs(Number(code) || 0) % categoricalFallback.length]; }
     function entry(code) { return classification[Number(code)] || {label:"Class " + code, color:fallback(code)}; }
+    function paletteColor(values) {
+        const rgb = values.map(value => Math.max(0, Math.min(255, Math.round(Number(value) * 255))));
+        return {
+            r: rgb[0] / 255, g: rgb[1] / 255, b: rgb[2] / 255,
+            getHexString: () => rgb.map(value => value.toString(16).padStart(2, "0")).join("")
+        };
+    }
     function gradient(name, invert) {
         const values = palettes[name] || palettes.Viridis;
         const ordered = invert ? values.slice().reverse() : values;
-        return ordered.map((color, index) => [ordered.length === 1 ? 0 : index / (ordered.length - 1), new THREE.Color(...color)]);
+        return ordered.map((color, index) => [
+            ordered.length === 1 ? 0 : index / (ordered.length - 1), paletteColor(color)
+        ]);
     }
     root.PyForestScanVisualization = {classification, palettes, paletteNames:Object.keys(palettes), entry, fallback, gradient};
 })(globalThis);

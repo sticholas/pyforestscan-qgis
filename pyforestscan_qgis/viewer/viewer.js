@@ -19,6 +19,13 @@ function paletteStops() {
     const registry = window.PyForestScanVisualization;
     return registry && registry.palettes ? registry.palettes : BUILTIN_PALETTES;
 }
+function paletteColor(values) {
+    const rgb = values.map(value => Math.max(0, Math.min(255, Math.round(Number(value) * 255))));
+    return {
+        r: rgb[0] / 255, g: rgb[1] / 255, b: rgb[2] / 255,
+        getHexString: () => rgb.map(value => value.toString(16).padStart(2, "0")).join("")
+    };
+}
 function paletteGradient(name, invert=false) {
     const registry = window.PyForestScanVisualization;
     if (registry && typeof registry.gradient === "function" && registry.palettes && registry.palettes[name]) {
@@ -27,7 +34,7 @@ function paletteGradient(name, invert=false) {
     const stops = paletteStops()[name] || BUILTIN_PALETTES.Viridis;
     const ordered = invert ? stops.slice().reverse() : stops;
     return ordered.map((color, index) => [
-        ordered.length === 1 ? 0 : index / (ordered.length - 1), new THREE.Color(...color)
+        ordered.length === 1 ? 0 : index / (ordered.length - 1), paletteColor(color)
     ]);
 }
 let viewer, cloud, heightVolume, scientificOverlay = null, previousCamera = "", lastFrame = performance.now(), frameMs = 16;
