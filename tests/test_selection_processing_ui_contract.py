@@ -76,7 +76,7 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("selection_product_row.addWidget(self.promote_selection_button", pages)
         self.assertIn("self.validate_selection_button.setVisible(False)", pages)
         self.assertIn("self.promote_selection_button.setVisible(False)", pages)
-        self.assertIn("self.preflight_details_group.setVisible(not selected_points)", pages)
+        self.assertIn("self.preflight_details_group.setVisible(False)", pages)
         self.assertIn("self.selected_points_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)", pages)
 
     def test_processing_uses_pbm_activity_and_hides_legacy_prerun_banners(self):
@@ -87,6 +87,9 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("Current activity: {activity}", pages)
         self.assertIn("self.preflight_summary_label.setVisible(False)", pages)
         self.assertIn("self.next_action_label.setVisible(False)", pages)
+        self.assertIn("self.preflight_details_group.setVisible(False)", pages)
+        self.assertIn("self.prerun_section.layout().setContentsMargins(0, 0, 0, 0)", pages)
+        self.assertIn("self.process_workspace_layout.setSpacing(SPACING_SM)", pages)
 
     def test_selected_points_creates_a_bounded_plan_without_folder_prerun(self):
         pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()

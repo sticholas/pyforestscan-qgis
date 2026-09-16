@@ -3624,7 +3624,7 @@ class BatchPage(MissionPage):
         self.process_workspace_layout = QVBoxLayout(self.process_workspace)
         self.process_workspace_layout.setSizeConstraint(QLayout.SetNoConstraint)
         self.process_workspace_layout.setContentsMargins(0, 0, 0, 0)
-        self.process_workspace_layout.setSpacing(SECTION_GAP)
+        self.process_workspace_layout.setSpacing(SPACING_SM)
         self._routine_process_sections = (
             self.mode_section, self.repository_section, self.polygon_section, self.selected_points_section,
             self.products_section, self.output_section, self.prerun_section, self.process_section,
@@ -3634,6 +3634,8 @@ class BatchPage(MissionPage):
             section.setParent(self.process_workspace)
             section.setProperty("processSection", True)
             section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+            section.layout().setContentsMargins(SPACING_SM, SPACING_XS, SPACING_SM, SPACING_SM)
+            section.layout().setSpacing(SPACING_XS)
             section.style().unpolish(section)
             section.style().polish(section)
         compact_headings = (
@@ -3651,6 +3653,14 @@ class BatchPage(MissionPage):
         self.mode_section.setTitle("")
         self.prerun_section.setTitle("")
         self.output_section.setTitle("")
+        # These are compact workflow rows rather than titled cards. Removing the
+        # QGroupBox title margins prevents a clipped, otherwise empty strip above
+        # their controls.
+        for section in (self.mode_section, self.prerun_section, self.output_section):
+            section.setFlat(True)
+        self.prerun_section.layout().setContentsMargins(0, 0, 0, 0)
+        self.prerun_section.layout().setSpacing(0)
+        self.output_section.layout().setContentsMargins(0, 0, 0, 0)
         output_heading = QLabel("Output")
         output_heading.setObjectName("compactSectionHeading")
         self.output_row.insertWidget(0, output_heading, 0)
@@ -4181,8 +4191,11 @@ class BatchPage(MissionPage):
         self.standard_batch_section.setVisible(not polygon and not selected_points)
         self.polygon_batch_section.setVisible(polygon)
         self.selected_points_section.setVisible(selected_points)
-        self.preflight_text.setVisible(not selected_points)
-        self.preflight_details_group.setVisible(not selected_points)
+        self.preflight_text.setVisible(False)
+        # Idle technical details below the primary action add noise and leave a
+        # misleading empty row. Detailed results remain available in the
+        # processing history and diagnostics when a run needs investigation.
+        self.preflight_details_group.setVisible(False)
         self.process_section.setVisible(not selected_points)
         # The run/preflight controls already communicate the next action.  Keep
         # legacy guidance out of the space directly beneath those controls.
