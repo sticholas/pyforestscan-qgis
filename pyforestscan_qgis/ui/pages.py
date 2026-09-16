@@ -1718,10 +1718,20 @@ class ProcessingPage(MissionPage):
 
         self.execution_backend_label = _body_label("Execution backend: PBM when READY; QGIS Python fallback only when PBM is unavailable.")
         overview.addWidget(self.execution_backend_label)
-        self.selection_scope_label = _body_label("Selection scope: Whole dataset. Use Prepare Product from the Point Cloud viewer to add a bounded scope.")
+        selection_section = self.add_section("Selected Area Processing")
+        selection_help = _body_label(
+            "Run a scientific product from the selected area, column, or profile. "
+            "The source remains unchanged; product parameters come from the active Product Plan."
+        )
+        selection_help.setWordWrap(True)
+        selection_help.setProperty("workflowGuidance", True)
+        selection_section.addWidget(selection_help)
+        self.selection_scope_label = _body_label(
+            "Selection scope: Whole dataset. Select an area in Point Cloud, then choose Run Product on Selection."
+        )
         self.selection_scope_label.setWordWrap(True)
         self.selection_scope_label.setProperty("workflowGuidance", True)
-        overview.addWidget(self.selection_scope_label)
+        selection_section.addWidget(self.selection_scope_label)
         self.selection_scope: dict[str, object] | None = None
         self.selection_backend_ready = False
         self.selection_request_model = None
@@ -1729,13 +1739,17 @@ class ProcessingPage(MissionPage):
         self.selection_promoted_plan_path: Path | None = None
         selection_product_row = QHBoxLayout()
         self.selection_product_combo = QComboBox()
-        self.selection_product_combo.setPlaceholderText("Choose a product for this selection")
+        self.selection_product_combo.setPlaceholderText("Choose a product to run on this selection")
         self.selection_product_combo.setEnabled(False)
-        self.selection_product_combo.setProperty("contextHelp", "Choose one registered product to prepare from the authoritative viewer selection. This only creates a reviewable request; it does not start processing.")
-        self.prepare_selection_product_button = QPushButton("Prepare Selected Product")
+        self.selection_product_combo.setProperty(
+            "contextHelp",
+            "Choose a registered scientific product to run from the authoritative viewer selection. "
+            "The source remains unchanged and safety checks run automatically."
+        )
+        self.prepare_selection_product_button = QPushButton("Run Product on Selection")
         self.prepare_selection_product_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
         self.prepare_selection_product_button.setEnabled(False)
-        self.prepare_selection_product_button.clicked.connect(self.prepare_selected_product)
+        self.prepare_selection_product_button.clicked.connect(self.run_selected_product)
         _apply_button_role(self.prepare_selection_product_button, "secondary")
         self.validate_selection_button = QPushButton("Validate Selected CHM")
         self.validate_selection_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
@@ -1766,7 +1780,7 @@ class ProcessingPage(MissionPage):
         selection_product_row.addWidget(self.promote_selection_button, 0)
         selection_product_row.addWidget(self.run_selected_product_button, 0)
         selection_product_row.addWidget(self.clear_selection_scope_button, 0)
-        overview.addLayout(selection_product_row)
+        selection_section.addLayout(selection_product_row)
         self.selection_product_request: dict[str, object] | None = None
 
         self.job_title_edit = QLineEdit("Mission Control Product Job")
@@ -1869,7 +1883,7 @@ class ProcessingPage(MissionPage):
         self.selection_product_combo.clear()
         if not self.selection_scope:
             self.selection_scope_label.setText(
-                "Selection scope: Whole dataset. Use Prepare Product from the Point Cloud viewer to add a bounded scope.")
+                "Selection scope: Whole dataset. Select an area in Point Cloud, then choose Run Product on Selection.")
             self.selection_product_combo.setEnabled(False)
             self.prepare_selection_product_button.setEnabled(False)
             self.validate_selection_button.setEnabled(False)
@@ -1908,10 +1922,36 @@ class ProcessingPage(MissionPage):
         height_text = "all heights" if not limits else f"{'HAG' if axis == 'HeightAboveGround' else 'elevation'} {limits[0]:g}-{limits[1]:g}"
         self.selection_scope_label.setText(
             f"Selection scope: {kind} | {count_text} | {height_text} | "
-            "authoritative source geometry prepared; processing has not started.")
+            "ready for a bounded scientific product.")
+
+    def run_selected_product(self) -> None:
+        """Run the selected product through the bounded-scope safety gates."""
+        if not self.selection_scope:
+            self.selection_scope_label.setText("Select a non-empty area, column, or profile in Point Cloud first.")
+            return
+        if not self.selection_product_combo.currentData():
+            self.selection_scope_label.setText("Choose the scientific product to run on this selection.")
+            return
+        self.prepare_selected_product()
+        if self.selection_request_model is None:
+            return
+        self.validate_selected_product()
+        report = self.selection_preflight_report
+        if report is None or not report.ready:
+            blockers = "; ".join(report.blockers) if report is not None and report.blockers else "The selected scope needs review."
+            self.selection_scope_label.setText("This selection cannot run yet: " + blockers)
+            self.log_text.setPlainText(
+                "Run Product on Selection stopped before reading source points.\n"
+                + blockers
+                + "\nThe original point cloud and existing Product Plan were not modified."
+            )
+            return
+        self.promote_selected_product()
+        if self.selection_promoted_plan_path is not None:
+            self.start_job()
 
     def prepare_selected_product(self) -> None:
-        """Create a review-only product request from the current viewer scope."""
+        """Create a bounded product request from the current viewer scope."""
         if not self.selection_scope:
             self.selection_scope_label.setText("Choose a non-empty viewer selection before preparing a product.")
             return
@@ -1947,7 +1987,7 @@ class ProcessingPage(MissionPage):
         self.promote_selection_button.setEnabled(False)
         review = " Scientific review is required before execution." if request.review_required else ""
         self.selection_scope_label.setText(
-            f"Product request: {request.summary}. Review-only; processing has not started.{review}")
+            f"Selected product: {request.summary}. Safety checks are running automatically.{review}")
         review_path_text = f"Review plan: {review_plan_path}\n" if review_plan_path else ""
         self.log_text.setPlainText(
             f"Prepared product request: {request.summary}\n"
@@ -1957,7 +1997,7 @@ class ProcessingPage(MissionPage):
             f"Authority: {request.authority}\n"
             + review_path_text
             + "No source data was modified and no processing job was started.")
-        _set_status_badge(self.status_label, "WARNING", "Status: Product request prepared for review; processing has not started.")
+        _set_status_badge(self.status_label, "READY", "Status: Selection request prepared; bounded safety checks will run before processing.")
 
     def set_backend_readiness(self, ready: bool) -> None:
         """Project the authoritative Processing Engine readiness into selection gates."""
@@ -1984,8 +2024,8 @@ class ProcessingPage(MissionPage):
         if report.ready:
             self.promote_selection_button.setVisible(True)
             self.promote_selection_button.setEnabled(True)
-            self.selection_scope_label.setText("Selected product passed preflight. Promote it explicitly before execution.")
-            _set_status_badge(self.status_label, "READY", "Status: Selected product passed preflight; promotion is required.")
+            self.selection_scope_label.setText("Selection is valid. Creating the bounded execution plan.")
+            _set_status_badge(self.status_label, "READY", "Status: Selection passed bounded safety checks.")
         else:
             self.promote_selection_button.setVisible(False)
             self.promote_selection_button.setEnabled(False)
@@ -2087,8 +2127,8 @@ class ProcessingPage(MissionPage):
         """Start a processing job from the active Product Planner report."""
         if self.selection_scope:
             if self.selection_promoted_plan_path is None or self.selection_preflight_report is None or not self.selection_preflight_report.ready:
-                _set_status_badge(self.status_label, "WARNING", "Status: Selected-scope request is review-only; validate and promote it first.")
-                self.log_text.setPlainText("Validate the selected CHM, then choose Promote for Execution. The source remains unchanged.")
+                _set_status_badge(self.status_label, "WARNING", "Status: Selected product needs its automatic safety checks to finish.")
+                self.log_text.setPlainText("Run the selected product from the Selected Area Processing section. The source remains unchanged.")
                 return
         plan_path = self.product_plan_edit.text().strip()
         output_folder = self.job_output_folder_edit.text().strip()

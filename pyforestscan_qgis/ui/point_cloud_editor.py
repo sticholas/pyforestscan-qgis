@@ -453,8 +453,8 @@ class EditorPanel(QWidget):
         self.use_button = self.button("Use in Process", "SP_ArrowRight", self.use_export,
             "Select the validated immutable export in Process without starting processing. The editing session remains open.")
         history_row.addWidget(self.use_button)
-        self.prepare_product_button = self.button("Prepare Product", "SP_ArrowRight", self.prepare_product,
-            "Prepare the authoritative selection as a bounded product scope in Mission Control. This does not start processing or modify the source.")
+        self.prepare_product_button = self.button("Use Selection for Product", "SP_ArrowRight", self.prepare_product,
+            "Send the authoritative selection to Processing, where you choose a product and run it without changing the source.")
         history_row.addWidget(self.prepare_product_button)
         layout.addLayout(history_row)
         self.history = QListWidget()
@@ -1419,7 +1419,11 @@ class EditorPanel(QWidget):
             self.summary.setText("Prepare Product unavailable: " + str(error))
             return
         self.selectionProcessingRequested.emit(scope.to_processing_context())
-        self.summary.setText("Product scope prepared | " + scope.summary + " | Review it in Processing.")
+        self.summary.setText(
+            "Selection sent to Processing | "
+            + scope.summary
+            + " | Choose a product and click Run Product on Selection."
+        )
 
     def source_changed(self, value):
         dialog = QMessageBox(self)
