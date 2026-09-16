@@ -233,10 +233,10 @@ class EditorPanel(QWidget):
         self.prepare_product_button = QToolButton()
         self.prepare_product_button.setIcon(
             self.style().standardIcon(qt_enum(QStyle, "SP_ArrowRight", "StandardPixmap")))
-        self.prepare_product_button.setText("Run Product on Selection")
+        self.prepare_product_button.setText("Process Selected Points")
         self.prepare_product_button.setToolButtonStyle(
             qt_enum(Qt, "ToolButtonTextBesideIcon", "ToolButtonStyle"))
-        self.prepare_product_button.setAccessibleName("Run Product on Selection")
+        self.prepare_product_button.setAccessibleName("Process Selected Points")
         self.prepare_product_button.setToolTip(
             "Send the authoritative selection to Processing. Choose one product there and run it without changing the source.")
         self.prepare_product_button.clicked.connect(self.prepare_product)
@@ -1439,7 +1439,7 @@ class EditorPanel(QWidget):
         selection = self.state.get("selection") or {}
         definitions = self.state.get("selection_definitions") or ()
         if not selection.get("resolved_point_count") or not definitions:
-            self.summary.setText("Prepare Product: resolve a non-empty authoritative selection first.")
+            self.summary.setText("Process Selected Points: resolve a non-empty authoritative selection first.")
             return
         try:
             from ..core.point_cloud.selection_processing import selection_scope_from_definition
@@ -1457,13 +1457,13 @@ class EditorPanel(QWidget):
                 view_title=str(definition.get("view_name", "")),
             )
         except (KeyError, TypeError, ValueError, OSError) as error:
-            self.summary.setText("Prepare Product unavailable: " + str(error))
+            self.summary.setText("Process Selected Points unavailable: " + str(error))
             return
         self.selectionProcessingRequested.emit(scope.to_processing_context())
         self.summary.setText(
             "Selection sent to Processing | "
             + scope.summary
-            + " | Choose a product and click Run Product on Selection."
+            + " | Choose a product and click Process Selected Points."
         )
 
     def source_changed(self, value):

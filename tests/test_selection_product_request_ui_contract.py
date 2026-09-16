@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class SelectionProductRequestUiContractTests(unittest.TestCase):
     def test_processing_offers_explicit_product_preparation(self):
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
-        self.assertIn("Run Product on Selection", source)
+        self.assertIn("Process Selected Points", source)
         self.assertIn("selection_product_combo", source)
         self.assertIn("build_selection_product_request", source)
 

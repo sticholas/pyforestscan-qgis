@@ -1780,7 +1780,7 @@ class ProcessingPage(MissionPage):
         selection_help.setProperty("workflowGuidance", True)
         selection_section.addWidget(selection_help)
         self.selection_scope_label = _body_label(
-            "Selection scope: Whole dataset. Select an area in Point Cloud, then choose Run Product on Selection."
+            "Selection scope: Whole dataset. Select an area in Point Cloud, then choose Process Selected Points."
         )
         self.selection_scope_label.setWordWrap(True)
         self.selection_scope_label.setProperty("workflowGuidance", True)
@@ -1799,7 +1799,7 @@ class ProcessingPage(MissionPage):
             "Choose a registered scientific product to run from the authoritative viewer selection. "
             "The source remains unchanged and safety checks run automatically."
         )
-        self.prepare_selection_product_button = QPushButton("Run Product on Selection")
+        self.prepare_selection_product_button = QPushButton("Process Selected Points")
         self.prepare_selection_product_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.prepare_selection_product_button.setEnabled(False)
         self.prepare_selection_product_button.clicked.connect(self.run_selected_product)
@@ -1936,7 +1936,7 @@ class ProcessingPage(MissionPage):
         self.selection_product_combo.clear()
         if not self.selection_scope:
             self.selection_scope_label.setText(
-                "Selection scope: Whole dataset. Select an area in Point Cloud, then choose Run Product on Selection.")
+                "Selection scope: Whole dataset. Select an area in Point Cloud, then choose Process Selected Points.")
             self.selection_product_combo.setEnabled(False)
             self.prepare_selection_product_button.setEnabled(False)
             self.validate_selection_button.setEnabled(False)
@@ -1994,7 +1994,7 @@ class ProcessingPage(MissionPage):
             blockers = "; ".join(report.blockers) if report is not None and report.blockers else "The selected scope needs review."
             self.selection_scope_label.setText("This selection cannot run yet: " + blockers)
             self.log_text.setPlainText(
-                "Run Product on Selection stopped before reading source points.\n"
+                "Process Selected Points stopped before reading source points.\n"
                 + blockers
                 + "\nThe original point cloud and existing Product Plan were not modified."
             )

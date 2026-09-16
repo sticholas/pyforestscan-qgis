@@ -8,7 +8,7 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
     def test_editor_exposes_selection_to_product_action(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_editor.py").read_text()
         self.assertIn("selectionProcessingRequested", source)
-        self.assertIn('self.prepare_product_button.setText("Run Product on Selection")', source)
+        self.assertIn('self.prepare_product_button.setText("Process Selected Points")', source)
         self.assertIn("selection_product_row.addWidget(self.prepare_product_button)", source)
         self.assertIn("has_product_selection", source)
         self.assertIn("Send the authoritative selection to Processing", source)
@@ -35,7 +35,7 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("self.prepare_selection_product_button.clicked.connect(self.run_selected_product)", source)
         self.assertIn("self.validate_selected_product()", source)
         self.assertIn("self.promote_selected_product()", source)
-        self.assertIn("Run Product on Selection stopped before reading source points", source)
+        self.assertIn("Process Selected Points stopped before reading source points", source)
 
     def test_completed_selected_rasters_load_in_qgis_and_viewer(self):
         source = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text()

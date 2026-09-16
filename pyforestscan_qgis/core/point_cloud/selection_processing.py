@@ -23,6 +23,34 @@ def _range(value, label):
         raise ValueError(f"{label} must be a finite ascending range.")
     return result
 
+
+def _circle_processing_ring(center: object, radius: object, *, segments: int = 96) -> tuple[tuple[float, float], ...]:
+    """Return a dense closed ring for exact circular source cropping and masking."""
+    if not isinstance(center, (list, tuple)) or len(center) != 2:
+        raise ValueError("Circular selection requires a finite XY center.")
+    try:
+        x, y = (float(value) for value in center)
+        radius = float(radius)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Circular selection requires finite center and radius values.") from error
+    if not all(math.isfinite(value) for value in (x, y, radius)) or radius <= 0:
+        raise ValueError("Circular selection requires a finite positive radius.")
+    points = tuple(
+        (x + radius * math.cos((2.0 * math.pi * index) / segments),
+         y + radius * math.sin((2.0 * math.pi * index) / segments))
+        for index in range(segments)
+    )
+    return points + (points[0],)
+
+
+def _processing_geometry(definition: Mapping[str, Any]) -> tuple[tuple[float, float], ...]:
+    """Promote exact viewer circle metadata over its rectangular query envelope."""
+    center = definition.get("circle_center")
+    radius = definition.get("circle_radius")
+    if center is not None or radius is not None:
+        return _circle_processing_ring(center, radius)
+    return tuple(tuple(point) for point in definition.get("geometry", ()))
+
 @dataclass(frozen=True)
 class SelectionProcessingScope:
     """Immutable source-space scope offered to a product-processing launcher."""
@@ -117,7 +145,7 @@ def selection_scope_from_definition(definition: Mapping[str, Any], *, source_pat
         selection_id=str(definition.get("selection_id", "")),
         source_path=Path(source_path),
         source_fingerprint=source_fingerprint,
-        geometry=tuple(tuple(point) for point in definition.get("geometry", ())),
+        geometry=_processing_geometry(definition),
         geometry_crs=str(definition.get("geometry_crs", "")),
         scope_kind=str(definition.get("scope_kind", "AREA")),
         view_title=view_title or str(definition.get("view_name", "")),

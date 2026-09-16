@@ -82,6 +82,22 @@ class SelectionProcessingScopeTests(unittest.TestCase):
         self.assertEqual((1.0, 3.0), scope.hag_range)
 
 
+    def test_circle_definition_becomes_an_exact_processing_ring(self):
+        scope = selection_scope_from_definition({
+            "selection_id": "circle-1",
+            # The editor's query envelope is intentionally square for fast reads.
+            "geometry": ((5.0, 0.0), (15.0, 0.0), (15.0, 10.0), (5.0, 10.0), (5.0, 0.0)),
+            "circle_center": (10.0, 5.0),
+            "circle_radius": 5.0,
+            "geometry_crs": "EPSG:32605",
+            "scope_kind": "AREA",
+        }, source_path="/data/circle.laz", source_fingerprint="c" * 64)
+        self.assertEqual(97, len(scope.geometry))
+        self.assertEqual((15.0, 5.0), scope.geometry[0])
+        self.assertEqual(scope.geometry[0], scope.geometry[-1])
+        self.assertNotIn((5.0, 0.0), scope.geometry)
+        self.assertEqual((5.0, 0.0, 15.0, 10.0), scope.bounds)
+
     def test_product_options_keep_profile_products_visible_with_review_guidance(self):
         scope = self.scope(scope_kind="PROFILE")
         options = selection_product_options(scope)
