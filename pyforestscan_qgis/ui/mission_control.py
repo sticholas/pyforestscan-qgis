@@ -21,6 +21,7 @@ from ..core.dataset_report import report_to_dict as dataset_report_to_dict
 from ..core.knowledge import KnowledgeEngine
 from ..core.jobs import JobRecord, JobStatus
 from ..core.processing_history import ProcessingHistoryEntry, append_processing_history, default_processing_history_path, read_processing_history
+from ..core.processing_spatial_context import default_source_local_policy_store
 from ..core.workspace import RunContext, WorkspaceHistoryRun, WorkspaceManager, WorkspaceSession, WorkspaceStatus, create_run_context, summarize_recent_workspaces
 from ..resources import plugin_root
 from .pages import (

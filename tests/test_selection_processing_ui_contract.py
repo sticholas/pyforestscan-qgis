@@ -82,7 +82,10 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
     def test_selected_points_creates_a_bounded_plan_without_folder_prerun(self):
         pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
         control = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text()
-        self.assertIn('self.preflight_button.setText("Run Selected Product"', pages)
+        self.assertIn('self.preflight_button.setText("Process Selected Points"', pages)
+        self.assertIn('QPushButton("Process Selected Points")', pages)
+        self.assertIn("from ..core.processing_spatial_context import default_source_local_policy_store", control)
+        self.assertIn("default_source_local_policy_store().read().fallback_crs", control)
         self.assertIn("Creating the bounded selected-point run", pages)
         self.assertIn("create_run_context(source, output_root).ensure_directories()", control)
         self.assertIn('"processing_executed": False', control)
