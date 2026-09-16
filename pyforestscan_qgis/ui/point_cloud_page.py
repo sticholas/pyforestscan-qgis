@@ -638,7 +638,7 @@ class PointCloudPage(QWidget):
         for control in self.findChildren(QWidget):
             if control.toolTip():
                 control.installEventFilter(self)
-        for control in self.view_buttons + (
+        for control in tuple(self.view_buttons) + (
                 self.overlay_button, self.filter_toggle, self.save_session_button,
                 self.load_session_button, self.diagnostics_button):
             control.setProperty("pointCloudControl", True)

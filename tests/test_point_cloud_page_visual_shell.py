@@ -20,3 +20,4 @@ class PointCloudPageVisualShellTests(unittest.TestCase):
         self.assertIn('self.navigation_hint.setProperty("pointCloudHint", True)', source)
         self.assertIn("wheel zoom to cursor", source)
         self.assertIn('self.overlay_button.setAccessibleName("Scientific overlays")', source)
+        self.assertIn("for control in tuple(self.view_buttons) + (", source)
