@@ -877,8 +877,11 @@ class PointCloudPage(QWidget):
 
     def start_source(self, path, *, render_only=False):
         if not path.strip():
+            self.status.setBusy(False)
             self.status.setText("Select a LAS, LAZ, COPC or local EPT source.")
             return
+        self.status.setBusy(True)
+        self.status.setText("Opening linked point cloud" if render_only else "Verifying original source")
         if not render_only:
             self.linked.set_depth({}, persist=False)
             self.linked.residents.clear()

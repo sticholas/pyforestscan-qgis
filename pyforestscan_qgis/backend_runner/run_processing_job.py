@@ -272,7 +272,7 @@ def _request_from_spec(spec: BackendJobSpec) -> Any:
     expected_fingerprint = params.get("source_fingerprint")
     if expected_fingerprint:
         from pyforestscan_qgis.core.point_cloud.selection_processing import verify_selection_source_fingerprint
-        verify_selection_source_fingerprint(input_path, expected_fingerprint)
+        verify_selection_source_fingerprint(Path(params["input_path"]), expected_fingerprint)
     field_names = set(request_class.__dataclass_fields__)
     clean = {key: _coerce_value(key, value) for key, value in params.items() if key in field_names}
     return request_class(**clean)

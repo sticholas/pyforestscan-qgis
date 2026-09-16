@@ -991,7 +991,8 @@ class LinkedViews(QObject):
             page.status.setText("Linked views require a verified source.")
             return
         key = json.dumps([identity["sha256"],view.geometry,view.view_type],sort_keys=True)
-        page.status.setText("Updating linked view...")
+        page.status.setBusy(True)
+        page.status.setText("Verifying original source for linked view")
         self.waiting = True
         self.request_id = uuid4().hex
         from ..core.point_cloud.view_policy import next_view_budget, system_memory_pressure
@@ -1033,6 +1034,7 @@ class LinkedViews(QObject):
             self.page.status.setText(str(value["progress"]))
         if value.get("error") and "request_id" not in value:
             self.waiting = False
+            self.page.status.setBusy(False)
             self.page.status.setText("Linked view worker unavailable: " + value["error"])
             return
         if value.get("request_id") != self.request_id:
@@ -1045,6 +1047,8 @@ class LinkedViews(QObject):
             self.cache[self.request_key] = result
             self.query_results[result["view_id"]] = result
             self.refresh_profile_controls()
+            self.page.status.setBusy(True)
+            self.page.status.setText("Opening linked point cloud")
             self.page.start_source(result["path"],render_only=True)
         elif value.get("error"):
             self.waiting = False
