@@ -70,6 +70,15 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("self.batch_page.set_selected_points_scope(scope)", control)
         self.assertIn("_open_selected_points_processing", control)
 
+    def test_selected_product_controls_are_owned_and_automatic_path_stays_compact(self):
+        pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
+        self.assertIn("selection_product_row.addWidget(self.validate_selection_button", pages)
+        self.assertIn("selection_product_row.addWidget(self.promote_selection_button", pages)
+        self.assertIn("self.validate_selection_button.setVisible(False)", pages)
+        self.assertIn("self.promote_selection_button.setVisible(False)", pages)
+        self.assertIn("self.preflight_text.setVisible(not selected_points)", pages)
+        self.assertIn("self.selected_points_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)", pages)
+
     def test_selected_points_creates_a_bounded_plan_without_folder_prerun(self):
         pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
         control = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text()

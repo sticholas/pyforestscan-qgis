@@ -1829,6 +1829,9 @@ class ProcessingPage(MissionPage):
         _apply_button_role(self.clear_selection_scope_button, "neutral")
         selection_product_row.addWidget(self.selection_product_combo, 1)
         selection_product_row.addWidget(self.prepare_selection_product_button, 0)
+        selection_product_row.addWidget(self.validate_selection_button, 0)
+        selection_product_row.addWidget(self.promote_selection_button, 0)
+        selection_product_row.addWidget(self.run_selected_product_button, 0)
         selection_product_row.addWidget(self.clear_selection_scope_button, 0)
         selection_section.addLayout(selection_product_row)
         self.selection_product_request: dict[str, object] | None = None
@@ -2031,8 +2034,8 @@ class ProcessingPage(MissionPage):
         self.selection_product_request = payload
         self.selection_request_model = request
         self.validate_selection_button.setText("Validate Selected CHM" if request.product.value == "chm" else "Validate Selected Product")
-        self.validate_selection_button.setVisible(True)
-        self.validate_selection_button.setEnabled(True)
+        self.validate_selection_button.setVisible(False)
+        self.validate_selection_button.setEnabled(False)
         self.promote_selection_button.setVisible(False)
         self.promote_selection_button.setEnabled(False)
         review = " Scientific review is required before execution." if request.review_required else ""
@@ -2052,8 +2055,6 @@ class ProcessingPage(MissionPage):
     def set_backend_readiness(self, ready: bool) -> None:
         """Project the authoritative Processing Engine readiness into selection gates."""
         self.selection_backend_ready = bool(ready)
-        if self.selection_request_model is not None:
-            self.validate_selection_button.setEnabled(True)
 
     def validate_selected_product(self) -> None:
         """Run the bounded product gate and show exact blockers before promotion."""
@@ -2072,8 +2073,8 @@ class ProcessingPage(MissionPage):
         details.extend(f"Warning: {item}" for item in report.warnings)
         self.log_text.setPlainText(f"Selected {request.product.value} preflight\n" + "\n".join(details))
         if report.ready:
-            self.promote_selection_button.setVisible(True)
-            self.promote_selection_button.setEnabled(True)
+            self.promote_selection_button.setVisible(False)
+            self.promote_selection_button.setEnabled(False)
             self.selection_scope_label.setText("Selection is valid. Creating the bounded execution plan.")
             _set_status_badge(self.status_label, "READY", "Status: Selection passed bounded safety checks.")
         else:
@@ -2571,8 +2572,11 @@ class BatchPage(MissionPage):
         selected_points_layout.addWidget(self.selected_points_source_label)
         selected_points_layout.addWidget(self.selected_points_scope_label)
         selected_points_layout.addWidget(_details_label(
-            "Source and selection are locked here. Choose one available product below, then run the selected-point prerun."))
+            "Source and selection are locked here. Choose one available product below, then start the bounded run."))
         self.selected_points_section.setVisible(False)
+        self.selected_points_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        selected_points_layout.setContentsMargins(6, 4, 6, 6)
+        selected_points_layout.setSpacing(2)
 
         self.repository_section, repository_layout = self.create_section("LiDAR Data")
         self.standard_batch_section = self.repository_section
@@ -3920,6 +3924,9 @@ class BatchPage(MissionPage):
         self.standard_batch_section.setVisible(not polygon and not selected_points)
         self.polygon_batch_section.setVisible(polygon)
         self.selected_points_section.setVisible(selected_points)
+        self.preflight_text.setVisible(not selected_points)
+        self.preflight_summary_label.setVisible(not selected_points)
+        self.next_action_label.setVisible(not selected_points)
         if selected_points:
             summary = "Run one scientific product from an authoritative Point Cloud selection."
             prerun = "Choose one product, then start its bounded selected-point run."
@@ -5378,7 +5385,7 @@ class BatchPage(MissionPage):
             self.resume_button.setEnabled(False)
             self.resume_button.setVisible(False)
             if hasattr(self, "next_action_label"):
-                self.next_action_label.setText("Next action: continue to selected-point prerun.")
+                self.next_action_label.setText("Next action: start the selected product.")
             return
         report = self.preflight_report
         polygon_mode = mode == "polygon"
