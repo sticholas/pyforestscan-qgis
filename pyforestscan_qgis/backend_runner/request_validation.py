@@ -64,9 +64,10 @@ def validate_processing_request(spec: Any, request: Any, *, api_contract_provide
         _check(checks, "ept_crs_declared", bool(ept_crs), f"EPT CRS detected: {ept_crs}", "EPT CRS is not declared.")
 
     raw_bounds = getattr(request, "bounds", None)
+    bounds_crs = _bounds_validation_crs(request, ept_crs)
     if raw_bounds is not None:
         try:
-            bounds = EptBounds.from_value(raw_bounds, crs=str(spec.crs or ept_crs), source="polygon_envelope", transformed=True)
+            bounds = EptBounds.from_value(raw_bounds, crs=bounds_crs, source="polygon_envelope", transformed=True)
             final_value = bounds.to_pyforestscan_value()
             validate_pyforestscan_bounds_value(final_value)
             expression = bounds.to_pdal_range_string()
@@ -124,6 +125,22 @@ def _ept_crs(payload: dict[str, Any] | None) -> str:
     if resolved.valid:
         return resolved.crs_text
     return ""
+
+
+def _bounds_validation_crs(request: Any, fallback_crs: str) -> str:
+    # Preserve the stable native identity of a same-source viewer selection.
+    polygon = getattr(request, "polygon_execution_input", None)
+    if isinstance(polygon, dict):
+        source_kind = polygon.get("source_kind", "")
+        source_crs = polygon.get("source_crs_authid", "")
+        processing_crs = polygon.get("processing_crs_authid", "")
+    else:
+        source_kind = getattr(polygon, "source_kind", "") if polygon is not None else ""
+        source_crs = getattr(polygon, "source_crs_authid", "") if polygon is not None else ""
+        processing_crs = getattr(polygon, "processing_crs_authid", "") if polygon is not None else ""
+    if source_kind == "viewer_selection" and source_crs and source_crs == processing_crs:
+        return str(processing_crs)
+    return str(fallback_crs or "")
 
 
 def _overlaps_ept_bounds(bounds: EptBounds, raw: Any) -> bool:

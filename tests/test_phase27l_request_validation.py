@@ -85,6 +85,40 @@ class RequestValidationTests(unittest.TestCase):
 
             self.assertIn("do not overlap", str(raised.exception))
 
+    def test_source_local_viewer_selection_bounds_do_not_require_external_crs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "forest.las"
+            source.write_bytes(b"LAS")
+            local_identity = "SOURCE_LOCAL:selection-fingerprint"
+            selection = PolygonExecutionInput(
+                source_kind="viewer_selection",
+                geometry_wkt=POLYGON_WKT,
+                source_crs_authid=local_identity,
+                processing_crs_authid=local_identity,
+                envelope=(1.0, 1.0, 4.0, 4.0),
+                area=9.0,
+                feature_count=1,
+            )
+            request = ChmRequest(
+                source,
+                root / "run" / "outputs" / "chm.tif",
+                1.0,
+                "",
+                bounds=((1.0, 4.0), (1.0, 4.0)),
+                polygon_execution_input=selection,
+            )
+            spec = build_job_spec_from_request("chm", request, run_folder=root / "run")
+
+            result = validate_processing_request(
+                spec,
+                _request_from_spec(spec),
+                api_contract_provider=compatible_contract,
+            )
+
+            self.assertTrue(result.passed)
+            self.assertEqual(result.normalized_bounds["crs"], local_identity)
+
     def test_missing_api_parameter_blocks_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
