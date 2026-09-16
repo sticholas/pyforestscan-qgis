@@ -260,6 +260,65 @@ class ViewerWorker(QThread):
                         self.stopped_event.set()
 
 
+class ThinSourceWorker(QThread):
+    """Run an explicit non-destructive thinning request in managed PBM Python."""
+    update = pyqtSignal(object)
+
+    def __init__(self, request, parent=None):
+        super().__init__(parent)
+        self.request = request
+        self.cancelled = threading.Event()
+        self.run_folder = None
+
+    def run(self):
+        process = None
+        try:
+            from ..core.backend.service import BackendService
+            from ..core.atomic_state import atomic_write_json
+            service = BackendService()
+            engine = service.processing_engine_service()
+            token = engine.runtime_token_for(("dataset_inspection",))
+            engine.validate_runtime_token_for_launch(token, ("dataset_inspection",))
+            root = service.paths.backend_root / "viewer" / "thinning-runs"
+            root.mkdir(parents=True, exist_ok=True)
+            self.run_folder = root / __import__("uuid").uuid4().hex
+            self.run_folder.mkdir()
+            request_path = self.run_folder / "request.json"
+            result_path = self.run_folder / "result.json"
+            progress_path = self.run_folder / "progress.json"
+            cancel_path = self.run_folder / "cancel"
+            atomic_write_json(request_path, self.request)
+            script = Path(__file__).resolve().parents[1] / "viewer" / "thin_source.py"
+            with (self.run_folder / "stdout.log").open("w+", encoding="utf-8") as stdout, \
+                 (self.run_folder / "stderr.log").open("w+", encoding="utf-8") as stderr:
+                process = subprocess.Popen(
+                    [token.executable, "-I", str(script), "--request", str(request_path),
+                     "--result", str(result_path), "--progress-file", str(progress_path),
+                     "--cancel-file", str(cancel_path)],
+                    stdout=stdout, stderr=stderr, env=engine.environment(),
+                    **hidden_subprocess_kwargs())
+                while process.poll() is None:
+                    if self.cancelled.wait(.15):
+                        cancel_path.touch()
+                        process.wait(timeout=20)
+                        raise InterruptedError("Thinning cancelled.")
+                    try:
+                        progress = json.loads(progress_path.read_text(encoding="utf-8"))
+                        self.update.emit({"progress": progress})
+                    except (OSError, ValueError):
+                        pass
+                if process.returncode:
+                    stderr.seek(0)
+                    raise RuntimeError(stderr.read(4000).strip() or "Could not create thinned copy.")
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+            self.update.emit({"complete": result, "run_folder": str(self.run_folder)})
+        except Exception as error:
+            self.update.emit({"error": str(error), "run_folder": str(self.run_folder or "")})
+
+    def stop(self):
+        self.cancelled.set()
+
+
 class ViewerSessionWorker(QThread):
     completed = pyqtSignal(object)
 
@@ -334,6 +393,8 @@ class PointCloudPage(QWidget):
         self._display_stabilizer = DisplayTelemetryStabilizer()
         self._source_info = {}
         self._scientific_overlay = None
+        self._thin_worker = None
+        self._thinning_dialog = None
         self._closing = False
         self.last_run_folder = None
         self.setObjectName("pointCloudPage")
@@ -500,8 +561,19 @@ class PointCloudPage(QWidget):
         self.clear_overlay_action.setEnabled(False)
         self.overlay_button.setMenu(self.overlay_menu)
         self.overlay_button.setPopupMode(qt_enum(QToolButton, "InstantPopup", "ToolButtonPopupMode"))
+        self.prepare_button = QToolButton()
+        self.prepare_button.setText("Prepare")
+        self.prepare_button.setProperty("pointCloudControl", True)
+        self.prepare_button.setAccessibleName("Prepare point-cloud copy")
+        self.prepare_button.setToolTip("Create a non-destructive thinned LAS/LAZ copy in the managed Processing Engine. The open source and Process workflow remain unchanged.")
+        self.prepare_menu = QMenu(self.prepare_button)
+        self.thin_source_action = self.prepare_menu.addAction("Create Thinned Copy...")
+        self.thin_source_action.triggered.connect(self.open_thinning_dialog)
+        self.prepare_button.setMenu(self.prepare_menu)
+        self.prepare_button.setPopupMode(qt_enum(QToolButton, "InstantPopup", "ToolButtonPopupMode"))
         display_row.addWidget(self.display_range)
         display_row.addWidget(self.overlay_button)
+        display_row.addWidget(self.prepare_button)
         layout.addLayout(display_row)
         self.filter_toggle = QToolButton()
         self.filter_toggle.setText("Display filters")
@@ -639,7 +711,7 @@ class PointCloudPage(QWidget):
             if control.toolTip():
                 control.installEventFilter(self)
         for control in tuple(self.view_buttons) + (
-                self.overlay_button, self.filter_toggle, self.save_session_button,
+                self.overlay_button, self.prepare_button, self.filter_toggle, self.save_session_button,
                 self.load_session_button, self.diagnostics_button):
             control.setProperty("pointCloudControl", True)
         self._controls(False)
@@ -659,6 +731,122 @@ class PointCloudPage(QWidget):
         elif not self._closing:
             self.filter_toggle.setFocus()
         self.filter_toggle.setArrowType(qt_enum(Qt, "DownArrow" if opened else "RightArrow", "ArrowType"))
+
+    def open_thinning_dialog(self):
+        """Offer a compact, explicit derived-copy workflow; never changes the open source."""
+        if self._thin_worker is not None:
+            return
+        source = Path(self.source.text())
+        fingerprint = str(self._source_info.get("sha256") or "")
+        if not source.is_file() or not fingerprint:
+            self.status.setText("Open and verify a local LAS or LAZ source before creating a thinned copy.")
+            return
+        if source.name.lower().endswith(".copc.laz"):
+            self.status.setText("Create a thinned copy from a LAS or LAZ source, not the optimized viewer cache.")
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Create Thinned Copy")
+        dialog.setModal(False)
+        form = QFormLayout(dialog)
+        form.setContentsMargins(12, 12, 12, 12)
+        notice = QLabel("Creates a new point-cloud copy in the Processing Engine. "
+                        "The open source, viewer session, and Process workflow are unchanged.")
+        notice.setWordWrap(True)
+        form.addRow(notice)
+        method = QComboBox()
+        method.addItem("Voxel grid (recommended)", "voxel_first")
+        method.addItem("Poisson disk", "poisson")
+        method.setToolTip("Voxel grid keeps the first point per spacing cell. Poisson disk produces spatially even samples and can take longer.")
+        spacing = QDoubleSpinBox()
+        spacing.setRange(0.001, 1000000)
+        spacing.setDecimals(3)
+        spacing.setValue(1.0)
+        spacing.setSuffix(" source units")
+        spacing.setToolTip("Minimum thinning spacing in the coordinates stored by this source.")
+        default_output = source.with_name(source.stem + "_thinned.laz")
+        output = QLineEdit(str(default_output))
+        browse = QPushButton("Browse")
+        output_row = QHBoxLayout()
+        output_row.addWidget(output, 1)
+        output_row.addWidget(browse)
+        status = QLabel("")
+        status.setWordWrap(True)
+        create = QPushButton("Create Thinned Copy")
+        create.setProperty("pointCloudRole", "primary")
+        open_copy = QPushButton("Open Thinned Copy")
+        open_copy.setVisible(False)
+        def browse_output():
+            path, _ = QFileDialog.getSaveFileName(dialog, "Save thinned point cloud", output.text(), "LAZ (*.laz);;LAS (*.las)")
+            if path:
+                if Path(path).suffix.lower() not in (".las", ".laz"):
+                    path += ".laz"
+                output.setText(path)
+        browse.clicked.connect(browse_output)
+        def create_copy():
+            try:
+                from ..core.point_cloud.preparation import PreparationOptions, PreparationRequest
+                from ..core.point_cloud.session import SourceIdentity
+                chosen = Path(output.text()).expanduser()
+                identity = SourceIdentity(str(source.resolve()), fingerprint, source.stat().st_size,
+                                          "LAZ" if source.suffix.lower() == ".laz" else "LAS")
+                request = PreparationRequest(identity, str(chosen.resolve()),
+                    PreparationOptions(thinning=method.currentData(), spacing=float(spacing.value())))
+            except Exception as error:
+                status.setText(f"Choose a new output path: {error}")
+                return
+            create.setEnabled(False)
+            method.setEnabled(False)
+            spacing.setEnabled(False)
+            output.setEnabled(False)
+            browse.setEnabled(False)
+            status.setText("Starting managed thinning...")
+            self._thin_worker = ThinSourceWorker(request, self)
+            self._thin_worker.update.connect(lambda value: self._update_thinning(value, dialog, status, create, open_copy))
+            self._thin_worker.finished.connect(self._finished_thinning)
+            _ACTIVE_WORKERS.add(self._thin_worker)
+            self._thin_worker.finished.connect(lambda: _ACTIVE_WORKERS.discard(self._thin_worker))
+            self._thin_worker.finished.connect(self._thin_worker.deleteLater)
+            self._controls(bool(self._view_state))
+            self._thin_worker.start()
+        def open_output():
+            path = open_copy.property("thin_output")
+            if path:
+                dialog.close()
+                self.source.setText(path)
+                self.start_source(path)
+        create.clicked.connect(create_copy)
+        open_copy.clicked.connect(open_output)
+        form.addRow("Method", method)
+        form.addRow("Spacing", spacing)
+        form.addRow("Output", output_row)
+        form.addRow(status)
+        actions = QHBoxLayout()
+        actions.addWidget(create)
+        actions.addWidget(open_copy)
+        form.addRow(actions)
+        dialog.finished.connect(lambda _result: setattr(self, "_thinning_dialog", None))
+        self._thinning_dialog = dialog
+        dialog.show()
+
+    def _update_thinning(self, value, dialog, status, create, open_copy):
+        if value.get("progress"):
+            progress = value["progress"]
+            status.setText(str(progress.get("stage", "Creating thinned copy")))
+        if value.get("error"):
+            status.setText("Thinned copy failed: " + str(value["error"]))
+            create.setEnabled(True)
+        if value.get("complete"):
+            result = value["complete"]
+            status.setText(
+                f"Thinned copy ready: {int(result['input_points']):,} to "
+                f"{int(result['output_points']):,} points. Original source unchanged.")
+            open_copy.setProperty("thin_output", result["output_path"])
+            open_copy.setVisible(True)
+            self.status.setText("Thinned copy ready. The original source remains open.")
+
+    def _finished_thinning(self):
+        self._thin_worker = None
+        self._controls(bool(self._view_state))
 
     def choose_scientific_overlay(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -919,6 +1107,7 @@ class PointCloudPage(QWidget):
         self.palette.setEnabled(ready)
         self.appearance.setEnabled(ready)
         self.overlay_button.setEnabled(ready)
+        self.prepare_button.setEnabled(ready and self._thin_worker is None)
         self.clear_overlay_action.setEnabled(ready and self._scientific_overlay is not None)
         self.apply_filters_button.setEnabled(ready)
         self.clear_filters_button.setEnabled(ready)
