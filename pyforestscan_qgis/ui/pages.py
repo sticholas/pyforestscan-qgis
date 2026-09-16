@@ -2572,7 +2572,23 @@ class BatchPage(MissionPage):
         selected_points_layout.addWidget(self.selected_points_source_label)
         selected_points_layout.addWidget(self.selected_points_scope_label)
         selected_points_layout.addWidget(_details_label(
-            "Source and selection are locked here. Choose one available product below, then start the bounded run."))
+            "The source and selection are locked. Choose one product, then run it on this bounded area."))
+        self.selected_points_units_frame = QFrame()
+        selected_units_layout = QHBoxLayout(self.selected_points_units_frame)
+        selected_units_layout.setContentsMargins(0, 2, 0, 2)
+        self.selected_points_units_label = _body_label("Source units are needed before height-based processing.")
+        self.selected_points_units_combo = QComboBox()
+        self.selected_points_units_combo.addItem("Meters", LinearUnit.METERS.value)
+        self.selected_points_units_combo.addItem("International feet", LinearUnit.INTERNATIONAL_FEET.value)
+        self.selected_points_units_combo.addItem("US survey feet", LinearUnit.US_SURVEY_FEET.value)
+        self.confirm_selected_points_units_button = QPushButton("Use Units")
+        self.confirm_selected_points_units_button.clicked.connect(self.assign_selected_points_units)
+        _apply_button_role(self.confirm_selected_points_units_button, "primary")
+        selected_units_layout.addWidget(self.selected_points_units_label, 1)
+        selected_units_layout.addWidget(self.selected_points_units_combo)
+        selected_units_layout.addWidget(self.confirm_selected_points_units_button)
+        self.selected_points_units_frame.setVisible(False)
+        selected_points_layout.addWidget(self.selected_points_units_frame)
         self.selected_points_section.setVisible(False)
         self.selected_points_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         selected_points_layout.setContentsMargins(6, 4, 6, 6)
@@ -3291,6 +3307,7 @@ class BatchPage(MissionPage):
         self.prerun_section, prerun_layout = self.create_section("Readiness")
         self.preflight_button = QPushButton("Prerun Check")
         self.preflight_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
+        self.preflight_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.preflight_button.clicked.connect(self.run_preflight)
         self.preflight_button.setProperty("contextHelp", "Check the Processing Engine, LiDAR source, polygon, coordinate systems, products, storage, and estimated workload before dispatch.")
         _apply_button_role(self.preflight_button, "primary")
@@ -3864,6 +3881,8 @@ class BatchPage(MissionPage):
     def set_selected_points_scope(self, scope: dict[str, object] | None) -> None:
         """Adopt an authoritative viewer selection and expose valid scoped products."""
         self.selected_points_scope = dict(scope) if scope else None
+        if self.selected_points_scope:
+            self._refresh_selected_points_spatial_metadata()
         if not self.selected_points_scope:
             self.selected_points_source_label.setText("Point cloud: select and resolve points in Point Cloud to begin.")
             self.selected_points_scope_label.setText("Selection: no resolved source selection.")
@@ -3884,6 +3903,7 @@ class BatchPage(MissionPage):
             self.selected_points_source_label.setText(f"Point cloud: {model.source_path}")
             self.selected_points_scope_label.setText(
                 f"Selection: {model.summary} | original source unchanged")
+        self._refresh_selected_points_details()
         self._syncing_selected_points_products = True
         try:
             for product, check in self.product_checks.items():
@@ -3895,6 +3915,84 @@ class BatchPage(MissionPage):
         finally:
             self._syncing_selected_points_products = False
         self._refresh_batch_option_visibility()
+        self._update_run_button_enabled()
+
+    def _refresh_selected_points_spatial_metadata(self) -> None:
+        if not self.selected_points_scope:
+            return
+        source = Path(str(self.selected_points_scope.get("source_path", "")))
+        try:
+            assignment = default_spatial_assignment_store().spatial_assignment_for(source, source.parent)
+        except (OSError, ValueError):
+            assignment = None
+        if assignment is not None and assignment.linear_units is not None:
+            self.selected_points_scope["source_coordinate_units"] = assignment.linear_units.value
+            self.selected_points_scope["source_units_basis"] = "USER_ASSIGNED"
+            self.selected_points_scope["source_units_authoritative"] = True
+            self.selected_points_scope["spatial_assignment_scope"] = assignment.scope.value
+        units = str(self.selected_points_scope.get("source_coordinate_units") or "")
+        self.selected_points_units_frame.setVisible(not bool(units))
+        if units:
+            self.selected_points_units_label.setText(
+                "Source units: {}.".format(units.replace("_", " ").title()))
+        else:
+            self.selected_points_units_label.setText(
+                "Choose the LiDAR coordinate units for HAG and grid calculations.")
+        self._refresh_selected_points_details()
+
+    def _refresh_selected_points_details(self) -> None:
+        if not self.selected_points_scope:
+            return
+        scope = self.selected_points_scope
+        bounds = scope.get("bounds") or ()
+        bounds_text = "unavailable"
+        if isinstance(bounds, (list, tuple)) and len(bounds) == 4:
+            bounds_text = (
+                "X {:.3f}-{:.3f}; Y {:.3f}-{:.3f}".format(
+                    float(bounds[0]), float(bounds[2]), float(bounds[1]), float(bounds[3])
+                )
+            )
+        axis = str(scope.get("vertical_axis") or "Z")
+        limits = scope.get("hag_range") if axis == "HeightAboveGround" else scope.get("z_range")
+        height = "all heights" if not limits else "{} {:.3f}-{:.3f}".format(
+            axis, float(limits[0]), float(limits[1])
+        )
+        units = str(scope.get("source_coordinate_units") or "")
+        readiness = "Ready to run" if units else "Units need confirmation before HAG/grid processing"
+        details = (
+            "Source: {}".format(scope.get("source_path", "")),
+            "Selection: {} | {} points".format(
+                str(scope.get("scope_kind", "AREA")).title(),
+                scope.get("point_count", "source"),
+            ),
+            "Bounds: {}".format(bounds_text),
+            "Vertical filter: {}".format(height),
+            "Source units: {}".format(units or "not declared"),
+            "Readiness: {}".format(readiness),
+            "The original point cloud remains unchanged.",
+        )
+        self.preflight_text.setPlainText("\n".join(details))
+        _size_text_edit_to_content(self.preflight_text)
+
+    def assign_selected_points_units(self) -> None:
+        if not self.selected_points_scope:
+            return
+        try:
+            source = Path(str(self.selected_points_scope["source_path"]))
+            units = LinearUnit.parse(self.selected_points_units_combo.currentData())
+            assignment = default_spatial_assignment_store().assign_units(
+                source, units, scope=AssignmentScope.FILE,
+                notes="Confirmed in Selected Points processing before bounded execution.",
+            )
+        except (KeyError, OSError, ValueError) as error:
+            QMessageBox.warning(self, "Source Units", str(error))
+            return
+        self.selected_points_scope["source_coordinate_units"] = assignment.linear_units.value
+        self.selected_points_scope["source_units_basis"] = "USER_ASSIGNED"
+        self.selected_points_scope["source_units_authoritative"] = True
+        self.selected_points_scope["spatial_assignment_scope"] = assignment.scope.value
+        self._refresh_selected_points_spatial_metadata()
+        self.preflight_summary_label.setText("Source units confirmed. Run the selected product.")
         self._update_run_button_enabled()
 
     def _selected_points_product_id(self) -> str:
@@ -3924,7 +4022,8 @@ class BatchPage(MissionPage):
         self.standard_batch_section.setVisible(not polygon and not selected_points)
         self.polygon_batch_section.setVisible(polygon)
         self.selected_points_section.setVisible(selected_points)
-        self.preflight_text.setVisible(not selected_points)
+        self.preflight_text.setVisible(True)
+        self.preflight_details_group.setVisible(True)
         self.preflight_summary_label.setVisible(not selected_points)
         self.next_action_label.setVisible(not selected_points)
         if selected_points:
@@ -3941,7 +4040,10 @@ class BatchPage(MissionPage):
         self.preflight_text.setPlainText(prerun)
         self.run_button.setText("Process LiDAR")
         self.run_button.setVisible(not selected_points)
-        self.preflight_button.setText("Start Selected Product" if selected_points else "Run Prerun Check")
+        self.prerun_section.setTitle("Run Selected Product" if selected_points else "Readiness")
+        self.preflight_button.setText("Run Selected Product" if selected_points else "Run Prerun Check")
+        if selected_points:
+            self._refresh_selected_points_details()
         self.resume_button.setVisible(not polygon and not selected_points)
         self.retry_failed_button.setText("Retry Failed" if polygon else "Retry Failed Files")
         self.summary_label.setText("Review selected-point outputs after execution." if selected_points else ("Review Polygon Batch outputs after execution." if polygon else "4. Review Results after the batch completes."))
@@ -5379,7 +5481,11 @@ class BatchPage(MissionPage):
         """Enable Process from continuous basic readiness; click performs final validation."""
         mode = self._current_batch_mode()
         if mode == "selected_points":
-            ready = bool(self._engine_ready and self.selected_points_scope and self._selected_points_product_id())
+            ready = bool(
+                self._engine_ready and self.selected_points_scope
+                and self._selected_points_product_id()
+                and self.selected_points_scope.get("source_coordinate_units")
+            )
             self.preflight_button.setEnabled(ready)
             self.run_button.setEnabled(ready)
             self.resume_button.setEnabled(False)

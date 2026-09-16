@@ -37,6 +37,10 @@ class SelectionProcessingScope:
     z_range: tuple[float, float] | None = None
     hag_range: tuple[float, float] | None = None
     vertical_axis: str = "Z"
+    source_coordinate_units: str = ""
+    source_units_basis: str = "UNRESOLVED"
+    source_units_authoritative: bool = False
+    spatial_assignment_scope: str = ""
 
     def __post_init__(self):
         if not self.selection_id.strip():
@@ -98,6 +102,10 @@ class SelectionProcessingScope:
             "z_range": list(self.z_range) if self.z_range is not None else None,
             "hag_range": list(self.hag_range) if self.hag_range is not None else None,
             "vertical_axis": self.vertical_axis,
+            "source_coordinate_units": self.source_coordinate_units,
+            "source_units_basis": self.source_units_basis,
+            "source_units_authoritative": self.source_units_authoritative,
+            "spatial_assignment_scope": self.spatial_assignment_scope,
             "authority": "FULL_RESOLUTION_ORIGINAL_SOURCE_QUERY",
             "original_unchanged": True,
         }
@@ -115,6 +123,10 @@ def selection_scope_from_definition(definition: Mapping[str, Any], *, source_pat
         z_range=definition.get("z_filter"),
         hag_range=definition.get("hag_filter"),
         vertical_axis=str(definition.get("profile_axis", "Z")),
+        source_coordinate_units=str(definition.get("source_coordinate_units", "")),
+        source_units_basis=str(definition.get("source_units_basis", "UNRESOLVED")),
+        source_units_authoritative=bool(definition.get("source_units_authoritative", False)),
+        spatial_assignment_scope=str(definition.get("spatial_assignment_scope", "")),
     )
 
 

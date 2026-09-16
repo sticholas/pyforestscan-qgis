@@ -306,12 +306,18 @@ class PipelineContext:
     @property
     def source_coordinate_units(self) -> str:
         preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
-        return str(preparation.get("source_coordinate_units") or "") if isinstance(preparation, Mapping) else ""
+        if isinstance(preparation, Mapping) and preparation.get("source_coordinate_units"):
+            return str(preparation["source_coordinate_units"])
+        return str((self.selection_scope_data or {}).get("source_coordinate_units") or "")
+
 
     @property
     def spatial_assignment_scope(self) -> str:
         preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
-        return str(preparation.get("spatial_assignment_scope") or "") if isinstance(preparation, Mapping) else ""
+        if isinstance(preparation, Mapping) and preparation.get("spatial_assignment_scope"):
+            return str(preparation["spatial_assignment_scope"])
+        return str((self.selection_scope_data or {}).get("spatial_assignment_scope") or "")
+
 
     @property
     def source_crs_status(self) -> str:
@@ -321,12 +327,18 @@ class PipelineContext:
     @property
     def source_units_basis(self) -> str:
         preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
-        return str(preparation.get("source_units_basis") or "UNRESOLVED") if isinstance(preparation, Mapping) else "UNRESOLVED"
+        if isinstance(preparation, Mapping) and preparation.get("source_units_basis"):
+            return str(preparation["source_units_basis"])
+        return str((self.selection_scope_data or {}).get("source_units_basis") or "UNRESOLVED")
+
 
     @property
     def source_units_authoritative(self) -> bool:
         preparation = self.dataset_report.get("preparation", {}) if self.dataset_report else {}
-        return bool(preparation.get("source_units_authoritative")) if isinstance(preparation, Mapping) else False
+        if isinstance(preparation, Mapping) and "source_units_authoritative" in preparation:
+            return bool(preparation["source_units_authoritative"])
+        return bool((self.selection_scope_data or {}).get("source_units_authoritative"))
+
 
     @property
     def processing_coordinate_mode(self) -> str:

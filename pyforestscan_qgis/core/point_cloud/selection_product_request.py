@@ -32,6 +32,10 @@ class SelectionProductRequest:
     review_required: bool
     review_reason: str
     authority: str = "FULL_RESOLUTION_ORIGINAL_SOURCE_QUERY"
+    source_coordinate_units: str = ""
+    source_units_basis: str = "UNRESOLVED"
+    source_units_authoritative: bool = False
+    spatial_assignment_scope: str = ""
 
     @property
     def summary(self) -> str:
@@ -67,6 +71,10 @@ def selection_scope_from_context(context: Mapping[str, Any]) -> SelectionProcess
         z_range=context.get("z_range"),
         hag_range=context.get("hag_range"),
         vertical_axis=str(context.get("vertical_axis", "Z")),
+        source_coordinate_units=str(context.get("source_coordinate_units", "")),
+        source_units_basis=str(context.get("source_units_basis", "UNRESOLVED")),
+        source_units_authoritative=bool(context.get("source_units_authoritative", False)),
+        spatial_assignment_scope=str(context.get("spatial_assignment_scope", "")),
     )
 
 
@@ -120,4 +128,8 @@ def build_selection_product_request(
         output_folder=Path(output_folder),
         review_required=option.status != "AVAILABLE",
         review_reason=option.reason,
+        source_coordinate_units=scope.source_coordinate_units,
+        source_units_basis=scope.source_units_basis,
+        source_units_authoritative=scope.source_units_authoritative,
+        spatial_assignment_scope=scope.spatial_assignment_scope,
     )

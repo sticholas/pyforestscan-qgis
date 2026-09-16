@@ -76,13 +76,13 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("selection_product_row.addWidget(self.promote_selection_button", pages)
         self.assertIn("self.validate_selection_button.setVisible(False)", pages)
         self.assertIn("self.promote_selection_button.setVisible(False)", pages)
-        self.assertIn("self.preflight_text.setVisible(not selected_points)", pages)
+        self.assertIn("self.preflight_details_group.setVisible(True)", pages)
         self.assertIn("self.selected_points_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)", pages)
 
     def test_selected_points_creates_a_bounded_plan_without_folder_prerun(self):
         pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
         control = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text()
-        self.assertIn('self.preflight_button.setText("Start Selected Product"', pages)
+        self.assertIn('self.preflight_button.setText("Run Selected Product"', pages)
         self.assertIn("Creating the bounded selected-point run", pages)
         self.assertIn("create_run_context(source, output_root).ensure_directories()", control)
         self.assertIn('"processing_executed": False', control)
@@ -96,4 +96,4 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("selection_product_options(model)", pages)
         self.assertIn('option.status == "AVAILABLE"', pages)
         self.assertNotIn("selected_points_product_combo", pages)
-        self.assertIn("Choose one available product below", pages)
+        self.assertIn("Choose one product, then run it on this bounded area", pages)
