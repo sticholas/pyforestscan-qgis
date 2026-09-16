@@ -83,6 +83,7 @@ class MissionControlDock(QDockWidget):
         self.job_history: tuple[JobRecord, ...] = ()
         self.batch_status = "Not started"
         self.loaded_result_paths: set[Path] = set()
+        self.viewer_overlay_paths: set[Path] = set()
         self.session_state = MissionControlSessionState()
         self.active_job_controller = ActiveProcessingJobController()
         self.processing_history_path = default_processing_history_path()
@@ -473,6 +474,7 @@ class MissionControlDock(QDockWidget):
         self.state = self.state.without_active_run()
         self.job_history = ()
         self.loaded_result_paths = set()
+        self.viewer_overlay_paths = set()
         if self.active_job_controller.current is not None:
             self.active_job_controller.clear_current()
         self.batch_page.set_previous_runs(self.active_job_controller.history)
@@ -494,6 +496,7 @@ class MissionControlDock(QDockWidget):
         self.state = self.state.with_dataset_pending(dataset_path).with_activity("Dataset selected", Path(dataset_path).name)
         self.job_history = ()
         self.loaded_result_paths = set()
+        self.viewer_overlay_paths = set()
         self.batch_status = "Not started"
         self.planning_page.reset_for_new_dataset(Path(dataset_path).name)
         self.processing_page.set_run_context(None)
@@ -568,7 +571,7 @@ class MissionControlDock(QDockWidget):
         token=CurrentJobToken.create(self._project_identity(),self._mission_session_id,self.session_state.plan_signature,self.session_state.repository_path,self.session_state.polygon_geometry_signature)
         self.active_job_controller.begin(token)
         self.results_page.begin_current_job();self._refresh_recent_results()
-        self.job_history=();self.loaded_result_paths=set()
+        self.job_history=();self.loaded_result_paths=set();self.viewer_overlay_paths=set()
         return token
 
     def _set_job_status_for_job(self,job,token) -> None:
@@ -688,6 +691,7 @@ class MissionControlDock(QDockWidget):
         self.active_job_controller.clear_current();self._refresh_recent_results()
         self.job_history = ()
         self.loaded_result_paths = set()
+        self.viewer_overlay_paths = set()
         self.session_state = MissionControlSessionState()
         self.session_events.sessionReset.emit(self.session_state)
         self.advisor_page.refresh_from_session(self.session_state)
@@ -981,6 +985,7 @@ class MissionControlDock(QDockWidget):
             self.state = MissionControlState()
             self.job_history = ()
             self.loaded_result_paths = set()
+            self.viewer_overlay_paths = set()
             self.batch_status = "Not started"
             self.workspace_session = WorkspaceSession()
             self._save_workspace_session()
@@ -993,6 +998,7 @@ class MissionControlDock(QDockWidget):
             return
         self.job_history = ()
         self.loaded_result_paths = set()
+        self.viewer_overlay_paths = set()
         self.batch_status = "Not started"
         self.state = self.state.without_active_run().with_activity("Workspace reset", self.workspace.name)
         self._save_workspace_session()
@@ -1013,22 +1019,27 @@ class MissionControlDock(QDockWidget):
 
 
     def _load_job_outputs(self, job: JobRecord) -> None:
-        """Best-effort load of generated raster outputs into QGIS."""
+        """Best-effort load of generated raster outputs into QGIS and the active viewer."""
         if job.status != JobStatus.COMPLETED:
             return
+        scoped_run = bool(self.processing_page.selection_scope)
         for result in job.results:
-            if not is_raster_result(result.result_type) or result.path in self.loaded_result_paths:
+            if not is_raster_result(result.result_type) or not result.path.exists():
                 continue
-            if not result.path.exists():
-                continue
-            layer_name = self._layer_name(result.path, result.result_type)
-            try:
-                layer = self.iface.addRasterLayer(str(result.path), layer_name)
-            except Exception:  # noqa: BLE001 - UI layer loading must not break job completion.
-                layer = None
-            if layer is not None:
-                self._polish_raster_layer(layer, result.result_type)
-                self.loaded_result_paths.add(result.path)
+            if result.path not in self.loaded_result_paths:
+                layer_name = self._layer_name(result.path, result.result_type)
+                try:
+                    layer = self.iface.addRasterLayer(str(result.path), layer_name)
+                except Exception:  # noqa: BLE001 - UI layer loading must not break job completion.
+                    layer = None
+                if layer is not None:
+                    self._polish_raster_layer(layer, result.result_type)
+                    self.loaded_result_paths.add(result.path)
+            if scoped_run and result.path not in self.viewer_overlay_paths:
+                # The viewer loader verifies the open source fingerprint and CRS
+                # before showing this bounded scientific result.
+                if self.point_cloud_page.load_scientific_overlay_path(result.path):
+                    self.viewer_overlay_paths.add(result.path)
 
     def _adopt_output_crs_for_empty_project(self, output_paths: tuple[Path, ...]) -> None:
         """Use the first raster CRS for a new project without prompting the user."""

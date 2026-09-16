@@ -8,8 +8,9 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
     def test_editor_exposes_selection_to_product_action(self):
         source = (ROOT / "pyforestscan_qgis/ui/point_cloud_editor.py").read_text()
         self.assertIn("selectionProcessingRequested", source)
-        self.assertIn('self.prepare_product_button = self.button("Use Selection for Product"', source)
-        self.assertIn("authoritative selection", source)
+        self.assertIn('self.prepare_product_button.setText("Run Product on Selection")', source)
+        self.assertIn("selection_product_row.addWidget(self.prepare_product_button)", source)
+        self.assertIn("has_product_selection", source)
         self.assertIn("Send the authoritative selection to Processing", source)
 
     def test_processing_page_labels_selection_run(self):
@@ -31,4 +32,23 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn('QPushButton("Promote for Execution")', source)
         self.assertIn("preflight_selection_product", source)
         self.assertIn("set_backend_readiness", source)
+        self.assertIn("self.prepare_selection_product_button.clicked.connect(self.run_selected_product)", source)
+        self.assertIn("self.validate_selected_product()", source)
+        self.assertIn("self.promote_selected_product()", source)
         self.assertIn("Run Product on Selection stopped before reading source points", source)
+
+    def test_completed_selected_rasters_load_in_qgis_and_viewer(self):
+        source = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text()
+        loader = source[source.index("def _load_job_outputs"):source.index("def _adopt_output_crs_for_empty_project")]
+        self.assertIn("self.iface.addRasterLayer", loader)
+        self.assertIn("scoped_run = bool(self.processing_page.selection_scope)", loader)
+        self.assertIn("load_scientific_overlay_path(result.path)", loader)
+        self.assertIn("viewer_overlay_paths", loader)
+
+    def test_viewer_overlay_loader_has_an_automatic_noninteractive_path(self):
+        source = (ROOT / "pyforestscan_qgis/ui/point_cloud_page.py").read_text()
+        self.assertIn("def load_scientific_overlay_path", source)
+        self.assertIn("choose_band: bool = False", source)
+        self.assertIn("and choose_band", source)
+        self.assertIn("return True", source)
+        self.assertIn("return False", source)

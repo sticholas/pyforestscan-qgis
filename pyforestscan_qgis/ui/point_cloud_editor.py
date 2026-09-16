@@ -227,6 +227,22 @@ class EditorPanel(QWidget):
         from .point_cloud_widgets import StableViewerStatus
         self.summary = StableViewerStatus("Editor: Open a local source")
         layout.addWidget(self.summary)
+        selection_product_row = QHBoxLayout()
+        selection_product_row.setContentsMargins(0, 0, 0, 0)
+        selection_product_row.setSpacing(4)
+        self.prepare_product_button = QToolButton()
+        self.prepare_product_button.setIcon(
+            self.style().standardIcon(qt_enum(QStyle, "SP_ArrowRight", "StandardPixmap")))
+        self.prepare_product_button.setText("Run Product on Selection")
+        self.prepare_product_button.setToolButtonStyle(
+            qt_enum(Qt, "ToolButtonTextBesideIcon", "ToolButtonStyle"))
+        self.prepare_product_button.setAccessibleName("Run Product on Selection")
+        self.prepare_product_button.setToolTip(
+            "Send the authoritative selection to Processing. Choose one product there and run it without changing the source.")
+        self.prepare_product_button.clicked.connect(self.prepare_product)
+        selection_product_row.addWidget(self.prepare_product_button)
+        selection_product_row.addStretch(1)
+        layout.addLayout(selection_product_row)
         self.edit_controls = QWidget()
         edit_layout = QVBoxLayout(self.edit_controls)
         edit_layout.setContentsMargins(0, 0, 0, 0)
@@ -453,9 +469,6 @@ class EditorPanel(QWidget):
         self.use_button = self.button("Use in Process", "SP_ArrowRight", self.use_export,
             "Select the validated immutable export in Process without starting processing. The editing session remains open.")
         history_row.addWidget(self.use_button)
-        self.prepare_product_button = self.button("Use Selection for Product", "SP_ArrowRight", self.prepare_product,
-            "Send the authoritative selection to Processing, where you choose a product and run it without changing the source.")
-        history_row.addWidget(self.prepare_product_button)
         layout.addLayout(history_row)
         self.history = QListWidget()
         self.history.setToolTip("Recent staged operations, newest first. The saved journal retains the full history and redo cursor.")
@@ -507,8 +520,9 @@ class EditorPanel(QWidget):
         self.redo_button.setEnabled(ready and self.state.get("can_redo", False))
         self.export_button.setEnabled(ready and self.state.get("edits", 0) > 0)
         self.use_button.setEnabled(bool(self.state.get("exported")) and not self.busy)
-        self.prepare_product_button.setEnabled(ready and bool(
-            (self.state.get("selection") or {}).get("resolved_point_count")))
+        has_product_selection = bool((self.state.get("selection") or {}).get("resolved_point_count"))
+        self.prepare_product_button.setVisible(has_product_selection)
+        self.prepare_product_button.setEnabled(ready and has_product_selection)
         self.cancel.setVisible(self.busy)
         self.cancel.setEnabled(self.busy and not self.cancel_requested)
         self.recover_action.setEnabled(not self.busy)

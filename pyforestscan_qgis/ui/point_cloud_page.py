@@ -569,34 +569,49 @@ class PointCloudPage(QWidget):
         self.filter_toggle.setArrowType(qt_enum(Qt, "DownArrow" if opened else "RightArrow", "ArrowType"))
 
     def choose_scientific_overlay(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Choose cached scientific raster", "", "GeoTIFF (*.tif *.tiff)")
-        if not path:
-            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose cached scientific raster", "", "GeoTIFF (*.tif *.tiff)")
+        if path:
+            self.load_scientific_overlay_path(path, choose_band=True)
+
+    def load_scientific_overlay_path(self, path: str | Path, *, choose_band: bool = False) -> bool:
+        """Load a verified scientific GeoTIFF as a linked viewer overlay."""
         try:
             from qgis.core import QgsCoordinateReferenceSystem, QgsRasterLayer
             from ..core.point_cloud.scientific_visualization import product_visualization_spec
-            layer = QgsRasterLayer(path, Path(path).stem)
+            output_path = Path(path)
+            layer = QgsRasterLayer(str(output_path), output_path.stem)
             if not layer.isValid():
                 raise ValueError("The selected raster could not be opened by QGIS.")
-            stem = Path(path).stem.upper().replace("-", "_").replace(" ", "_")
-            product_id = next((key for key in ("CANOPY_COVER", "POINT_DENSITY", "VOXEL_STATISTIC", "CHM", "DTM", "PAD", "PAI", "FHD", "RUMPLE") if key in stem), None)
+            stem = output_path.stem.upper().replace("-", "_").replace(" ", "_")
+            product_id = next((key for key in (
+                "CANOPY_COVER", "POINT_DENSITY", "VOXEL_STATISTIC", "CHM", "DTM",
+                "PAD", "PAI", "FHD", "RUMPLE",
+            ) if key in stem), None)
             if not product_id:
                 raise ValueError("The output name does not identify a registered scientific product.")
             spec = product_visualization_spec(product_id)
             source_metadata = self._source_info.get("metadata") or {}
-            raw_source_crs = self._source_info.get("crs") or source_metadata.get("crs") or source_metadata.get("srs") or ""
+            raw_source_crs = (self._source_info.get("crs") or source_metadata.get("crs")
+                              or source_metadata.get("srs") or "")
             source_crs = QgsCoordinateReferenceSystem(str(raw_source_crs)) if raw_source_crs else None
             overlay_crs = layer.crs()
-            if source_crs and source_crs.isValid() and overlay_crs.isValid() and source_crs.authid() and overlay_crs.authid() and source_crs.authid().upper() != overlay_crs.authid().upper():
-                raise ValueError(f"Raster CRS {overlay_crs.authid()} does not match source CRS {source_crs.authid()}.")
+            if (source_crs and source_crs.isValid() and overlay_crs.isValid()
+                    and source_crs.authid() and overlay_crs.authid()
+                    and source_crs.authid().upper() != overlay_crs.authid().upper()):
+                raise ValueError(
+                    f"Raster CRS {overlay_crs.authid()} does not match source CRS {source_crs.authid()}.")
             band_index = 1
-            if product_id in {"PAD", "VOXEL_STATISTIC"} and layer.bandCount() > 1:
-                band_index, accepted = QInputDialog.getInt(self, f"Choose {spec.label} band", "Vertical/support band:", 1, 1, layer.bandCount())
+            if product_id in {"PAD", "VOXEL_STATISTIC"} and layer.bandCount() > 1 and choose_band:
+                band_index, accepted = QInputDialog.getInt(
+                    self, f"Choose {spec.label} band", "Vertical/support band:",
+                    1, 1, layer.bandCount())
                 if not accepted:
-                    return
+                    return False
             extent = layer.extent()
             columns = min(96, max(2, int(max(layer.width(), layer.height()) ** .5 * 4)))
-            rows = min(96, max(2, round(columns * max(extent.height(), .001) / max(extent.width(), .001))))
+            rows = min(96, max(2, round(
+                columns * max(extent.height(), .001) / max(extent.width(), .001))))
             block = layer.dataProvider().block(band_index, extent, columns, rows)
             values = []
             for row in range(rows):
@@ -606,18 +621,40 @@ class PointCloudPage(QWidget):
                     else:
                         value = float(block.value(row, col))
                         values.append(value if value == value else None)
-            source_fingerprint = str(self._source_info.get("sha256") or (self._source_info.get("source_identity") or {}).get("sha256") or "")
+            source_fingerprint = str(
+                self._source_info.get("sha256")
+                or (self._source_info.get("source_identity") or {}).get("sha256")
+                or "")
             if not source_fingerprint:
-                raise ValueError("Open the point cloud before loading a scientific overlay so source provenance can be checked.")
-            output_stat = Path(path).stat()
-            payload = ScientificOverlayPayload(product_id, spec.label, spec.kind.value, spec.units, layer.crs().authid(), (extent.xMinimum(), extent.yMinimum(), extent.xMaximum(), extent.yMaximum()), rows, columns, tuple(values), overlay_value_range(values), None, spec.palette, {"source_fingerprint": source_fingerprint, "output_path": str(Path(path).resolve()), "output_identity": f"{output_stat.st_size}:{output_stat.st_mtime_ns}", "crs_alignment": "verified" if source_crs and source_crs.isValid() and overlay_crs.isValid() else "unknown"}, vertical_semantics=spec.vertical_semantics, surface_mode="values" if product_id == "DTM" else "flat", band_index=band_index)
+                raise ValueError(
+                    "Open the point cloud before loading a scientific overlay so source provenance can be checked.")
+            output_stat = output_path.stat()
+            payload = ScientificOverlayPayload(
+                product_id, spec.label, spec.kind.value, spec.units, layer.crs().authid(),
+                (extent.xMinimum(), extent.yMinimum(), extent.xMaximum(), extent.yMaximum()),
+                rows, columns, tuple(values), overlay_value_range(values), None, spec.palette,
+                {
+                    "source_fingerprint": source_fingerprint,
+                    "output_path": str(output_path.resolve()),
+                    "output_identity": f"{output_stat.st_size}:{output_stat.st_mtime_ns}",
+                    "crs_alignment": ("verified" if source_crs and source_crs.isValid()
+                                      and overlay_crs.isValid() else "unknown"),
+                },
+                vertical_semantics=spec.vertical_semantics,
+                surface_mode="values" if product_id == "DTM" else "flat",
+                band_index=band_index,
+            )
             self._scientific_overlay = payload
             self.clear_overlay_action.setEnabled(True)
             self.linked.broadcast_viewer_command(payload.as_command())
             band_text = f" | band {band_index}" if layer.bandCount() > 1 else ""
-            self.status.setText(f"{spec.label} overlay loaded{band_text} | cached spatial product | {payload.valid_value_count:,} sampled cells")
+            self.status.setText(
+                f"{spec.label} overlay loaded{band_text} | cached spatial product | "
+                f"{payload.valid_value_count:,} sampled cells")
+            return True
         except Exception as error:
             self.status.setText(f"Scientific overlay unavailable: {error}")
+            return False
 
     def clear_scientific_overlay(self):
         self._scientific_overlay = None

@@ -1800,10 +1800,10 @@ class ProcessingPage(MissionPage):
             "The source remains unchanged and safety checks run automatically."
         )
         self.prepare_selection_product_button = QPushButton("Run Product on Selection")
-        self.prepare_selection_product_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
+        self.prepare_selection_product_button.setMinimumHeight(PRIMARY_BUTTON_HEIGHT)
         self.prepare_selection_product_button.setEnabled(False)
         self.prepare_selection_product_button.clicked.connect(self.run_selected_product)
-        _apply_button_role(self.prepare_selection_product_button, "secondary")
+        _apply_button_role(self.prepare_selection_product_button, "primary")
         self.validate_selection_button = QPushButton("Validate Selected CHM")
         self.validate_selection_button.setMinimumHeight(SECONDARY_BUTTON_HEIGHT)
         self.validate_selection_button.setEnabled(False)
@@ -1829,9 +1829,6 @@ class ProcessingPage(MissionPage):
         _apply_button_role(self.clear_selection_scope_button, "neutral")
         selection_product_row.addWidget(self.selection_product_combo, 1)
         selection_product_row.addWidget(self.prepare_selection_product_button, 0)
-        selection_product_row.addWidget(self.validate_selection_button, 0)
-        selection_product_row.addWidget(self.promote_selection_button, 0)
-        selection_product_row.addWidget(self.run_selected_product_button, 0)
         selection_product_row.addWidget(self.clear_selection_scope_button, 0)
         selection_section.addLayout(selection_product_row)
         self.selection_product_request: dict[str, object] | None = None
@@ -2104,12 +2101,12 @@ class ProcessingPage(MissionPage):
             self.selection_scope_label.setText(f"Selected product could not be promoted: {error}")
             return
         self.selection_promoted_plan_path = destination
-        self.run_selected_product_button.setVisible(True)
-        self.run_selected_product_button.setEnabled(True)
+        self.run_selected_product_button.setVisible(False)
+        self.run_selected_product_button.setEnabled(False)
         self.product_plan_edit.setText(str(destination))
         self.selection_product_request = dict(request.to_dict())
         self.selection_product_request["selection_execution"] = promoted["selection_execution"]
-        self.selection_scope_label.setText(f"Selected product is ready for execution. Derived plan: {destination}")
+        self.selection_scope_label.setText("Selected product is running with its bounded selection scope.")
         self.log_text.setPlainText(self.log_text.toPlainText().strip() + f"\nPromoted scoped plan: {destination}\nThe base Product Plan was not modified.")
         _set_status_badge(self.status_label, "READY", "Status: Selected product promoted and ready for PBM execution.")
 
