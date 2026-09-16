@@ -70,6 +70,16 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("self.batch_page.set_selected_points_scope(scope)", control)
         self.assertIn("_open_selected_points_processing", control)
 
+    def test_selected_points_creates_a_bounded_plan_without_folder_prerun(self):
+        pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
+        control = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text()
+        self.assertIn('self.preflight_button.setText("Start Selected Product"', pages)
+        self.assertIn("Creating the bounded selected-point run", pages)
+        self.assertIn("create_run_context(source, output_root).ensure_directories()", control)
+        self.assertIn('"processing_executed": False', control)
+        self.assertIn("self.processing_page.set_run_context(context)", control)
+        self.assertIn("QTimer.singleShot(0, self.processing_page.run_selected_product)", control)
+
     def test_selected_points_locks_source_and_selection_context(self):
         pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
         self.assertIn("original source unchanged", pages)

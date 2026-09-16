@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from importlib import metadata
+import json
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,7 @@ from ..core.dataset_report import report_to_dict as dataset_report_to_dict
 from ..core.knowledge import KnowledgeEngine
 from ..core.jobs import JobRecord, JobStatus
 from ..core.processing_history import ProcessingHistoryEntry, append_processing_history, default_processing_history_path, read_processing_history
-from ..core.workspace import RunContext, WorkspaceHistoryRun, WorkspaceManager, WorkspaceSession, WorkspaceStatus, summarize_recent_workspaces
+from ..core.workspace import RunContext, WorkspaceHistoryRun, WorkspaceManager, WorkspaceSession, WorkspaceStatus, create_run_context, summarize_recent_workspaces
 from ..resources import plugin_root
 from .pages import (
     AdvancedToolboxPage,
@@ -189,12 +190,49 @@ class MissionControlDock(QDockWidget):
         self._navigate_to("Process")
 
     def _open_selected_points_processing(self, scope: dict, product_id: str) -> None:
-        """Open the existing bounded scientific executor with the selected Process product."""
+        """Create one bounded plan and dispatch its fast selected-point safety gate."""
+        try:
+            source = Path(str(scope["source_path"]))
+            output_root = Path(self.batch_page.output_folder_edit.text().strip() or source.parent / "outputs")
+            context = create_run_context(source, output_root).ensure_directories()
+            parameters = {
+                "grid_resolution": self.batch_page.resolution_spin.value(),
+                "height_bin_size": self.batch_page.height_bin_spin.value() or None,
+                "chm_interpolation": self.batch_page.chm_interpolation_combo.currentText(),
+                "canopy_cover_height_threshold": self.batch_page.canopy_threshold_spin.value(),
+                "canopy_cover_max_height": self.batch_page.canopy_max_height_spin.value() or None,
+                "canopy_cover_extinction_coefficient": self.batch_page.canopy_extinction_spin.value(),
+                "pad_beer_lambert_constant": self.batch_page.pad_beer_lambert_spin.value(),
+                "pad_drop_ground": self.batch_page.pad_drop_ground_check.isChecked(),
+                "pai_min_height": self.batch_page.pai_min_height_spin.value(),
+                "pai_max_height": self.batch_page.pai_max_height_spin.value() or None,
+                "fhd_min_height": self.batch_page.fhd_min_height_spin.value(),
+                "fhd_max_height": self.batch_page.fhd_max_height_spin.value() or None,
+                "rumple_min_height": self.batch_page.rumple_min_height_spin.value() or None,
+                "point_density_per_area": self.batch_page.point_density_per_area_check.isChecked(),
+            }
+            base_plan = {
+                "title": "Selected Points Product",
+                "source_dataset": str(source),
+                "source_report": "",
+                "output_folder": str(context.outputs_dir),
+                "parameters": parameters,
+                "products": [{"product": product_id, "label": product_id.replace("_", " ").title(),
+                              "requested": True, "plan_status": "Ready"}],
+                "processing_executed": False,
+            }
+            context.product_plan_json.write_text(json.dumps(base_plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        except (KeyError, OSError, TypeError, ValueError) as error:
+            self.batch_page.preflight_text.setPlainText("Selected-point setup could not start: " + str(error))
+            self.batch_page.preflight_summary_label.setText("Needs attention: selected-point setup failed.")
+            return
+        self.processing_page.set_run_context(context)
         self.processing_page.set_selection_scope(scope)
         index = self.processing_page.selection_product_combo.findData(product_id)
         if index >= 0:
             self.processing_page.selection_product_combo.setCurrentIndex(index)
         self._navigate_to("Processing")
+        QTimer.singleShot(0, self.processing_page.run_selected_product)
 
     def resizeEvent(self, event: object) -> None:  # noqa: N802 - Qt API name.
         """Keep the live status strip readable at narrow dock widths."""

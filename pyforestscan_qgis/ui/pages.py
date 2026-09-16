@@ -3922,7 +3922,7 @@ class BatchPage(MissionPage):
         self.selected_points_section.setVisible(selected_points)
         if selected_points:
             summary = "Run one scientific product from an authoritative Point Cloud selection."
-            prerun = "Continue to the selected-point prerun after choosing a product."
+            prerun = "Choose one product, then start its bounded selected-point run."
         elif polygon:
             summary = "Process LiDAR covering a selected polygon."
             prerun = "Run the Prerun Check before processing the selected polygon."
@@ -3932,8 +3932,9 @@ class BatchPage(MissionPage):
         self.batch_mode_summary_label.setText(summary)
         self.preflight_report = None
         self.preflight_text.setPlainText(prerun)
-        self.run_button.setText("Continue to Selected Point Run" if selected_points else "Process LiDAR")
-        self.preflight_button.setText("Continue to Selected Point Prerun" if selected_points else "Run Prerun Check")
+        self.run_button.setText("Process LiDAR")
+        self.run_button.setVisible(not selected_points)
+        self.preflight_button.setText("Start Selected Product" if selected_points else "Run Prerun Check")
         self.resume_button.setVisible(not polygon and not selected_points)
         self.retry_failed_button.setText("Retry Failed" if polygon else "Retry Failed Files")
         self.summary_label.setText("Review selected-point outputs after execution." if selected_points else ("Review Polygon Batch outputs after execution." if polygon else "4. Review Results after the batch completes."))
@@ -4909,16 +4910,16 @@ class BatchPage(MissionPage):
 
     def run_preflight(self) -> None:
         """Run batch preflight and update readiness display."""
+        if self._current_batch_mode() == "selected_points":
+            self.preflight_text.setPlainText("Creating the bounded selected-point run and checking readiness...")
+            self.preflight_summary_label.setText("Selected point safety checks start immediately.")
+            self._open_selected_points_workflow()
+            return
         self.preflight_button.setEnabled(False)
         self.preflight_text.setPlainText("Running Prerun Check...")
         self.status_label.setText("Checking request...")
         self._update_processing_density(ProcessingUiState.VALIDATING)
         QApplication.processEvents()
-        if self._current_batch_mode() == "selected_points":
-            self._open_selected_points_workflow()
-            self.preflight_button.setEnabled(True)
-            self._update_processing_density(ProcessingUiState.IDLE)
-            return
         if self._current_batch_mode() == "polygon":
             # run_polygon_batch_preflight is executed by _PolygonPreflightWorker;
             # this UI method only captures the immutable request and submits it.
