@@ -3,6 +3,33 @@
 const message = document.getElementById("message");
 const profileAxes = document.getElementById("profile-axes");
 const state = {ready: false, js_ready: false, source_requested: false, errors: [], mode: "Classification", palette: "Viridis", classes: null, height_filter: null, quality: "Automatic", script_revision: "visualization-analytics-2", available_modes: [], dimensions: [], display_range: null, legend: null, analytics: null, analytics_generation: 0, analytics_updates: 0, analytics_sample_limit: 30000};
+// Keep the renderer loadable even when an installed plugin has a stale or
+// missing visualization_registry.js asset. The registry remains authoritative
+// when present; this is a compatibility fallback for the embedded viewer.
+const BUILTIN_PALETTES = {
+    Viridis:[[0.267,0.005,0.329],[0.128,0.567,0.551],[0.993,0.906,0.144]],
+    Turbo:[[0.190,0.071,0.232],[0.276,0.506,0.988],[0.643,0.990,0.235],[0.976,0.518,0.039],[0.480,0.016,0.010]],
+    Terrain:[[0.12,0.30,0.16],[0.42,0.62,0.24],[0.83,0.76,0.42],[0.96,0.93,0.78]],
+    Grayscale:[[0.04,0.04,0.04],[0.96,0.96,0.96]],
+    Heat:[[0.04,0.00,0.10],[0.56,0.00,0.36],[0.96,0.18,0.05],[1.00,0.90,0.20]],
+    CoolWarm:[[0.08,0.20,0.70],[0.75,0.86,0.94],[0.96,0.94,0.76],[0.72,0.12,0.10]],
+    Forest:[[0.02,0.10,0.08],[0.06,0.38,0.20],[0.42,0.70,0.24],[0.92,0.88,0.38]]
+};
+function paletteStops() {
+    const registry = window.PyForestScanVisualization;
+    return registry && registry.palettes ? registry.palettes : BUILTIN_PALETTES;
+}
+function paletteGradient(name, invert=false) {
+    const registry = window.PyForestScanVisualization;
+    if (registry && typeof registry.gradient === "function" && registry.palettes && registry.palettes[name]) {
+        return registry.gradient(name, invert);
+    }
+    const stops = paletteStops()[name] || BUILTIN_PALETTES.Viridis;
+    const ordered = invert ? stops.slice().reverse() : stops;
+    return ordered.map((color, index) => [
+        ordered.length === 1 ? 0 : index / (ordered.length - 1), new THREE.Color(...color)
+    ]);
+}
 let viewer, cloud, heightVolume, scientificOverlay = null, previousCamera = "", lastFrame = performance.now(), frameMs = 16;
 let linkedContext = null, profileDragInstalled = false;
 let cameraSyncFallbacks = 0;
@@ -140,11 +167,16 @@ function ensureClassification(code) {
     cloud.material.recomputeClassification();
 }
 function setPalette(name, invert=false) {
-    const registry = window.PyForestScanVisualization;
-    if (!registry || !cloud || !registry.palettes[name]) throw Error("Palette unavailable: " + name);
-    state.palette = name;
+    if (!cloud) return;
+    const palettes = paletteStops();
+    const selected = palettes[name] ? name : "Viridis";
+    if (!palettes[selected]) {
+        state.errors.push("No palette registry available; using renderer default.");
+        return;
+    }
+    state.palette = selected;
     const material = cloud.material;
-    const gradient = registry.gradient(name, invert);
+    const gradient = paletteGradient(selected, invert);
     // Potree's setter replaces the texture, but older embedded builds can
     // retain the previous uniform binding. Update both paths explicitly.
     material.gradient = gradient;
@@ -208,7 +240,7 @@ function updateLegend() {
     title.textContent = state.mode + " | " + state.palette + " | ";
     node.appendChild(title);
     const swatch = document.createElement("span");
-    const stops = (window.PyForestScanVisualization && window.PyForestScanVisualization.palettes[state.palette]) || [];
+    const stops = paletteStops()[state.palette] || BUILTIN_PALETTES.Viridis;
     swatch.style.cssText = "display:inline-block;width:110px;height:9px;margin:0 6px;background:linear-gradient(90deg," +
         stops.map((color, index) => "rgb(" + color.map(value => Math.round(value * 255)).join(",") + ") " +
         Math.round(index / Math.max(1, stops.length - 1) * 100) + "%").join(",") +
