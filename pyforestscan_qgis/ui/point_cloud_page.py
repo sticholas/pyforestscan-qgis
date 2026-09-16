@@ -993,8 +993,9 @@ class PointCloudPage(QWidget):
             self._observe_classes(telemetry.get("observed_classes", []), telemetry.get("classes"),
                                   (telemetry.get("editor") or {}).get("effective_classes", {}))
             self._controls(True)
-            if self._session_worker is None:
-                self.status.setText("Source open | Original unchanged")
+            if self._session_worker is None and self._scientific_overlay is None:
+                if self.status.text() != "Source open | Original unchanged":
+                    self.status.setText("Source open | Original unchanged")
                 if telemetry.get("mode") == "RGB" and telemetry.get("rgb_diagnostic", {}).get("message"):
                     self.status.setText(telemetry["rgb_diagnostic"]["message"])
             display_summary = self._display_stabilizer.observe(telemetry)

@@ -36,6 +36,7 @@ class SelectionProductRequest:
     source_units_basis: str = "UNRESOLVED"
     source_units_authoritative: bool = False
     spatial_assignment_scope: str = ""
+    output_crs: str = ""
 
     @property
     def summary(self) -> str:
@@ -75,6 +76,7 @@ def selection_scope_from_context(context: Mapping[str, Any]) -> SelectionProcess
         source_units_basis=str(context.get("source_units_basis", "UNRESOLVED")),
         source_units_authoritative=bool(context.get("source_units_authoritative", False)),
         spatial_assignment_scope=str(context.get("spatial_assignment_scope", "")),
+        output_crs=str(context.get("output_crs", "")),
     )
 
 
@@ -132,4 +134,5 @@ def build_selection_product_request(
         source_units_basis=scope.source_units_basis,
         source_units_authoritative=scope.source_units_authoritative,
         spatial_assignment_scope=scope.spatial_assignment_scope,
+        output_crs=scope.output_crs,
     )

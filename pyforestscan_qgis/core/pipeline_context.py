@@ -273,13 +273,12 @@ class PipelineContext:
 
     @property
     def crs(self) -> str | None:
-        """Return the dataset CRS from Dataset Explorer JSON when available."""
-        if self.dataset_report is None:
-            return None
-        geometry = self.dataset_report.get("geometry")
-        if not isinstance(geometry, Mapping):
-            return None
-        value = geometry.get("crs")
+        """Return source CRS or an explicitly configured selected-output CRS."""
+        if self.dataset_report is not None:
+            geometry = self.dataset_report.get("geometry")
+            if isinstance(geometry, Mapping) and geometry.get("crs"):
+                return str(geometry["crs"])
+        value = (self.selection_scope_data or {}).get("output_crs")
         return str(value) if value else None
 
     @property

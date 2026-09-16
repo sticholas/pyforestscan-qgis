@@ -184,6 +184,12 @@ class MissionControlDock(QDockWidget):
 
     def _prepare_selection_scope(self, scope: dict) -> None:
         """Make an authoritative viewer selection available in Process mode."""
+        scope = dict(scope)
+        policy_crs = str(default_source_local_policy_store().read().fallback_crs or "").strip()
+        output_crs = policy_crs or self._current_project_crs()
+        if output_crs:
+            scope["output_crs"] = output_crs
+            scope["output_crs_source"] = "Tools & Setup fallback" if policy_crs else "QGIS project"
         self.batch_page.set_selected_points_scope(scope)
         self.batch_page.batch_mode_combo.setCurrentIndex(
             self.batch_page.batch_mode_combo.findData("selected_points"))

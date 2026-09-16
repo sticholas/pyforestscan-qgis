@@ -41,6 +41,7 @@ class SelectionProcessingScope:
     source_units_basis: str = "UNRESOLVED"
     source_units_authoritative: bool = False
     spatial_assignment_scope: str = ""
+    output_crs: str = ""
 
     def __post_init__(self):
         if not self.selection_id.strip():
@@ -106,6 +107,7 @@ class SelectionProcessingScope:
             "source_units_basis": self.source_units_basis,
             "source_units_authoritative": self.source_units_authoritative,
             "spatial_assignment_scope": self.spatial_assignment_scope,
+            "output_crs": self.output_crs,
             "authority": "FULL_RESOLUTION_ORIGINAL_SOURCE_QUERY",
             "original_unchanged": True,
         }

@@ -216,6 +216,18 @@ def _execute_chm_step(context: PipelineContext, step: PipelineStep, adapter: Any
         return _step_result(step, PipelineStepStatus.FAILED, f"CHM generation failed: {exc}")
     if not result.output_path.exists():
         return _step_result(step, PipelineStepStatus.FAILED, f"CHM generation did not produce a GeoTIFF: {result.output_path}")
+    if context.selection_scope is not None:
+        from .raster_mask import BackendRasterMaskService, RasterMaskOptions
+        polygon = context.selection_polygon_execution_input
+        masked = BackendRasterMaskService().mask(
+            result.output_path,
+            polygon.geometry_wkt,
+            polygon_crs=polygon.processing_crs_authid,
+            processing_crs=context.crs or polygon.processing_crs_authid,
+            options=RasterMaskOptions(),
+        )
+        if not masked.masked:
+            return _step_result(step, PipelineStepStatus.FAILED, f"CHM exact selection mask failed: {masked.message}")
     return _step_result(step, PipelineStepStatus.PASSED, f"CHM GeoTIFF created: {result.output_path}", (result.output_path,))
 
 
