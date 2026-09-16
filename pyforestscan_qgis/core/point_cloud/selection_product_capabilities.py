@@ -10,7 +10,7 @@ NOT_YET_AVAILABLE = "NOT_YET_AVAILABLE"
 SCOPED_EXECUTABLE_PRODUCTS = frozenset({
     ProductType.CHM, ProductType.CANOPY_COVER, ProductType.PAD,
     ProductType.PAI, ProductType.FHD, ProductType.RUMPLE,
-    ProductType.DTM, ProductType.POINT_DENSITY,
+    ProductType.DTM, ProductType.POINT_DENSITY, ProductType.VOXEL_STAT,
 })
 
 def product_scope_status(product, scope_kind):

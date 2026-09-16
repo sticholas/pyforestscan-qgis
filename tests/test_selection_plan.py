@@ -41,6 +41,21 @@ class SelectionPlanTests(unittest.TestCase):
         self.assertEqual(plan["selection_scope"]["selection_id"], "selection-1")
         self.assertEqual(plan["selection_execution"]["status"], "REVIEW_ONLY")
 
+    def test_scoped_plan_preserves_multiple_selected_products(self):
+        second = self.request.__class__(
+            **{**self.request.__dict__, "product": ProductType.VOXEL_STAT}
+        )
+        base = {
+            **self.base,
+            "products": [
+                {"product": "chm", "requested": True, "plan_status": "Ready"},
+                {"product": "voxel_stat", "requested": True, "plan_status": "Ready"},
+            ],
+        }
+        plan = build_scoped_product_plan(base, (self.request, second))
+        self.assertEqual([item["product"] for item in plan["products"]], ["chm", "voxel_stat"])
+        self.assertEqual([item["product"] for item in plan["selection_products"]], ["chm", "voxel_stat"])
+
     def test_base_plan_is_not_modified(self):
         before = json.dumps(self.base, sort_keys=True)
         build_scoped_product_plan(self.base, self.request)

@@ -47,7 +47,7 @@ class SelectionProcessingScopeTests(unittest.TestCase):
         scope = self.scope(scope_kind="COLUMN")
         statuses = {item.product.value: item.status for item in selection_product_options(scope)}
         self.assertEqual("AVAILABLE", statuses["chm"])
-        self.assertEqual("NOT_YET_AVAILABLE", statuses["voxel_stat"])
+        self.assertEqual("AVAILABLE", statuses["voxel_stat"])
 
     def test_source_fingerprint_revalidation_fails_after_replacement(self):
         with tempfile.TemporaryDirectory() as folder:

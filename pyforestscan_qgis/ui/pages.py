@@ -14,7 +14,7 @@ import time
 import traceback
 from html import escape
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Sequence
 
 from qgis.PyQt.QtCore import QEvent, QObject, QSize, Qt, QThread, QTimer, QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices
@@ -1820,7 +1820,7 @@ class ProcessingPage(MissionPage):
         overview.addWidget(self.execution_backend_label)
         selection_section = self.add_section("Selected Points")
         selection_help = _body_label(
-            "Run one scientific product on the locked point selection. "
+            "Run one or more scientific products on the locked point selection. "
             "The original source remains unchanged and bounded safety checks run automatically."
         )
         selection_help.setWordWrap(True)
@@ -1835,7 +1835,9 @@ class ProcessingPage(MissionPage):
         self.selection_scope: dict[str, object] | None = None
         self.selection_backend_ready = False
         self.selection_request_model = None
+        self.selection_request_models: tuple[object, ...] = ()
         self.selection_preflight_report = None
+        self.selection_preflight_reports: tuple[object, ...] = ()
         self.selection_promoted_plan_path: Path | None = None
         selection_product_row = QHBoxLayout()
         self.selection_product_combo = QComboBox()
@@ -1981,9 +1983,10 @@ class ProcessingPage(MissionPage):
             self.processing_stage_label.setText("Stage: Ready when a Product Plan is available")
         self.log_text.setPlainText((self.log_text.toPlainText().strip() + "\n" if self.log_text.toPlainText().strip() else "") + "Processing state refreshed.")
 
-    def set_selection_scope(self, scope: dict[str, object] | None) -> None:
+    def set_selection_scope(self, scope: dict[str, object] | None, product_ids: Sequence[str] = ()) -> None:
         """Show a prepared authoritative viewer scope without starting a job."""
         self.selection_scope = dict(scope) if scope else None
+        self.selection_product_ids = tuple(dict.fromkeys(str(product) for product in product_ids if product))
         selected_mode = self.selection_scope is not None
         # Point Cloud is the selected-points entry point; hide unrelated
         # whole-dataset actions while its bounded request is active.
@@ -1993,7 +1996,9 @@ class ProcessingPage(MissionPage):
         self.clear_selection_scope_button.setVisible(False)
         self.selection_product_request = None
         self.selection_request_model = None
+        self.selection_request_models = ()
         self.selection_preflight_report = None
+        self.selection_preflight_reports = ()
         self.selection_promoted_plan_path = None
         self.selection_product_combo.clear()
         if not self.selection_scope:
@@ -2009,9 +2014,19 @@ class ProcessingPage(MissionPage):
             return
         try:
             scope_model = selection_scope_from_context(self.selection_scope)
-            for option in selection_product_options(scope_model):
+            options = tuple(selection_product_options(scope_model))
+            requested_ids = set(self.selection_product_ids)
+            for option in options:
+                if requested_ids and option.product.value not in requested_ids:
+                    continue
                 label = PRODUCT_LABELS.get(option.product, option.product.value)
                 self.selection_product_combo.addItem(f"{label} ({option.status})", option.product.value)
+            if requested_ids:
+                available_ids = {str(self.selection_product_combo.itemData(index) or "")
+                                 for index in range(self.selection_product_combo.count())}
+                missing = requested_ids - available_ids
+                if missing:
+                    raise ValueError("Unavailable selected products: " + ", ".join(sorted(missing)))
         except (TypeError, ValueError, KeyError) as error:
             self.selection_scope_label.setText(f"Selection scope could not be prepared: {error}")
             self.selection_product_combo.setEnabled(False)
@@ -2037,15 +2052,22 @@ class ProcessingPage(MissionPage):
         height_text = "all heights" if not limits else f"{'HAG' if axis == 'HeightAboveGround' else 'elevation'} {limits[0]:g}-{limits[1]:g}"
         self.selection_scope_label.setText(
             f"Selection scope: {kind} | {count_text} | {height_text} | "
-            "ready for a bounded scientific product.")
+            "ready for bounded scientific processing.")
+
+    def _selected_product_ids_for_scope(self) -> tuple[str, ...]:
+        """Return the Process-page product set, preserving the originating choices."""
+        if self.selection_product_ids:
+            return self.selection_product_ids
+        product = str(self.selection_product_combo.currentData() or "")
+        return (product,) if product else ()
 
     def run_selected_product(self) -> None:
         """Run the selected product through the bounded-scope safety gates."""
         if not self.selection_scope:
             self.selection_scope_label.setText("Select a non-empty area, column, or profile in Point Cloud first.")
             return
-        if not self.selection_product_combo.currentData():
-            self.selection_scope_label.setText("Choose the scientific product to run on this selection.")
+        if not self._selected_product_ids_for_scope():
+            self.selection_scope_label.setText("Choose at least one scientific product to run on this selection.")
             return
         self.prepare_selected_product()
         if self.selection_request_model is None:
@@ -2074,14 +2096,18 @@ class ProcessingPage(MissionPage):
         if not self.selection_scope:
             self.selection_scope_label.setText("Choose a non-empty viewer selection before preparing a product.")
             return
-        product = self.selection_product_combo.currentData()
-        if not product:
-            self.selection_scope_label.setText("Choose a product before preparing the request.")
+        product_ids = self._selected_product_ids_for_scope()
+        if not product_ids:
+            self.selection_scope_label.setText("Choose at least one product before preparing the request.")
             return
         try:
             scope = selection_scope_from_context(self.selection_scope)
             output_folder = self.run_context.outputs_dir if self.run_context is not None else scope.source_path.parent / "outputs"
-            request = build_selection_product_request(scope, str(product), output_folder=output_folder)
+            requests = tuple(
+                build_selection_product_request(scope, product, output_folder=output_folder)
+                for product in product_ids
+            )
+            request = requests[0]
         except (TypeError, ValueError, KeyError, OSError) as error:
             self.selection_scope_label.setText(f"Product request could not be prepared: {error}")
             return
@@ -2094,22 +2120,24 @@ class ProcessingPage(MissionPage):
                 self.selection_scope_label.setText("Prepare the normal Product Plan before preparing a selected product.")
                 return
             destination_root = self.run_context.reports_dir if self.run_context is not None else base_path.parent
-            review_plan_path = destination_root / f"selection_{request.selection_id}_{request.product.value}_review.json"
-            write_scoped_product_plan(base_path, request, review_plan_path)
+            review_plan_path = destination_root / f"selection_{request.selection_id}_products_review.json"
+            write_scoped_product_plan(base_path, requests, review_plan_path)
             payload["review_plan_path"] = str(review_plan_path)
         self.selection_product_request = payload
         self.selection_request_model = request
-        self.validate_selection_button.setText("Validate Selected CHM" if request.product.value == "chm" else "Validate Selected Product")
+        self.selection_request_models = requests
+        product_labels = ", ".join(PRODUCT_LABELS.get(item.product, item.product.value) for item in requests)
+        self.validate_selection_button.setText("Validate Selected Products")
         self.validate_selection_button.setVisible(False)
         self.validate_selection_button.setEnabled(False)
         self.promote_selection_button.setVisible(False)
         self.promote_selection_button.setEnabled(False)
-        review = " Scientific review is required before execution." if request.review_required else ""
+        review = " Scientific review is required before execution." if any(item.review_required for item in requests) else ""
         self.selection_scope_label.setText(
-            f"Selected product: {request.summary}. Safety checks are running automatically.{review}")
+            f"Selected products: {product_labels}. Safety checks are running automatically.{review}")
         review_path_text = f"Review plan: {review_plan_path}\n" if review_plan_path else ""
         self.log_text.setPlainText(
-            f"Prepared product request: {request.summary}\n"
+            f"Prepared selected-product request: {product_labels}\n"
             f"Source: {request.source_path}\n"
             f"Bounds: {request.bounds}\n"
             f"Vertical filter: {request.vertical_axis}\n"
@@ -2124,21 +2152,29 @@ class ProcessingPage(MissionPage):
 
     def validate_selected_product(self) -> None:
         """Run the bounded product gate and show exact blockers before promotion."""
-        request = self.selection_request_model
-        if request is None:
-            self.selection_scope_label.setText("Prepare a product request before validating the selected scope.")
+        requests = self.selection_request_models
+        if not requests:
+            self.selection_scope_label.setText("Prepare selected-product requests before validating the selected scope.")
             return
-        report = preflight_selection_product(
-            request,
-            backend_ready=self.selection_backend_ready,
-            source_exists=request.source_path.exists(),
+        reports = tuple(
+            preflight_selection_product(
+                request,
+                backend_ready=self.selection_backend_ready,
+                source_exists=request.source_path.exists(),
+            )
+            for request in requests
         )
+        report = reports[0]
         self.selection_preflight_report = report
-        details = [report.summary]
-        details.extend(f"Blocker: {item}" for item in report.blockers)
-        details.extend(f"Warning: {item}" for item in report.warnings)
-        self.log_text.setPlainText(f"Selected {request.product.value} preflight\n" + "\n".join(details))
-        if report.ready:
+        self.selection_preflight_reports = reports
+        details = []
+        for request, item in zip(requests, reports):
+            details.append(f"{request.product.value}: {item.summary}")
+            details.extend(f"Blocker: {message}" for message in item.blockers)
+            details.extend(f"Warning: {message}" for message in item.warnings)
+        all_ready = all(item.ready for item in reports)
+        self.log_text.setPlainText("Selected products preflight\n" + "\n".join(details))
+        if all_ready:
             self.promote_selection_button.setVisible(False)
             self.promote_selection_button.setEnabled(False)
             self.selection_scope_label.setText("Selection is valid. Preparing the bounded execution request.")
@@ -2146,22 +2182,23 @@ class ProcessingPage(MissionPage):
         else:
             self.promote_selection_button.setVisible(False)
             self.promote_selection_button.setEnabled(False)
-            self.selection_scope_label.setText("Selected product is not ready for execution. Review the blockers below.")
-            _set_status_badge(self.status_label, "WARNING", "Status: Selected product needs review before execution.")
+            self.selection_scope_label.setText("One or more selected products are not ready for execution. Review the blockers below.")
+            _set_status_badge(self.status_label, "WARNING", "Status: Selected products need review before execution.")
 
     def promote_selected_product(self) -> None:
         """Write an executable derived plan without changing the base Product Plan."""
+        requests = self.selection_request_models
         request = self.selection_request_model
         report = self.selection_preflight_report
         base_path = Path(self.product_plan_edit.text().strip()) if self.product_plan_edit.text().strip() else None
-        if request is None or report is None or not report.ready or base_path is None or not base_path.exists():
+        if not requests or request is None or report is None or not all(item.ready for item in self.selection_preflight_reports) or base_path is None or not base_path.exists():
             self.selection_scope_label.setText("The selected-points safety checks must pass before processing.")
             return
         try:
             base_plan = json.loads(base_path.read_text(encoding="utf-8"))
-            promoted = promote_scoped_product_plan(base_plan, request, report)
+            promoted = promote_scoped_product_plan(base_plan, requests, report)
             destination_root = self.run_context.reports_dir if self.run_context is not None else base_path.parent
-            destination = destination_root / f"selection_{request.selection_id}_{request.product.value}_ready.json"
+            destination = destination_root / f"selection_{request.selection_id}_products_ready.json"
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text(json.dumps(promoted, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         except (OSError, ValueError, json.JSONDecodeError) as error:
@@ -2172,6 +2209,7 @@ class ProcessingPage(MissionPage):
         self.run_selected_product_button.setEnabled(False)
         self.product_plan_edit.setText(str(destination))
         self.selection_product_request = dict(request.to_dict())
+        self.selection_product_request["products"] = [item.product.value for item in requests]
         self.selection_product_request["selection_execution"] = promoted["selection_execution"]
         self.selection_scope_label.setText("Processing the selected points within their exact bounded geometry.")
         self.log_text.setPlainText(self.log_text.toPlainText().strip() + f"\nBounded processing plan: {destination}\nThe base Product Plan was not modified.")
@@ -2627,7 +2665,7 @@ class BatchPage(MissionPage):
     clearCurrentResultRequested = pyqtSignal()
     sessionStateChanged = pyqtSignal(object)
     processingEngineSetupRequested = pyqtSignal()
-    selectedPointsProcessingRequested = pyqtSignal(object, str)
+    selectedPointsProcessingRequested = pyqtSignal(object, object)
 
     def __init__(self, adapter: PyForestScanAdapter, iface: object | None = None, parent: QWidget | None = None) -> None:
         """Create the Batch page."""
@@ -2708,7 +2746,7 @@ class BatchPage(MissionPage):
         selected_points_layout.addWidget(self.selected_points_source_label)
         selected_points_layout.addWidget(self.selected_points_scope_label)
         selected_points_layout.addWidget(_details_label(
-            "The source and selection are locked. Choose one product, then process this bounded area."))
+            "The source and selection are locked. Choose one or more products, then process this bounded area."))
         self.selected_points_details_group, selected_points_details_layout = _collapsible_section(
             selected_points_layout, "Selection Details", checked=False)
         self.selected_points_details_text = _details_label("")
@@ -3962,17 +4000,6 @@ class BatchPage(MissionPage):
 
     def _on_product_selection_changed(self, *_args: object) -> None:
         """Invalidate the plan without inspecting source, polygon, or backend state."""
-        if (self._current_batch_mode() == "selected_points"
-                and not self._syncing_selected_points_products):
-            selected = self.sender()
-            if selected is not None and getattr(selected, "isChecked", lambda: False)():
-                self._syncing_selected_points_products = True
-                try:
-                    for check in self.product_checks.values():
-                        if check is not selected:
-                            check.setChecked(False)
-                finally:
-                    self._syncing_selected_points_products = False
         self.preflight_report = None
         self._refresh_batch_option_visibility()
         self._update_run_button_enabled()
@@ -4071,12 +4098,18 @@ class BatchPage(MissionPage):
         self._refresh_selected_points_details()
         self._syncing_selected_points_products = True
         try:
+            selected_available = False
             for product, check in self.product_checks.items():
                 enabled = product in available
                 check.setEnabled(enabled)
                 check.setToolTip("Available for this bounded point selection." if enabled else
-                                 "Not yet available for selected-point processing.")
-                check.setChecked(enabled and product is ProductType.CHM)
+                                 "Not available for this bounded point selection.")
+                if not enabled:
+                    check.setChecked(False)
+                selected_available = selected_available or (enabled and check.isChecked())
+            # Start with a useful default, but never discard additional product choices.
+            if not selected_available and ProductType.CHM in available:
+                self.product_checks[ProductType.CHM].setChecked(True)
         finally:
             self._syncing_selected_points_products = False
         self._refresh_batch_option_visibility()
@@ -4168,22 +4201,23 @@ class BatchPage(MissionPage):
         self.preflight_summary_label.setText("Source units confirmed. Run the selected product.")
         self._update_run_button_enabled()
 
-    def _selected_points_product_id(self) -> str:
-        """Return one explicit scoped product, never an accidental multi-product run."""
-        selected = [product.value for product, check in self.product_checks.items()
-                    if check.isEnabled() and check.isChecked()]
-        return selected[0] if len(selected) == 1 else ""
+    def _selected_points_product_ids(self) -> tuple[str, ...]:
+        """Return every available product selected for the authoritative viewer scope."""
+        return tuple(
+            product.value for product, check in self.product_checks.items()
+            if check.isEnabled() and check.isChecked()
+        )
 
     def _open_selected_points_workflow(self) -> None:
         if not self.selected_points_scope:
             return
-        product_id = self._selected_points_product_id()
-        if not product_id:
+        product_ids = self._selected_points_product_ids()
+        if not product_ids:
             self.preflight_text.setPlainText(
-                "Choose exactly one available product for this point selection.")
-            self.preflight_summary_label.setText("Needs attention: choose one selected-point product.")
+                "Choose at least one available product for this point selection.")
+            self.preflight_summary_label.setText("Needs attention: choose selected-point products.")
             return
-        self.selectedPointsProcessingRequested.emit(dict(self.selected_points_scope), product_id)
+        self.selectedPointsProcessingRequested.emit(dict(self.selected_points_scope), product_ids)
 
     def _current_batch_mode(self) -> str:
         return str(self.batch_mode_combo.currentData() or "standard")
@@ -4209,7 +4243,7 @@ class BatchPage(MissionPage):
         self.selected_points_activity_label.setVisible(
             selected_points and bool(self.selected_points_activity_label.text()))
         if selected_points:
-            summary = "Choose one product and process the locked point selection."
+            summary = "Choose one or more products and process the locked point selection."
             prerun = "Process Selected Points runs the required bounded safety checks automatically."
         elif polygon:
             summary = "Process LiDAR covering a selected polygon."
@@ -5685,7 +5719,7 @@ class BatchPage(MissionPage):
         if mode == "selected_points":
             ready = bool(
                 self._engine_ready and self.selected_points_scope
-                and self._selected_points_product_id()
+                and self._selected_points_product_ids()
                 and self.selected_points_scope.get("source_coordinate_units")
             )
             self.preflight_button.setEnabled(ready)

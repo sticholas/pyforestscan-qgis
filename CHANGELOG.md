@@ -2,6 +2,17 @@
 
 ### Phase 34B2S in progress
 
+### Selected-points multi-product and Point Cloud control polish
+
+- Restored multi-product selection for bounded Selected Points processing.
+  One authoritative viewer selection now produces one bounded PBM plan for all
+  checked products, with per-product safety validation before the background job starts.
+- Enabled Voxel Statistic for selected-point processing, matching its existing
+  Folder and Polygon Area product support and advanced settings.
+- Polished the native Point Cloud page shell with compact, material-inspired
+  controls, clearer action hierarchy, accessible labels, and icon affordances
+  without altering the embedded renderer.
+
 - Added canonical point-attribute binding and stable scientific palette
   contracts for the point-cloud viewer.
 - Added a provenance-aware product visualization registry that only exposes

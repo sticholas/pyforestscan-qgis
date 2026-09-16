@@ -4,37 +4,61 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from .selection_product_request import SelectionProductRequest
 
 
+def _normalize_requests(
+    request: SelectionProductRequest | Sequence[SelectionProductRequest],
+) -> tuple[SelectionProductRequest, ...]:
+    """Return one or more requests sharing the same authoritative selection."""
+    requests = (request,) if isinstance(request, SelectionProductRequest) else tuple(request)
+    if not requests:
+        raise ValueError("At least one selected product request is required.")
+    first = requests[0]
+    if any(
+        item.source_path != first.source_path
+        or item.selection_id != first.selection_id
+        or item.geometry != first.geometry
+        for item in requests
+    ):
+        raise ValueError("Selected products must share one authoritative selection scope.")
+    return requests
+
+
 def build_scoped_product_plan(
     base_plan: Mapping[str, Any],
-    request: SelectionProductRequest,
+    request: SelectionProductRequest | Sequence[SelectionProductRequest],
 ) -> dict[str, Any]:
-    """Create a one-product plan carrying an authoritative viewer scope."""
+    """Create a bounded plan for one or more products sharing a viewer scope."""
+    requests = _normalize_requests(request)
+    first = requests[0]
     if not isinstance(base_plan, Mapping):
         raise ValueError("The base Product Plan must be an object.")
     source = base_plan.get("source_dataset")
-    if source and Path(str(source)) != request.source_path:
+    if source and Path(str(source)) != first.source_path:
         raise ValueError("Selection source does not match the active Product Plan source.")
     products = base_plan.get("products")
     if not isinstance(products, list):
         raise ValueError("The base Product Plan has no product entries.")
-    selected = None
-    for entry in products:
-        if isinstance(entry, Mapping) and str(entry.get("product", "")) == request.product.value:
-            selected = dict(entry)
-            break
-    if selected is None:
-        raise ValueError(f"Product {request.product.value} is not present in the active Product Plan.")
-    selected["requested"] = True
+    entries = {
+        str(entry.get("product", "")): dict(entry)
+        for entry in products if isinstance(entry, Mapping)
+    }
+    selected = []
+    for item in requests:
+        entry = entries.get(item.product.value)
+        if entry is None:
+            raise ValueError(f"Product {item.product.value} is not present in the active Product Plan.")
+        entry["requested"] = True
+        selected.append(entry)
     scoped = dict(base_plan)
-    scoped["products"] = [selected]
-    scoped["output_folder"] = str(request.output_folder)
+    scoped["products"] = selected
+    scoped["output_folder"] = str(first.output_folder)
     scoped["processing_executed"] = False
-    scoped["selection_scope"] = request.to_dict()
+    scoped["selection_scope"] = first.to_dict()
+    scoped["selection_products"] = [item.to_dict() for item in requests]
     scoped["selection_execution"] = {
         "mode": "VIEWER_SCOPE",
         "status": "REVIEW_ONLY",
@@ -43,7 +67,11 @@ def build_scoped_product_plan(
     return scoped
 
 
-def promote_scoped_product_plan(base_plan: Mapping[str, Any], request: SelectionProductRequest, preflight: Any) -> dict[str, Any]:
+def promote_scoped_product_plan(
+    base_plan: Mapping[str, Any],
+    request: SelectionProductRequest | Sequence[SelectionProductRequest],
+    preflight: Any,
+) -> dict[str, Any]:
     """Promote a scoped plan only when its explicit preflight report is ready."""
     if not bool(getattr(preflight, "ready", False)):
         blockers = getattr(preflight, "blockers", ()) or ("Preflight did not pass.",)
@@ -59,7 +87,7 @@ def promote_scoped_product_plan(base_plan: Mapping[str, Any], request: Selection
 
 def write_scoped_product_plan(
     base_plan_path: Path | str,
-    request: SelectionProductRequest,
+    request: SelectionProductRequest | Sequence[SelectionProductRequest],
     output_path: Path | str,
 ) -> Path:
     """Write a derived review artifact without changing the base Product Plan."""

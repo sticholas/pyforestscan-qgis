@@ -33,18 +33,17 @@ class SelectionProductPreflightTests(unittest.TestCase):
     def test_current_executable_products_pass_the_shared_gate(self):
         self.assertEqual(
             SCOPED_EXECUTABLE_PRODUCTS,
-            {ProductType.CHM, ProductType.CANOPY_COVER, ProductType.PAD, ProductType.PAI, ProductType.FHD, ProductType.RUMPLE, ProductType.DTM, ProductType.POINT_DENSITY},
+            {ProductType.CHM, ProductType.CANOPY_COVER, ProductType.PAD, ProductType.PAI, ProductType.FHD, ProductType.RUMPLE, ProductType.DTM, ProductType.POINT_DENSITY, ProductType.VOXEL_STAT},
         )
         for product in SCOPED_EXECUTABLE_PRODUCTS:
             report = preflight_selection_product(self.request(product), backend_ready=True, source_exists=True)
             self.assertTrue(report.ready, product.value)
             self.assertEqual(report.execution_status, "READY_FOR_EXECUTION")
 
-    def test_unwired_product_fails_closed_with_product_name(self):
+    def test_voxel_stat_is_available_for_bounded_selected_point_processing(self):
         report = preflight_selection_product(self.request(ProductType.VOXEL_STAT), backend_ready=True, source_exists=True)
-        self.assertFalse(report.ready)
-        self.assertIn("voxel_stat", " ".join(report.blockers))
-        self.assertEqual(report.execution_status, "REVIEW_ONLY")
+        self.assertTrue(report.ready)
+        self.assertEqual(report.execution_status, "READY_FOR_EXECUTION")
 
     def test_missing_backend_and_source_are_actionable(self):
         report = preflight_selection_product(self.request(), backend_ready=False, source_exists=False)

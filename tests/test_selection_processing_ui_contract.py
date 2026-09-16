@@ -22,7 +22,7 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
     def test_mission_control_routes_scope_to_processing(self):
         source = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text()
         self.assertIn("selectionProcessingRequested.connect", source)
-        self.assertIn("self.processing_page.set_selection_scope(scope)", source)
+        self.assertIn("self.processing_page.set_selection_scope(scope, selected_ids)", source)
         self.assertIn('self._navigate_to("Processing")', source)
 
 
@@ -113,7 +113,7 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("selection_product_options(model)", pages)
         self.assertIn('option.status == "AVAILABLE"', pages)
         self.assertNotIn("selected_points_product_combo", pages)
-        self.assertIn("Choose one product, then process this bounded area", pages)
+        self.assertIn("Choose one or more products, then process this bounded area", pages)
 
     def test_selected_points_uses_its_own_details_and_background_execution(self):
         pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
@@ -133,3 +133,13 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("self.selected_points_progress.setRange(0, 0)", pages)
         self.assertIn('"Processing Selected Points..."', pages)
         self.assertIn("self.workflow_action_row.addWidget(self.preflight_button, 0, 0, 1, 2)", pages)
+
+    def test_selected_points_preserves_multiple_product_choices_and_voxel_support(self):
+        pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
+        control = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text()
+        capabilities = (ROOT / "pyforestscan_qgis/core/point_cloud/selection_product_capabilities.py").read_text()
+        self.assertIn("def _selected_points_product_ids", pages)
+        self.assertIn("Choose at least one available product", pages)
+        self.assertIn("self.selection_request_models = requests", pages)
+        self.assertIn("for product_id in selected_ids", control)
+        self.assertIn("ProductType.VOXEL_STAT", capabilities)

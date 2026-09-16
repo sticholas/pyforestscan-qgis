@@ -336,14 +336,91 @@ class PointCloudPage(QWidget):
         self._scientific_overlay = None
         self._closing = False
         self.last_run_folder = None
+        self.setObjectName("pointCloudPage")
+        self.setStyleSheet("""
+            QWidget#pointCloudPage {
+                background: #f6f8fa;
+                color: #20313a;
+            }
+            QWidget#pointCloudPage QLineEdit,
+            QWidget#pointCloudPage QComboBox,
+            QWidget#pointCloudPage QDoubleSpinBox {
+                min-height: 28px;
+                border: 1px solid #cbd7dc;
+                border-radius: 4px;
+                padding: 2px 6px;
+                background: #ffffff;
+            }
+            QWidget#pointCloudPage QLineEdit:focus,
+            QWidget#pointCloudPage QComboBox:focus,
+            QWidget#pointCloudPage QDoubleSpinBox:focus {
+                border: 2px solid #347d8f;
+                background: #fbfeff;
+            }
+            QWidget#pointCloudPage QPushButton[pointCloudRole="primary"] {
+                background: #176b7a;
+                color: #ffffff;
+                border: 1px solid #115963;
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-weight: 600;
+            }
+            QWidget#pointCloudPage QPushButton[pointCloudRole="primary"]:hover {
+                background: #105f6d;
+            }
+            QWidget#pointCloudPage QPushButton[pointCloudRole="secondary"] {
+                background: #ffffff;
+                color: #1f4f5b;
+                border: 1px solid #b9cbd1;
+                border-radius: 4px;
+                padding: 4px 10px;
+            }
+            QWidget#pointCloudPage QToolButton[pointCloudControl="true"] {
+                min-height: 26px;
+                border: 1px solid #cbd7dc;
+                border-radius: 4px;
+                padding: 3px 6px;
+                background: #ffffff;
+                color: #244651;
+            }
+            QWidget#pointCloudPage QToolButton[pointCloudControl="true"]:hover,
+            QWidget#pointCloudPage QToolButton[pointCloudControl="true"]:checked {
+                background: #e7f2f4;
+                border-color: #77a6b1;
+            }
+            QWidget#pointCloudPage QLabel[pointCloudHint="true"] {
+                color: #52656d;
+                padding: 2px 5px;
+                background: #edf2f4;
+                border-radius: 3px;
+            }
+            QWidget#pointCloudPage QTabBar::tab {
+                min-height: 26px;
+                padding: 4px 10px;
+                margin-right: 2px;
+                border: 1px solid #ccd8dc;
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                background: #edf1f3;
+            }
+            QWidget#pointCloudPage QTabBar::tab:selected {
+                background: #ffffff;
+                color: #145a68;
+                font-weight: 600;
+            }
+        """)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(5)
         source_row = QHBoxLayout()
         self.source = QLineEdit()
         self.source.setReadOnly(True)
         self.source.setPlaceholderText("Point cloud source")
         self.open_button = QPushButton("Open")
+        self.open_button.setProperty("pointCloudRole", "primary")
+        self.open_button.setIcon(self.style().standardIcon(qt_enum(QStyle, "SP_DialogOpenButton", "StandardPixmap")))
+        self.open_button.setAccessibleName("Open point cloud")
         self.open_button.clicked.connect(self.open_source)
         self.open_button.setToolTip("Open a local LAS, LAZ, COPC or EPT source without modifying its points.")
         self.source.setToolTip("Original point cloud path. Small sources open directly; larger raw sources use a managed, read-only viewing cache.")
@@ -355,7 +432,8 @@ class PointCloudPage(QWidget):
         for label, action in (("Fit", "fit"), ("Top", "top"), ("Front", "front")):
             button = QToolButton()
             button.setText(label)
-            button.setFixedWidth(42)
+            button.setProperty("pointCloudControl", True)
+            button.setFixedWidth(44)
             button.setToolTip({"fit": "Fit the selected source in view.", "top": "Look down along source Z.", "front": "Look along source Y."}[action])
             button.clicked.connect(lambda _checked=False, value=action: self.send({"action": value}))
             toolbar.addWidget(button)
@@ -391,7 +469,8 @@ class PointCloudPage(QWidget):
         self.palette.setToolTip("Choose a scientific ramp. The swatch shows the low-to-high color direction; the live legend shows the current numeric range. Classification colors remain categorical.")
         self.palette.currentTextChanged.connect(lambda value: self.send({"action": "palette", "palette": value}))
         layout.addLayout(toolbar)
-        self.navigation_hint = QLabel("Mouse: left drag orbit | wheel zoom to cursor | middle drag pan")
+        self.navigation_hint = QLabel("Mouse: drag to orbit | wheel zoom to cursor | middle drag pans")
+        self.navigation_hint.setProperty("pointCloudHint", True)
         self.navigation_hint.setToolTip("Navigation stays available without switching tools: left drag orbits, the wheel zooms toward its cursor point, and holding the middle button pans.")
         toolbar.addWidget(self.navigation_hint, 1)
         display_row = QHBoxLayout()
@@ -409,6 +488,8 @@ class PointCloudPage(QWidget):
         self.display_range = DisplayRangeControls(self.send, self)
         self.overlay_button = QToolButton()
         self.overlay_button.setText("Overlays")
+        self.overlay_button.setProperty("pointCloudControl", True)
+        self.overlay_button.setAccessibleName("Scientific overlays")
         self.overlay_button.setToolTip("Choose an existing verified product GeoTIFF and display a bounded spatial overlay in the viewer. This never calculates a product or treats it as a point attribute.")
         self.overlay_button.setToolTip("Open cached scientific product overlay actions. Products remain spatial surfaces and are never treated as point attributes.")
         self.overlay_menu = QMenu(self.overlay_button)
@@ -424,6 +505,8 @@ class PointCloudPage(QWidget):
         layout.addLayout(display_row)
         self.filter_toggle = QToolButton()
         self.filter_toggle.setText("Display filters")
+        self.filter_toggle.setProperty("pointCloudControl", True)
+        self.filter_toggle.setAccessibleName("Display filters")
         self.filter_toggle.setCheckable(True)
         self.filter_toggle.setToolButtonStyle(qt_enum(Qt, "ToolButtonTextBesideIcon", "ToolButtonStyle"))
         self.filter_toggle.setArrowType(qt_enum(Qt, "RightArrow", "ArrowType"))
@@ -498,9 +581,13 @@ class PointCloudPage(QWidget):
         layout.addWidget(self.details)
         actions = QHBoxLayout()
         self.reload_button = QPushButton("Reload Viewer")
+        self.reload_button.setProperty("pointCloudRole", "secondary")
+        self.reload_button.setIcon(self.style().standardIcon(qt_enum(QStyle, "SP_BrowserReload", "StandardPixmap")))
         self.reload_button.clicked.connect(lambda: self.start_source(self.source.text()))
         self.reload_button.setToolTip("Restart the isolated viewer for the current source. Scientific processing is unaffected.")
         self.setup_button = QPushButton("Set Up Viewer")
+        self.setup_button.setProperty("pointCloudRole", "secondary")
+        self.setup_button.setIcon(self.style().standardIcon(qt_enum(QStyle, "SP_DriveHDIcon", "StandardPixmap")))
         self.setup_button.clicked.connect(self.setup_viewer)
         self.setup_button.setToolTip("Install or repair the optional, user-local graphics runtime. QGIS Python and scientific packages stay separate.")
         actions.addWidget(self.reload_button)
@@ -511,16 +598,19 @@ class PointCloudPage(QWidget):
         self.session_status.setWordWrap(True)
         session_actions.addWidget(self.session_status, 1)
         self.save_session_button = QToolButton()
+        self.save_session_button.setProperty("pointCloudControl", True)
         self.save_session_button.setIcon(self.style().standardIcon(qt_enum(QStyle, "SP_DialogSaveButton", "StandardPixmap")))
         self.save_session_button.setAccessibleName("Save Session")
         self.save_session_button.setToolTip("Save camera and display filters with a verified source fingerprint. The original source and existing edit journal are preserved.")
         self.save_session_button.clicked.connect(self.save_session)
         self.load_session_button = QToolButton()
+        self.load_session_button.setProperty("pointCloudControl", True)
         self.load_session_button.setIcon(self.style().standardIcon(qt_enum(QStyle, "SP_DialogOpenButton", "StandardPixmap")))
         self.load_session_button.setAccessibleName("Open Session")
         self.load_session_button.setToolTip("Verify the saved source before restoring camera, colors and display filters. Changed sources are not replayed automatically.")
         self.load_session_button.clicked.connect(self.open_session)
         self.diagnostics_button = QToolButton()
+        self.diagnostics_button.setProperty("pointCloudControl", True)
         self.diagnostics_button.setIcon(self.style().standardIcon(qt_enum(QStyle, "SP_FileDialogDetailedView", "StandardPixmap")))
         self.diagnostics_button.setAccessibleName("Viewer Diagnostics")
         self.diagnostics_button.setToolTip("Open this viewer attempt's lifecycle record, retained output and screenshot evidence.")
@@ -548,6 +638,10 @@ class PointCloudPage(QWidget):
         for control in self.findChildren(QWidget):
             if control.toolTip():
                 control.installEventFilter(self)
+        for control in self.view_buttons + (
+                self.overlay_button, self.filter_toggle, self.save_session_button,
+                self.load_session_button, self.diagnostics_button):
+            control.setProperty("pointCloudControl", True)
         self._controls(False)
 
     def eventFilter(self, watched, event):

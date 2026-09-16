@@ -196,9 +196,14 @@ class MissionControlDock(QDockWidget):
             self.batch_page.batch_mode_combo.findData("selected_points"))
         self._navigate_to("Process")
 
-    def _open_selected_points_processing(self, scope: dict, product_id: str) -> None:
-        """Create one bounded plan and dispatch its fast selected-point safety gate."""
+    def _open_selected_points_processing(self, scope: dict, product_ids: object) -> None:
+        """Create one bounded multi-product plan and dispatch its safety gate."""
         try:
+            selected_ids = tuple(dict.fromkeys(
+                str(product) for product in product_ids if str(product)
+            )) if isinstance(product_ids, (tuple, list, set)) else (str(product_ids),)
+            if not selected_ids:
+                raise ValueError("Choose at least one product for the selected points.")
             source = Path(str(scope["source_path"]))
             output_root = Path(self.batch_page.output_folder_edit.text().strip() or source.parent / "outputs")
             context = create_run_context(source, output_root).ensure_directories()
@@ -217,15 +222,19 @@ class MissionControlDock(QDockWidget):
                 "fhd_max_height": self.batch_page.fhd_max_height_spin.value() or None,
                 "rumple_min_height": self.batch_page.rumple_min_height_spin.value() or None,
                 "point_density_per_area": self.batch_page.point_density_per_area_check.isChecked(),
+                **self.batch_page._scientific_settings_kwargs(),
             }
             base_plan = {
-                "title": "Selected Points Product",
+                "title": "Selected Points Products",
                 "source_dataset": str(source),
                 "source_report": "",
                 "output_folder": str(context.outputs_dir),
                 "parameters": parameters,
-                "products": [{"product": product_id, "label": product_id.replace("_", " ").title(),
-                              "requested": True, "plan_status": "Ready"}],
+                "products": [
+                    {"product": product_id, "label": product_id.replace("_", " ").title(),
+                     "requested": True, "plan_status": "Ready"}
+                    for product_id in selected_ids
+                ],
                 "processing_executed": False,
             }
             context.product_plan_json.write_text(json.dumps(base_plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -234,10 +243,7 @@ class MissionControlDock(QDockWidget):
                 False, "Selected-point setup could not start: " + str(error))
             return
         self.processing_page.set_run_context(context)
-        self.processing_page.set_selection_scope(scope)
-        index = self.processing_page.selection_product_combo.findData(product_id)
-        if index >= 0:
-            self.processing_page.selection_product_combo.setCurrentIndex(index)
+        self.processing_page.set_selection_scope(scope, selected_ids)
         self._navigate_to("Processing")
         QTimer.singleShot(0, self.processing_page.run_selected_product)
 
