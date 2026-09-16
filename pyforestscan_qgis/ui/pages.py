@@ -20,6 +20,7 @@ from qgis.PyQt.QtCore import QEvent, QObject, QSize, Qt, QThread, QTimer, QUrl, 
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
     QAbstractButton,
+    QAbstractSpinBox,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -126,7 +127,7 @@ install_enum_aliases(QLayout, "SizeConstraint", ("SetNoConstraint",))
 install_enum_aliases(QComboBox, "SizeAdjustPolicy", ("AdjustToMinimumContentsLengthWithIcon",))
 install_enum_aliases(QMessageBox, "StandardButton", ("No", "Yes"))
 install_enum_aliases(QStyle, "StandardPixmap", ("SP_ArrowForward", "SP_BrowserReload", "SP_DialogApplyButton", "SP_DialogCancelButton", "SP_DialogDiscardButton", "SP_DialogHelpButton", "SP_DialogOpenButton", "SP_DialogSaveButton", "SP_DirOpenIcon", "SP_DriveHDIcon", "SP_FileDialogContentsView", "SP_FileDialogDetailedView", "SP_FileDialogNewFolder", "SP_FileIcon", "SP_MediaPlay", "SP_MessageBoxInformation", "SP_MessageBoxWarning"))
-install_enum_aliases(QEvent, "Type", ("Enter", "FocusIn", "FocusOut", "Leave"))
+install_enum_aliases(QEvent, "Type", ("Enter", "FocusIn", "FocusOut", "Leave", "Wheel"))
 install_enum_aliases(Qt, "AlignmentFlag", ("AlignLeft", "AlignTop"))
 install_enum_aliases(Qt, "ArrowType", ("DownArrow", "RightArrow"))
 install_enum_aliases(Qt, "CheckState", ("Checked", "Unchecked"))
@@ -252,6 +253,11 @@ class MissionPage(QWidget):
         self.main_layout.addWidget(self.scroll_area, 1)
         self.help_banner = ContextHelpBanner(self)
         self.main_layout.addWidget(self.help_banner)
+        # Wheel gestures over choice and numeric controls move this page. Values
+        # change only through explicit clicks or keyboard input.
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
         QTimer.singleShot(0, self._install_context_help)
 
     def create_section(self, title: str, index: int | None = None) -> tuple[QGroupBox, QVBoxLayout]:
@@ -280,6 +286,9 @@ class MissionPage(QWidget):
         for widget in self.findChildren(QWidget):
             if widget is self.help_banner:
                 continue
+            if isinstance(widget, (QComboBox, QAbstractSpinBox)):
+                widget.setProperty("ignoreWheelValueChange", True)
+                widget.installEventFilter(self)
             text = str(widget.property("contextHelp") or widget.toolTip() or widget.accessibleName() or "").strip()
             if not text:
                 text = _default_context_help(widget)
@@ -288,6 +297,13 @@ class MissionPage(QWidget):
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt API
         """Project mouse and keyboard context into one stable help banner."""
+        if event.type() == QEvent.Wheel and isinstance(watched, (QComboBox, QAbstractSpinBox)):
+            delta = getattr(event, "angleDelta", lambda: None)()
+            vertical = int(delta.y()) if delta is not None else 0
+            scrollbar = self.scroll_area.verticalScrollBar()
+            scrollbar.setValue(scrollbar.value() - vertical)
+            event.accept()
+            return True
         if event.type() in {QEvent.Enter, QEvent.FocusIn}:
             text = str(watched.property("resolvedContextHelp") or "").strip()
             if text:
@@ -1510,6 +1526,30 @@ class PlanningPage(MissionPage):
         canopy_layout.addRow("Height threshold", self.canopy_cover_threshold_spin)
         canopy_layout.addRow("Output filename", self.canopy_cover_output_filename_edit)
 
+        voxel_box = QGroupBox("Voxel Statistic")
+        voxel_layout = QFormLayout(voxel_box)
+        voxel_layout.setVerticalSpacing(SPACING_SM)
+        self.planning_voxel_stat_dimension_combo = QComboBox()
+        self.planning_voxel_stat_dimension_combo.setEditable(True)
+        self.planning_voxel_stat_dimension_combo.addItems((
+            "HeightAboveGround", "Z", "Intensity", "Classification", "ReturnNumber",
+            "NumberOfReturns", "ScanAngleRank", "UserData", "PointSourceId", "GpsTime",
+            "Red", "Green", "Blue", "NIR",
+        ))
+        self.planning_voxel_stat_stat_combo = QComboBox()
+        self.planning_voxel_stat_stat_combo.addItems(("count", "mean", "sum", "min", "max", "median", "std"))
+        self.planning_voxel_stat_z_range_check = QCheckBox("Limit vertical voxel layers")
+        self.planning_voxel_stat_z_min_spin = QSpinBox()
+        self.planning_voxel_stat_z_min_spin.setRange(0, 1_000_000)
+        self.planning_voxel_stat_z_max_spin = QSpinBox()
+        self.planning_voxel_stat_z_max_spin.setRange(1, 1_000_000)
+        self.planning_voxel_stat_z_max_spin.setValue(1)
+        voxel_layout.addRow("Point dimension", self.planning_voxel_stat_dimension_combo)
+        voxel_layout.addRow("Aggregation", self.planning_voxel_stat_stat_combo)
+        voxel_layout.addRow(self.planning_voxel_stat_z_range_check)
+        voxel_layout.addRow("First voxel index", self.planning_voxel_stat_z_min_spin)
+        voxel_layout.addRow("Last voxel index", self.planning_voxel_stat_z_max_spin)
+
         raster_box = QGroupBox("PAD / PAI / FHD / Rumple")
         raster_layout = QFormLayout(raster_box)
         raster_layout.setVerticalSpacing(SPACING_SM)
@@ -1522,11 +1562,12 @@ class PlanningPage(MissionPage):
         raster_layout.addRow("FHD output", self.fhd_output_filename_edit)
         raster_layout.addRow("Rumple output", self.rumple_output_filename_edit)
 
-        for box in (chm_box, canopy_box, raster_box):
+        for box in (chm_box, canopy_box, voxel_box, raster_box):
             box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         params_grid.addWidget(chm_box, 0, 0)
         params_grid.addWidget(canopy_box, 0, 1)
-        params_grid.addWidget(raster_box, 1, 0, 1, 2)
+        params_grid.addWidget(voxel_box, 1, 0)
+        params_grid.addWidget(raster_box, 1, 1)
         params_grid.setColumnStretch(0, 1)
         params_grid.setColumnStretch(1, 1)
         product_params.addLayout(params_grid)
@@ -1626,6 +1667,15 @@ class PlanningPage(MissionPage):
         selected = tuple(product for product, check in self.product_checks.items() if check.isChecked())
         output_folder = self.run_context.outputs_dir if self.run_context is not None else Path(self.output_folder_edit.text().strip() or "planned_outputs")
         height_bin_size = self.height_bin_spin.value() if self.height_bin_spin.value() > 0 else None
+        voxel_z_index_range = None
+        if self.planning_voxel_stat_z_range_check.isChecked():
+            start = self.planning_voxel_stat_z_min_spin.value()
+            stop = self.planning_voxel_stat_z_max_spin.value()
+            if stop <= start:
+                self.plan_text.setPlainText("Voxel Statistic last voxel index must be greater than the first index.")
+                self.build_plan_button.setEnabled(True)
+                return
+            voxel_z_index_range = (start, stop)
         request = ProductPlannerRequest(
             explorer_report_path=self.run_context.dataset_report_json if self.run_context is not None else Path("mission_control_dataset_report.json"),
             requested_products=selected,
@@ -1641,6 +1691,9 @@ class PlanningPage(MissionPage):
             fhd_output_filename=self.fhd_output_filename_edit.text().strip() or "fhd.tif",
             rumple_output_filename=self.rumple_output_filename_edit.text().strip() or "rumple.tif",
             canopy_cover_height_threshold=self.canopy_cover_threshold_spin.value(),
+            voxel_stat_dimension=self.planning_voxel_stat_dimension_combo.currentText().strip(),
+            voxel_stat_stat=self.planning_voxel_stat_stat_combo.currentText().strip().lower(),
+            voxel_stat_z_index_range=voxel_z_index_range,
             canopy_cover_output_filename=self.canopy_cover_output_filename_edit.text().strip() or "canopy_cover.tif",
             title="Mission Control Product Plan",
         )
@@ -2941,6 +2994,28 @@ class BatchPage(MissionPage):
         self.rumple_min_height_spin = _automatic_height_spin()
         self.point_density_per_area_check = QCheckBox("Density per unit area")
         self.point_density_per_area_check.setChecked(True)
+        self.voxel_stat_dimension_combo = QComboBox()
+        self.voxel_stat_dimension_combo.setEditable(True)
+        self.voxel_stat_dimension_combo.addItems((
+            "HeightAboveGround", "Z", "Intensity", "Classification", "ReturnNumber",
+            "NumberOfReturns", "ScanAngleRank", "UserData", "PointSourceId", "GpsTime",
+            "Red", "Green", "Blue", "NIR",
+        ))
+        self.voxel_stat_dimension_combo.setToolTip(
+            "Point-array field to aggregate. Choose a listed LAS/COPC dimension or type any field available in the selected source.")
+        self.voxel_stat_stat_combo = QComboBox()
+        self.voxel_stat_stat_combo.addItems(("count", "mean", "sum", "min", "max", "median", "std"))
+        self.voxel_stat_stat_combo.setToolTip(
+            "Aggregation supported by PyForestScan calculate_voxel_stat.")
+        self.voxel_stat_z_range_check = QCheckBox("Limit vertical voxel layers")
+        self.voxel_stat_z_range_check.setToolTip(
+            "Optionally aggregate only a half-open range of vertical voxel indexes.")
+        self.voxel_stat_z_min_spin = QSpinBox()
+        self.voxel_stat_z_min_spin.setRange(0, 1_000_000)
+        self.voxel_stat_z_min_spin.setValue(0)
+        self.voxel_stat_z_max_spin = QSpinBox()
+        self.voxel_stat_z_max_spin.setRange(1, 1_000_000)
+        self.voxel_stat_z_max_spin.setValue(1)
         self.chm_interpolation_combo = QComboBox()
         self.chm_interpolation_combo.addItems(("linear", "nearest", "cubic"))
         self.chm_interpolation_combo.currentTextChanged.connect(self._update_chm_interpolation_help)
@@ -2976,6 +3051,11 @@ class BatchPage(MissionPage):
             self.rumple_min_height_spin,
             self.point_density_per_area_check,
             self.chm_interpolation_combo,
+            self.voxel_stat_dimension_combo,
+            self.voxel_stat_stat_combo,
+            self.voxel_stat_z_range_check,
+            self.voxel_stat_z_min_spin,
+            self.voxel_stat_z_max_spin,
         ):
             control.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
             control.setMinimumHeight(control.sizeHint().height())
@@ -2995,6 +3075,11 @@ class BatchPage(MissionPage):
             ("canopy_cover.k", "Canopy Cover", "Extinction coefficient", self.canopy_extinction_spin),
             ("rumple.min_height", "Rumple", "Minimum height", self.rumple_min_height_spin),
             ("point_density.per_area", "Point Density", "", self.point_density_per_area_check),
+            ("voxel_stat.dimension", "Voxel Statistic", "Point dimension", self.voxel_stat_dimension_combo),
+            ("voxel_stat.stat", "Voxel Statistic", "Aggregation", self.voxel_stat_stat_combo),
+            ("voxel_stat.z_range", "Voxel Statistic", "", self.voxel_stat_z_range_check),
+            ("voxel_stat.z_min", "Voxel Statistic", "First voxel index", self.voxel_stat_z_min_spin),
+            ("voxel_stat.z_max", "Voxel Statistic", "Last voxel index", self.voxel_stat_z_max_spin),
         )
         self.scientific_group_order = ("Shared Settings", "CHM", "DTM", "PAD", "PAI", "FHD", "Canopy Cover", "Rumple", "Point Density", "Voxel Statistic")
         self.scientific_groups: dict[str, tuple[QWidget, tuple[QFormLayout, QFormLayout], tuple[QWidget, QWidget]]] = {}
@@ -3652,7 +3737,7 @@ class BatchPage(MissionPage):
             control.valueChanged.connect(self._on_product_selection_changed)
         for combo in (self.processing_profile_combo, self.execution_mode_combo, self.chm_interpolation_combo,
                       self.polygon_index_strategy_combo, self.polygon_selection_mode_combo, self.mask_engine_combo,
-                      self.mask_failure_policy_combo):
+                      self.mask_failure_policy_combo, self.voxel_stat_dimension_combo, self.voxel_stat_stat_combo):
             combo.currentIndexChanged.connect(self._on_product_selection_changed)
         for option in (self.stop_on_error_check,
                        self.skip_completed_check, self.retry_failed_only_check, self.overwrite_existing_check,
@@ -3661,6 +3746,7 @@ class BatchPage(MissionPage):
             option.toggled.connect(self._on_product_selection_changed)
         self.pad_drop_ground_check.toggled.connect(self._on_product_selection_changed)
         self.point_density_per_area_check.toggled.connect(self._on_product_selection_changed)
+        self.voxel_stat_z_range_check.toggled.connect(self._on_product_selection_changed)
         for check in self.product_checks.values():
             check.toggled.connect(self._on_product_selection_changed)
         self.polygon_lidar_folder_edit.textChanged.connect(self._update_adaptive_visibility)
@@ -3817,6 +3903,13 @@ class BatchPage(MissionPage):
             self.rumple_min_height_spin: ProductType.RUMPLE in selected,
             self.point_density_per_area_check: ProductType.POINT_DENSITY in selected,
             self.chm_interpolation_combo: ProductType.CHM in selected,
+            self.voxel_stat_dimension_combo: ProductType.VOXEL_STAT in selected,
+            self.voxel_stat_stat_combo: ProductType.VOXEL_STAT in selected,
+            self.voxel_stat_z_range_check: ProductType.VOXEL_STAT in selected,
+            self.voxel_stat_z_min_spin: (ProductType.VOXEL_STAT in selected
+                                         and self.voxel_stat_z_range_check.isChecked()),
+            self.voxel_stat_z_max_spin: (ProductType.VOXEL_STAT in selected
+                                         and self.voxel_stat_z_range_check.isChecked()),
         }
         for group_name in self.scientific_group_order:
             group_widget, forms, form_widgets = self.scientific_groups[group_name]
@@ -5055,6 +5148,13 @@ class BatchPage(MissionPage):
             raise BatchExecutionError("FHD maximum height must be greater than its minimum canopy height.")
         if canopy_max is not None and canopy_max <= self.canopy_threshold_spin.value():
             raise BatchExecutionError("Canopy Cover maximum height must be greater than its minimum height.")
+        voxel_z_index_range = None
+        if self.voxel_stat_z_range_check.isChecked():
+            start = self.voxel_stat_z_min_spin.value()
+            stop = self.voxel_stat_z_max_spin.value()
+            if stop <= start:
+                raise BatchExecutionError("Voxel Statistic last voxel index must be greater than the first index.")
+            voxel_z_index_range = (start, stop)
         return {
             "canopy_cover_height_threshold": self.canopy_threshold_spin.value(),
             "canopy_cover_max_height": canopy_max,
@@ -5067,6 +5167,9 @@ class BatchPage(MissionPage):
             "fhd_max_height": fhd_max,
             "rumple_min_height": optional(self.rumple_min_height_spin),
             "point_density_per_area": self.point_density_per_area_check.isChecked(),
+            "voxel_stat_dimension": self.voxel_stat_dimension_combo.currentText().strip(),
+            "voxel_stat_stat": self.voxel_stat_stat_combo.currentText().strip().lower(),
+            "voxel_stat_z_index_range": voxel_z_index_range,
         }
 
     def _build_batch_request(self, batch_folder: Path | None = None, datasets: tuple[Path, ...] | None = None) -> BatchRequest:
