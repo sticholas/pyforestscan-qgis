@@ -45,6 +45,20 @@ function paletteGradient(name, invert=false) {
 }
 let viewer, cloud, heightVolume, scientificOverlay = null, previousCamera = "", lastFrame = performance.now(), frameMs = 16;
 let linkedContext = null, profileDragInstalled = false;
+let THREE_RUNTIME = null, scientificOverlayRequest = 0;
+// Potree's production bundle intentionally does not publish a window.THREE
+// global. Load the colocated Three module for application-owned overlays.
+const threeRuntimeReady = import("./assets/libs/three.js/three.module.js").then(runtime => {
+    THREE_RUNTIME = runtime;
+    window.PyForestScanThree = runtime;
+    return runtime;
+}).catch(error => {
+    console.warn("Scientific overlay runtime unavailable:", error);
+    return null;
+});
+function threeRuntime() {
+    return THREE_RUNTIME || window.PyForestScanThree || null;
+}
 let cameraSyncFallbacks = 0;
 const ATTRIBUTE_MODES = ["RGB", "Classification", "Elevation", "Height Above Ground", "Intensity", "Return Number", "Number of Returns", "Scan Angle", "Point Source ID", "GPS Time", "User Data"];
 const ATTRIBUTE_ALIASES = {
@@ -545,25 +559,56 @@ const renderTimer = setInterval(() => {
     }
 }, 16);
 function overlayColor(value, minimum, maximum, paletteName) {
-    const registry = window.PyForestScanVisualization;
-    const stops = registry && registry.palettes[paletteName] || registry.palettes.Viridis;
+    const palettes = paletteStops(), stops = palettes[paletteName] || palettes.Viridis || BUILTIN_PALETTES.Viridis;
     const t = maximum > minimum ? Math.max(0, Math.min(1, (value - minimum) / (maximum - minimum))) : .5;
     const scaled = t * (stops.length - 1), index = Math.min(stops.length - 2, Math.floor(scaled)), fraction = scaled - index;
     const a = stops[index], b = stops[Math.min(stops.length - 1, index + 1)];
     return [a[0] + (b[0] - a[0]) * fraction, a[1] + (b[1] - a[1]) * fraction, a[2] + (b[2] - a[2]) * fraction];
 }
 function removeScientificOverlay() {
+    scientificOverlayRequest++;
     if (scientificOverlay) viewer.scene.scene.remove(scientificOverlay);
     scientificOverlay = null;
+    state.scientific_overlay = null;
+    state.scientific_overlay_error = null;
 }
-function renderScientificOverlay(overlay) {
+function overlayWarning(error) {
+    const detail = String(error && error.message || error || "unknown error");
+    state.scientific_overlay_error = detail;
+    const legend = document.getElementById("visual-legend");
+    if (legend) legend.textContent = "Scientific overlay unavailable: " + detail;
+    console.warn("Scientific overlay unavailable:", error);
+}
+function applyScientificOverlay(overlay) {
+    const request = ++scientificOverlayRequest;
+    const render = () => {
+        if (request !== scientificOverlayRequest) return;
+        try {
+            renderScientificOverlay(overlay, threeRuntime());
+            state.scientific_overlay_error = null;
+        } catch (error) {
+            // An overlay is optional visualization. Never invalidate the loaded
+            // cloud or its palette/selection controls when it cannot be drawn.
+            overlayWarning(error);
+        }
+    };
+    if (threeRuntime()) {
+        render();
+    } else {
+        const legend = document.getElementById("visual-legend");
+        if (legend) legend.textContent = "Opening scientific overlay...";
+        threeRuntimeReady.then(render);
+    }
+}
+function renderScientificOverlay(overlay, Three) {
+    if (!Three) throw Error("Scientific overlay renderer is still initializing.");
     if (!overlay || !Array.isArray(overlay.values)) throw Error("Scientific overlay data is unavailable.");
     const rows = Number(overlay.rows), columns = Number(overlay.columns), extent = overlay.extent;
     if (!Number.isInteger(rows) || !Number.isInteger(columns) || rows < 1 || columns < 1 || rows * columns > 128 * 128 || extent.length !== 4) throw Error("Scientific overlay grid is invalid.");
     const valid = overlay.values.filter(value => Number.isFinite(Number(value))).map(Number);
     if (!valid.length) throw Error("Scientific overlay contains no valid cells.");
     const range = Array.isArray(overlay.value_range) && overlay.value_range.length === 2 ? overlay.value_range : [Math.min(...valid), Math.max(...valid)];
-    const geometry = new THREE.BufferGeometry(), positions = [], colors = [], indices = [];
+    const geometry = new Three.BufferGeometry(), positions = [], colors = [], indices = [];
     const [xmin, ymin, xmax, ymax] = extent, zBase = cloud.boundingBox.min.z - .01;
     for (let row = 0; row < rows; row++) for (let col = 0; col < columns; col++) {
         const index = row * columns + col, value = Number(overlay.values[index]);
@@ -578,11 +623,11 @@ function renderScientificOverlay(overlay) {
         const i = row * columns + col, next = i + 1, below = i + columns;
         indices.push(i, below, next, next, below, below + 1);
     }
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setAttribute("position", new Three.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new Three.Float32BufferAttribute(colors, 3));
     geometry.setIndex(indices); geometry.computeVertexNormals();
-    const material = new THREE.MeshBasicMaterial({vertexColors:true, transparent:true, opacity:.55, side:THREE.DoubleSide, depthWrite:false});
-    scientificOverlay = new THREE.Mesh(geometry, material);
+    const material = new Three.MeshBasicMaterial({vertexColors:true, transparent:true, opacity:.55, side:Three.DoubleSide, depthWrite:false});
+    scientificOverlay = new Three.Mesh(geometry, material);
     scientificOverlay.userData.scientific = {product_id:overlay.product_id, units:overlay.units, value_range:range, band_index:overlay.band_index || 1, provenance:overlay.provenance};
     viewer.scene.scene.add(scientificOverlay);
     const legend = document.getElementById("visual-legend");
@@ -609,8 +654,8 @@ window.command = function(command) {
     try {
         const action = command.action;
         if (action === "viewer_busy") setViewerBusy(!!command.busy, String(command.message || ""));
-        if (action === "scientific_overlay") renderScientificOverlay(command.overlay);
-        if (action === "clear_scientific_overlay") { removeScientificOverlay(); state.scientific_overlay = null; updateLegend(); }
+        if (action === "scientific_overlay") applyScientificOverlay(command.overlay);
+        if (action === "clear_scientific_overlay") { removeScientificOverlay(); updateLegend(); }
         if (action === "point_display") pointDisplay(command.style, command.size);
         if (action === "palette") setPalette(String(command.palette || "Viridis"), !!command.invert);
         if (action === "linked_view") {
@@ -868,7 +913,9 @@ try {
         const view = viewer.scene.view;
         const factor = delta > 0 ? .86 : 1.16;
         const pivot = view.getPivot();
-        const target = hit.location.clone ? hit.location.clone() : new THREE.Vector3(hit.location.x, hit.location.y, hit.location.z);
+        const Three = threeRuntime();
+        if (!Three) return;
+        const target = hit.location.clone ? hit.location.clone() : new Three.Vector3(hit.location.x, hit.location.y, hit.location.z);
         const nextPivot = pivot.clone().lerp(target, .18);
         const direction = view.position.clone().sub(pivot).normalize();
         const nextRadius = Math.max(.05, Math.min(1e9, view.radius * factor));

@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from pyforestscan_qgis.core.point_cloud.scientific_overlay import ScientificOverlayPayload, overlay_value_range
 
@@ -19,3 +20,12 @@ class ScientificOverlayTests(unittest.TestCase):
 
     def test_value_range_ignores_nodata_and_nonfinite_values(self):
         self.assertEqual((1.0, 4.0), overlay_value_range((None, 1.0, float("nan"), 4.0)))
+
+
+    def test_viewer_overlay_uses_a_loaded_three_module_without_disabling_the_cloud(self):
+        javascript = (Path(__file__).parents[1] / "pyforestscan_qgis" / "viewer" / "viewer.js").read_text(encoding="utf-8")
+        self.assertIn('import("./assets/libs/three.js/three.module.js")', javascript)
+        self.assertIn("function applyScientificOverlay", javascript)
+        self.assertIn('if (action === "scientific_overlay") applyScientificOverlay(command.overlay);', javascript)
+        self.assertIn("overlayWarning(error)", javascript)
+        self.assertNotIn("new THREE.", javascript)
