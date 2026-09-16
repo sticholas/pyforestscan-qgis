@@ -26,6 +26,16 @@ class ToolsSetupProductContractTests(unittest.TestCase):
         self.assertIn("recent_item_display_limit", settings)
         self.assertIn("never a job limit", settings)
 
+    def test_tools_setup_uses_a_compact_material_inspired_surface(self):
+        settings = PAGES[PAGES.index("class SettingsPage"):PAGES.index("def _processing_lifecycle_stage")]
+        self.assertIn("self.content_layout.setAlignment(Qt.AlignTop)", settings)
+        self.assertIn("self.content_layout.setSpacing(SPACING_SM)", settings)
+        self.assertIn('self.backend_group.setProperty("settingsSection", True)', settings)
+        self.assertIn("QSizePolicy.Expanding, QSizePolicy.Maximum", settings)
+        self.assertIn('QGroupBox[settingsSection="true"]', MISSION)
+        self.assertIn("QLineEdit:focus", MISSION)
+        self.assertIn("QCheckBox::indicator:checked", MISSION)
+
     def test_preferences_are_available_without_dominating_ready_state(self):
         self.assertIn('_collapsible_section(self.content_layout, "Preferences", checked=False)', PAGES)
 

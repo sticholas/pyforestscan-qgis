@@ -252,7 +252,7 @@ class MissionControlUxTests(unittest.TestCase):
         source = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text(encoding="utf-8")
 
         primary_snippets = (
-            'backend = self.add_section("Processing Engine")',
+            'self.backend_group, backend = self.create_section("Processing Engine")',
             "Processing Engine is configured for this PyForestScan version.",
             'self.install_backend_button = QPushButton("Set Up Processing Engine")',
             "processing_engine_setup_action(status)",

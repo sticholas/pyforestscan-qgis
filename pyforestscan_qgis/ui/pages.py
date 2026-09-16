@@ -6526,6 +6526,10 @@ class SettingsPage(MissionPage):
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create the settings page."""
         super().__init__("Tools & Setup", parent)
+        # Settings are a short setup surface: pack sections at their natural
+        # height and leave unused viewport space below the final section.
+        self.content_layout.setAlignment(Qt.AlignTop)
+        self.content_layout.setSpacing(SPACING_SM)
         defaults_group, defaults = _collapsible_section(self.content_layout, "Preferences", checked=False)
         form = QFormLayout()
         self.default_output_folder = QLineEdit()
@@ -6571,7 +6575,11 @@ class SettingsPage(MissionPage):
         self.auto_save_workspace_check.setChecked(True)
         self._maximum_recent_items = 10
 
-        backend = self.add_section("Processing Engine")
+        self.backend_group, backend = self.create_section("Processing Engine")
+        self.backend_group.setProperty("settingsSection", True)
+        self.backend_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self.backend_group.layout().setContentsMargins(SPACING_SM, SPACING_XS, SPACING_SM, SPACING_SM)
+        self.backend_group.layout().setSpacing(SPACING_XS)
         self.backend_service = BackendService()
         self.backend_install_running = False
         self.backend_install_thread: QThread | None = None
@@ -6599,6 +6607,7 @@ class SettingsPage(MissionPage):
         backend.addWidget(self.manual_dependency_setup_label)
 
         self.backend_detail_group, backend_detail_layout = _collapsible_section(self.content_layout, "Details", checked=False)
+        self.backend_detail_group.setProperty("settingsSection", True)
         for label in (
             self.backend_dependency_label,
             self.qgis_compatibility_label,
