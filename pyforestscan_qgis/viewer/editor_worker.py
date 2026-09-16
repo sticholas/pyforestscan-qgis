@@ -4,6 +4,7 @@ import argparse
 from dataclasses import asdict, dataclass, replace
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import queue
@@ -48,6 +49,55 @@ def _selection_preparation_bounds(result: object) -> dict[str, float] | None:
         return None
     return {"xmin": float(values[0]), "ymin": float(values[1]),
             "xmax": float(values[3]), "ymax": float(values[4])}
+
+
+def _active_view_preparation_bounds(view: object) -> dict[str, float] | None:
+    """Return a conservative XY support envelope for a linked detail or slice view."""
+    if not isinstance(view, dict):
+        return None
+    geometry = view.get("geometry")
+    if not isinstance(geometry, dict):
+        return None
+    view_type = str(view.get("view_type") or "")
+    try:
+        if view_type == "AREA_DETAIL":
+            shape = str(geometry.get("shape") or "")
+            if shape == "POLYGON":
+                vertices = tuple(tuple(point) for point in geometry.get("vertices", ()))
+                if len(vertices) < 4:
+                    return None
+                xs, ys = zip(*vertices)
+                return _preparation_envelope(min(xs), min(ys), max(xs), max(ys))
+            center = tuple(geometry.get("center", ()))
+            if len(center) != 2:
+                return None
+            if shape == "CIRCLE":
+                radius = float(geometry.get("radius"))
+                return _preparation_envelope(center[0] - radius, center[1] - radius,
+                                             center[0] + radius, center[1] + radius)
+            width, height = float(geometry.get("width")), float(geometry.get("height"))
+            return _preparation_envelope(center[0] - width / 2, center[1] - height / 2,
+                                         center[0] + width / 2, center[1] + height / 2)
+        if view_type == "VERTICAL_SLICE":
+            a, b = tuple(geometry.get("a", ())), tuple(geometry.get("b", ()))
+            if len(a) != 2 or len(b) != 2:
+                return None
+            half_width = float(geometry.get("thickness")) / 2
+            return _preparation_envelope(min(a[0], b[0]) - half_width,
+                                         min(a[1], b[1]) - half_width,
+                                         max(a[0], b[0]) + half_width,
+                                         max(a[1], b[1]) + half_width)
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def _preparation_envelope(xmin: object, ymin: object, xmax: object, ymax: object) -> dict[str, float] | None:
+    """Validate one bounded XY envelope without accepting camera-space values."""
+    values = tuple(float(value) for value in (xmin, ymin, xmax, ymax))
+    if not all(math.isfinite(value) for value in values) or values[0] >= values[2] or values[1] >= values[3]:
+        return None
+    return {"xmin": values[0], "ymin": values[1], "xmax": values[2], "ymax": values[3]}
 
 
 def main():
@@ -353,9 +403,12 @@ def main():
                         emit({"hag_prepared": session.source.path, "hag_reused": True,
                               "message": "Height Above Ground is already available."})
                         continue
-                    preparation_bounds = _selection_preparation_bounds(result)
-                    if definitions and preparation_bounds is None:
-                        raise ValueError("Select a non-empty area before preparing HAG; whole-source preparation was not started.")
+                    preparation_bounds = (_selection_preparation_bounds(result)
+                                          or _active_view_preparation_bounds(command.get("active_view")))
+                    if preparation_bounds is None:
+                        raise ValueError(
+                            "Open an Area Detail or Vertical Slice, or resolve a selection before preparing HAG. "
+                            "Whole-source preparation was not started.")
                     from pyforestscan_qgis.backend_runner.pbm_lidar_preparation import prepare_request_source
                     from pyforestscan_qgis.core.source_coordinate_units import assess_source_coordinate_units
                     crs_value = None if session.source_crs.startswith("SOURCE_LOCAL:") else session.source_crs
@@ -365,13 +418,13 @@ def main():
                     request = ViewerPreparationRequest(
                         input_path=Path(session.source.path), source_dimensions=tuple(session.dimensions),
                         crs=crs_value, source_coordinate_units=units.units.value,
-                        source_units_basis=unit_basis, source_point_count=point_count,
+                        source_units_basis=unit_basis, source_point_count=None,
                         bounds=preparation_bounds)
                     spec = type("ViewerHagSpec", (), {
                         "product": "viewer_hag", "requested_products": ("chm",),
                         "run_folder": args.folder / "hag-preparation",
                         "job_id": "viewer-hag-" + session.source.sha256[:12]})()
-                    progress("Preparing Height Above Ground")
+                    progress("Preparing Height Above Ground for bounded viewer extent")
                     prepared = prepare_request_source(spec, request,
                         progress=lambda message: progress(str(message)),
                         preparation_bounds=preparation_bounds)

@@ -95,13 +95,21 @@ class SelectionLimits(QWidget):
         hag_available = has_hag_dimension(controller.page.editor.state.get("dimensions", []))
         selection = controller.page.editor.state.get("selection") or {}
         has_selection = bool(selection.get("resolved_point_count"))
+        view_type = getattr(getattr(view, "view_type", None), "value", "")
+        has_view_extent = view_type in {"AREA_DETAIL", "VERTICAL_SLICE"}
         self.prepare_hag_button.setVisible(bool(controller.page.editor.state.get("ready")) and not hag_available)
-        self.prepare_hag_button.setText("Prepare HAG for Selection" if has_selection else "Prepare HAG")
-        self.prepare_hag_button.setToolTip(
-            "Prepare HAG only for the resolved selection envelope. The original source remains unchanged."
-            if has_selection else
-            "Select and resolve an area first to prepare HAG for that area; without a selection this prepares the source-wide derivative.")
-        self.prepare_hag_button.setEnabled((has_selection or not bool(controller.page.editor.state.get("selection_definitions")))
+        if has_selection:
+            hag_label = "Prepare HAG for Selection"
+            hag_tip = "Prepare HAG only for the resolved selection envelope. The original source remains unchanged."
+        elif has_view_extent:
+            hag_label = "Prepare HAG for This View"
+            hag_tip = "Prepare HAG only inside this linked view extent. The original source remains unchanged."
+        else:
+            hag_label = "Open Detail View for HAG"
+            hag_tip = "Open an Area Detail or Vertical Slice, or resolve a selection, before preparing HAG. Whole-source preparation is disabled here."
+        self.prepare_hag_button.setText(hag_label)
+        self.prepare_hag_button.setToolTip(hag_tip)
+        self.prepare_hag_button.setEnabled((has_selection or has_view_extent)
                                             and not controller.page.editor.busy)
         from ..core.point_cloud.selection_presentation import selection_height_summary
         parts = [selection_height_summary(
@@ -121,7 +129,13 @@ class SelectionLimits(QWidget):
     def prepare_hag(self):
         if not self.controller.page.editor.state.get("ready"):
             return
-        answer = QMessageBox.question(self, "Prepare Height Above Ground", "Create a managed source-local HAG derivative for this viewer?\n\nThe original source will remain unchanged. Large sources may take time to prepare.", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        selection = self.controller.page.editor.state.get("selection") or {}
+        scope = "the resolved selection" if selection.get("resolved_point_count") else "this linked view"
+        answer = QMessageBox.question(
+            self, "Prepare Height Above Ground",
+            f"Create a managed HAG derivative for {scope}?\n\n"
+            "Only this source-space extent will be read. The original source remains unchanged.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if answer != QMessageBox.Yes:
             return
         state = self.controller.page.editor.state

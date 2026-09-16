@@ -52,3 +52,10 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("and choose_band", source)
         self.assertIn("return True", source)
         self.assertIn("return False", source)
+
+    def test_hag_is_limited_to_the_selection_or_active_detail_view(self):
+        editor = (ROOT / "pyforestscan_qgis/ui/point_cloud_editor.py").read_text()
+        limits = (ROOT / "pyforestscan_qgis/ui/point_cloud_selection_limits.py").read_text()
+        self.assertIn("active_view=view_scope", editor)
+        self.assertIn("Prepare HAG for This View", limits)
+        self.assertIn("Whole-source preparation is disabled here", limits)

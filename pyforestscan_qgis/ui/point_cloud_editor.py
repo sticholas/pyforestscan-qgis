@@ -668,11 +668,19 @@ class EditorPanel(QWidget):
                   hag_filter=limits.get("hag_filter"))
 
     def prepare_hag(self, *, source_coordinate_units="", source_units_basis=""):
-        """Run automatic source-local HAG preparation in the managed editor child."""
+        """Run automatic HAG preparation inside the current selection or linked view."""
         if not self.worker or self.busy or not self.state.get("ready"):
             return
+        active_view = self.page.workspace.views.get(self.page.workspace.active_view_id)
+        view_scope = None
+        if active_view is not None:
+            view_scope = {
+                "view_type": getattr(active_view.view_type, "value", active_view.view_type),
+                "title": active_view.title,
+                "geometry": dict(active_view.geometry),
+            }
         self.send("prepare_hag", source_coordinate_units=source_coordinate_units,
-                  source_units_basis=source_units_basis)
+                  source_units_basis=source_units_basis, active_view=view_scope)
 
     def change_tool(self, tool):
         if self.viewer_ready and not self.page.linked.depth_error:
