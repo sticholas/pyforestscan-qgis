@@ -1743,6 +1743,39 @@ class PlanningPage(MissionPage):
         self.planningChanged.emit("Ready" if blocked == 0 else "Needs review", plan)
 
 
+class _ProcessingJobWorker(QObject):
+    """Run one PBM product plan away from the QGIS UI thread."""
+
+    jobUpdated = pyqtSignal(object)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, plan_path: Path, output_folder: Path, title: str,
+                 summary_path: Path | None, cancel_requested: threading.Event) -> None:
+        super().__init__()
+        self.plan_path = plan_path
+        self.output_folder = output_folder
+        self.title = title
+        self.summary_path = summary_path
+        self.cancel_requested = cancel_requested
+
+    def run(self) -> None:
+        try:
+            manager = JobManager(
+                event_sink=self.jobUpdated.emit,
+                adapter=PyForestScanAdapter(execution_mode="pbm_backend"),
+                control_callback=lambda: "cancel" if self.cancel_requested.is_set() else None,
+            )
+            job = manager.run_pipeline(
+                self.plan_path, self.output_folder, self.title,
+                summary_path=self.summary_path,
+            )
+        except Exception as error:  # noqa: BLE001 - report worker boundary failures to UI.
+            self.failed.emit(str(error))
+            return
+        self.completed.emit(job)
+
+
 class ProcessingPage(MissionPage):
     """Pipeline execution page using the active product plan."""
 
@@ -1755,6 +1788,13 @@ class ProcessingPage(MissionPage):
         self.current_job_id: str | None = None
         self.run_context: RunContext | None = None
         self.current_footprint: ProcessingFootprint | None = None
+        self.processing_thread: QThread | None = None
+        self.processing_worker: _ProcessingJobWorker | None = None
+        self._processing_cancel_requested = threading.Event()
+        self._processing_started_at: float | None = None
+        self._processing_elapsed_timer = QTimer(self)
+        self._processing_elapsed_timer.setInterval(1000)
+        self._processing_elapsed_timer.timeout.connect(self._update_processing_elapsed)
 
         overview = self.add_section("Ready To Run")
         self.selected_products_label = _body_label("Selected products: build a Product Plan first.")
@@ -1771,16 +1811,16 @@ class ProcessingPage(MissionPage):
 
         self.execution_backend_label = _body_label("Execution backend: PBM when READY; QGIS Python fallback only when PBM is unavailable.")
         overview.addWidget(self.execution_backend_label)
-        selection_section = self.add_section("Selected Area Processing")
+        selection_section = self.add_section("Selected Points")
         selection_help = _body_label(
-            "Run a scientific product from the selected area, column, or profile. "
-            "The source remains unchanged; product parameters come from the active Product Plan."
+            "Run one scientific product on the locked point selection. "
+            "The original source remains unchanged and bounded safety checks run automatically."
         )
         selection_help.setWordWrap(True)
         selection_help.setProperty("workflowGuidance", True)
         selection_section.addWidget(selection_help)
         self.selection_scope_label = _body_label(
-            "Selection scope: Whole dataset. Select an area in Point Cloud, then choose Process Selected Points."
+            "No selected points yet. Select an area in Point Cloud, then choose Process Selected Points."
         )
         self.selection_scope_label.setWordWrap(True)
         self.selection_scope_label.setProperty("workflowGuidance", True)
@@ -1856,6 +1896,7 @@ class ProcessingPage(MissionPage):
         self.cancel_button.clicked.connect(self.cancel_current_job)
         _apply_button_role(self.cancel_button, "danger")
         self.cancel_button.setEnabled(False)
+        self.cancel_button.setVisible(False)
         self.refresh_processing_button = QPushButton("Refresh Processing State")
         self.refresh_processing_button.clicked.connect(self.refresh_processing_state)
         _apply_button_role(self.refresh_processing_button, "neutral")
@@ -1873,7 +1914,14 @@ class ProcessingPage(MissionPage):
         progress.addWidget(self.progress_bar)
         self.processing_stage_label = _body_label("Stage: Not started")
         progress.addWidget(self.processing_stage_label)
-        progress.addWidget(_body_label("Keep QGIS open until processing completes."))
+        self.processing_activity_label = _details_label("Current activity: waiting for a processing request.")
+        self.processing_activity_label.setWordWrap(True)
+        progress.addWidget(self.processing_activity_label)
+        self.processing_sequence_label = _details_label(
+            "Sequence: bounded checks, PBM processing, then results.")
+        progress.addWidget(self.processing_sequence_label)
+        self.processing_elapsed_label = _details_label("Elapsed: 00:00")
+        progress.addWidget(self.processing_elapsed_label)
 
         technical_group, technical = _collapsible_section(self.content_layout, "Technical Details", checked=False)
         technical.addWidget(_details_label("Run files, plan paths, processing stages, and logs are shown here for troubleshooting."))
@@ -1929,6 +1977,13 @@ class ProcessingPage(MissionPage):
     def set_selection_scope(self, scope: dict[str, object] | None) -> None:
         """Show a prepared authoritative viewer scope without starting a job."""
         self.selection_scope = dict(scope) if scope else None
+        selected_mode = self.selection_scope is not None
+        # Point Cloud is the selected-points entry point; hide unrelated
+        # whole-dataset actions while its bounded request is active.
+        self.start_button.setVisible(not selected_mode)
+        self.validate_request_button.setVisible(not selected_mode)
+        self.job_title_edit.setVisible(not selected_mode)
+        self.clear_selection_scope_button.setVisible(False)
         self.selection_product_request = None
         self.selection_request_model = None
         self.selection_preflight_report = None
@@ -2075,7 +2130,7 @@ class ProcessingPage(MissionPage):
         if report.ready:
             self.promote_selection_button.setVisible(False)
             self.promote_selection_button.setEnabled(False)
-            self.selection_scope_label.setText("Selection is valid. Creating the bounded execution plan.")
+            self.selection_scope_label.setText("Selection is valid. Preparing the bounded execution request.")
             _set_status_badge(self.status_label, "READY", "Status: Selection passed bounded safety checks.")
         else:
             self.promote_selection_button.setVisible(False)
@@ -2089,7 +2144,7 @@ class ProcessingPage(MissionPage):
         report = self.selection_preflight_report
         base_path = Path(self.product_plan_edit.text().strip()) if self.product_plan_edit.text().strip() else None
         if request is None or report is None or not report.ready or base_path is None or not base_path.exists():
-            self.selection_scope_label.setText("Run successful product preflight with an active Product Plan before promotion.")
+            self.selection_scope_label.setText("The selected-points safety checks must pass before processing.")
             return
         try:
             base_plan = json.loads(base_path.read_text(encoding="utf-8"))
@@ -2099,7 +2154,7 @@ class ProcessingPage(MissionPage):
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text(json.dumps(promoted, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         except (OSError, ValueError, json.JSONDecodeError) as error:
-            self.selection_scope_label.setText(f"Selected product could not be promoted: {error}")
+            self.selection_scope_label.setText(f"Selected-points request could not be prepared: {error}")
             return
         self.selection_promoted_plan_path = destination
         self.run_selected_product_button.setVisible(False)
@@ -2107,9 +2162,9 @@ class ProcessingPage(MissionPage):
         self.product_plan_edit.setText(str(destination))
         self.selection_product_request = dict(request.to_dict())
         self.selection_product_request["selection_execution"] = promoted["selection_execution"]
-        self.selection_scope_label.setText("Selected product is running with its bounded selection scope.")
-        self.log_text.setPlainText(self.log_text.toPlainText().strip() + f"\nPromoted scoped plan: {destination}\nThe base Product Plan was not modified.")
-        _set_status_badge(self.status_label, "READY", "Status: Selected product promoted and ready for PBM execution.")
+        self.selection_scope_label.setText("Processing the selected points within their exact bounded geometry.")
+        self.log_text.setPlainText(self.log_text.toPlainText().strip() + f"\nBounded processing plan: {destination}\nThe base Product Plan was not modified.")
+        _set_status_badge(self.status_label, "READY", "Status: Selected points are ready for PBM processing.")
 
     def set_run_context(self, context: RunContext | None) -> None:
         """Use the active Mission Control run context."""
@@ -2179,7 +2234,7 @@ class ProcessingPage(MissionPage):
         if self.selection_scope:
             if self.selection_promoted_plan_path is None or self.selection_preflight_report is None or not self.selection_preflight_report.ready:
                 _set_status_badge(self.status_label, "WARNING", "Status: Selected product needs its automatic safety checks to finish.")
-                self.log_text.setPlainText("Run the selected product from the Selected Area Processing section. The source remains unchanged.")
+                self.log_text.setPlainText("Choose Process Selected Points to retry the bounded request. The source remains unchanged.")
                 return
         plan_path = self.product_plan_edit.text().strip()
         output_folder = self.job_output_folder_edit.text().strip()
@@ -2196,40 +2251,82 @@ class ProcessingPage(MissionPage):
             _set_status_badge(self.status_label, "WARNING", "Status: Needs review - choose an output folder before starting.")
             self.log_text.setPlainText("Choose an output folder for the job summary JSON.")
             return
+        if self.processing_thread is not None and self.processing_thread.isRunning():
+            return
         self.start_button.setEnabled(False)
+        if self.selection_scope:
+            self.prepare_selection_product_button.setEnabled(False)
+        self.cancel_button.setVisible(True)
         self.cancel_button.setEnabled(True)
         self.processing_stage_label.setText("Stage: Preparing")
+        self.processing_activity_label.setText("Current activity: preparing the bounded processing request.")
         self.progress_bar.setValue(5)
         self.log_text.clear()
         execution_backend = self.job_manager.execution_backend().replace("_", " ")
         self.execution_backend_label.setText(f"Execution backend: {execution_backend}")
-        self.log_text.setPlainText(f"Execution backend: {execution_backend}.\n")
-        try:
-            job = self.job_manager.run_pipeline(
-                Path(plan_path),
-                Path(output_folder),
-                self.job_title_edit.text().strip() or "Mission Control Product Job",
-                summary_path=summary_path,
-            )
-        except JobExecutionError as exc:
-            _set_status_badge(self.status_label, "FAILED", f"Status: Failed - processing job could not start: {exc}")
-            self.log_text.setPlainText(f"Processing job could not start: {exc}")
-            self.processing_stage_label.setText("Stage: Failed")
-            self.start_button.setEnabled(True)
-            self.cancel_button.setEnabled(False)
-            return
-        self.current_job_id = job.job_id
-        self._on_job_update(job)
-        self.start_button.setEnabled(True)
-        self.cancel_button.setEnabled(job.status in {JobStatus.PENDING, JobStatus.VALIDATING, JobStatus.RUNNING, JobStatus.CANCELLING})
-
+        self.log_text.setPlainText(f"Execution backend: {execution_backend}. Running in the background.\n")
+        self._processing_cancel_requested.clear()
+        self._processing_started_at = time.monotonic()
+        self._update_processing_elapsed()
+        self._processing_elapsed_timer.start()
+        self.processing_thread = QThread(self)
+        self.processing_worker = _ProcessingJobWorker(
+            Path(plan_path), Path(output_folder),
+            self.job_title_edit.text().strip() or "Mission Control Product Job",
+            summary_path, self._processing_cancel_requested,
+        )
+        self.processing_worker.moveToThread(self.processing_thread)
+        self.processing_thread.started.connect(self.processing_worker.run)
+        self.processing_worker.jobUpdated.connect(self._on_job_update)
+        self.processing_worker.completed.connect(self._on_background_job_complete)
+        self.processing_worker.failed.connect(self._on_background_job_failed)
+        self.processing_worker.completed.connect(self.processing_thread.quit)
+        self.processing_worker.failed.connect(self.processing_thread.quit)
+        self.processing_thread.finished.connect(self.processing_worker.deleteLater)
+        self.processing_thread.finished.connect(self._clear_background_job_worker)
+        self.processing_thread.start()
     def cancel_current_job(self) -> None:
-        """Request cancellation for the current job when it is still active."""
+        """Request cancellation without blocking the QGIS event loop."""
+        if self.processing_thread is not None and self.processing_thread.isRunning():
+            self._processing_cancel_requested.set()
+            self.cancel_button.setEnabled(False)
+            self.processing_stage_label.setText("Stage: Cancelling")
+            self.processing_activity_label.setText(
+                "Current activity: cancellation requested; the active safe step will finish.")
+            return
         if self.current_job_id is None:
             return
         job = self.job_manager.request_cancel(self.current_job_id)
         if job is not None:
             self._on_job_update(job)
+
+    def _update_processing_elapsed(self) -> None:
+        if self._processing_started_at is None:
+            self.processing_elapsed_label.setText("Elapsed: 00:00")
+            return
+        elapsed = max(0, int(time.monotonic() - self._processing_started_at))
+        self.processing_elapsed_label.setText(f"Elapsed: {elapsed // 60:02d}:{elapsed % 60:02d}")
+
+    def _on_background_job_complete(self, job: JobRecord) -> None:
+        self._on_job_update(job)
+
+    def _on_background_job_failed(self, message: str) -> None:
+        _set_status_badge(self.status_label, "FAILED", f"Status: Failed - processing job could not start: {message}")
+        self.processing_stage_label.setText("Stage: Failed")
+        self.processing_activity_label.setText(
+            "Current activity: processing could not start. Open Technical Details for diagnostics.")
+        self.log_text.setPlainText(f"Processing job could not start: {message}")
+
+    def _clear_background_job_worker(self) -> None:
+        self.processing_worker = None
+        self.processing_thread = None
+        self._processing_elapsed_timer.stop()
+        self._update_processing_elapsed()
+        self.start_button.setEnabled(True)
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.setVisible(False)
+        if self.selection_scope:
+            self.prepare_selection_product_button.setEnabled(True)
 
     def _on_job_update(self, job: JobRecord) -> None:
         """Bridge core job progress into Qt widgets."""
@@ -2237,6 +2334,7 @@ class ProcessingPage(MissionPage):
         _set_status_badge(self.status_label, job.status.value, f"Status: {status_display_word(job.status.value)} - {job.status.value}")
         self.progress_bar.setValue(int(job.progress.percent))
         self.processing_stage_label.setText(f"Stage: {_processing_lifecycle_stage(job)}")
+        self.processing_activity_label.setText(f"Current activity: {job.progress.message}")
         self.execution_backend_label.setText(f"Execution backend: {self.job_manager.execution_backend().replace('_', ' ')}")
         self.log_text.setPlainText("\n".join(f"{entry.level}: {entry.message}" for entry in job.logs))
         self.cancel_button.setEnabled(job.status in {JobStatus.PENDING, JobStatus.VALIDATING, JobStatus.RUNNING, JobStatus.CANCELLING})
@@ -2572,7 +2670,13 @@ class BatchPage(MissionPage):
         selected_points_layout.addWidget(self.selected_points_source_label)
         selected_points_layout.addWidget(self.selected_points_scope_label)
         selected_points_layout.addWidget(_details_label(
-            "The source and selection are locked. Choose one product, then run it on this bounded area."))
+            "The source and selection are locked. Choose one product, then process this bounded area."))
+        self.selected_points_details_group, selected_points_details_layout = _collapsible_section(
+            selected_points_layout, "Selection Details", checked=False)
+        self.selected_points_details_text = _details_label("")
+        self.selected_points_details_text.setWordWrap(True)
+        selected_points_details_layout.addWidget(self.selected_points_details_text)
+        _wire_collapsible_group(self.selected_points_details_group)
         self.selected_points_units_frame = QFrame()
         selected_units_layout = QHBoxLayout(self.selected_points_units_frame)
         selected_units_layout.setContentsMargins(0, 2, 0, 2)
@@ -3811,7 +3915,7 @@ class BatchPage(MissionPage):
         self.preflight_report = None
         self._refresh_batch_option_visibility()
         self._update_run_button_enabled()
-        self.preflight_text.setPlainText("Prerun Check needs refresh for the selected products.")
+        self.preflight_text.setPlainText("Product settings changed. Processing will recheck the bounded selection automatically.")
         self.preflight_summary_label.setText("Needs attention: Prerun Check must be refreshed.")
         selected = tuple(PRODUCT_LABELS[p] for p, check in self.product_checks.items() if check.isChecked())
         if self._last_session_state is not None:
@@ -3959,18 +4063,26 @@ class BatchPage(MissionPage):
         )
         units = str(scope.get("source_coordinate_units") or "")
         readiness = "Ready to run" if units else "Units need confirmation before HAG/grid processing"
+        crs = str(scope.get("geometry_crs") or scope.get("crs") or "not declared")
         details = (
             "Source: {}".format(scope.get("source_path", "")),
             "Selection: {} | {} points".format(
                 str(scope.get("scope_kind", "AREA")).title(),
                 scope.get("point_count", "source"),
             ),
+            "Exact geometry: {}{}".format(
+                str(scope.get("scope_kind", "AREA")).title(),
+                " circle" if scope.get("circle_center") and scope.get("circle_radius") else "",
+            ),
+            "CRS: {}".format(crs),
             "Bounds: {}".format(bounds_text),
             "Vertical filter: {}".format(height),
             "Source units: {}".format(units or "not declared"),
             "Readiness: {}".format(readiness),
             "The original point cloud remains unchanged.",
         )
+        self.selected_points_details_text.setText("\n".join(details))
+        # Keep a technical copy for diagnostics without displaying Batch's legacy prerun panel.
         self.preflight_text.setPlainText("\n".join(details))
         _size_text_edit_to_content(self.preflight_text)
 
@@ -4022,13 +4134,14 @@ class BatchPage(MissionPage):
         self.standard_batch_section.setVisible(not polygon and not selected_points)
         self.polygon_batch_section.setVisible(polygon)
         self.selected_points_section.setVisible(selected_points)
-        self.preflight_text.setVisible(True)
-        self.preflight_details_group.setVisible(True)
+        self.preflight_text.setVisible(not selected_points)
+        self.preflight_details_group.setVisible(not selected_points)
+        self.process_section.setVisible(not selected_points)
         self.preflight_summary_label.setVisible(not selected_points)
         self.next_action_label.setVisible(not selected_points)
         if selected_points:
-            summary = "Run one scientific product from an authoritative Point Cloud selection."
-            prerun = "Choose one product, then start its bounded selected-point run."
+            summary = "Choose one product and process the locked point selection."
+            prerun = "Process Selected Points runs the required bounded safety checks automatically."
         elif polygon:
             summary = "Process LiDAR covering a selected polygon."
             prerun = "Run the Prerun Check before processing the selected polygon."

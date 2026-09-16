@@ -76,7 +76,7 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("selection_product_row.addWidget(self.promote_selection_button", pages)
         self.assertIn("self.validate_selection_button.setVisible(False)", pages)
         self.assertIn("self.promote_selection_button.setVisible(False)", pages)
-        self.assertIn("self.preflight_details_group.setVisible(True)", pages)
+        self.assertIn("self.preflight_details_group.setVisible(not selected_points)", pages)
         self.assertIn("self.selected_points_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)", pages)
 
     def test_selected_points_creates_a_bounded_plan_without_folder_prerun(self):
@@ -99,4 +99,19 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("selection_product_options(model)", pages)
         self.assertIn('option.status == "AVAILABLE"', pages)
         self.assertNotIn("selected_points_product_combo", pages)
-        self.assertIn("Choose one product, then run it on this bounded area", pages)
+        self.assertIn("Choose one product, then process this bounded area", pages)
+
+    def test_selected_points_uses_its_own_details_and_background_execution(self):
+        pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
+        self.assertIn('selected_points_layout, "Selection Details", checked=False', pages)
+        self.assertIn("self.selected_points_details_text.setText", pages)
+        self.assertIn("Exact geometry:", pages)
+        self.assertIn("CRS:", pages)
+        self.assertIn("self.process_section.setVisible(not selected_points)", pages)
+        self.assertIn("Process Selected Points runs the required bounded safety checks automatically.", pages)
+        self.assertIn("class _ProcessingJobWorker(QObject)", pages)
+        self.assertIn("self.processing_worker.moveToThread(self.processing_thread)", pages)
+        self.assertIn("self.processing_elapsed_label", pages)
+        self.assertIn("self.processing_sequence_label", pages)
+        self.assertIn("self.processing_activity_label", pages)
+        self.assertIn("Running in the background.", pages)
