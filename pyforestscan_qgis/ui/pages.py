@@ -2634,6 +2634,9 @@ class BatchPage(MissionPage):
         super().__init__("Process", parent)
         self.content_layout.setContentsMargins(0, SPACING_XS, 0, SPACING_MD)
         self.content_layout.setSizeConstraint(QLayout.SetNoConstraint)
+        # Keep workflow content at its natural height. Unused viewport space
+        # belongs below the final section, never between workflow steps.
+        self.content_layout.setAlignment(Qt.AlignTop)
         self.adapter = adapter
         self._job_token_factory = None
         self._current_job_token = None
@@ -3620,9 +3623,10 @@ class BatchPage(MissionPage):
         """Compose one top-to-bottom workflow with responsive section internals."""
         self.process_workspace = QWidget(self.content_widget)
         self.process_workspace.setObjectName("responsiveProcessWorkspace")
-        self.process_workspace.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.process_workspace.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         self.process_workspace_layout = QVBoxLayout(self.process_workspace)
         self.process_workspace_layout.setSizeConstraint(QLayout.SetNoConstraint)
+        self.process_workspace_layout.setAlignment(Qt.AlignTop)
         self.process_workspace_layout.setContentsMargins(0, 0, 0, 0)
         self.process_workspace_layout.setSpacing(SPACING_SM)
         self._routine_process_sections = (

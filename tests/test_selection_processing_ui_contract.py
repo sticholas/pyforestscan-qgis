@@ -90,6 +90,8 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("self.preflight_details_group.setVisible(False)", pages)
         self.assertIn("self.prerun_section.layout().setContentsMargins(0, 0, 0, 0)", pages)
         self.assertIn("self.process_workspace_layout.setSpacing(SPACING_SM)", pages)
+        self.assertIn("self.content_layout.setAlignment(Qt.AlignTop)", pages)
+        self.assertIn("self.process_workspace_layout.setAlignment(Qt.AlignTop)", pages)
 
     def test_selected_points_creates_a_bounded_plan_without_folder_prerun(self):
         pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
