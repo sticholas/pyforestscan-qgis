@@ -1747,6 +1747,7 @@ class _ProcessingJobWorker(QObject):
     """Run one PBM product plan away from the QGIS UI thread."""
 
     jobUpdated = pyqtSignal(object)
+    activityUpdated = pyqtSignal(str)
     completed = pyqtSignal(object)
     failed = pyqtSignal(str)
 
@@ -1763,7 +1764,12 @@ class _ProcessingJobWorker(QObject):
         try:
             manager = JobManager(
                 event_sink=self.jobUpdated.emit,
-                adapter=PyForestScanAdapter(execution_mode="pbm_backend"),
+                adapter=PyForestScanAdapter(
+                    execution_mode="pbm_backend",
+                    progress_sink=lambda snapshot: self.activityUpdated.emit(
+                        str(getattr(snapshot, "message", "") or "")
+                    ),
+                ),
                 control_callback=lambda: "cancel" if self.cancel_requested.is_set() else None,
             )
             job = manager.run_pipeline(
@@ -2286,6 +2292,7 @@ class ProcessingPage(MissionPage):
         self.processing_worker.moveToThread(self.processing_thread)
         self.processing_thread.started.connect(self.processing_worker.run)
         self.processing_worker.jobUpdated.connect(self._on_job_update)
+        self.processing_worker.activityUpdated.connect(self._on_backend_activity)
         self.processing_worker.completed.connect(self._on_background_job_complete)
         self.processing_worker.failed.connect(self._on_background_job_failed)
         self.processing_worker.completed.connect(self.processing_thread.quit)
@@ -2339,6 +2346,15 @@ class ProcessingPage(MissionPage):
             self.prepare_selection_product_button.setEnabled(True)
             self.selectedPointsProcessingStateChanged.emit(
                 False, "Selected points are ready for another product.")
+
+    def _on_backend_activity(self, message: str) -> None:
+        """Show the current PBM lifecycle message without exposing raw worker logs."""
+        activity = str(message or "").strip()
+        if not activity:
+            return
+        self.processing_activity_label.setText(f"Current activity: {activity}")
+        if self.selection_scope:
+            self.selectedPointsProcessingStateChanged.emit(True, activity)
 
     def _on_job_update(self, job: JobRecord) -> None:
         """Bridge core job progress into Qt widgets."""
@@ -4168,8 +4184,10 @@ class BatchPage(MissionPage):
         self.preflight_text.setVisible(not selected_points)
         self.preflight_details_group.setVisible(not selected_points)
         self.process_section.setVisible(not selected_points)
-        self.preflight_summary_label.setVisible(not selected_points)
-        self.next_action_label.setVisible(not selected_points)
+        # The run/preflight controls already communicate the next action.  Keep
+        # legacy guidance out of the space directly beneath those controls.
+        self.preflight_summary_label.setVisible(False)
+        self.next_action_label.setVisible(False)
         self.selected_points_progress.setVisible(selected_points and self._selected_points_processing_active)
         self.selected_points_activity_label.setVisible(
             selected_points and bool(self.selected_points_activity_label.text()))

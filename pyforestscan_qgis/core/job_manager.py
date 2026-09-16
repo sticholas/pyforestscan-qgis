@@ -181,9 +181,13 @@ class JobManager:
                             job = self._progress(job, job.progress.percent, "Processing resumed.")
                         while queued and control not in {"pause", "cancel"} and len(running) < workers:
                             index, context = queued.pop(0)
+                            backend = "PBM backend" if backend_label == "pbm_backend" else "QGIS Python"
                             job = self._progress(
                                 job, 10 + (index / total) * 80,
-                                f"Processing {context.product_label} ({index + 1} of {total}).",
+                                (
+                                    f"{context.product_label}: preparing inputs and starting the "
+                                    f"{backend} calculation ({index + 1} of {total})."
+                                ),
                             )
                             future = pool.submit(
                                 self._pipeline_registry.get(context.product).run,

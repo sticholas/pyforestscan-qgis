@@ -302,6 +302,8 @@ def main():
                 if overlay.get("rows", 0) * overlay.get("columns", 0) > 128 * 128:
                     raise ValueError("Scientific overlay exceeds the viewer cell limit.")
                 bridge.command.emit(json.dumps(command, allow_nan=False))
+            elif action == "clear_scientific_overlay":
+                bridge.command.emit(json.dumps({"action": "clear_scientific_overlay"}))
             elif action == "editor_overlay":
                 from pyforestscan_qgis.core.point_cloud.runtime import ViewerRuntimeService
                 path = Path(command["path"]).resolve(strict=True)

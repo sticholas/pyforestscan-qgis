@@ -136,7 +136,11 @@ class JobManagerTests(unittest.TestCase):
             )
 
             messages = [event.progress.message for event in events]
-            self.assertIn("Processing Canopy Height Model (CHM) (1 of 1).", messages)
+            self.assertIn(
+                "Canopy Height Model (CHM): preparing inputs and starting the "
+                "QGIS Python calculation (1 of 1).",
+                messages,
+            )
             self.assertIn("Finished Canopy Height Model (CHM) (1 of 1).", messages)
 
     def test_single_dataset_can_process_products_concurrently(self) -> None:

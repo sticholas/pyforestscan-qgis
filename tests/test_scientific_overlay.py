@@ -30,6 +30,12 @@ class ScientificOverlayTests(unittest.TestCase):
         self.assertIn("overlayWarning(error)", javascript)
         self.assertNotIn("new THREE.", javascript)
 
+
+    def test_viewer_host_forwards_overlay_clear_commands(self):
+        host = (Path(__file__).parents[1] / "pyforestscan_qgis" / "viewer" / "host.py").read_text(encoding="utf-8")
+        self.assertIn('elif action == "clear_scientific_overlay":', host)
+        self.assertIn('json.dumps({"action": "clear_scientific_overlay"})', host)
+
     def test_viewer_overlay_is_a_visible_layer_above_the_cloud(self):
         javascript = (Path(__file__).parents[1] / "pyforestscan_qgis" / "viewer" / "viewer.js").read_text(encoding="utf-8")
         self.assertIn("cloud.boundingBox.max.z + Math.max(.25, cloudHeight * .003)", javascript)

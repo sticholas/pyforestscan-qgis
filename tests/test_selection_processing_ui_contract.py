@@ -79,6 +79,15 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("self.preflight_details_group.setVisible(not selected_points)", pages)
         self.assertIn("self.selected_points_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)", pages)
 
+    def test_processing_uses_pbm_activity_and_hides_legacy_prerun_banners(self):
+        pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
+        self.assertIn("activityUpdated = pyqtSignal(str)", pages)
+        self.assertIn("progress_sink=lambda snapshot", pages)
+        self.assertIn("def _on_backend_activity", pages)
+        self.assertIn("Current activity: {activity}", pages)
+        self.assertIn("self.preflight_summary_label.setVisible(False)", pages)
+        self.assertIn("self.next_action_label.setVisible(False)", pages)
+
     def test_selected_points_creates_a_bounded_plan_without_folder_prerun(self):
         pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
         control = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text()
