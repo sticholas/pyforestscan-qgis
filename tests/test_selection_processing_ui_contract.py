@@ -59,3 +59,19 @@ class SelectionProcessingUiContractTests(unittest.TestCase):
         self.assertIn("active_view=view_scope", editor)
         self.assertIn("Prepare HAG for This View", limits)
         self.assertIn("Whole-source preparation is disabled here", limits)
+
+    def test_process_exposes_selected_points_as_a_first_class_mode(self):
+        pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
+        control = (ROOT / "pyforestscan_qgis/ui/mission_control.py").read_text()
+        self.assertIn("Selected Points", pages)
+        self.assertIn("selected_points", pages)
+        self.assertIn("set_selected_points_scope", pages)
+        self.assertIn("selectedPointsProcessingRequested", pages)
+        self.assertIn("self.batch_page.set_selected_points_scope(scope)", control)
+        self.assertIn("_open_selected_points_processing", control)
+
+    def test_selected_points_locks_source_and_selection_context(self):
+        pages = (ROOT / "pyforestscan_qgis/ui/pages.py").read_text()
+        self.assertIn("original source unchanged", pages)
+        self.assertIn("Point cloud: {model.source_path}", pages)
+        self.assertIn("selection_product_options(model)", pages)

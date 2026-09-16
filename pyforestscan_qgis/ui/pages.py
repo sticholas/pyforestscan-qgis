@@ -2494,6 +2494,7 @@ class BatchPage(MissionPage):
     clearCurrentResultRequested = pyqtSignal()
     sessionStateChanged = pyqtSignal(object)
     processingEngineSetupRequested = pyqtSignal()
+    selectedPointsProcessingRequested = pyqtSignal(object, str)
 
     def __init__(self, adapter: PyForestScanAdapter, iface: object | None = None, parent: QWidget | None = None) -> None:
         """Create the Batch page."""
@@ -2505,6 +2506,7 @@ class BatchPage(MissionPage):
         self._current_job_token = None
         self.iface = iface
         self._adopted_polygon_selection = None
+        self.selected_points_scope: dict[str, object] | None = None
         self._engine_ready = False
         self.discovered_paths: list[Path] = []
         self.latest_result: object | None = None
@@ -2540,6 +2542,7 @@ class BatchPage(MissionPage):
         self.batch_mode_combo = QComboBox()
         self.batch_mode_combo.addItem("Folder", "standard")
         self.batch_mode_combo.addItem("Polygon Area", "polygon")
+        self.batch_mode_combo.addItem("Selected Points", "selected_points")
         self.batch_mode_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.batch_mode_combo.setMinimumContentsLength(12)
         self.batch_mode_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
@@ -2558,6 +2561,29 @@ class BatchPage(MissionPage):
         mode_layout.addWidget(self.smart_status_label)
         self.batch_mode_summary_label.setVisible(False)
         self.smart_status_label.setVisible(False)
+
+        self.selected_points_section, selected_points_layout = self.create_section("Selected Points")
+        self.selected_points_source_label = _body_label("Point cloud: select points in Point Cloud to begin.")
+        self.selected_points_scope_label = _body_label("Selection: no resolved source selection.")
+        self.selected_points_source_label.setWordWrap(True)
+        self.selected_points_scope_label.setWordWrap(True)
+        selected_points_layout.addWidget(self.selected_points_source_label)
+        selected_points_layout.addWidget(self.selected_points_scope_label)
+        selected_product_row = QHBoxLayout()
+        self.selected_points_product_combo = QComboBox()
+        self.selected_points_product_combo.setEnabled(False)
+        self.selected_points_product_combo.setToolTip("Choose one scientifically supported product for the authoritative viewer selection.")
+        self.selected_points_product_combo.currentIndexChanged.connect(self._sync_selected_points_product)
+        self.open_selected_points_workflow_button = QPushButton("Continue to Selected Point Prerun")
+        self.open_selected_points_workflow_button.setEnabled(False)
+        self.open_selected_points_workflow_button.clicked.connect(self._open_selected_points_workflow)
+        _apply_button_role(self.open_selected_points_workflow_button, "primary")
+        selected_product_row.addWidget(self.selected_points_product_combo, 1)
+        selected_product_row.addWidget(self.open_selected_points_workflow_button, 0)
+        selected_points_layout.addLayout(selected_product_row)
+        selected_points_layout.addWidget(_details_label(
+            "Source and selection are locked here. Product settings remain below; bounded preflight and execution continue in Processing."))
+        self.selected_points_section.setVisible(False)
 
         self.repository_section, repository_layout = self.create_section("LiDAR Data")
         self.standard_batch_section = self.repository_section
@@ -3442,7 +3468,7 @@ class BatchPage(MissionPage):
         self.process_workspace_layout.setContentsMargins(0, 0, 0, 0)
         self.process_workspace_layout.setSpacing(SECTION_GAP)
         self._routine_process_sections = (
-            self.mode_section, self.repository_section, self.polygon_section,
+            self.mode_section, self.repository_section, self.polygon_section, self.selected_points_section,
             self.products_section, self.output_section, self.prerun_section, self.process_section,
         )
         for section in self._routine_process_sections:
@@ -3455,6 +3481,7 @@ class BatchPage(MissionPage):
         compact_headings = (
             (self.repository_section, "LiDAR Data"),
             (self.polygon_section, "Processing Area"),
+            (self.selected_points_section, "Selected Points"),
             (self.products_section, "Products"),
             (self.process_section, "Processing"),
         )
@@ -3830,25 +3857,85 @@ class BatchPage(MissionPage):
         self._last_session_state = state
         self.sessionStateChanged.emit(state)
 
+    def set_selected_points_scope(self, scope: dict[str, object] | None) -> None:
+        """Adopt one authoritative viewer selection without exposing editable source inputs."""
+        self.selected_points_scope = dict(scope) if scope else None
+        self.selected_points_product_combo.blockSignals(True)
+        self.selected_points_product_combo.clear()
+        if not self.selected_points_scope:
+            self.selected_points_source_label.setText("Point cloud: select and resolve points in Point Cloud to begin.")
+            self.selected_points_scope_label.setText("Selection: no resolved source selection.")
+            self.selected_points_product_combo.setEnabled(False)
+            self.open_selected_points_workflow_button.setEnabled(False)
+            self.selected_points_product_combo.blockSignals(False)
+            self._update_run_button_enabled()
+            return
+        try:
+            model = selection_scope_from_context(self.selected_points_scope)
+            options = selection_product_options(model)
+        except (TypeError, ValueError, KeyError) as error:
+            self.selected_points_source_label.setText("Point cloud: selection could not be adopted.")
+            self.selected_points_scope_label.setText(f"Selection: {error}")
+            self.selected_points_product_combo.setEnabled(False)
+            self.open_selected_points_workflow_button.setEnabled(False)
+            self.selected_points_product_combo.blockSignals(False)
+            self._update_run_button_enabled()
+            return
+        self.selected_points_source_label.setText(f"Point cloud: {model.source_path}")
+        self.selected_points_scope_label.setText(f"Selection: {model.summary} | original source unchanged")
+        for option in options:
+            if option.status == "Available":
+                label = PRODUCT_LABELS.get(option.product, option.product.value)
+                self.selected_points_product_combo.addItem(label, option.product.value)
+        self.selected_points_product_combo.setEnabled(self.selected_points_product_combo.count() > 0)
+        self.open_selected_points_workflow_button.setEnabled(self.selected_points_product_combo.count() > 0)
+        self.selected_points_product_combo.blockSignals(False)
+        self._sync_selected_points_product()
+        self._update_run_button_enabled()
+
+    def _sync_selected_points_product(self, *_args: object) -> None:
+        product_id = str(self.selected_points_product_combo.currentData() or "")
+        if not product_id:
+            return
+        for product, check in self.product_checks.items():
+            check.setChecked(product.value == product_id)
+        self._refresh_batch_option_visibility()
+
+    def _open_selected_points_workflow(self) -> None:
+        if not self.selected_points_scope:
+            return
+        product_id = str(self.selected_points_product_combo.currentData() or "")
+        if not product_id:
+            return
+        self.selectedPointsProcessingRequested.emit(dict(self.selected_points_scope), product_id)
+
     def _current_batch_mode(self) -> str:
         return str(self.batch_mode_combo.currentData() or "standard")
 
     def _update_batch_mode_visibility(self, *_args: object) -> None:
         mode = self._current_batch_mode()
         polygon = mode == "polygon"
-        self.standard_batch_section.setVisible(not polygon)
+        selected_points = mode == "selected_points"
+        self.standard_batch_section.setVisible(not polygon and not selected_points)
         self.polygon_batch_section.setVisible(polygon)
-        self.batch_mode_summary_label.setText(
-            "Process LiDAR covering a selected polygon."
-            if polygon else
-            "Process LiDAR files found in a selected folder."
-        )
+        self.selected_points_section.setVisible(selected_points)
+        if selected_points:
+            summary = "Run one scientific product from an authoritative Point Cloud selection."
+            prerun = "Continue to the selected-point prerun after choosing a product."
+        elif polygon:
+            summary = "Process LiDAR covering a selected polygon."
+            prerun = "Run the Prerun Check before processing the selected polygon."
+        else:
+            summary = "Process LiDAR files found in a selected folder."
+            prerun = "Run the Prerun Check before processing the folder."
+        self.batch_mode_summary_label.setText(summary)
         self.preflight_report = None
-        self.preflight_text.setPlainText("Run the Prerun Check before processing the selected polygon." if polygon else "Run the Prerun Check before processing the folder.")
-        self.run_button.setText("Process LiDAR")
-        self.resume_button.setVisible(not polygon)
+        self.preflight_text.setPlainText(prerun)
+        self.run_button.setText("Continue to Selected Point Run" if selected_points else "Process LiDAR")
+        self.preflight_button.setText("Continue to Selected Point Prerun" if selected_points else "Run Prerun Check")
+        self.resume_button.setVisible(not polygon and not selected_points)
         self.retry_failed_button.setText("Retry Failed" if polygon else "Retry Failed Files")
-        self.summary_label.setText("Review Polygon Batch outputs after execution." if polygon else "4. Review Results after the batch completes.")
+        self.summary_label.setText("Review selected-point outputs after execution." if selected_points else ("Review Polygon Batch outputs after execution." if polygon else "4. Review Results after the batch completes."))
         self._update_polygon_source_visibility()
         self._update_adaptive_visibility()
         self._update_run_button_enabled()
@@ -4826,6 +4913,11 @@ class BatchPage(MissionPage):
         self.status_label.setText("Checking request...")
         self._update_processing_density(ProcessingUiState.VALIDATING)
         QApplication.processEvents()
+        if self._current_batch_mode() == "selected_points":
+            self._open_selected_points_workflow()
+            self.preflight_button.setEnabled(True)
+            self._update_processing_density(ProcessingUiState.IDLE)
+            return
         if self._current_batch_mode() == "polygon":
             # run_polygon_batch_preflight is executed by _PolygonPreflightWorker;
             # this UI method only captures the immutable request and submits it.
@@ -4935,6 +5027,9 @@ class BatchPage(MissionPage):
         if self.preflight_report is None:
             self.run_preflight()
             if self.preflight_report is None:return
+        if self._current_batch_mode() == "selected_points":
+            self._open_selected_points_workflow()
+            return
         if self._current_batch_mode() == "polygon":
             self._run_polygon_batch()
             return
@@ -5273,8 +5368,18 @@ class BatchPage(MissionPage):
 
     def _update_run_button_enabled(self) -> None:
         """Enable Process from continuous basic readiness; click performs final validation."""
+        mode = self._current_batch_mode()
+        if mode == "selected_points":
+            ready = bool(self._engine_ready and self.selected_points_scope and self.selected_points_product_combo.currentData())
+            self.preflight_button.setEnabled(ready)
+            self.run_button.setEnabled(ready)
+            self.resume_button.setEnabled(False)
+            self.resume_button.setVisible(False)
+            if hasattr(self, "next_action_label"):
+                self.next_action_label.setText("Next action: continue to selected-point prerun.")
+            return
         report = self.preflight_report
-        polygon_mode = self._current_batch_mode() == "polygon"
+        polygon_mode = mode == "polygon"
         source_ready = bool(self.polygon_lidar_folder_edit.text().strip()) if polygon_mode else bool(self.input_folder_edit.text().strip())
         action = next_processing_action(
             engine_ready=self._engine_ready, source_ready=source_ready,
@@ -5290,7 +5395,7 @@ class BatchPage(MissionPage):
             products=any(check.isChecked() for check in self.product_checks.values());output=bool(self.output_folder_edit.text().strip())
             source=source_ready
             self.run_button.setEnabled(products and output and source);self.resume_button.setEnabled(False);self.resume_button.setVisible(False);return
-        if self._current_batch_mode() == "polygon":
+        if mode == "polygon":
             selected = getattr(report, "selected_sources", ()) if report is not None else ()
             blockers = getattr(report, "blockers", ()) if report is not None else ()
             enabled = bool(report and selected and not blockers)

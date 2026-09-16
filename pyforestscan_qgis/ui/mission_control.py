@@ -153,6 +153,7 @@ class MissionControlDock(QDockWidget):
         self.page_by_name["Point Cloud"] = self.point_cloud_page
         self.page_by_name.update({"Process":self.batch_page,"Tools & Setup":self.settings_page})
         self.batch_page.set_job_token_factory(self._begin_current_job)
+        self.batch_page.selectedPointsProcessingRequested.connect(self._open_selected_points_processing)
         self._last_content_navigation_row = 0
 
         self._configure_style()
@@ -181,8 +182,18 @@ class MissionControlDock(QDockWidget):
         self._navigate_to("Process")
 
     def _prepare_selection_scope(self, scope: dict) -> None:
-        """Route a viewer scope to guided Processing for explicit review."""
+        """Make an authoritative viewer selection available in Process mode."""
+        self.batch_page.set_selected_points_scope(scope)
+        self.batch_page.batch_mode_combo.setCurrentIndex(
+            self.batch_page.batch_mode_combo.findData("selected_points"))
+        self._navigate_to("Process")
+
+    def _open_selected_points_processing(self, scope: dict, product_id: str) -> None:
+        """Open the existing bounded scientific executor with the selected Process product."""
         self.processing_page.set_selection_scope(scope)
+        index = self.processing_page.selection_product_combo.findData(product_id)
+        if index >= 0:
+            self.processing_page.selection_product_combo.setCurrentIndex(index)
         self._navigate_to("Processing")
 
     def resizeEvent(self, event: object) -> None:  # noqa: N802 - Qt API name.

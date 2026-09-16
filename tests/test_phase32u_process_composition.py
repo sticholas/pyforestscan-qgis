@@ -15,7 +15,7 @@ class Phase32UProcessCompositionTests(unittest.TestCase):
         self.assertIn("QVBoxLayout(self.process_workspace)", install)
         self.assertNotIn("QGridLayout(self.process_workspace)", install)
         expected = (
-            "self.mode_section, self.repository_section, self.polygon_section,\n"
+            "self.mode_section, self.repository_section, self.polygon_section, self.selected_points_section,\n"
             "            self.products_section, self.output_section, self.prerun_section, self.process_section"
         )
         self.assertIn(expected, install)

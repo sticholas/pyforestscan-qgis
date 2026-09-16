@@ -17,8 +17,9 @@ class Phase28CInterfaceCompactionTests(unittest.TestCase):
             self.assertNotIn(f'"{name}"', primary)
 
     def test_mode_switch_hides_irrelevant_sections(self):
-        self.assertIn("self.standard_batch_section.setVisible(not polygon)", PAGES)
+        self.assertIn("self.standard_batch_section.setVisible(not polygon and not selected_points)", PAGES)
         self.assertIn("self.polygon_batch_section.setVisible(polygon)", PAGES)
+        self.assertIn("self.selected_points_section.setVisible(selected_points)", PAGES)
         self.assertIn("Process LiDAR covering a selected polygon.", PAGES)
         self.assertIn("Process LiDAR files found in a selected folder.", PAGES)
 
