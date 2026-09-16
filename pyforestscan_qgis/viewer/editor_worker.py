@@ -38,6 +38,16 @@ class ViewerPreparationRequest:
     source_units_basis: str = "UNRESOLVED"
     source_point_count: int | None = None
     dtm_path: Path | None = None
+    bounds: dict[str, float] | None = None
+
+
+def _selection_preparation_bounds(result: object) -> dict[str, float] | None:
+    """Return the current resolved selection envelope for bounded HAG preparation."""
+    values = getattr(result, "bounds", None)
+    if not values or len(values) < 5:
+        return None
+    return {"xmin": float(values[0]), "ymin": float(values[1]),
+            "xmax": float(values[3]), "ymax": float(values[4])}
 
 
 def main():
@@ -343,6 +353,9 @@ def main():
                         emit({"hag_prepared": session.source.path, "hag_reused": True,
                               "message": "Height Above Ground is already available."})
                         continue
+                    preparation_bounds = _selection_preparation_bounds(result)
+                    if definitions and preparation_bounds is None:
+                        raise ValueError("Select a non-empty area before preparing HAG; whole-source preparation was not started.")
                     from pyforestscan_qgis.backend_runner.pbm_lidar_preparation import prepare_request_source
                     from pyforestscan_qgis.core.source_coordinate_units import assess_source_coordinate_units
                     crs_value = None if session.source_crs.startswith("SOURCE_LOCAL:") else session.source_crs
@@ -352,14 +365,16 @@ def main():
                     request = ViewerPreparationRequest(
                         input_path=Path(session.source.path), source_dimensions=tuple(session.dimensions),
                         crs=crs_value, source_coordinate_units=units.units.value,
-                        source_units_basis=unit_basis, source_point_count=point_count)
+                        source_units_basis=unit_basis, source_point_count=point_count,
+                        bounds=preparation_bounds)
                     spec = type("ViewerHagSpec", (), {
                         "product": "viewer_hag", "requested_products": ("chm",),
                         "run_folder": args.folder / "hag-preparation",
                         "job_id": "viewer-hag-" + session.source.sha256[:12]})()
                     progress("Preparing Height Above Ground")
                     prepared = prepare_request_source(spec, request,
-                        progress=lambda message: progress(str(message)))
+                        progress=lambda message: progress(str(message)),
+                        preparation_bounds=preparation_bounds)
                     if prepared is None:
                         raise ValueError("Automatic HAG preparation did not produce a derivative.")
                     artifact = Path(prepared.request.input_path)

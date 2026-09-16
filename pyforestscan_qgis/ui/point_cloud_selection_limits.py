@@ -93,8 +93,16 @@ class SelectionLimits(QWidget):
             control.setVisible(bool(key))
         self.one_unit.setVisible(bool(key))
         hag_available = has_hag_dimension(controller.page.editor.state.get("dimensions", []))
+        selection = controller.page.editor.state.get("selection") or {}
+        has_selection = bool(selection.get("resolved_point_count"))
         self.prepare_hag_button.setVisible(bool(controller.page.editor.state.get("ready")) and not hag_available)
-        self.prepare_hag_button.setEnabled(not controller.page.editor.busy)
+        self.prepare_hag_button.setText("Prepare HAG for Selection" if has_selection else "Prepare HAG")
+        self.prepare_hag_button.setToolTip(
+            "Prepare HAG only for the resolved selection envelope. The original source remains unchanged."
+            if has_selection else
+            "Select and resolve an area first to prepare HAG for that area; without a selection this prepares the source-wide derivative.")
+        self.prepare_hag_button.setEnabled((has_selection or not bool(controller.page.editor.state.get("selection_definitions")))
+                                            and not controller.page.editor.busy)
         from ..core.point_cloud.selection_presentation import selection_height_summary
         parts = [selection_height_summary(
             key, limits if key else None, view_name=getattr(view, "title", "Active view"))]
