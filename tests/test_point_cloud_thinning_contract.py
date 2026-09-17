@@ -9,10 +9,11 @@ WORKER = (ROOT / "pyforestscan_qgis/viewer/thin_source.py").read_text(encoding="
 
 class PointCloudThinningContractTests(unittest.TestCase):
     def test_compact_prepare_menu_exposes_both_methods(self):
-        self.assertIn('self.prepare_button.setText("Prepare")', PAGE)
+        self.assertIn('self.prepare_button.setText("Thin")', PAGE)
         self.assertIn('"Voxel grid (recommended)"', PAGE)
         self.assertIn('"Poisson disk"', PAGE)
         self.assertIn('"Fine vegetation detail: 0.10 m (default)"', PAGE)
+        self.assertIn("setBusy(True)", PAGE)
         self.assertIn("meters_per_source_unit", PAGE)
         self.assertIn('preset.setCurrentIndex(0)', PAGE)
 
@@ -36,8 +37,12 @@ class PointCloudThinningContractTests(unittest.TestCase):
         inspector = (ROOT / "pyforestscan_qgis/viewer/inspect_point_spacing.py").read_text(encoding="utf-8")
         self.assertIn('"Inspect Point Spacing"', PAGE)
         self.assertIn("PointSpacingWorker", PAGE)
-        self.assertIn("full-resolution spatial windows", inspector)
+        self.assertIn("native-resolution source blocks", inspector)
+        self.assertIn("ThreadPoolExecutor", inspector)
+        self.assertIn("max_workers=min(3", inspector)
         self.assertIn("cKDTree", inspector)
+        self.assertIn("report_markdown", inspector)
+        self.assertIn("setBusy(True)", PAGE)
         self.assertIn("meters_per_source_unit", PAGE)
         self.assertNotIn("writers.las", inspector)
 

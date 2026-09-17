@@ -610,9 +610,9 @@ class PointCloudPage(QWidget):
         self.overlay_button.setMenu(self.overlay_menu)
         self.overlay_button.setPopupMode(qt_enum(QToolButton, "InstantPopup", "ToolButtonPopupMode"))
         self.prepare_button = QToolButton()
-        self.prepare_button.setText("Prepare")
+        self.prepare_button.setText("Thin")
         self.prepare_button.setProperty("pointCloudControl", True)
-        self.prepare_button.setAccessibleName("Prepare point-cloud copy")
+        self.prepare_button.setAccessibleName("Thin point-cloud copy")
         self.prepare_button.setToolTip("Create a non-destructive thinned LAS/LAZ copy in the managed Processing Engine. The open source and Process workflow remain unchanged.")
         self.prepare_menu = QMenu(self.prepare_button)
         self.thin_source_action = self.prepare_menu.addAction("Create Thinned Copy...")
@@ -893,8 +893,10 @@ class PointCloudPage(QWidget):
         output_row = QHBoxLayout()
         output_row.addWidget(output, 1)
         output_row.addWidget(browse)
-        spacing_summary = QLabel("Inspect the source spacing to tailor a thinning distance to this cloud.")
-        spacing_summary.setWordWrap(True)
+        from .point_cloud_widgets import StableViewerHelp, StableViewerStatus
+        spacing_summary = StableViewerStatus("Inspect the source spacing to tailor a thinning distance to this cloud.")
+        spacing_details = QLabel("")
+        spacing_details.setWordWrap(True)
         inspect_spacing = QPushButton("Inspect Point Spacing")
         inspect_spacing.setToolTip(
             "Reads a bounded, full-resolution sample in the managed Processing Engine and reports horizontal "
@@ -905,7 +907,6 @@ class PointCloudPage(QWidget):
         create.setProperty("thinPrimary", True)
         open_copy = QPushButton("Open Thinned Copy")
         open_copy.setVisible(False)
-        from .point_cloud_widgets import StableViewerHelp
         help_banner = StableViewerHelp(dialog)
         def browse_output():
             path, _ = QFileDialog.getSaveFileName(
@@ -917,10 +918,13 @@ class PointCloudPage(QWidget):
         browse.clicked.connect(browse_output)
         def inspect_source_spacing():
             inspect_spacing.setEnabled(False)
-            spacing_summary.setText("Inspecting a bounded source sample...")
+            spacing_summary.setBusy(True)
+            spacing_summary.setText("Inspecting point spacing from 9 native-resolution source blocks...")
+            spacing_details.setText("This is a read-only analysis. It does not thin or modify the cloud.")
             self._spacing_worker = PointSpacingWorker(source, self)
             self._spacing_worker.update.connect(
-                lambda value: self._update_point_spacing(value, spacing_summary, inspect_spacing, preset, units))
+                lambda value: self._update_point_spacing(
+                    value, spacing_summary, spacing_details, inspect_spacing, preset, units))
             self._spacing_worker.finished.connect(self._finished_point_spacing)
             _ACTIVE_WORKERS.add(self._spacing_worker)
             self._spacing_worker.finished.connect(lambda: _ACTIVE_WORKERS.discard(self._spacing_worker))
@@ -967,6 +971,7 @@ class PointCloudPage(QWidget):
         form.addRow("Recommended density", preset)
         form.addRow("Spacing", spacing)
         form.addRow("Source spacing", spacing_summary)
+        form.addRow("", spacing_details)
         form.addRow("", inspect_spacing)
         form.addRow("Output", output_row)
         form.addRow(status)
@@ -982,11 +987,13 @@ class PointCloudPage(QWidget):
         self._thinning_help = help_banner
         dialog.show()
 
-    def _update_point_spacing(self, value, summary, inspect_button, preset, units):
+    def _update_point_spacing(self, value, summary, details, inspect_button, preset, units):
         if value.get("status"):
             summary.setText(value["status"])
         if value.get("error"):
-            summary.setText("Point-spacing inspection failed: " + str(value["error"]))
+            summary.setBusy(False)
+            summary.setText("Point-spacing inspection failed")
+            details.setText(str(value["error"]))
             inspect_button.setEnabled(True)
             return
         result = value.get("result")

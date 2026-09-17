@@ -1,6 +1,8 @@
 """Bounded managed-runtime horizontal point-spacing inspection."""
 from __future__ import annotations
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 import json
 import math
 import os
@@ -9,6 +11,10 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from pyforestscan_qgis.core.atomic_state import atomic_write_json
+
+SCHEMA_VERSION = 1
+SAMPLE_WINDOWS = 9
+WINDOW_LIMIT = 10000
 
 
 def main():
@@ -25,6 +31,23 @@ def main():
     source = args.source.resolve(strict=True)
     if source.suffix.lower() not in (".las", ".laz"):
         raise ValueError("Point-spacing inspection needs a local LAS or LAZ source.")
+    source_stat = source.stat()
+    report_json = source.with_name(source.stem + ".pyforestscan.spacing.json")
+    report_markdown = source.with_name(source.stem + ".pyforestscan.spacing.md")
+    try:
+        existing = json.loads(report_json.read_text(encoding="utf-8"))
+        identity = existing.get("source_identity", {})
+        if (existing.get("schema_version") == SCHEMA_VERSION
+                and identity.get("size") == source_stat.st_size
+                and identity.get("modified_ns") == source_stat.st_mtime_ns):
+            reused = dict(existing)
+            reused["reused"] = True
+            atomic_write_json(args.result, reused)
+            print(json.dumps(reused, sort_keys=True), flush=True)
+            return
+    except (OSError, ValueError):
+        pass
+
     dll = Path(sys.executable).parent / "Library/bin"
     dll_handle = os.add_dll_directory(str(dll)) if os.name == "nt" and dll.is_dir() else None
     try:
@@ -38,53 +61,73 @@ def main():
         count = int(quick.get("num_points", 0))
         if count < 2:
             raise ValueError("Point-spacing inspection needs at least two points.")
-        # Read small spatial windows at native resolution. Decimating before a
-        # nearest-neighbor calculation would falsely increase apparent spacing.
-        bounds = quick.get("bounds") or {}
-        xmin, ymin = float(bounds["minx"]), float(bounds["miny"])
-        xmax, ymax = float(bounds["maxx"]), float(bounds["maxy"])
-        if xmin >= xmax or ymin >= ymax:
-            raise ValueError("The source has invalid horizontal bounds.")
-        samples = []
-        window_fraction = 1 / 15
-        window_limit = 10000
-        for x_factor in (.2, .5, .8):
-            for y_factor in (.2, .5, .8):
+        window_count = min(SAMPLE_WINDOWS, max(1, math.ceil(count / 2)))
+        width = min(WINDOW_LIMIT, max(2, count // window_count))
+        starts = tuple(
+            min(max(0, count - width), round((count - width) * index / max(1, window_count - 1)))
+            for index in range(window_count)
+        )
+
+        def inspect_block(start):
+            cancelled()
+            pipeline = pdal.Pipeline(json.dumps({"pipeline": [{
+                "type": "readers.las", "filename": str(source), "start": int(start), "count": int(width),
+            }]}))
+            pipeline.execute()
+            arrays = tuple(pipeline.arrays or ())
+            points = np.concatenate(arrays) if arrays else np.empty(0)
+            if len(points) < 2:
+                return np.empty(0)
+            coordinates = np.column_stack((points["X"], points["Y"]))
+            distances, _ = cKDTree(coordinates).query(coordinates, k=2, workers=-1)
+            return distances[:, 1]
+
+        # Three bounded I/O jobs improve latency without overwhelming a shared drive
+        # or competing with the QGIS viewer for memory.
+        nearest_blocks = []
+        with ThreadPoolExecutor(max_workers=min(3, len(starts))) as pool:
+            futures = {pool.submit(inspect_block, start): start for start in starts}
+            for future in as_completed(futures):
                 cancelled()
-                x_center = xmin + (xmax - xmin) * x_factor
-                y_center = ymin + (ymax - ymin) * y_factor
-                half_x = (xmax - xmin) * window_fraction / 2
-                half_y = (ymax - ymin) * window_fraction / 2
-                crop_bounds = f"([{x_center-half_x},{x_center+half_x}], [{y_center-half_y},{y_center+half_y}])"
-                pipeline = pdal.Pipeline(json.dumps({"pipeline": [
-                    {"type": "readers.las", "filename": str(source)},
-                    {"type": "filters.crop", "bounds": crop_bounds},
-                    {"type": "filters.head", "count": window_limit},
-                ]}))
-                pipeline.execute()
-                arrays = tuple(pipeline.arrays or ())
-                if arrays and sum(len(array) for array in arrays):
-                    samples.append(np.concatenate(arrays))
-        if not samples:
-            raise ValueError("Could not obtain a usable full-resolution spacing sample.")
-        points = np.concatenate(samples)
-        if len(points) < 2:
-            raise ValueError("Could not obtain a usable point-spacing sample.")
-        cancelled()
-        coordinates = np.column_stack((points["X"], points["Y"]))
-        distances, _ = cKDTree(coordinates).query(coordinates, k=2, workers=-1)
-        nearest = distances[:, 1]
-        nearest = nearest[np.isfinite(nearest) & (nearest > 0)]
-        if len(nearest) < 2:
-            raise ValueError("The sampled points do not provide a valid horizontal-spacing distribution.")
+                values = future.result()
+                values = values[np.isfinite(values) & (values > 0)]
+                if len(values):
+                    nearest_blocks.append(values)
+        if not nearest_blocks:
+            raise ValueError("The sampled source blocks do not provide valid horizontal spacing.")
+        nearest = np.concatenate(nearest_blocks)
         median = float(np.median(nearest))
         p10, p90 = (float(value) for value in np.percentile(nearest, (10, 90)))
         result = {
-            "status": "COMPLETE", "point_count": count, "sample_count": len(points),
-            "windows_sampled": len(samples), "p10_spacing": round(p10, 6),
-            "median_spacing": round(median, 6), "p90_spacing": round(p90, 6),
-            "method": "horizontal nearest-neighbor spacing from bounded full-resolution spatial windows",
+            "schema_version": SCHEMA_VERSION,
+            "status": "COMPLETE",
+            "source": str(source),
+            "source_identity": {"size": source_stat.st_size, "modified_ns": source_stat.st_mtime_ns},
+            "point_count": count,
+            "sample_count": int(sum(len(values) for values in nearest_blocks)),
+            "windows_requested": window_count,
+            "windows_sampled": len(nearest_blocks),
+            "points_per_window_limit": width,
+            "p10_spacing": round(p10, 6),
+            "median_spacing": round(median, 6),
+            "p90_spacing": round(p90, 6),
+            "method": "horizontal nearest-neighbor spacing from bounded native-resolution source blocks",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "report_json": str(report_json),
+            "report_markdown": str(report_markdown),
+            "reused": False,
         }
+        atomic_write_json(report_json, result)
+        report_markdown.write_text(
+            "# PyForestScan Point Spacing Report\n\n"
+            f"Source: {source}\n\n"
+            f"- Source points: {count:,}\n"
+            f"- Native-resolution source blocks sampled: {len(nearest_blocks)} of {window_count}\n"
+            f"- Nearest-neighbor spacing (10th / median / 90th): "
+            f"{p10:.6f} / {median:.6f} / {p90:.6f} source units\n"
+            f"- Method: {result['method']}\n"
+            f"- Generated: {result['generated_at']}\n",
+            encoding="utf-8")
         atomic_write_json(args.result, result)
         print(json.dumps(result, sort_keys=True), flush=True)
     finally:
