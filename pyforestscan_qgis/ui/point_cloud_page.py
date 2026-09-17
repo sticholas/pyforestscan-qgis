@@ -789,8 +789,9 @@ class PointCloudPage(QWidget):
         form.addRow(title)
         notice = QLabel(
             "Thinning creates a lighter working copy while the original remains authoritative. "
-            "For canopy, trunk, and future individual-tree work, begin with Canopy and trunk detail "
-            "(0.25 m) or Fine vegetation detail (0.10 m). It creates a separate LAS/LAZ with a "
+            "For canopy, trunk, and future individual-tree work, begin with Fine vegetation detail "
+            "(0.10 m). Use Canopy and trunk detail (0.25 m) only when a faster working copy is needed. "
+            "It creates a separate LAS/LAZ with a "
             "validation record; the open source, viewer session, and Process workflow are unchanged.")
         notice.setWordWrap(True)
         form.addRow(notice)
@@ -811,15 +812,15 @@ class PointCloudPage(QWidget):
             "and normally best for an interactive copy. Poisson disk produces a more evenly distributed "
             "subset at the chosen minimum spacing; it can take longer on dense clouds.")
         preset = QComboBox()
-        preset.addItem("Fine vegetation detail: 0.10 m", .10)
-        preset.addItem("Canopy and trunk detail: 0.25 m (recommended)", .25)
+        preset.addItem("Fine vegetation detail: 0.10 m (default)", .10)
+        preset.addItem("Canopy and trunk detail: 0.25 m (faster)", .25)
         preset.addItem("General working copy: 0.50 m", .50)
-        preset.addItem("Overview: 1 m", 1.0)
+        preset.addItem("Overview only: 1 m", 1.0)
         preset.addItem("Custom spacing", None)
-        preset.setCurrentIndex(1)
+        preset.setCurrentIndex(0)
         preset.setToolTip(
-            "Canopy and trunk detail is the recommended starting point for vegetation work. Fine vegetation "
-            "detail keeps more branch and trunk structure but makes a larger copy. General and Overview "
+            "Fine vegetation detail is the default because it retains more canopy, branch, and trunk structure. "
+            "Use Canopy and trunk detail when a large cloud needs a faster working copy. General and Overview "
             "reduce density more aggressively. Choose Custom spacing to enter a file-specific value.")
         spacing = QDoubleSpinBox()
         spacing.setRange(0.001, 1000000)
