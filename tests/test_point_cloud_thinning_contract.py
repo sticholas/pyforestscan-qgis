@@ -32,6 +32,15 @@ class PointCloudThinningContractTests(unittest.TestCase):
         self.assertIn("Tools & Setup", PAGE)
         self.assertIn("control.installEventFilter(self)", PAGE)
 
+    def test_spacing_inspection_is_bounded_and_guides_without_mutating_source(self):
+        inspector = (ROOT / "pyforestscan_qgis/viewer/inspect_point_spacing.py").read_text(encoding="utf-8")
+        self.assertIn('"Inspect Point Spacing"', PAGE)
+        self.assertIn("PointSpacingWorker", PAGE)
+        self.assertIn("full-resolution spatial windows", inspector)
+        self.assertIn("cKDTree", inspector)
+        self.assertIn("meters_per_source_unit", PAGE)
+        self.assertNotIn("writers.las", inspector)
+
     def test_worker_writes_and_verifies_copy_before_publish(self):
         self.assertIn("writers.las", WORKER)
         self.assertIn('progress("Validating thinned copy")', WORKER)

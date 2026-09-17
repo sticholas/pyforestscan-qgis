@@ -319,6 +319,53 @@ class ThinSourceWorker(QThread):
         self.cancelled.set()
 
 
+class PointSpacingWorker(QThread):
+    """Measure a bounded source sample in PBM before choosing a thinning distance."""
+    update = pyqtSignal(object)
+
+    def __init__(self, source, parent=None):
+        super().__init__(parent)
+        self.source = str(source)
+        self.cancelled = threading.Event()
+
+    def run(self):
+        process = None
+        try:
+            from ..core.backend.service import BackendService
+            service = BackendService()
+            engine = service.processing_engine_service()
+            token = engine.runtime_token_for(("dataset_inspection",))
+            engine.validate_runtime_token_for_launch(token, ("dataset_inspection",))
+            folder = service.paths.backend_root / "viewer" / "spacing-runs" / __import__("uuid").uuid4().hex
+            folder.mkdir(parents=True, exist_ok=True)
+            result_path = folder / "spacing.json"
+            cancel_path = folder / "cancel"
+            script = Path(__file__).resolve().parents[1] / "viewer" / "inspect_point_spacing.py"
+            self.update.emit({"status": "Inspecting sampled point spacing..."})
+            with (folder / "stdout.log").open("w+", encoding="utf-8") as stdout, \
+                 (folder / "stderr.log").open("w+", encoding="utf-8") as stderr:
+                process = subprocess.Popen(
+                    [token.executable, "-I", str(script), "--source", self.source,
+                     "--result", str(result_path), "--cancel-file", str(cancel_path)],
+                    stdout=stdout, stderr=stderr, env=engine.environment(),
+                    **hidden_subprocess_kwargs())
+                while process.poll() is None:
+                    if self.cancelled.wait(.15):
+                        cancel_path.touch()
+                        process.wait(timeout=20)
+                        raise InterruptedError("Point-spacing inspection cancelled.")
+                if process.returncode:
+                    stderr.seek(0)
+                    raise RuntimeError(stderr.read(4000).strip() or "Could not inspect point spacing.")
+            self.update.emit({"result": json.loads(result_path.read_text(encoding="utf-8")),
+                              "run_folder": str(folder)})
+        except Exception as error:
+            self.update.emit({"error": str(error)})
+
+    def stop(self):
+        self.cancelled.set()
+
+
 class ViewerSessionWorker(QThread):
     completed = pyqtSignal(object)
 
@@ -394,6 +441,7 @@ class PointCloudPage(QWidget):
         self._source_info = {}
         self._scientific_overlay = None
         self._thin_worker = None
+        self._spacing_worker = None
         self._thinning_dialog = None
         self._closing = False
         self.last_run_folder = None
@@ -747,7 +795,7 @@ class PointCloudPage(QWidget):
 
     def open_thinning_dialog(self):
         """Offer a compact, explicit derived-copy workflow; never changes the open source."""
-        if self._thin_worker is not None:
+        if self._thin_worker is not None or self._spacing_worker is not None:
             return
         source = Path(self.source.text())
         fingerprint = str(self._source_info.get("sha256") or "")
@@ -845,6 +893,12 @@ class PointCloudPage(QWidget):
         output_row = QHBoxLayout()
         output_row.addWidget(output, 1)
         output_row.addWidget(browse)
+        spacing_summary = QLabel("Inspect the source spacing to tailor a thinning distance to this cloud.")
+        spacing_summary.setWordWrap(True)
+        inspect_spacing = QPushButton("Inspect Point Spacing")
+        inspect_spacing.setToolTip(
+            "Reads a bounded, full-resolution sample in the managed Processing Engine and reports horizontal "
+            "nearest-neighbor spacing. It does not modify this cloud or create an output.")
         status = QLabel("")
         status.setWordWrap(True)
         create = QPushButton("Create Thinned Copy")
@@ -861,6 +915,18 @@ class PointCloudPage(QWidget):
                     path += ".laz"
                 output.setText(path)
         browse.clicked.connect(browse_output)
+        def inspect_source_spacing():
+            inspect_spacing.setEnabled(False)
+            spacing_summary.setText("Inspecting a bounded source sample...")
+            self._spacing_worker = PointSpacingWorker(source, self)
+            self._spacing_worker.update.connect(
+                lambda value: self._update_point_spacing(value, spacing_summary, inspect_spacing, preset, units))
+            self._spacing_worker.finished.connect(self._finished_point_spacing)
+            _ACTIVE_WORKERS.add(self._spacing_worker)
+            self._spacing_worker.finished.connect(lambda: _ACTIVE_WORKERS.discard(self._spacing_worker))
+            self._spacing_worker.finished.connect(self._spacing_worker.deleteLater)
+            self._spacing_worker.start()
+        inspect_spacing.clicked.connect(inspect_source_spacing)
         def create_copy():
             try:
                 from ..core.point_cloud.preparation import PreparationOptions, PreparationRequest
@@ -900,6 +966,8 @@ class PointCloudPage(QWidget):
         form.addRow("Method", method)
         form.addRow("Recommended density", preset)
         form.addRow("Spacing", spacing)
+        form.addRow("Source spacing", spacing_summary)
+        form.addRow("", inspect_spacing)
         form.addRow("Output", output_row)
         form.addRow(status)
         actions = QHBoxLayout()
@@ -907,12 +975,54 @@ class PointCloudPage(QWidget):
         actions.addWidget(open_copy)
         form.addRow(actions)
         form.addRow(help_banner)
-        for control in (method, preset, spacing, output, browse, create, open_copy):
+        for control in (method, preset, spacing, inspect_spacing, output, browse, create, open_copy):
             control.installEventFilter(self)
         dialog.finished.connect(lambda _result: setattr(self, "_thinning_dialog", None))
         self._thinning_dialog = dialog
         self._thinning_help = help_banner
         dialog.show()
+
+    def _update_point_spacing(self, value, summary, inspect_button, preset, units):
+        if value.get("status"):
+            summary.setText(value["status"])
+        if value.get("error"):
+            summary.setText("Point-spacing inspection failed: " + str(value["error"]))
+            inspect_button.setEnabled(True)
+            return
+        result = value.get("result")
+        if not result:
+            return
+        median = float(result["median_spacing"])
+        p10 = float(result["p10_spacing"])
+        p90 = float(result["p90_spacing"])
+        unit = {
+            "METERS": "m", "INTERNATIONAL_FEET": "ft", "US_SURVEY_FEET": "US ft",
+        }.get(units.units.value, "source units")
+        canonical_median = median * units.meters_per_source_unit if units.meters_per_source_unit else None
+        if canonical_median is None:
+            recommendation = (
+                "No automatic thinning choice was applied because this file's linear units are not verified.")
+        elif canonical_median >= .25:
+            recommendation = (
+                "This source is already relatively sparse. Keep the original, or choose Custom only after review.")
+            preset.setCurrentIndex(4)
+        elif canonical_median >= .10:
+            recommendation = (
+                "This source is moderately dense. The faster 0.25 m canopy/trunk copy was selected.")
+            preset.setCurrentIndex(1)
+        else:
+            recommendation = (
+                "This source is dense enough for the 0.10 m fine-vegetation working copy, which was selected.")
+            preset.setCurrentIndex(0)
+        summary.setText(
+            f"Sampled {int(result['sample_count']):,} points from {int(result['windows_sampled'])} "
+            f"full-resolution spatial windows | horizontal nearest-neighbor spacing: "
+            f"{p10:.3f} / {median:.3f} / {p90:.3f} {unit} (10th / median / 90th percentile). "
+            f"{recommendation}")
+
+
+    def _finished_point_spacing(self):
+        self._spacing_worker = None
 
     def _update_thinning(self, value, dialog, status, create, open_copy):
         if value.get("progress"):
