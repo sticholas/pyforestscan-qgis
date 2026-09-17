@@ -788,8 +788,9 @@ class PointCloudPage(QWidget):
         title.setProperty("thinTitle", True)
         form.addRow(title)
         notice = QLabel(
-            "Thinning keeps a representative subset of the original points to make viewing, "
-            "sharing, and exploratory work lighter. It creates a separate LAS/LAZ with a "
+            "Thinning creates a lighter working copy while the original remains authoritative. "
+            "For canopy, trunk, and future individual-tree work, begin with Canopy and trunk detail "
+            "(0.25 m) or Fine vegetation detail (0.10 m). It creates a separate LAS/LAZ with a "
             "validation record; the open source, viewer session, and Process workflow are unchanged.")
         notice.setWordWrap(True)
         form.addRow(notice)
@@ -810,14 +811,16 @@ class PointCloudPage(QWidget):
             "and normally best for an interactive copy. Poisson disk produces a more evenly distributed "
             "subset at the chosen minimum spacing; it can take longer on dense clouds.")
         preset = QComboBox()
-        preset.addItem("Detail: 0.25 m", .25)
-        preset.addItem("Standard: 1 m (recommended)", 1.0)
-        preset.addItem("Overview: 2 m", 2.0)
+        preset.addItem("Fine vegetation detail: 0.10 m", .10)
+        preset.addItem("Canopy and trunk detail: 0.25 m (recommended)", .25)
+        preset.addItem("General working copy: 0.50 m", .50)
+        preset.addItem("Overview: 1 m", 1.0)
         preset.addItem("Custom spacing", None)
         preset.setCurrentIndex(1)
         preset.setToolTip(
-            "Detail retains more vegetation structure. Standard is a sensible first interactive copy. "
-            "Overview reduces the cloud more aggressively. Choose Custom spacing to enter a file-specific value.")
+            "Canopy and trunk detail is the recommended starting point for vegetation work. Fine vegetation "
+            "detail keeps more branch and trunk structure but makes a larger copy. General and Overview "
+            "reduce density more aggressively. Choose Custom spacing to enter a file-specific value.")
         spacing = QDoubleSpinBox()
         spacing.setRange(0.001, 1000000)
         spacing.setDecimals(3)

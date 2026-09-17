@@ -12,8 +12,9 @@ class PointCloudThinningContractTests(unittest.TestCase):
         self.assertIn('self.prepare_button.setText("Prepare")', PAGE)
         self.assertIn('"Voxel grid (recommended)"', PAGE)
         self.assertIn('"Poisson disk"', PAGE)
-        self.assertIn('"Standard: 1 m (recommended)"', PAGE)
+        self.assertIn('"Canopy and trunk detail: 0.25 m (recommended)"', PAGE)
         self.assertIn("meters_per_source_unit", PAGE)
+        self.assertIn('"Fine vegetation detail: 0.10 m"', PAGE)
 
     def test_viewer_source_is_not_replaced_implicitly(self):
         self.assertIn("Original source unchanged.", PAGE)
