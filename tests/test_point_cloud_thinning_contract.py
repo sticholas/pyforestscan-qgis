@@ -12,6 +12,8 @@ class PointCloudThinningContractTests(unittest.TestCase):
         self.assertIn('self.prepare_button.setText("Prepare")', PAGE)
         self.assertIn('"Voxel grid (recommended)"', PAGE)
         self.assertIn('"Poisson disk"', PAGE)
+        self.assertIn('"Standard: 1 m (recommended)"', PAGE)
+        self.assertIn("meters_per_source_unit", PAGE)
 
     def test_viewer_source_is_not_replaced_implicitly(self):
         self.assertIn("Original source unchanged.", PAGE)
@@ -23,6 +25,11 @@ class PointCloudThinningContractTests(unittest.TestCase):
         self.assertIn("prepare_arrays", WORKER)
         self.assertIn("stage_preparation", WORKER)
         self.assertIn("request.verify_input", WORKER)
+
+    def test_dialog_provides_hoverable_explanation_and_never_guesses_unknown_units(self):
+        self.assertIn("StableViewerHelp(dialog)", PAGE)
+        self.assertIn("Tools & Setup", PAGE)
+        self.assertIn("control.installEventFilter(self)", PAGE)
 
     def test_worker_writes_and_verifies_copy_before_publish(self):
         self.assertIn("writers.las", WORKER)

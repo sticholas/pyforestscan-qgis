@@ -718,7 +718,12 @@ class PointCloudPage(QWidget):
 
     def eventFilter(self, watched, event):
         if event.type() in (qt_enum(QEvent, "Enter", "Type"), qt_enum(QEvent, "FocusIn", "Type")):
-            banner = self.filter_help if self.filters_panel.isAncestorOf(watched) else self.context_help
+            if self.filters_panel.isAncestorOf(watched):
+                banner = self.filter_help
+            elif getattr(self, "_thinning_dialog", None) and self._thinning_dialog.isAncestorOf(watched):
+                banner = getattr(self, "_thinning_help", self.context_help)
+            else:
+                banner = self.context_help
             banner.set_help(watched.toolTip())
         return super().eventFilter(watched, event)
 
@@ -732,6 +737,14 @@ class PointCloudPage(QWidget):
             self.filter_toggle.setFocus()
         self.filter_toggle.setArrowType(qt_enum(Qt, "DownArrow" if opened else "RightArrow", "ArrowType"))
 
+    def _thinning_unit_assessment(self):
+        """Resolve only documented CRS unit evidence; never infer units from magnitude."""
+        from ..core.source_coordinate_units import assess_source_coordinate_units
+        metadata = self._source_info.get("metadata") or {}
+        srs = metadata.get("srs") or {}
+        crs = srs.get("wkt", srs.get("compoundwkt", "")) if isinstance(srs, dict) else str(srs)
+        return assess_source_coordinate_units(crs)
+
     def open_thinning_dialog(self):
         """Offer a compact, explicit derived-copy workflow; never changes the open source."""
         if self._thin_worker is not None:
@@ -744,25 +757,84 @@ class PointCloudPage(QWidget):
         if source.name.lower().endswith(".copc.laz"):
             self.status.setText("Create a thinned copy from a LAS or LAZ source, not the optimized viewer cache.")
             return
+        units = self._thinning_unit_assessment()
+        metres_per_unit = units.meters_per_source_unit
+        unit_label = {
+            "METERS": "metres",
+            "INTERNATIONAL_FEET": "international feet",
+            "US_SURVEY_FEET": "US survey feet",
+        }.get(units.units.value, "unverified source units")
         dialog = QDialog(self)
         dialog.setWindowTitle("Create Thinned Copy")
         dialog.setModal(False)
+        dialog.setMinimumWidth(620)
+        dialog.setStyleSheet("""
+            QDialog { background: #f6f8fa; color: #20313a; }
+            QDialog QLabel[thinTitle="true"] { color: #174f60; font-size: 16px; font-weight: 600; }
+            QDialog QComboBox, QDialog QLineEdit, QDialog QDoubleSpinBox {
+                min-height: 28px; border: 1px solid #cbd7dc; border-radius: 4px;
+                padding: 2px 6px; background: #ffffff;
+            }
+            QDialog QPushButton[thinPrimary="true"] {
+                background: #176b7a; color: #ffffff; border: 1px solid #115963;
+                border-radius: 4px; padding: 5px 12px; font-weight: 600;
+            }
+            QDialog QPushButton { border: 1px solid #b9cbd1; border-radius: 4px; padding: 4px 10px; background: #ffffff; }
+        """)
         form = QFormLayout(dialog)
-        form.setContentsMargins(12, 12, 12, 12)
-        notice = QLabel("Creates a new point-cloud copy in the Processing Engine. "
-                        "The open source, viewer session, and Process workflow are unchanged.")
+        form.setContentsMargins(16, 14, 16, 14)
+        form.setSpacing(9)
+        title = QLabel("Create a Thinned Point-Cloud Copy")
+        title.setProperty("thinTitle", True)
+        form.addRow(title)
+        notice = QLabel(
+            "Thinning keeps a representative subset of the original points to make viewing, "
+            "sharing, and exploratory work lighter. It creates a separate LAS/LAZ with a "
+            "validation record; the open source, viewer session, and Process workflow are unchanged.")
         notice.setWordWrap(True)
         form.addRow(notice)
+        unit_note = QLabel(
+            f"Coordinates: {unit_label} ({units.evidence}). "
+            + ("The presets are expressed in metres and converted for this file."
+               if metres_per_unit else
+               "The file does not provide trusted linear units. The default is 1 source unit; confirm "
+               "the file units in Tools & Setup before using a distance-sensitive setting."))
+        unit_note.setWordWrap(True)
+        unit_note.setProperty("thinUnitNote", True)
+        form.addRow(unit_note)
         method = QComboBox()
         method.addItem("Voxel grid (recommended)", "voxel_first")
         method.addItem("Poisson disk", "poisson")
-        method.setToolTip("Voxel grid keeps the first point per spacing cell. Poisson disk produces spatially even samples and can take longer.")
+        method.setToolTip(
+            "Voxel grid keeps one original point from each spacing cell. It is fast, predictable, "
+            "and normally best for an interactive copy. Poisson disk produces a more evenly distributed "
+            "subset at the chosen minimum spacing; it can take longer on dense clouds.")
+        preset = QComboBox()
+        preset.addItem("Detail: 0.25 m", .25)
+        preset.addItem("Standard: 1 m (recommended)", 1.0)
+        preset.addItem("Overview: 2 m", 2.0)
+        preset.addItem("Custom spacing", None)
+        preset.setCurrentIndex(1)
+        preset.setToolTip(
+            "Detail retains more vegetation structure. Standard is a sensible first interactive copy. "
+            "Overview reduces the cloud more aggressively. Choose Custom spacing to enter a file-specific value.")
         spacing = QDoubleSpinBox()
         spacing.setRange(0.001, 1000000)
         spacing.setDecimals(3)
-        spacing.setValue(1.0)
-        spacing.setSuffix(" source units")
-        spacing.setToolTip("Minimum thinning spacing in the coordinates stored by this source.")
+        spacing.setValue(1.0 / metres_per_unit if metres_per_unit else 1.0)
+        spacing.setSuffix(f" {unit_label}")
+        spacing.setToolTip(
+            "The separation used by thinning in this file's coordinate system. Larger spacing keeps fewer points; "
+            "smaller spacing preserves more detail and creates a larger copy.")
+        def apply_preset(_index=0):
+            canonical = preset.currentData()
+            if canonical is None:
+                spacing.setEnabled(True)
+                return
+            spacing.setValue(float(canonical) / metres_per_unit if metres_per_unit else float(canonical))
+            spacing.setEnabled(False)
+        preset.currentIndexChanged.connect(apply_preset)
+        apply_preset()
         default_output = source.with_name(source.stem + "_thinned.laz")
         output = QLineEdit(str(default_output))
         browse = QPushButton("Browse")
@@ -772,11 +844,14 @@ class PointCloudPage(QWidget):
         status = QLabel("")
         status.setWordWrap(True)
         create = QPushButton("Create Thinned Copy")
-        create.setProperty("pointCloudRole", "primary")
+        create.setProperty("thinPrimary", True)
         open_copy = QPushButton("Open Thinned Copy")
         open_copy.setVisible(False)
+        from .point_cloud_widgets import StableViewerHelp
+        help_banner = StableViewerHelp(dialog)
         def browse_output():
-            path, _ = QFileDialog.getSaveFileName(dialog, "Save thinned point cloud", output.text(), "LAZ (*.laz);;LAS (*.las)")
+            path, _ = QFileDialog.getSaveFileName(
+                dialog, "Save thinned point cloud", output.text(), "LAZ (*.laz);;LAS (*.las)")
             if path:
                 if Path(path).suffix.lower() not in (".las", ".laz"):
                     path += ".laz"
@@ -796,12 +871,14 @@ class PointCloudPage(QWidget):
                 return
             create.setEnabled(False)
             method.setEnabled(False)
+            preset.setEnabled(False)
             spacing.setEnabled(False)
             output.setEnabled(False)
             browse.setEnabled(False)
             status.setText("Starting managed thinning...")
             self._thin_worker = ThinSourceWorker(request, self)
-            self._thin_worker.update.connect(lambda value: self._update_thinning(value, dialog, status, create, open_copy))
+            self._thin_worker.update.connect(
+                lambda value: self._update_thinning(value, dialog, status, create, open_copy))
             self._thin_worker.finished.connect(self._finished_thinning)
             _ACTIVE_WORKERS.add(self._thin_worker)
             self._thin_worker.finished.connect(lambda: _ACTIVE_WORKERS.discard(self._thin_worker))
@@ -809,14 +886,15 @@ class PointCloudPage(QWidget):
             self._controls(bool(self._view_state))
             self._thin_worker.start()
         def open_output():
-            path = open_copy.property("thin_output")
-            if path:
+            output_path = open_copy.property("thin_output")
+            if output_path:
                 dialog.close()
-                self.source.setText(path)
-                self.start_source(path)
+                self.source.setText(output_path)
+                self.start_source(output_path)
         create.clicked.connect(create_copy)
         open_copy.clicked.connect(open_output)
         form.addRow("Method", method)
+        form.addRow("Recommended density", preset)
         form.addRow("Spacing", spacing)
         form.addRow("Output", output_row)
         form.addRow(status)
@@ -824,8 +902,12 @@ class PointCloudPage(QWidget):
         actions.addWidget(create)
         actions.addWidget(open_copy)
         form.addRow(actions)
+        form.addRow(help_banner)
+        for control in (method, preset, spacing, output, browse, create, open_copy):
+            control.installEventFilter(self)
         dialog.finished.connect(lambda _result: setattr(self, "_thinning_dialog", None))
         self._thinning_dialog = dialog
+        self._thinning_help = help_banner
         dialog.show()
 
     def _update_thinning(self, value, dialog, status, create, open_copy):
